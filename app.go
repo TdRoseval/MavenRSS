@@ -29,3 +29,11 @@ func (a *App) GetFeedList() []backend.FeedInfo {
 func (a *App) GetFeedContent() []backend.FeedContentFilterInfo {
 	return backend.FilterFeedContent()
 }
+
+func (a *App) GetHistoryContent() []backend.FeedContentFilterInfo {
+	return backend.GetHistoryContent()
+}
+
+func (a *App) WriteHistory(history []backend.FeedContentFilterInfo) error {
+	return backend.WriteHistory(history)
+}

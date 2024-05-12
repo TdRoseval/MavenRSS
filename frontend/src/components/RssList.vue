@@ -1,16 +1,10 @@
 <script lang="ts" setup>
-import { onMounted } from 'vue'
 
 const props = defineProps({
-  getFeedContent: Function,
   feedContent: {
     type: Object,
     default: () => ({ feedList: [] })
   }
-})
-
-onMounted(() => {
-  props.getFeedContent && props.getFeedContent()
 })
 </script>
 
@@ -28,7 +22,7 @@ onMounted(() => {
             </div>
             <time>{{ feed.TimeSince }}</time>
           </div>
-          <p class="Title">{{ feed.Title }}</p>
+          <p class="Title" :style="{ color: feed.Readed ? 'gray' : 'black' }">{{ feed.Title }}</p>
         </div>
       </button>
     </li>

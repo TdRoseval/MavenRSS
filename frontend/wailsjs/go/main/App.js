@@ -9,3 +9,11 @@ export function GetFeedContent() {
 export function GetFeedList() {
   return window['go']['main']['App']['GetFeedList']();
 }
+
+export function GetHistoryContent() {
+  return window['go']['main']['App']['GetHistoryContent']();
+}
+
+export function WriteHistory(arg1) {
+  return window['go']['main']['App']['WriteHistory'](arg1);
+}

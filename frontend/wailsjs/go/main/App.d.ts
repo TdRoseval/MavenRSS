@@ -5,3 +5,7 @@ import {backend} from '../models';
 export function GetFeedContent():Promise<Array<backend.FeedContentFilterInfo>>;
 
 export function GetFeedList():Promise<Array<backend.FeedInfo>>;
+
+export function GetHistoryContent():Promise<Array<backend.FeedContentFilterInfo>>;
+
+export function WriteHistory(arg1:Array<backend.FeedContentFilterInfo>):Promise<void>;

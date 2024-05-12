@@ -1,9 +1,9 @@
 <script lang="ts" setup>
-import { defineComponent, reactive, ref } from 'vue'
+import { defineComponent, reactive, ref, onMounted } from 'vue'
 import { Icon } from '@iconify/vue';
 import RssList from './components/RssList.vue'
 import RssContent from './components/RssContent.vue'
-import { GetFeedContent } from '../wailsjs/go/main/App'
+import { GetFeedContent, GetHistoryContent, WriteHistory } from '../wailsjs/go/main/App'
 
 type FeedContent = {
   FeedTitle: string
@@ -14,6 +14,7 @@ type FeedContent = {
   Time: string
   Image: string
   Content: string
+  Readed: boolean
 }
 
 const feedContent = reactive({
@@ -22,29 +23,69 @@ const feedContent = reactive({
 
 const selectedFeed = ref<FeedContent | null>(null)
 
-async function getFeedContent() {
+async function fetchFeedContent() {
   const result: FeedContent[] = await GetFeedContent()
   feedContent.feedList = result
   return feedContent
 }
 
-const handleClickRefresh = () => {
-  getFeedContent()
+async function fetchHistoryContent() {
+  const result: FeedContent[] = await GetHistoryContent()
+  feedContent.feedList = result
+  return feedContent
 }
 
-const handleFeedClicked = (feed: FeedContent) => {
+async function setHistoryContent() {
+  await WriteHistory(feedContent.feedList)
+}
+
+async function deleteHistoryContent() {
+  feedContent.feedList = []
+  await setHistoryContent()
+  await handleClickRefresh()
+}
+
+const isRefreshing = ref(false)
+
+async function handleClickRefresh() {
+  isRefreshing.value = true
+  await fetchHistoryContent()
+  await fetchFeedContent()
+  await setHistoryContent()
+  isRefreshing.value = false
+}
+
+async function handleFeedClicked(feed: FeedContent) {
   selectedFeed.value = feed
+  await modifyFeedContentReaded(feed, true)
+}
+
+async function modifyFeedContentReaded(feed: FeedContent, readed: boolean) {
+  const index = feedContent.feedList.findIndex((f) => f.Title === feed.Title && f.Content === feed.Content)
+  if (index !== -1) {
+    if (feedContent.feedList[index].Readed !== readed) {
+      feedContent.feedList[index].Readed = readed
+      await setHistoryContent()
+    }
+  }
 }
 
 defineComponent({
   components: {
-    feedContent
+    feedContent,
   },
   setup(_, { emit }) {
     return {
-      getFeedContent
+      isRefreshing,
+      handleClickRefresh,
+      deleteHistoryContent,
+      modifyFeedContentReaded,
     }
   }
+})
+
+onMounted(() => {
+  handleClickRefresh()
 })
 </script>
 
@@ -58,12 +99,13 @@ defineComponent({
       </div>
       <div class="function">
         <button class="btn" @click="handleClickRefresh" title="Refresh">
-          <Icon icon="material-symbols:refresh" />
+          <Icon v-if="!isRefreshing" icon="material-symbols:refresh" />
+          <Icon v-else icon="material-symbols:error" disabled="true" />
         </button>
         <button class="btn" title="Translate">
           <Icon icon="material-symbols:g-translate" />
         </button>
-        <button class="btn" title="Delete history">
+        <button class="btn" @click="deleteHistoryContent" title="Delete history">
           <Icon icon="material-symbols:auto-delete-outline" />
         </button>
         <button class="btn" title="Settings">
@@ -71,7 +113,7 @@ defineComponent({
         </button>
       </div>
     </nav>
-    <rss-list @feed-clicked="handleFeedClicked" :getFeedContent="getFeedContent" :feedContent="feedContent" />
+    <rss-list @feed-clicked="handleFeedClicked" :feedContent="feedContent" />
   </aside>
   <main>
     <div class="ContentFunction">
@@ -81,7 +123,7 @@ defineComponent({
       <button class="btn" title="Bookmark" :disabled="!selectedFeed" :style="!selectedFeed ? { color: 'gray' } : {}">
         <Icon icon="material-symbols:collections-bookmark" />
       </button>
-      <button class="btn" title="Unread" :disabled="!selectedFeed" :style="!selectedFeed ? { color: 'gray' } : {}">
+      <button class="btn" @click="selectedFeed && modifyFeedContentReaded(selectedFeed, false)" title="Unread" :disabled="!selectedFeed" :style="!selectedFeed ? { color: 'gray' } : {}">
         <Icon icon="material-symbols:thread-unread" />
       </button>
       <button class="btn" title="Open in browser" :disabled="!selectedFeed"
