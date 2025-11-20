@@ -11,7 +11,8 @@ const settings = ref({
     translation_enabled: false,
     target_language: 'en',
     translation_provider: 'google',
-    deepl_api_key: ''
+    deepl_api_key: '',
+    auto_cleanup_enabled: false
 });
 
 onMounted(async () => {
@@ -23,7 +24,8 @@ onMounted(async () => {
             translation_enabled: data.translation_enabled === 'true',
             target_language: data.target_language || 'en',
             translation_provider: data.translation_provider || 'google',
-            deepl_api_key: data.deepl_api_key || ''
+            deepl_api_key: data.deepl_api_key || '',
+            auto_cleanup_enabled: data.auto_cleanup_enabled === 'true'
         };
     } catch (e) {
         console.error(e);
@@ -40,7 +42,8 @@ async function saveSettings() {
                 translation_enabled: settings.value.translation_enabled.toString(),
                 target_language: settings.value.target_language,
                 translation_provider: settings.value.translation_provider,
-                deepl_api_key: settings.value.deepl_api_key
+                deepl_api_key: settings.value.deepl_api_key,
+                auto_cleanup_enabled: settings.value.auto_cleanup_enabled.toString()
             })
         });
         store.startAutoRefresh(settings.value.update_interval);
@@ -177,47 +180,70 @@ async function cleanupDatabase() {
                 <div v-if="activeTab === 'general'" class="space-y-6">
                     <div class="setting-group">
                         <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Appearance</label>
-                        <div class="flex justify-between items-center">
-                            <span>Dark Mode</span>
+                        <div class="setting-item">
+                            <div class="flex-1">
+                                <div class="font-medium mb-1">Dark Mode</div>
+                                <div class="text-xs text-text-secondary">Switch between light and dark themes</div>
+                            </div>
                             <input type="checkbox" :checked="store.theme === 'dark'" @change="store.toggleTheme()" class="toggle">
                         </div>
                     </div>
 
                     <div class="setting-group">
-                        <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Translation</label>
-                        <div class="flex justify-between items-center mb-3">
-                            <span>Enable Automatic Translation</span>
-                            <input type="checkbox" v-model="settings.translation_enabled" class="toggle">
-                        </div>
-                        <div class="mb-3">
-                            <label class="block text-sm mb-1">Provider</label>
-                            <select v-model="settings.translation_provider" class="input-field">
-                                <option value="google">Google Translate (Free)</option>
-                                <option value="deepl">DeepL API</option>
-                            </select>
-                        </div>
-                        <div v-if="settings.translation_provider === 'deepl'" class="mb-3">
-                            <label class="block text-sm mb-1">DeepL API Key</label>
-                            <input type="password" v-model="settings.deepl_api_key" class="input-field">
-                        </div>
-                        <div>
-                            <label class="block text-sm mb-1">Target Language</label>
-                            <select v-model="settings.target_language" class="input-field">
-                                <option value="en">English</option>
-                                <option value="es">Spanish</option>
-                                <option value="fr">French</option>
-                                <option value="de">German</option>
-                                <option value="zh">Chinese</option>
-                                <option value="ja">Japanese</option>
-                            </select>
+                        <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Updates</label>
+                        <div class="setting-item">
+                            <div class="flex-1">
+                                <div class="font-medium mb-1">Auto-update Interval</div>
+                                <div class="text-xs text-text-secondary">How often to check for new articles (in minutes)</div>
+                            </div>
+                            <input type="number" v-model="settings.update_interval" min="1" class="input-field w-24 text-center">
                         </div>
                     </div>
 
                     <div class="setting-group">
-                        <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Updates</label>
-                        <div class="mb-3">
-                            <label class="block text-sm mb-1">Auto-update Interval (minutes)</label>
-                            <input type="number" v-model="settings.update_interval" min="1" class="input-field">
+                        <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Database</label>
+                        <div class="setting-item">
+                            <div class="flex-1">
+                                <div class="font-medium mb-1">Auto Cleanup</div>
+                                <div class="text-xs text-text-secondary">Automatically remove old articles to save space</div>
+                            </div>
+                            <input type="checkbox" v-model="settings.auto_cleanup_enabled" class="toggle">
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Translation</label>
+                        <div class="setting-item mb-4">
+                            <div class="flex-1">
+                                <div class="font-medium mb-1">Enable Translation</div>
+                                <div class="text-xs text-text-secondary">Automatically translate article titles to your preferred language</div>
+                            </div>
+                            <input type="checkbox" v-model="settings.translation_enabled" class="toggle">
+                        </div>
+                        
+                        <div v-if="settings.translation_enabled" class="ml-4 space-y-3 border-l-2 border-border pl-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">Translation Provider</label>
+                                <select v-model="settings.translation_provider" class="input-field">
+                                    <option value="google">Google Translate (Free)</option>
+                                    <option value="deepl">DeepL API</option>
+                                </select>
+                            </div>
+                            <div v-if="settings.translation_provider === 'deepl'">
+                                <label class="block text-sm font-medium mb-1">DeepL API Key</label>
+                                <input type="password" v-model="settings.deepl_api_key" placeholder="Enter your DeepL API key" class="input-field">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">Target Language</label>
+                                <select v-model="settings.target_language" class="input-field">
+                                    <option value="en">English</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="ja">Japanese</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -280,6 +306,12 @@ async function cleanupDatabase() {
                     <h3 class="text-xl font-bold mb-2">MrRSS</h3>
                     <p class="text-text-secondary">A simple, modern RSS reader.</p>
                     <p class="text-text-secondary text-sm mt-2">Version 1.0.0</p>
+                    <div class="mt-6">
+                        <a href="https://github.com/WCY-dt/MrRSS" target="_blank" class="inline-flex items-center gap-2 text-accent hover:text-accent-hover transition-colors text-sm font-medium">
+                            <i class="ph ph-github-logo text-xl"></i>
+                            View on GitHub
+                        </a>
+                    </div>
                 </div>
             </div>
 
@@ -322,5 +354,8 @@ async function cleanupDatabase() {
 @keyframes modalFadeIn {
     from { transform: translateY(-20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
+}
+.setting-item {
+    @apply flex items-start justify-between gap-4 p-3 rounded-lg bg-bg-secondary border border-border;
 }
 </style>

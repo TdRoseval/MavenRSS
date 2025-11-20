@@ -58,115 +58,19 @@ func (db *DB) Init() error {
 			return
 		}
 
-		// Create schema_version table for tracking migrations
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (
-			version INTEGER PRIMARY KEY,
-			applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		// Create settings table if not exists
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT
 		)`)
-
-		// Get current schema version
-		var version int
-		_ = db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version").Scan(&version)
-
-		// Helper function to add column safely (only if migration not applied)
-		addColumn := func(migrationVersion int, table, column, definition string) {
-			if version >= migrationVersion {
-				return
-			}
-			// Check if column exists
-			query := "SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?"
-			var count int
-			_ = db.QueryRow(query, table, column).Scan(&count)
-			if count == 0 {
-				_, _ = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition)
-			}
-		}
-
-		// Migration v1: Add category column if not exists
-		addColumn(1, "feeds", "category", "TEXT DEFAULT ''")
-		// Migration v2: Add image_url to feeds
-		addColumn(2, "feeds", "image_url", "TEXT DEFAULT ''")
-		// Migration v3: Add image_url to articles (summary removed in v6, so don't add it)
-		addColumn(3, "articles", "image_url", "TEXT DEFAULT ''")
-		// Migration v4: Add translated_title to articles
-		addColumn(4, "articles", "translated_title", "TEXT DEFAULT ''")
-
-		// Mark migrations as applied if needed
-		if version < 4 {
-			_, _ = db.Exec("INSERT OR IGNORE INTO schema_version (version) VALUES (4)")
-		}
-
-		// Migration: Create settings table (v5)
-		if version < 5 {
-			_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS settings (
-				key TEXT PRIMARY KEY,
-				value TEXT
-			)`)
-			// Default settings
-			_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('update_interval', '10')`)
-			// Default settings for translation
-			_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('translation_enabled', 'false')`)
-			_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('target_language', 'es')`)
-			_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('translation_provider', 'google')`)
-			_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('deepl_api_key', '')`)
-			_, _ = db.Exec("INSERT OR IGNORE INTO schema_version (version) VALUES (5)")
-		}
-
-		// Migration v6: Drop content and summary columns to reduce database size
-		if version < 6 {
-			// Check if columns exist before attempting to drop them
-			var contentCount, summaryCount int
-			_ = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('articles') WHERE name='content'").Scan(&contentCount)
-			_ = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('articles') WHERE name='summary'").Scan(&summaryCount)
-			
-			if contentCount > 0 || summaryCount > 0 {
-				// SQLite doesn't support DROP COLUMN directly in older versions
-				// We need to recreate the table
-				log.Println("Migrating database schema: removing content and summary columns...")
-				
-				// Create new table without content and summary
-				_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS articles_new (
-					id INTEGER PRIMARY KEY AUTOINCREMENT,
-					feed_id INTEGER,
-					title TEXT,
-					url TEXT UNIQUE,
-					image_url TEXT,
-					translated_title TEXT,
-					published_at DATETIME,
-					is_read BOOLEAN DEFAULT 0,
-					is_favorite BOOLEAN DEFAULT 0,
-					FOREIGN KEY(feed_id) REFERENCES feeds(id)
-				)`)
-				
-				// Copy data from old table to new table
-				_, _ = db.Exec(`INSERT OR IGNORE INTO articles_new (id, feed_id, title, url, image_url, translated_title, published_at, is_read, is_favorite)
-					SELECT id, feed_id, title, url, image_url, translated_title, published_at, is_read, is_favorite FROM articles`)
-				
-				// Drop old table
-				_, _ = db.Exec(`DROP TABLE articles`)
-				
-				// Rename new table
-				_, _ = db.Exec(`ALTER TABLE articles_new RENAME TO articles`)
-				
-				// Recreate indexes
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)`)
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC)`)
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_is_read ON articles(is_read)`)
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_is_favorite ON articles(is_favorite)`)
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_feed_published ON articles(feed_id, published_at DESC)`)
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_read_published ON articles(is_read, published_at DESC)`)
-				_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_fav_published ON articles(is_favorite, published_at DESC)`)
-				
-				log.Println("Migration complete: content and summary columns removed")
-				
-				// Run VACUUM to reclaim space
-				log.Println("Running VACUUM to reclaim database space...")
-				_, _ = db.Exec(`VACUUM`)
-				log.Println("VACUUM complete")
-			}
-			
-			_, _ = db.Exec("INSERT OR IGNORE INTO schema_version (version) VALUES (6)")
-		}
+		
+		// Insert default settings if they don't exist
+		_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('update_interval', '10')`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('translation_enabled', 'false')`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('target_language', 'es')`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('translation_provider', 'google')`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('deepl_api_key', '')`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_cleanup_enabled', 'false')`)
 	})
 	return err
 }

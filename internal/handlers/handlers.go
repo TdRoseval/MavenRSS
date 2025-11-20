@@ -30,14 +30,17 @@ func NewHandler(db *database.DB, fetcher *feed.Fetcher) *Handler {
 }
 
 func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
-	// Run initial cleanup
+	// Run initial cleanup only if auto_cleanup is enabled
 	go func() {
-		log.Println("Running initial article cleanup...")
-		count, err := h.DB.CleanupOldArticles()
-		if err != nil {
-			log.Printf("Error during initial cleanup: %v", err)
-		} else {
-			log.Printf("Initial cleanup: removed %d old articles", count)
+		autoCleanup, _ := h.DB.GetSetting("auto_cleanup_enabled")
+		if autoCleanup == "true" {
+			log.Println("Running initial article cleanup...")
+			count, err := h.DB.CleanupOldArticles()
+			if err != nil {
+				log.Printf("Error during initial cleanup: %v", err)
+			} else {
+				log.Printf("Initial cleanup: removed %d old articles", count)
+			}
 		}
 	}()
 	
@@ -58,13 +61,16 @@ func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
 			return
 		case <-time.After(time.Duration(interval) * time.Minute):
 			h.Fetcher.FetchAll(ctx)
-			// Run cleanup after fetching new articles
+			// Run cleanup after fetching new articles only if auto_cleanup is enabled
 			go func() {
-				count, err := h.DB.CleanupOldArticles()
-				if err != nil {
-					log.Printf("Error during automatic cleanup: %v", err)
-				} else if count > 0 {
-					log.Printf("Automatic cleanup: removed %d old articles", count)
+				autoCleanup, _ := h.DB.GetSetting("auto_cleanup_enabled")
+				if autoCleanup == "true" {
+					count, err := h.DB.CleanupOldArticles()
+					if err != nil {
+						log.Printf("Error during automatic cleanup: %v", err)
+					} else if count > 0 {
+						log.Printf("Automatic cleanup: removed %d old articles", count)
+					}
 				}
 			}()
 		}
@@ -265,12 +271,14 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		targetLang, _ := h.DB.GetSetting("target_language")
 		provider, _ := h.DB.GetSetting("translation_provider")
 		apiKey, _ := h.DB.GetSetting("deepl_api_key")
+		autoCleanup, _ := h.DB.GetSetting("auto_cleanup_enabled")
 		json.NewEncoder(w).Encode(map[string]string{
-			"update_interval":      interval,
-			"translation_enabled":  translationEnabled,
-			"target_language":      targetLang,
-			"translation_provider": provider,
-			"deepl_api_key":        apiKey,
+			"update_interval":       interval,
+			"translation_enabled":   translationEnabled,
+			"target_language":       targetLang,
+			"translation_provider":  provider,
+			"deepl_api_key":         apiKey,
+			"auto_cleanup_enabled":  autoCleanup,
 		})
 	} else if r.Method == http.MethodPost {
 		var req struct {
@@ -279,6 +287,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 			TargetLanguage      string `json:"target_language"`
 			TranslationProvider string `json:"translation_provider"`
 			DeepLAPIKey         string `json:"deepl_api_key"`
+			AutoCleanupEnabled  string `json:"auto_cleanup_enabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -298,6 +307,10 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		// Always update API key as it might be cleared
 		h.DB.SetSetting("deepl_api_key", req.DeepLAPIKey)
+		
+		if req.AutoCleanupEnabled != "" {
+			h.DB.SetSetting("auto_cleanup_enabled", req.AutoCleanupEnabled)
+		}
 
 		w.WriteHeader(http.StatusOK)
 	}

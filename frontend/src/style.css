@@ -28,6 +28,22 @@ body {
     @apply bg-bg-primary text-text-primary font-sans overflow-hidden h-screen;
 }
 
+/* Disable selection and dragging for UI elements */
+button, .nav-item, .category-header, .feed-item, .article-card, .action-btn, .footer-btn, .tab-btn {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* Allow selection for input fields, textareas */
+input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;

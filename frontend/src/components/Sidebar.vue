@@ -1,6 +1,6 @@
 <script setup>
 import { store } from '../store.js';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps(['isOpen']);
 const emit = defineEmits(['toggle']);
@@ -8,8 +8,9 @@ const emit = defineEmits(['toggle']);
 const tree = computed(() => {
     const t = {};
     const uncategorized = [];
+    const categories = new Set();
     
-    if (!store.feeds) return { tree: {}, uncategorized: [] };
+    if (!store.feeds) return { tree: {}, uncategorized: [], categories };
 
     store.feeds.forEach(feed => {
         if (feed.category) {
@@ -21,6 +22,7 @@ const tree = computed(() => {
                 }
                 if (index === parts.length - 1) {
                     currentLevel[part]._feeds.push(feed);
+                    categories.add(feed.category);
                 } else {
                     currentLevel = currentLevel[part]._children;
                 }
@@ -29,10 +31,24 @@ const tree = computed(() => {
             uncategorized.push(feed);
         }
     });
-    return { tree: t, uncategorized };
+    if (uncategorized.length > 0) {
+        categories.add('uncategorized');
+    }
+    return { tree: t, uncategorized, categories };
 });
 
 const openCategories = ref(new Set());
+
+// Auto-expand all categories by default when they are first loaded
+watch(() => tree.value.categories, (newCategories) => {
+    if (newCategories) {
+        newCategories.forEach(cat => {
+            if (!openCategories.value.has(cat)) {
+                openCategories.value.add(cat);
+            }
+        });
+    }
+}, { immediate: true });
 
 function toggleCategory(path) {
     if (openCategories.value.has(path)) {
