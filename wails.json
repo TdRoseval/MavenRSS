@@ -1,22 +1,20 @@
 {
-  "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "MrRSS",
-  "outputfilename": "MrRSS",
-  "frontend:install": "npm install",
-  "frontend:build": "npm run build",
-  "frontend:dev:watcher": "npm run dev",
-  "frontend:dev:serverUrl": "auto",
+  "version": "1.0.0",
   "author": {
-    "name": "ch3nyang",
-    "email": "dtchenyang@gmail.com"
-  },
-  "assets": {
-    "dir": "data",
-    "glob": "*.db"
+    "name": "MrRSS Developer",
+    "email": "dev@mrrss.app"
   },
   "info": {
     "productName": "MrRSS",
-    "productVersion": "0.2.0",
-    "copyright": "MIT License"
-  }
+    "productVersion": "1.0.0",
+    "companyName": "MrRSS Team",
+    "copyright": "Copyright \u00a9 2025",
+    "fileDescription": "A modern, standalone RSS reader",
+    "comments": "Built with Wails"
+  },
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "wailsjsdir": "./frontend/src/wailsjs",
+  "outputfilename": "MrRSS.exe"
 }
