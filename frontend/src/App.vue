@@ -7,6 +7,8 @@ import AddFeedModal from './components/modals/AddFeedModal.vue';
 import EditFeedModal from './components/modals/EditFeedModal.vue';
 import SettingsModal from './components/modals/SettingsModal.vue';
 import ContextMenu from './components/ContextMenu.vue';
+import ConfirmDialog from './components/modals/ConfirmDialog.vue';
+import Toast from './components/Toast.vue';
 import { onMounted, ref } from 'vue';
 
 const showAddFeed = ref(false);
@@ -14,6 +16,35 @@ const showEditFeed = ref(false);
 const feedToEdit = ref(null);
 const showSettings = ref(false);
 const isSidebarOpen = ref(false);
+
+// Global notification system
+const confirmDialog = ref(null);
+const toasts = ref([]);
+
+function showConfirm(options) {
+    return new Promise((resolve) => {
+        confirmDialog.value = {
+            ...options,
+            onConfirm: () => {
+                confirmDialog.value = null;
+                resolve(true);
+            },
+            onCancel: () => {
+                confirmDialog.value = null;
+                resolve(false);
+            }
+        };
+    });
+}
+
+function showToast(message, type = 'info', duration = 3000) {
+    const id = Date.now();
+    toasts.value.push({ id, message, type, duration });
+}
+
+// Make these available globally
+window.showConfirm = showConfirm;
+window.showToast = showToast;
 
 // Resizable columns state
 const sidebarWidth = ref(256);
@@ -80,6 +111,9 @@ const contextMenu = ref({
 });
 
 onMounted(async () => {
+    // Trigger immediate article refresh on app launch
+    store.refreshFeeds();
+    
     store.fetchFeeds();
     store.fetchArticles();
     
@@ -165,10 +199,43 @@ function handleContextMenuAction(action) {
             @close="contextMenu.show = false"
             @action="handleContextMenuAction"
         />
+        
+        <!-- Global Notification System -->
+        <ConfirmDialog 
+            v-if="confirmDialog"
+            :title="confirmDialog.title"
+            :message="confirmDialog.message"
+            :confirmText="confirmDialog.confirmText"
+            :cancelText="confirmDialog.cancelText"
+            :isDanger="confirmDialog.isDanger"
+            @confirm="confirmDialog.onConfirm"
+            @cancel="confirmDialog.onCancel"
+            @close="confirmDialog = null"
+        />
+        
+        <div class="toast-container">
+            <Toast 
+                v-for="toast in toasts"
+                :key="toast.id"
+                :message="toast.message"
+                :type="toast.type"
+                :duration="toast.duration"
+                @close="toasts = toasts.filter(t => t.id !== toast.id)"
+            />
+        </div>
     </div>
 </template>
 
 <style>
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 .resizer {
     width: 4px;
     cursor: col-resize;

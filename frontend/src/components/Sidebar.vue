@@ -92,9 +92,17 @@ function onFeedContextMenu(e, feed) {
 
 async function handleFeedAction(action, feed) {
     if (action === 'delete') {
-        if (confirm(`Unsubscribe from ${feed.title}?`)) {
+        const confirmed = await window.showConfirm({
+            title: 'Unsubscribe',
+            message: `Are you sure you want to unsubscribe from ${feed.title}?`,
+            confirmText: 'Unsubscribe',
+            cancelText: 'Cancel',
+            isDanger: true
+        });
+        if (confirmed) {
             await fetch(`/api/feeds/delete?id=${feed.id}`, { method: 'POST' });
             store.fetchFeeds();
+            window.showToast('Successfully unsubscribed', 'success');
         }
     } else if (action === 'edit') {
         window.dispatchEvent(new CustomEvent('show-edit-feed', { detail: feed }));

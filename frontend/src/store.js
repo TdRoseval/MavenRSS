@@ -121,6 +121,7 @@ export const store = reactive({
     },
 
     pollProgress() {
+        let lastCurrent = 0;
         const interval = setInterval(async () => {
             try {
                 const res = await fetch('/api/progress');
@@ -130,6 +131,12 @@ export const store = reactive({
                     total: data.total,
                     isRunning: data.is_running
                 };
+
+                // Progressive refresh: update articles whenever progress advances
+                if (data.current > lastCurrent) {
+                    lastCurrent = data.current;
+                    this.fetchArticles();
+                }
 
                 if (!data.is_running) {
                     clearInterval(interval);

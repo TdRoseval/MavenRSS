@@ -27,13 +27,14 @@ async function addFeed() {
             emit('added');
             url.value = '';
             category.value = '';
+            window.showToast('Feed added successfully', 'success');
             close();
         } else {
-            alert('Error adding feed');
+            window.showToast('Error adding feed', 'error');
         }
     } catch (e) {
         console.error(e);
-        alert('Error adding feed');
+        window.showToast('Error adding feed', 'error');
     } finally {
         isSubmitting.value = false;
     }
@@ -41,8 +42,8 @@ async function addFeed() {
 </script>
 
 <template>
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-bg-primary w-[450px] rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-bg-primary w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in">
             <div class="p-5 border-b border-border flex justify-between items-center">
                 <h3 class="text-lg font-semibold m-0">Add New Feed</h3>
                 <span @click="close" class="text-2xl cursor-pointer text-text-secondary hover:text-text-primary">&times;</span>

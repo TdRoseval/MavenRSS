@@ -49,7 +49,7 @@ async function saveSettings() {
         store.startAutoRefresh(settings.value.update_interval);
         emit('close');
     } catch (e) {
-        alert('Error saving settings');
+        window.showToast('Error saving settings', 'error');
     }
 }
 
@@ -68,11 +68,11 @@ function importOPML(event) {
             body: content
         }).then(async res => {
             if (res.ok) {
-                alert('OPML Imported. Feeds will appear shortly.');
+                window.showToast('OPML Imported. Feeds will appear shortly.', 'success');
                 store.fetchFeeds();
             } else {
                 const text = await res.text();
-                alert('Import failed: ' + text);
+                window.showToast('Import failed: ' + text, 'error');
             }
         });
     };
@@ -84,9 +84,18 @@ function exportOPML() {
 }
 
 async function deleteFeed(id) {
-    if (!confirm('Delete this feed?')) return;
+    const confirmed = await window.showConfirm({
+        title: 'Delete Feed',
+        message: 'Are you sure you want to delete this feed?',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        isDanger: true
+    });
+    if (!confirmed) return;
+    
     await fetch(`/api/feeds/delete?id=${id}`, { method: 'POST' });
     store.fetchFeeds();
+    window.showToast('Feed deleted successfully', 'success');
 }
 
 const isAllSelected = computed(() => {
@@ -104,17 +113,28 @@ function toggleSelectAll(e) {
 
 async function batchDelete() {
     if (selectedFeeds.value.length === 0) return;
-    if (!confirm(`Delete ${selectedFeeds.value.length} feeds?`)) return;
+    
+    const confirmed = await window.showConfirm({
+        title: 'Delete Multiple Feeds',
+        message: `Are you sure you want to delete ${selectedFeeds.value.length} feeds?`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        isDanger: true
+    });
+    if (!confirmed) return;
 
     const promises = selectedFeeds.value.map(id => fetch(`/api/feeds/delete?id=${id}`, { method: 'POST' }));
     await Promise.all(promises);
     selectedFeeds.value = [];
     store.fetchFeeds();
+    window.showToast('Feeds deleted successfully', 'success');
 }
 
 async function batchMove() {
     if (selectedFeeds.value.length === 0) return;
     if (!store.feeds) return;
+    
+    // TODO: Replace with custom input dialog
     const newCategory = prompt('Enter new category name:');
     if (newCategory === null) return;
 
@@ -136,6 +156,7 @@ async function batchMove() {
     await Promise.all(promises);
     selectedFeeds.value = [];
     store.fetchFeeds();
+    window.showToast('Feeds moved successfully', 'success');
 }
 
 function editFeed(feed) {
@@ -143,34 +164,41 @@ function editFeed(feed) {
 }
 
 async function cleanupDatabase() {
-    if (!confirm('This will delete all articles except read and favorited ones. Continue?')) return;
+    const confirmed = await window.showConfirm({
+        title: 'Clean Database',
+        message: 'This will delete all articles except read and favorited ones. Continue?',
+        confirmText: 'Clean',
+        cancelText: 'Cancel',
+        isDanger: true
+    });
+    if (!confirmed) return;
     
     try {
         const res = await fetch('/api/articles/cleanup', { method: 'POST' });
         if (res.ok) {
             const result = await res.json();
-            alert(`Database cleaned up successfully. ${result.deleted} articles deleted.`);
+            window.showToast(`Database cleaned up successfully. ${result.deleted} articles deleted.`, 'success');
             store.fetchArticles();
         } else {
-            alert('Error cleaning up database');
+            window.showToast('Error cleaning up database', 'error');
         }
     } catch (e) {
         console.error(e);
-        alert('Error cleaning up database');
+        window.showToast('Error cleaning up database', 'error');
     }
 }
 
 </script>
 
 <template>
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-bg-primary w-[800px] h-[800px] flex flex-col rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-bg-primary w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in">
             <div class="p-5 border-b border-border flex justify-between items-center shrink-0">
                 <h3 class="text-lg font-semibold m-0">Settings</h3>
                 <span @click="emit('close')" class="text-2xl cursor-pointer text-text-secondary hover:text-text-primary">&times;</span>
             </div>
             
-            <div class="flex border-b border-border bg-bg-secondary shrink-0">
+            <div class="flex border-b border-border bg-bg-secondary shrink-0 overflow-x-auto">
                 <button @click="activeTab = 'general'" :class="['tab-btn', activeTab === 'general' ? 'active' : '']">General</button>
                 <button @click="activeTab = 'feeds'" :class="['tab-btn', activeTab === 'feeds' ? 'active' : '']">Feeds</button>
                 <button @click="activeTab = 'about'" :class="['tab-btn', activeTab === 'about' ? 'active' : '']">About</button>
@@ -196,7 +224,7 @@ async function cleanupDatabase() {
                                 <div class="font-medium mb-1">Auto-update Interval</div>
                                 <div class="text-xs text-text-secondary">How often to check for new articles (in minutes)</div>
                             </div>
-                            <input type="number" v-model="settings.update_interval" min="1" class="input-field text-center">
+                            <input type="number" v-model="settings.update_interval" min="1" class="input-field w-20 text-center">
                         </div>
                     </div>
 
@@ -261,7 +289,7 @@ async function cleanupDatabase() {
                             </button>
                         </div>
                         <div class="flex gap-3">
-                            <button @click="cleanupDatabase" class="btn-secondary flex-1 justify-center text-orange-600 hover:bg-orange-50 border-orange-300">
+                            <button @click="cleanupDatabase" class="btn-danger flex-1 justify-center">
                                 <i class="ph ph-broom"></i> Clean Database
                             </button>
                         </div>
@@ -273,11 +301,11 @@ async function cleanupDatabase() {
                     <div class="setting-group">
                         <label class="block font-semibold mb-3 text-text-secondary uppercase text-xs tracking-wider">Manage Feeds</label>
                         
-                        <div class="flex gap-2 mb-2">
-                            <button @click="batchDelete" class="btn-secondary text-sm py-1.5" :disabled="selectedFeeds.length === 0">
+                        <div class="flex flex-wrap gap-2 mb-2">
+                            <button @click="batchDelete" class="btn-danger text-sm py-1.5 px-3" :disabled="selectedFeeds.length === 0">
                                 <i class="ph ph-trash"></i> Delete Selected
                             </button>
-                            <button @click="batchMove" class="btn-secondary text-sm py-1.5" :disabled="selectedFeeds.length === 0">
+                            <button @click="batchMove" class="btn-secondary text-sm py-1.5 px-3" :disabled="selectedFeeds.length === 0">
                                 <i class="ph ph-folder"></i> Move Selected
                             </button>
                             <div class="flex-1"></div>
@@ -287,15 +315,17 @@ async function cleanupDatabase() {
                             </label>
                         </div>
 
-                        <div class="border border-border rounded-lg bg-bg-secondary flex-1 overflow-y-auto min-h-[300px]">
-                            <div v-for="feed in store.feeds" :key="feed.id" class="flex items-center p-3 border-b border-border last:border-0 bg-bg-primary hover:bg-bg-secondary">
-                                <input type="checkbox" :value="feed.id" v-model="selectedFeeds" class="mr-3 rounded border-border">
-                                <div class="truncate flex-1 mr-2">
-                                    <div class="font-medium truncate">{{ feed.title }}</div>
+                        <div class="border border-border rounded-lg bg-bg-secondary overflow-y-auto max-h-96">
+                            <div v-for="feed in store.feeds" :key="feed.id" class="flex items-center p-2 border-b border-border last:border-0 bg-bg-primary hover:bg-bg-secondary gap-2">
+                                <input type="checkbox" :value="feed.id" v-model="selectedFeeds" class="shrink-0 rounded border-border">
+                                <div class="truncate flex-1 min-w-0">
+                                    <div class="font-medium truncate text-sm">{{ feed.title }}</div>
                                     <div class="text-xs text-text-secondary truncate">{{ feed.url }}</div>
                                 </div>
-                                <button @click="editFeed(feed)" class="text-accent hover:bg-bg-tertiary p-1.5 rounded mr-1" title="Edit"><i class="ph ph-pencil"></i></button>
-                                <button @click="deleteFeed(feed.id)" class="text-red-500 hover:bg-red-50 p-1.5 rounded" title="Delete"><i class="ph ph-trash"></i></button>
+                                <div class="flex gap-1 shrink-0">
+                                    <button @click="editFeed(feed)" class="text-accent hover:bg-bg-tertiary p-1 rounded text-sm" title="Edit"><i class="ph ph-pencil"></i></button>
+                                    <button @click="deleteFeed(feed.id)" class="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded text-sm" title="Delete"><i class="ph ph-trash"></i></button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -337,6 +367,15 @@ async function cleanupDatabase() {
 }
 .btn-secondary {
     @apply bg-transparent border border-border text-text-primary px-4 py-2 rounded-md cursor-pointer flex items-center gap-2 font-medium hover:bg-bg-tertiary transition-colors;
+}
+.btn-secondary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+}
+.btn-danger {
+    @apply bg-red-600 text-white border-none px-4 py-2 rounded-md cursor-pointer flex items-center gap-2 font-semibold hover:bg-red-700 transition-colors;
+}
+.btn-danger:disabled {
+    @apply opacity-50 cursor-not-allowed bg-red-600;
 }
 .toggle {
     @apply w-10 h-5 appearance-none bg-bg-tertiary rounded-full relative cursor-pointer border border-border transition-colors checked:bg-accent checked:border-accent;
