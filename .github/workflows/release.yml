@@ -61,11 +61,13 @@ jobs:
       - name: Check if release exists
         id: check_release
         run: |
+          set +e
           RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.AUTH_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_version.outputs.tag }}" \
             | jq -r '.id // empty')
+          set -e
           
-          if [ -n "$RELEASE_ID" ]; then
+          if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
             echo "release_exists=true" >> $GITHUB_OUTPUT
             echo "Release for tag ${{ steps.get_version.outputs.tag }} already exists (ID: $RELEASE_ID)"
           else
@@ -97,10 +99,19 @@ jobs:
         id: get_existing_release
         if: steps.check_release.outputs.release_exists == 'true'
         run: |
+          set +e
           UPLOAD_URL=$(curl -s -H "Authorization: token ${{ secrets.AUTH_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_version.outputs.tag }}" \
             | jq -r '.upload_url')
-          echo "upload_url=$UPLOAD_URL" >> $GITHUB_OUTPUT
+          set -e
+          
+          if [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != "null" ]; then
+            echo "upload_url=$UPLOAD_URL" >> $GITHUB_OUTPUT
+            echo "Found upload URL: $UPLOAD_URL"
+          else
+            echo "Error: Could not get upload URL for existing release"
+            exit 1
+          fi
 
   build-release:
     name: Build ${{ matrix.platform }}
