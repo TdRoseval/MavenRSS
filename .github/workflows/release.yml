@@ -184,8 +184,6 @@ jobs:
       - name: Create installer (Windows)
         if: matrix.platform == 'windows'
         run: |
-          # Create icon file if needed (placeholder for now)
-          mkdir -p build/windows
           # Build NSIS installer
           makensis build/windows/installer.nsi
         shell: pwsh
