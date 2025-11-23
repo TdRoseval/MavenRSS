@@ -1,6 +1,7 @@
 <script setup>
 import { store } from '../store.js';
 import { computed, ref, watch } from 'vue';
+import { BrowserOpenURL } from '../wailsjs/wailsjs/runtime/runtime.js';
 
 const props = defineProps(['isOpen']);
 const emit = defineEmits(['toggle']);
@@ -81,8 +82,10 @@ function onFeedContextMenu(e, feed) {
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: store.i18n.t('unsubscribe'), action: 'delete', icon: 'ph-trash', danger: true },
-                { label: store.i18n.t('editSubscription'), action: 'edit', icon: 'ph-pencil' }
+                { label: store.i18n.t('openWebsite'), action: 'openWebsite', icon: 'ph-globe' },
+                { separator: true },
+                { label: store.i18n.t('editSubscription'), action: 'edit', icon: 'ph-pencil' },
+                { label: store.i18n.t('unsubscribe'), action: 'delete', icon: 'ph-trash', danger: true }
             ],
             data: feed,
             callback: handleFeedAction
@@ -106,6 +109,8 @@ async function handleFeedAction(action, feed) {
         }
     } else if (action === 'edit') {
         window.dispatchEvent(new CustomEvent('show-edit-feed', { detail: feed }));
+    } else if (action === 'openWebsite') {
+        BrowserOpenURL(feed.url);
     }
 }
 

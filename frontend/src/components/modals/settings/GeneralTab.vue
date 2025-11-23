@@ -56,7 +56,8 @@ async function autoSave() {
                 language: props.settings.language,
                 theme: props.settings.theme,
                 show_hidden_articles: props.settings.show_hidden_articles.toString(),
-                default_view_mode: props.settings.default_view_mode
+                default_view_mode: props.settings.default_view_mode,
+                startup_on_boot: props.settings.startup_on_boot.toString()
             })
         });
         
@@ -216,6 +217,17 @@ function formatLastUpdate(timestamp) {
                     </div>
                     <div class="text-sm font-medium text-accent">{{ formatLastUpdate(settings.last_article_update) }}</div>
                 </div>
+            </div>
+            
+            <div class="setting-item mt-3">
+                <div class="flex-1 flex items-start gap-3">
+                    <i class="ph ph-power text-xl text-text-secondary mt-0.5"></i>
+                    <div class="flex-1">
+                        <div class="font-medium mb-1">{{ store.i18n.t('startupOnBoot') }}</div>
+                        <div class="text-xs text-text-secondary">{{ store.i18n.t('startupOnBootDesc') }}</div>
+                    </div>
+                </div>
+                <input type="checkbox" v-model="settings.startup_on_boot" class="toggle">
             </div>
         </div>
 

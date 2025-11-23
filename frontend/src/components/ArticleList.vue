@@ -191,10 +191,10 @@ function onArticleContextMenu(e, article) {
             y: e.clientY,
             items: [
                 { label: article.is_read ? store.i18n.t('markAsUnread') : store.i18n.t('markAsRead'), action: 'toggleRead', icon: article.is_read ? 'ph-envelope' : 'ph-envelope-open' },
-                { label: article.is_favorite ? store.i18n.t('removeFromFavorites') : store.i18n.t('addToFavorites'), action: 'toggleFavorite', icon: article.is_favorite ? 'ph-star-fill' : 'ph-star' },
+                { label: article.is_favorite ? store.i18n.t('removeFromFavorites') : store.i18n.t('addToFavorites'), action: 'toggleFavorite', icon: 'ph-star' },
                 { separator: true },
                 { label: contentActionLabel, action: 'renderContent', icon: contentActionIcon },
-                { label: article.is_hidden ? store.i18n.t('unhideArticle') : store.i18n.t('hideArticle'), action: 'toggleHide', icon: article.is_hidden ? 'ph-eye' : 'ph-eye-slash' },
+                { label: article.is_hidden ? store.i18n.t('unhideArticle') : store.i18n.t('hideArticle'), action: 'toggleHide', icon: article.is_hidden ? 'ph-eye' : 'ph-eye-slash', danger: !article.is_hidden },
                 { separator: true },
                 { label: store.i18n.t('openInBrowser'), action: 'openBrowser', icon: 'ph-arrow-square-out' }
             ],
@@ -310,7 +310,7 @@ async function refreshArticles() {
                         <span class="font-medium text-accent">{{ article.feed_title }}</span>
                         <span>{{ formatDate(article.published_at) }}</span>
                     </div>
-                    <i v-if="article.is_favorite" class="ph ph-star-fill text-yellow-400 mt-1 block"></i>
+                    <i v-if="article.is_favorite" class="ph ph-star text-yellow-400 mt-1 block"></i>
                 </div>
             </div>
             

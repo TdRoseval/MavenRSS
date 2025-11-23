@@ -5,6 +5,23 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2025-11-23
+
+### Added
+
+- "Open Website" option in feed right-click menu
+- Startup on boot setting in General settings tab (default off)
+
+### Changed
+
+- "Hide Article" context menu item now shows as a danger button
+- Improved settings tab switching style with hover effects and animations
+- Fixed unfavorite icon visibility in article detail view
+
+### Fixed
+
+- Fixed software update installation process - updates can now be properly installed
+
 ## [1.1.5] - 2025-11-23
 
 ### Added

@@ -21,7 +21,8 @@ const settings = ref({
     theme: 'auto',
     last_article_update: '',
     show_hidden_articles: false,
-    default_view_mode: 'original'
+    default_view_mode: 'original',
+    startup_on_boot: false
 });
 
 const updateInfo = ref(null);
@@ -48,7 +49,8 @@ onMounted(async () => {
             theme: data.theme || 'auto',
             last_article_update: data.last_article_update || '',
             show_hidden_articles: data.show_hidden_articles === 'true',
-            default_view_mode: data.default_view_mode || 'original'
+            default_view_mode: data.default_view_mode || 'original',
+            startup_on_boot: data.startup_on_boot === 'true'
         };
         // Apply the saved language
         if (data.language) {
@@ -358,10 +360,28 @@ async function handleDownloadInstallUpdate() {
 
 <style scoped>
 .tab-btn {
-    @apply px-5 py-3 bg-transparent border-b-2 border-transparent text-text-secondary font-semibold cursor-pointer hover:text-text-primary transition-colors;
+    @apply px-5 py-3 bg-transparent border-b-2 border-transparent text-text-secondary font-semibold cursor-pointer hover:text-text-primary transition-all relative;
+}
+.tab-btn:hover {
+    background-color: rgba(128, 128, 128, 0.1);
 }
 .tab-btn.active {
     @apply text-accent border-accent;
+    background-color: rgba(128, 128, 128, 0.05);
+}
+.tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+    animation: shimmer 2s ease-in-out infinite;
+}
+@keyframes shimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
 }
 .btn-primary {
     @apply bg-accent text-white border-none px-5 py-2.5 rounded-lg cursor-pointer font-semibold hover:bg-accent-hover transition-colors;

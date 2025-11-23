@@ -21,6 +21,7 @@ import (
 	"MrRSS/internal/models"
 	"MrRSS/internal/opml"
 	"MrRSS/internal/translation"
+	"MrRSS/internal/utils"
 	"MrRSS/internal/version"
 )
 
@@ -292,6 +293,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		theme, _ := h.DB.GetSetting("theme")
 		lastUpdate, _ := h.DB.GetSetting("last_article_update")
 		showHidden, _ := h.DB.GetSetting("show_hidden_articles")
+		startupOnBoot, _ := h.DB.GetSetting("startup_on_boot")
 		json.NewEncoder(w).Encode(map[string]string{
 			"update_interval":       interval,
 			"translation_enabled":   translationEnabled,
@@ -305,6 +307,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 			"theme":                 theme,
 			"last_article_update":   lastUpdate,
 			"show_hidden_articles":  showHidden,
+			"startup_on_boot":       startupOnBoot,
 		})
 	} else if r.Method == http.MethodPost {
 		var req struct {
@@ -319,6 +322,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 			Language            string `json:"language"`
 			Theme               string `json:"theme"`
 			ShowHiddenArticles  string `json:"show_hidden_articles"`
+			StartupOnBoot       string `json:"startup_on_boot"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -361,6 +365,30 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 
 		if req.ShowHiddenArticles != "" {
 			h.DB.SetSetting("show_hidden_articles", req.ShowHiddenArticles)
+		}
+
+		if req.StartupOnBoot != "" {
+			// Get current value to check if it changed
+			currentValue, err := h.DB.GetSetting("startup_on_boot")
+			if err != nil {
+				log.Printf("Failed to get startup_on_boot setting: %v", err)
+				// If we can't read the current value, save the new value but don't apply it
+				h.DB.SetSetting("startup_on_boot", req.StartupOnBoot)
+			} else if currentValue != req.StartupOnBoot {
+				// Only apply if the value changed
+				h.DB.SetSetting("startup_on_boot", req.StartupOnBoot)
+				
+				// Apply the startup setting
+				if req.StartupOnBoot == "true" {
+					if err := utils.EnableStartup(); err != nil {
+						log.Printf("Failed to enable startup: %v", err)
+					}
+				} else {
+					if err := utils.DisableStartup(); err != nil {
+						log.Printf("Failed to disable startup: %v", err)
+					}
+				}
+			}
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -898,9 +926,10 @@ func (h *Handler) HandleInstallUpdate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid file type for Windows", http.StatusBadRequest)
 			return
 		}
-		// Use cmd.exe to launch installer, which properly handles UAC prompts
-		// Don't use /S (silent) flag to allow user interaction if needed
-		cmd = exec.Command("cmd.exe", "/C", "start", "", cleanPath)
+		// Use start command with /B flag to launch in background
+		// Format: start /B <executable_path>
+		// The /B flag prevents creating a new window
+		cmd = exec.Command("cmd.exe", "/C", "start", "/B", cleanPath)
 		scheduleCleanup(cleanPath, 10*time.Second)
 	case "linux":
 		// Make AppImage executable and run it - validate file extension
