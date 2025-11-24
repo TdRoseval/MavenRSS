@@ -125,7 +125,14 @@ function getFavicon(url) {
                     </div>
                     <div class="truncate flex-1 min-w-0">
                         <div class="font-medium truncate text-xs sm:text-sm">{{ feed.title }}</div>
-                        <div class="text-xs text-text-secondary truncate hidden sm:block">{{ feed.url }}</div>
+                        <div class="text-xs text-text-secondary truncate hidden sm:block">
+                            <span v-if="feed.category" class="inline-flex items-center gap-1">
+                                <PhFolder :size="10" class="inline" />
+                                {{ feed.category }}
+                                <span class="mx-1">•</span>
+                            </span>
+                            <span>{{ feed.url }}</span>
+                        </div>
                     </div>
                     <div class="flex gap-0.5 sm:gap-1 shrink-0">
                         <button @click="handleEditFeed(feed)" class="text-accent hover:bg-bg-tertiary p-1 rounded text-sm" :title="store.i18n.t('edit')"><PhPencil :size="14" class="sm:w-4 sm:h-4" /></button>

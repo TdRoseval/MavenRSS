@@ -1,11 +1,12 @@
 <script setup>
 import { store } from '../store.js';
-import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { BrowserOpenURL } from '../wailsjs/wailsjs/runtime/runtime.js';
 import { 
     PhNewspaper, PhArrowLeft, PhGlobe, PhArticle, PhEnvelopeOpen, 
     PhEnvelope, PhStar, PhArrowSquareOut 
 } from "@phosphor-icons/vue";
+import ImageViewer from './ImageViewer.vue';
 
 const article = computed(() => store.articles.find(a => a.id === store.currentArticleId));
 const showContent = ref(false); // Toggle between original webpage and RSS content
@@ -14,6 +15,8 @@ const isLoadingContent = ref(false); // Loading state
 const currentArticleId = ref(null); // Track which article content we've loaded
 const defaultViewMode = ref('original'); // Default view mode from settings
 const pendingRenderAction = ref(null); // Track if there's a pending render action from context menu
+const imageViewerSrc = ref(null); // Image source for viewer
+const imageViewerAlt = ref(''); // Image alt text for viewer
 
 // Watch for article changes and apply default view mode
 watch(() => store.currentArticleId, async (newId, oldId) => {
@@ -96,6 +99,9 @@ async function fetchArticleContent() {
         if (res.ok) {
             const data = await res.json();
             articleContent.value = data.content || '';
+            // Wait for DOM to update, then attach event listeners
+            await nextTick();
+            attachContentEventListeners();
         } else {
             console.error('Failed to fetch article content');
             articleContent.value = '';
@@ -106,6 +112,37 @@ async function fetchArticleContent() {
     } finally {
         isLoadingContent.value = false;
     }
+}
+
+// Attach event listeners to links and images in rendered content
+function attachContentEventListeners() {
+    // Handle all links - open in default browser
+    const links = document.querySelectorAll('.prose a');
+    links.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const href = link.getAttribute('href');
+            if (href) {
+                BrowserOpenURL(href);
+            }
+        });
+    });
+    
+    // Handle all images - make them clickable for zoom/pan
+    const images = document.querySelectorAll('.prose img');
+    images.forEach(img => {
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', (e) => {
+            e.preventDefault();
+            imageViewerSrc.value = img.src;
+            imageViewerAlt.value = img.alt || '';
+        });
+    });
+}
+
+function closeImageViewer() {
+    imageViewerSrc.value = null;
+    imageViewerAlt.value = '';
 }
 
 // Listen for render content event from context menu
@@ -232,6 +269,9 @@ onBeforeUnmount(() => {
                 </div>
             </div>
         </div>
+        
+        <!-- Image Viewer Modal -->
+        <ImageViewer v-if="imageViewerSrc" :src="imageViewerSrc" :alt="imageViewerAlt" @close="closeImageViewer" />
     </main>
 </template>
 
@@ -257,12 +297,18 @@ onBeforeUnmount(() => {
 .prose :deep(a) {
     color: var(--accent-color);
     text-decoration: underline;
+    cursor: pointer;
 }
 .prose :deep(img) {
     max-width: 100%;
     height: auto;
     border-radius: 0.5rem;
     margin: 1.5em 0;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.prose :deep(img:hover) {
+    opacity: 0.9;
 }
 .prose :deep(pre) {
     background-color: var(--bg-secondary);

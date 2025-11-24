@@ -29,6 +29,10 @@ export const translations = {
         viewOriginal: 'View Original',
         viewContent: 'View Content',
         renderContent: 'Render Content',
+        close: 'Close',
+        zoomIn: 'Zoom In',
+        zoomOut: 'Zoom Out',
+        imageViewerHelp: 'Use mouse wheel or +/- keys to zoom • Drag to move • ESC to close',
         
         // Context Menu
         unsubscribe: 'Unsubscribe',
@@ -224,6 +228,10 @@ export const translations = {
         viewOriginal: '查看原网页',
         viewContent: '查看内容',
         renderContent: '渲染内容',
+        close: '关闭',
+        zoomIn: '放大',
+        zoomOut: '缩小',
+        imageViewerHelp: '使用鼠标滚轮或 +/- 键缩放 • 拖动移动 • ESC 关闭',
         
         // Context Menu
         unsubscribe: '取消订阅',
