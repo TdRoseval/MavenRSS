@@ -227,47 +227,47 @@ watch(() => props.settings.shortcuts, (newVal) => {
 </script>
 
 <template>
-    <div class="space-y-3">
-        <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-                <PhKeyboard :size="18" class="text-text-secondary" />
+    <div class="space-y-4 sm:space-y-6">
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2 sm:gap-3">
+                <PhKeyboard :size="20" class="text-text-secondary sm:w-6 sm:h-6" />
                 <div>
-                    <h3 class="font-semibold text-sm">{{ store.i18n.t('shortcuts') }}</h3>
-                    <p class="text-xs text-text-secondary">{{ store.i18n.t('shortcutsDesc') }}</p>
+                    <h3 class="font-semibold text-sm sm:text-base">{{ store.i18n.t('shortcuts') }}</h3>
+                    <p class="text-xs text-text-secondary hidden sm:block">{{ store.i18n.t('shortcutsDesc') }}</p>
                 </div>
             </div>
-            <button @click="resetToDefaults" class="btn-secondary text-xs py-1 px-2">
-                <PhArrowCounterClockwise :size="12" />
+            <button @click="resetToDefaults" class="btn-secondary text-xs sm:text-sm py-1.5 px-2.5 sm:px-3">
+                <PhArrowCounterClockwise :size="16" class="sm:w-5 sm:h-5" />
                 {{ store.i18n.t('resetToDefault') }}
             </button>
         </div>
         
         <!-- Tip moved to top with improved styling -->
         <div class="tip-box">
-            <PhInfo :size="14" class="text-accent shrink-0" />
-            <span>{{ store.i18n.t('escToClear') }}</span>
+            <PhInfo :size="16" class="text-accent shrink-0 sm:w-5 sm:h-5" />
+            <span class="text-xs sm:text-sm">{{ store.i18n.t('escToClear') }}</span>
         </div>
 
         <div v-for="group in shortcutGroups" :key="group.label" class="setting-group">
-            <label class="font-semibold mb-1.5 text-text-secondary uppercase text-[10px] tracking-wider flex items-center gap-2">
+            <label class="font-semibold mb-2 sm:mb-3 text-text-secondary uppercase text-xs tracking-wider flex items-center gap-2">
                 {{ group.label }}
             </label>
             
-            <div class="space-y-0.5">
+            <div class="space-y-2">
                 <div v-for="item in group.items" :key="item.key" class="shortcut-item">
-                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                        <component :is="item.icon" :size="14" class="text-text-secondary shrink-0" />
-                        <span class="text-xs truncate">{{ item.label }}</span>
+                    <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                        <component :is="item.icon" :size="18" class="text-text-secondary shrink-0 sm:w-5 sm:h-5" />
+                        <span class="text-sm truncate">{{ item.label }}</span>
                     </div>
                     
                     <button 
                         @click="startEditing(item.key)"
                         :class="['shortcut-key-btn', editingShortcut === item.key ? 'recording' : '']"
                     >
-                        <span v-if="editingShortcut === item.key" class="text-accent animate-pulse">
+                        <span v-if="editingShortcut === item.key" class="text-accent animate-pulse text-xs sm:text-sm">
                             {{ store.i18n.t('pressKey') }}
                         </span>
-                        <span v-else>{{ formatKey(shortcuts[item.key]) }}</span>
+                        <span v-else class="text-xs sm:text-sm">{{ formatKey(shortcuts[item.key]) }}</span>
                     </button>
                 </div>
             </div>
@@ -277,11 +277,11 @@ watch(() => props.settings.shortcuts, (newVal) => {
 
 <style scoped>
 .shortcut-item {
-    @apply flex items-center justify-between gap-2 py-1.5 px-2 rounded-md bg-bg-secondary border border-border;
+    @apply flex items-center justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
 }
 
 .shortcut-key-btn {
-    @apply px-2 py-1 rounded text-xs font-mono cursor-pointer transition-all min-w-[60px] text-center bg-bg-tertiary border border-border;
+    @apply px-2.5 sm:px-3 py-1.5 sm:py-2 rounded font-mono cursor-pointer transition-all min-w-[80px] sm:min-w-[100px] text-center bg-bg-tertiary border border-border;
 }
 
 .shortcut-key-btn:hover {
@@ -294,11 +294,11 @@ watch(() => props.settings.shortcuts, (newVal) => {
 }
 
 .btn-secondary {
-    @apply bg-transparent border border-border text-text-primary rounded cursor-pointer flex items-center gap-1 font-medium hover:bg-bg-tertiary transition-colors;
+    @apply bg-transparent border border-border text-text-primary rounded-md cursor-pointer flex items-center gap-1.5 sm:gap-2 font-medium hover:bg-bg-tertiary transition-colors;
 }
 
 .tip-box {
-    @apply flex items-center gap-2 text-xs text-text-secondary py-1.5 px-2.5 rounded-md;
+    @apply flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 px-2.5 sm:px-3 rounded-lg;
     background-color: rgba(59, 130, 246, 0.05);
     border: 1px solid rgba(59, 130, 246, 0.3);
 }
