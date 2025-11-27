@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // GetScriptsDir returns the path to the scripts directory within the data directory
@@ -32,8 +33,13 @@ func ValidateScriptPath(scriptPath string) (string, error) {
 	absScriptPath := filepath.Join(scriptsDir, scriptPath)
 	absScriptPath = filepath.Clean(absScriptPath)
 
+	// Clean the scripts directory path for comparison
+	cleanScriptsDir := filepath.Clean(scriptsDir) + string(filepath.Separator)
+
 	// Ensure the script path is within the scripts directory (prevent path traversal)
-	if !filepath.HasPrefix(absScriptPath, scriptsDir) {
+	// Use strings.HasPrefix on cleaned paths with trailing separator to prevent bypasses
+	if !strings.HasPrefix(absScriptPath+string(filepath.Separator), cleanScriptsDir) &&
+		!strings.HasPrefix(absScriptPath, cleanScriptsDir) {
 		return "", os.ErrPermission
 	}
 

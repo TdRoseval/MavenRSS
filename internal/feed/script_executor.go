@@ -30,8 +30,13 @@ func (e *ScriptExecutor) ExecuteScript(ctx context.Context, scriptPath string) (
 	fullPath := filepath.Join(e.scriptsDir, scriptPath)
 	fullPath = filepath.Clean(fullPath)
 
+	// Clean the scripts directory path for comparison
+	cleanScriptsDir := filepath.Clean(e.scriptsDir) + string(filepath.Separator)
+
 	// Security check: ensure the script is within the scripts directory
-	if !strings.HasPrefix(fullPath, filepath.Clean(e.scriptsDir)) {
+	// Use strings.HasPrefix on cleaned paths with trailing separator to prevent bypasses
+	if !strings.HasPrefix(fullPath+string(filepath.Separator), cleanScriptsDir) &&
+		!strings.HasPrefix(fullPath, cleanScriptsDir) {
 		return nil, fmt.Errorf("invalid script path: script must be within scripts directory")
 	}
 
