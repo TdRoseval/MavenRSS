@@ -6,9 +6,13 @@ import { PhX, PhCircleNotch } from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
 import DiscoveredFeedItem from './DiscoveredFeedItem.vue';
 import DiscoveryProgress from './DiscoveryProgress.vue';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 const store = useAppStore();
 const { t } = useI18n();
+
+// Modal close handling
+useModalClose(() => close());
 
 interface Props {
   feed: Feed;
@@ -298,6 +302,7 @@ onUnmounted(() => {
     v-if="show"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
     @click.self="close"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-border flex flex-col"

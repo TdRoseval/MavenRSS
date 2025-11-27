@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useModalClose } from '@/composables/ui/useModalClose';
+
 interface Props {
   title?: string;
   message: string;
@@ -20,6 +22,9 @@ const emit = defineEmits<{
   close: [];
 }>();
 
+// Modal close handling - ESC should cancel
+useModalClose(() => handleCancel());
+
 function handleConfirm() {
   emit('confirm');
   emit('close');
@@ -35,6 +40,7 @@ function handleCancel() {
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
     @click.self="handleCancel"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary max-w-md w-full mx-4 rounded-xl shadow-2xl border border-border overflow-hidden animate-fade-in"
@@ -49,7 +55,7 @@ function handleCancel() {
 
       <div class="p-5 border-t border-border bg-bg-secondary flex justify-end gap-3">
         <button @click="handleCancel" class="btn-secondary">{{ cancelText }}</button>
-        <button @click="handleConfirm" :class="['btn-primary', isDanger ? 'btn-danger' : '']">
+        <button @click="handleConfirm" :class="isDanger ? 'btn-danger' : 'btn-primary'">
           {{ confirmText }}
         </button>
       </div>
@@ -62,7 +68,7 @@ function handleCancel() {
   @apply bg-accent text-white border-none px-5 py-2.5 rounded-lg cursor-pointer font-semibold hover:bg-accent-hover transition-colors;
 }
 .btn-danger {
-  @apply bg-transparent border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 dark:border-red-400 dark:text-red-400;
+  @apply bg-transparent border border-red-300 text-red-600 px-5 py-2.5 rounded-lg cursor-pointer font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 dark:border-red-400 dark:text-red-400 transition-colors;
 }
 .btn-secondary {
   @apply bg-transparent border border-border text-text-primary px-5 py-2.5 rounded-lg cursor-pointer font-medium hover:bg-bg-tertiary transition-colors;

@@ -95,7 +95,7 @@ function getMultiSelectDisplayText(): string {
   const totalCount = props.condition.values.length;
   const remaining = totalCount - 1;
 
-  if (locale.value === 'zh') {
+  if (locale.value === 'zh-CN') {
     return `${firstItem} ${t('andNMore', { count: totalCount })}`;
   }
   return `${firstItem} ${t('andNMore', { count: remaining })}`;

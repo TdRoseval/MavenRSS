@@ -1,18 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { PhFunnel, PhListChecks, PhPlay, PhPencil, PhTrash } from '@phosphor-icons/vue';
+import type { Condition } from '@/composables/rules/useRuleOptions';
 
 const { t } = useI18n();
-
-interface Condition {
-  id: number;
-  logic?: 'and' | 'or' | null;
-  negate: boolean;
-  field: string;
-  operator?: string;
-  value: string;
-  values: string[];
-}
 
 interface Rule {
   id: number;

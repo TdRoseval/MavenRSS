@@ -54,8 +54,13 @@ lint-frontend: ## Run frontend linter
 
 lint-backend: ## Run backend linter
 	go vet ./...
+ifeq ($(DETECTED_OS),Windows)
+	powershell -Command '$$result = gofmt -d . ; if ($$result) { Write-Host $$result -ForegroundColor Red; exit 1 }'
+	powershell -Command '$$importsResult = goimports -d . ; if ($$importsResult) { Write-Host $$importsResult -ForegroundColor Red; exit 1 }'
+else
 	gofmt -d . | tee /dev/stderr | test -z "$$(cat)"
 	goimports -d . | tee /dev/stderr | test -z "$$(cat)"
+endif
 
 format: format-frontend format-backend ## Format all code
 

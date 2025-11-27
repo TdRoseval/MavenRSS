@@ -65,11 +65,11 @@ function formatKey(key: string): string {
 
 <style scoped>
 .shortcut-row {
-  @apply flex items-center justify-between gap-3 p-2.5 rounded-lg bg-bg-secondary border border-border;
+  @apply flex items-center justify-between gap-3 p-2 rounded-lg bg-bg-secondary border border-border;
 }
 
 .shortcut-key {
-  @apply px-3 py-1.5 rounded-md bg-bg-primary border border-border text-sm font-mono text-text-primary min-w-[80px] sm:min-w-[100px] text-center cursor-pointer transition-all;
+  @apply px-3 py-1 rounded-md bg-bg-primary border border-border text-sm font-mono text-text-primary min-w-[80px] sm:min-w-[100px] text-center cursor-pointer transition-all;
 }
 
 .shortcut-key:hover {

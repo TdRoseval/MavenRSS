@@ -9,6 +9,7 @@ const en: TranslationMessages = {
   unread: 'Unread',
   favorites: 'Favorites',
   uncategorized: 'Uncategorized',
+  searchFeeds: 'Search feeds...',
   addFeed: 'Add Feed',
   settings: 'Settings',
 
@@ -158,8 +159,6 @@ const en: TranslationMessages = {
   importOPML: 'Import OPML',
   exportOPML: 'Export OPML',
   cleanDatabase: 'Clean Database',
-  cleanDatabaseDesc:
-    'Removes all articles except read and favorited ones. Old articles are also automatically cleaned if "Auto Cleanup" is enabled in General settings.',
   manageFeeds: 'Manage Feeds',
   deleteSelected: 'Delete Selected',
   moveSelected: 'Move Selected',
@@ -247,6 +246,7 @@ const en: TranslationMessages = {
   filterArticles: 'Filter Articles',
   addCondition: 'Add Condition',
   clearFilters: 'Clear Filters',
+  clear: 'Clear',
   applyFilters: 'Apply Filters',
   noFiltersApplied: 'No filters applied',
   feedName: 'Feed Name',
@@ -270,6 +270,8 @@ const en: TranslationMessages = {
   filterOperator: 'Operator',
   filterValue: 'Value',
   removeCondition: 'Remove',
+  selectItems: 'Select items',
+  itemsSelected: '{count} items selected',
   filtersActive: '{count} filter(s) active',
   andNMore: 'and {count} more',
 
@@ -348,12 +350,13 @@ const en: TranslationMessages = {
   scriptHelp:
     'Scripts should output valid RSS/Atom XML. Supported: Python, Shell, PowerShell, Node.js, Ruby.',
   scriptsFolderOpened: 'Scripts folder opened',
-  scriptDocumentation: 'Documentation',
+  scriptDocumentation: 'View Documentation',
+  useCustomScript: 'Use custom script',
+  useRssUrl: 'Use RSS URL',
 
   // Feed Management
   refreshFeed: 'Refresh Feed',
   feedRefreshStarted: 'Feed refresh started',
-  sortBy: 'Sort by',
   sortByName: 'Name',
   sortByDate: 'Date Added',
   sortByCategory: 'Category',

@@ -1,4 +1,5 @@
 import { BrowserOpenURL } from '@/wailsjs/wailsjs/runtime/runtime';
+import { useAppStore } from '@/stores/app';
 import type { Article } from '@/types/models';
 import type { Composer } from 'vue-i18n';
 
@@ -7,6 +8,7 @@ export function useArticleActions(
   defaultViewMode: { value: 'original' | 'rendered' },
   onReadStatusChange?: () => void
 ) {
+  const store = useAppStore();
   // Show context menu for article
   function showArticleContextMenu(e: MouseEvent, article: Article): void {
     e.preventDefault();
@@ -107,17 +109,13 @@ export function useArticleActions(
       // Determine the action based on default view mode
       const renderAction = defaultViewMode.value === 'rendered' ? 'showOriginal' : 'showContent';
 
+      // Select the article first
+      store.currentArticleId = article.id;
+
       // Dispatch explicit action event
       window.dispatchEvent(
         new CustomEvent('explicit-render-action', {
           detail: { action: renderAction },
-        })
-      );
-
-      // Dispatch event to select article
-      window.dispatchEvent(
-        new CustomEvent('select-article-for-render', {
-          detail: { articleId: article.id },
         })
       );
 

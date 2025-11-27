@@ -4,6 +4,7 @@
 import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SettingsData } from '@/types/settings';
+import type { ThemePreference } from '@/stores/app';
 
 export function useSettings() {
   const { locale } = useI18n();
@@ -61,17 +62,10 @@ export function useSettings() {
     }
   }
 
-  interface Settings {
-    language?: string;
-    theme?: string;
-    shortcuts?: string;
-    [key: string]: unknown;
-  }
-
   /**
    * Apply fetched settings to the app
    */
-  function applySettings(data: Settings, setTheme: (theme: string) => void) {
+  function applySettings(data: SettingsData, setTheme: (theme: ThemePreference) => void) {
     // Apply the saved language
     if (data.language) {
       locale.value = data.language;
@@ -79,7 +73,7 @@ export function useSettings() {
 
     // Apply the saved theme
     if (data.theme) {
-      setTheme(data.theme);
+      setTheme(data.theme as ThemePreference);
     }
 
     // Initialize shortcuts in store

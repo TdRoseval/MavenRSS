@@ -12,8 +12,12 @@ import {
 } from '@/composables/rules/useRuleOptions';
 import { useRuleConditions } from '@/composables/rules/useRuleConditions';
 import { useRuleActions } from '@/composables/rules/useRuleActions';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 const { t } = useI18n();
+
+// Modal close handling
+useModalClose(() => handleClose());
 
 // Use composables
 const { actionOptions } = useRuleOptions();
@@ -146,6 +150,8 @@ function handleClose(): void {
   <div
     v-if="show"
     class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    @click.self="handleClose"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in"

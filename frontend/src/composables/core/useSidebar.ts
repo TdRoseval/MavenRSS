@@ -21,8 +21,9 @@ export function useSidebar() {
   const { t } = useI18n();
 
   const openCategories: Ref<Set<string>> = ref(new Set());
+  const searchQuery: Ref<string> = ref('');
 
-  // Build category tree
+  // Build category tree with search filtering
   const tree = computed<TreeData>(() => {
     const t: Record<string, TreeNode> = {};
     const uncategorized: Feed[] = [];
@@ -30,7 +31,16 @@ export function useSidebar() {
 
     if (!store.feeds) return { tree: {}, uncategorized: [], categories };
 
+    const query = searchQuery.value.toLowerCase().trim();
+
     store.feeds.forEach((feed: Feed) => {
+      const matchesSearch =
+        query === '' ||
+        feed.title.toLowerCase().includes(query) ||
+        feed.url.toLowerCase().includes(query);
+
+      if (!matchesSearch) return;
+
       if (feed.category) {
         const parts = feed.category.split('/');
         let currentLevel = t;
@@ -250,6 +260,7 @@ export function useSidebar() {
     tree,
     categoryUnreadCounts,
     openCategories,
+    searchQuery,
     toggleCategory,
     isCategoryOpen,
     onFeedContextMenu,

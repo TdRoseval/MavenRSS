@@ -60,6 +60,34 @@ onMounted(async () => {
   // Initialize theme system immediately (lightweight)
   store.initTheme();
 
+  // Load remaining settings (theme and other settings are already loaded in main.ts)
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+
+    // Apply saved theme preference (already applied in main.ts, but ensure it's set)
+    if (data.theme) {
+      store.setTheme(data.theme);
+    }
+
+    // Apply other settings
+    if (data.update_interval) {
+      store.startAutoRefresh(parseInt(data.update_interval));
+    }
+
+    // Load saved shortcuts
+    if (data.shortcuts) {
+      try {
+        const parsed = JSON.parse(data.shortcuts);
+        shortcuts.value = { ...shortcuts.value, ...parsed };
+      } catch (e) {
+        console.error('Error parsing shortcuts:', e);
+      }
+    }
+  } catch (e) {
+    console.error('Error loading initial settings:', e);
+  }
+
   // Defer heavy operations to allow UI to render first
   setTimeout(() => {
     // Load feeds and articles in background
@@ -71,32 +99,6 @@ onMounted(async () => {
       store.refreshFeeds();
     }, 1000);
   }, 100);
-
-  // Initialize settings asynchronously
-  setTimeout(async () => {
-    try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
-      if (data.update_interval) {
-        store.startAutoRefresh(parseInt(data.update_interval));
-      }
-      // Apply saved theme preference
-      if (data.theme) {
-        store.setTheme(data.theme);
-      }
-      // Load saved shortcuts
-      if (data.shortcuts) {
-        try {
-          const parsed = JSON.parse(data.shortcuts);
-          shortcuts.value = { ...shortcuts.value, ...parsed };
-        } catch (e) {
-          console.error('Error parsing shortcuts:', e);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, 200);
 
   // Listen for events from Sidebar
   window.addEventListener('show-add-feed', () => (showAddFeed.value = true));

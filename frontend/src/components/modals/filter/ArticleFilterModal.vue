@@ -6,6 +6,7 @@ import type { FilterCondition } from '@/types/filter';
 import { useFilterFields } from '@/composables/filter/useFilterFields';
 import { useFilterConditions } from '@/composables/filter/useFilterConditions';
 import RuleConditionItem from '../rules/RuleConditionItem.vue';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 const { t } = useI18n();
 
@@ -23,6 +24,9 @@ const emit = defineEmits<{
   close: [];
   apply: [filters: FilterCondition[]];
 }>();
+
+// Modal close handling
+useModalClose(() => close());
 
 // Use composables
 const { logicOptions, onFieldChange: handleFieldChange } = useFilterFields();
@@ -82,6 +86,8 @@ function close() {
   <div
     v-if="show"
     class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    @click.self="close"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in"

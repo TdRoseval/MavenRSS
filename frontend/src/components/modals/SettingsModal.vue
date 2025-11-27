@@ -10,9 +10,11 @@ import AboutTab from './settings/AboutTab.vue';
 import DiscoverAllFeedsModal from './discovery/DiscoverAllFeedsModal.vue';
 import { PhGear } from '@phosphor-icons/vue';
 import type { TabName } from '@/types/settings';
+import type { ThemePreference } from '@/stores/app';
 import { useSettings } from '@/composables/core/useSettings';
 import { useAppUpdates } from '@/composables/core/useAppUpdates';
 import { useFeedManagement } from '@/composables/feed/useFeedManagement';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 const store = useAppStore();
 const { t } = useI18n();
@@ -46,10 +48,13 @@ const emit = defineEmits<{
 const activeTab: Ref<TabName> = ref('general');
 const showDiscoverAllModal = ref(false);
 
+// Modal close handling
+useModalClose(() => emit('close'));
+
 onMounted(async () => {
   try {
     const data = await fetchSettings();
-    applySettings(data, (theme: string) => store.setTheme(theme));
+    applySettings(data, (theme: string) => store.setTheme(theme as ThemePreference));
   } catch (e) {
     console.error('Error loading settings:', e);
   }
@@ -63,6 +68,8 @@ function handleDiscoverAll() {
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4"
+    @click.self="emit('close')"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary w-full max-w-4xl h-full sm:h-[700px] sm:max-h-[90vh] flex flex-col rounded-none sm:rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in"

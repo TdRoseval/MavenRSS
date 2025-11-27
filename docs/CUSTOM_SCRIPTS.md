@@ -140,6 +140,7 @@ console.log('</rss>');
 4. **Dependencies**: Make sure any required dependencies (Python packages, Node modules, etc.) are installed on your system.
 
 5. **Testing**: Test your script from the command line first to ensure it produces valid RSS output:
+
    ```bash
    python3 your_script.py | xmllint --noout -
    ```

@@ -5,6 +5,7 @@ import { ref, onMounted, watch, type Ref } from 'vue';
 import { PhLightning, PhPlus } from '@phosphor-icons/vue';
 import RuleEditorModal from '../rules/RuleEditorModal.vue';
 import RuleItem from './RuleItem.vue';
+import type { Condition } from '@/composables/rules/useRuleOptions';
 
 const store = useAppStore();
 const { t } = useI18n();
@@ -15,16 +16,6 @@ interface Rule {
   enabled: boolean;
   conditions: Condition[];
   actions: string[];
-}
-
-interface Condition {
-  id: number;
-  logic?: 'and' | 'or' | null;
-  negate: boolean;
-  field: string;
-  operator?: string;
-  value: string;
-  values: string[];
 }
 
 interface SettingsData {
@@ -192,10 +183,10 @@ async function applyRule(rule: Rule): Promise<void> {
 
       <!-- Header with description and add button -->
       <div class="setting-item mb-2 sm:mb-3">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhLightning :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('rules') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">{{ t('rules') }}</div>
             <div class="text-xs text-text-secondary hidden sm:block">{{ t('rulesDesc') }}</div>
           </div>
         </div>
@@ -240,7 +231,7 @@ async function applyRule(rule: Rule): Promise<void> {
 
 <style scoped>
 .setting-item {
-  @apply flex items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
+  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
 }
 
 .btn-primary {

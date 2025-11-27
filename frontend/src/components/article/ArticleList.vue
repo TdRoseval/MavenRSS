@@ -1,15 +1,8 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, onMounted, onBeforeUnmount, type Ref } from 'vue';
-import {
-  PhCheckCircle,
-  PhArrowClockwise,
-  PhList,
-  PhMagnifyingGlass,
-  PhSpinner,
-  PhFunnel,
-} from '@phosphor-icons/vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, type Ref } from 'vue';
+import { PhCheckCircle, PhArrowClockwise, PhList, PhSpinner, PhFunnel } from '@phosphor-icons/vue';
 import ArticleFilterModal from '../modals/filter/ArticleFilterModal.vue';
 import ArticleItem from './ArticleItem.vue';
 import { useArticleTranslation } from '@/composables/article/useArticleTranslation';
@@ -23,7 +16,8 @@ const { t } = useI18n();
 const listRef: Ref<HTMLDivElement | null> = ref(null);
 const defaultViewMode = ref<'original' | 'rendered'>('original');
 const showFilterModal = ref(false);
-const searchQuery = ref('');
+const isRefreshing = ref(false);
+const savedScrollTop = ref(0);
 
 interface Props {
   isSidebarOpen?: boolean;
@@ -61,19 +55,7 @@ const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, () =>
 // Computed filtered articles
 const filteredArticles = computed(() => {
   // If filters are active, use server-filtered articles
-  let articles = activeFilters.value.length > 0 ? filteredArticlesFromServer.value : store.articles;
-
-  // Apply search query filter (client-side, on top of server filter)
-  if (searchQuery.value) {
-    const lower = searchQuery.value.toLowerCase();
-    articles = articles.filter(
-      (a) =>
-        (a.title && a.title.toLowerCase().includes(lower)) ||
-        (a.feed_title && a.feed_title.toLowerCase().includes(lower))
-    );
-  }
-
-  return articles;
+  return activeFilters.value.length > 0 ? filteredArticlesFromServer.value : store.articles;
 });
 
 // Load settings and setup
@@ -103,6 +85,32 @@ onMounted(async () => {
   // Listen for refresh articles events
   window.addEventListener('refresh-articles', onRefreshArticles);
 });
+
+// Watch for articles changes during refresh to maintain scroll position
+watch(
+  () => store.articles,
+  () => {
+    if (isRefreshing.value && listRef.value) {
+      // Restore scroll position during refresh
+      listRef.value.scrollTop = savedScrollTop.value;
+    }
+  },
+  { deep: true }
+);
+
+// Watch for refresh completion to scroll to top
+watch(
+  () => store.refreshProgress.isRunning,
+  (isRunning) => {
+    if (!isRunning && isRefreshing.value) {
+      // Refresh completed, scroll to top and reset state
+      isRefreshing.value = false;
+      if (listRef.value) {
+        listRef.value.scrollTop = 0;
+      }
+    }
+  }
+);
 
 onBeforeUnmount(() => {
   cleanupTranslation();
@@ -135,7 +143,7 @@ function onTranslationSettingsChanged(e: Event): void {
   const customEvent = e as CustomEvent<CustomEventDetail>;
   const { enabled, targetLang } = customEvent.detail;
   if (enabled !== undefined && targetLang) {
-    handleTranslationSettingsChange(enabled, targetLang, store.articles);
+    handleTranslationSettingsChange(enabled, targetLang);
 
     // Re-setup observer if needed
     if (enabled && listRef.value) {
@@ -155,6 +163,9 @@ function selectArticle(article: Article): void {
     store.currentArticleId = null;
     return;
   }
+
+  // Reset user preference when selecting article via normal click
+  window.dispatchEvent(new CustomEvent('reset-user-view-preference'));
 
   store.currentArticleId = article.id;
   if (!article.is_read) {
@@ -196,10 +207,14 @@ async function handleApplyFilters(filters: typeof activeFilters.value): Promise<
 
 // Actions
 async function refreshArticles(): Promise<void> {
-  await store.refreshFeeds();
+  // Save current scroll position and set refreshing state
   if (listRef.value) {
-    listRef.value.scrollTop = 0;
+    savedScrollTop.value = listRef.value.scrollTop;
   }
+  isRefreshing.value = true;
+
+  await store.refreshFeeds();
+  // Note: Scrolling to top is now handled by the watch on refreshProgress.isRunning
 }
 
 async function markAllAsRead(): Promise<void> {
@@ -225,6 +240,22 @@ async function markAllAsRead(): Promise<void> {
           </button>
           <div class="relative">
             <button
+              @click="showFilterModal = true"
+              class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
+              :class="activeFilters.length > 0 ? 'filter-active' : ''"
+              :title="t('filter')"
+            >
+              <PhFunnel :size="18" class="sm:w-5 sm:h-5" />
+            </button>
+            <div
+              v-if="activeFilters.length > 0"
+              class="absolute -top-1 -right-1 bg-accent text-white text-[9px] sm:text-[10px] font-bold rounded-full min-w-[14px] sm:min-w-[16px] h-3.5 sm:h-4 px-0.5 sm:px-1 flex items-center justify-center"
+            >
+              {{ activeFilters.length }}
+            </div>
+          </div>
+          <div class="relative">
+            <button
               @click="refreshArticles"
               class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
               :title="t('refresh')"
@@ -248,36 +279,6 @@ async function markAllAsRead(): Promise<void> {
           <button @click="emit('toggleSidebar')" class="md:hidden text-xl sm:text-2xl p-1">
             <PhList :size="20" class="sm:w-6 sm:h-6" />
           </button>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <div
-          class="flex-1 flex items-center bg-bg-secondary border border-border rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 focus-within:border-accent transition-colors"
-        >
-          <PhMagnifyingGlass :size="18" class="text-text-secondary sm:w-5 sm:h-5" />
-          <input
-            type="text"
-            v-model="searchQuery"
-            :placeholder="t('search')"
-            class="search-input bg-transparent border-none outline-none w-full ml-1.5 sm:ml-2 text-text-primary text-xs sm:text-sm"
-            data-search-input
-          />
-        </div>
-        <div class="relative">
-          <button
-            @click="showFilterModal = true"
-            class="filter-btn p-1.5 sm:p-2 rounded-lg transition-colors"
-            :class="activeFilters.length > 0 ? 'filter-active' : ''"
-            :title="t('filter')"
-          >
-            <PhFunnel :size="18" class="sm:w-5 sm:h-5" />
-          </button>
-          <div
-            v-if="activeFilters.length > 0"
-            class="absolute -top-1 -right-1 bg-accent text-white text-[9px] sm:text-[10px] font-bold rounded-full min-w-[14px] sm:min-w-[16px] h-3.5 sm:h-4 px-0.5 sm:px-1 flex items-center justify-center"
-          >
-            {{ activeFilters.length }}
-          </div>
         </div>
       </div>
     </div>
@@ -325,11 +326,7 @@ async function markAllAsRead(): Promise<void> {
   }
 }
 
-.filter-btn {
-  @apply text-text-secondary hover:text-text-primary hover:bg-bg-tertiary border border-border bg-bg-secondary;
-}
-
-.filter-btn.filter-active {
+.filter-active {
   @apply text-accent border-accent;
   background-color: rgba(59, 130, 246, 0.1);
 }

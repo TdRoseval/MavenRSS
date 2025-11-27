@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
-import { PhPlus, PhGear } from '@phosphor-icons/vue';
+import { PhPlus, PhGear, PhMagnifyingGlass, PhX } from '@phosphor-icons/vue';
 import { useSidebar } from '@/composables/core/useSidebar';
 import SidebarNavItem from './SidebarNavItem.vue';
 import SidebarCategory from './SidebarCategory.vue';
@@ -24,6 +24,7 @@ const {
   categoryUnreadCounts,
   toggleCategory,
   isCategoryOpen,
+  searchQuery,
   onFeedContextMenu,
   onCategoryContextMenu,
 } = useSidebar();
@@ -42,7 +43,7 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
     <div class="p-3 sm:p-5 border-b border-border flex justify-between items-center">
       <h2 class="m-0 text-base sm:text-lg font-bold flex items-center gap-1.5 sm:gap-2 text-accent">
         <img src="/assets/logo.svg" alt="Logo" class="h-6 sm:h-7 w-auto" />
-        <span class="hidden xs:inline">{{ t('appName') }}</span>
+        <span class="xs:inline">{{ t('appName') }}</span>
       </h2>
     </div>
 
@@ -69,6 +70,29 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
     </nav>
 
     <div class="flex-1 overflow-y-auto p-1.5 sm:p-2 border-t border-border">
+      <!-- Search Box -->
+      <div class="mb-3">
+        <div
+          class="flex items-center bg-bg-secondary border border-border rounded-lg px-3 py-2 focus-within:border-accent transition-colors"
+        >
+          <PhMagnifyingGlass :size="18" class="text-text-secondary mr-2 flex-shrink-0" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            :placeholder="t('searchFeeds')"
+            class="w-full bg-transparent border-none outline-none text-text-primary text-sm placeholder-text-secondary"
+          />
+          <button
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            class="ml-2 p-0.5 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors flex-shrink-0"
+            :title="t('clear')"
+          >
+            <PhX :size="16" />
+          </button>
+        </div>
+      </div>
+
       <!-- Categories -->
       <SidebarCategory
         v-for="(data, name) in tree.tree"

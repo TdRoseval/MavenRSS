@@ -20,7 +20,7 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 
 function formatDate(dateStr: string): string {
-  return formatDateUtil(dateStr, locale.value === 'zh' ? 'zh-CN' : 'en-US');
+  return formatDateUtil(dateStr, locale.value === 'zh-CN' ? 'zh-CN' : 'en-US');
 }
 
 function handleImageError(event: Event) {

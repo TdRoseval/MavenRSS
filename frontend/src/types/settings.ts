@@ -19,6 +19,7 @@ export interface SettingsData {
   startup_on_boot: boolean;
   shortcuts: string;
   rules: string;
+  [key: string]: unknown; // Allow additional properties
 }
 
 export interface UpdateInfo {

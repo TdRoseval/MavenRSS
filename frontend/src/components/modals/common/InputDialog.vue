@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, type Ref } from 'vue';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 interface Props {
   title?: string;
@@ -28,6 +29,9 @@ const emit = defineEmits<{
 const inputValue = ref(props.defaultValue);
 const inputRef: Ref<HTMLInputElement | null> = ref(null);
 
+// Modal close handling - ESC should cancel
+useModalClose(() => handleCancel());
+
 onMounted(() => {
   // Focus the input when dialog opens
   if (inputRef.value) {
@@ -50,10 +54,8 @@ function handleKeyDown(e: KeyboardEvent) {
   if (e.key === 'Enter') {
     e.preventDefault();
     handleConfirm();
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    handleCancel();
   }
+  // ESC is now handled by useModalClose
 }
 </script>
 
@@ -61,6 +63,7 @@ function handleKeyDown(e: KeyboardEvent) {
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
     @click.self="handleCancel"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary max-w-md w-full mx-4 rounded-xl shadow-2xl border border-border overflow-hidden animate-fade-in"

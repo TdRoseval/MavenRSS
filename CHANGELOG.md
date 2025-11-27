@@ -5,6 +5,30 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Supported for user-defined scripts to fetch and parse non-standard RSS feeds.
+- Improved shortcuts for popup window actions.
+- Supported sorting articles list in settings by various criteria.
+- Supported for refreshing individual feeds via right-click context menu.
+- Supported for searching feeds in the feed list.
+
+### Changed
+
+- Article list will not refresh during feed refresh, fixing a bug causing the article list to occasionally crash.
+- Generate article titles from content when RSS feed items are missing titles.
+
+### Fixed
+
+- Fixed issue where some UI elements did not scale properly.
+- Fixed bug causing view mode performe incorrectly when switching articles rapidly.
+
+### Removed
+
+- Removed search box for article list because the filter function covers the same use case.
+
 ## [1.2.4] - 2025-11-27
 
 ### Changed

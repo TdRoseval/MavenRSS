@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PhCode, PhRss, PhBookOpen } from '@phosphor-icons/vue';
+import { PhCode, PhBookOpen } from '@phosphor-icons/vue';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 const { t } = useI18n();
 
@@ -22,6 +23,9 @@ const emit = defineEmits<{
   close: [];
   added: [];
 }>();
+
+// Modal close handling
+useModalClose(() => close());
 
 onMounted(async () => {
   await loadScripts();
@@ -106,6 +110,8 @@ async function openScriptsFolder() {
 <template>
   <div
     class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    @click.self="close"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden animate-fade-in"
@@ -119,41 +125,6 @@ async function openScriptsFolder() {
         >
       </div>
       <div class="p-6">
-        <!-- Feed Type Selector -->
-        <div class="mb-4">
-          <label class="block mb-1.5 font-semibold text-sm text-text-secondary">{{
-            t('feedSource')
-          }}</label>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              @click="feedType = 'url'"
-              :class="[
-                'flex-1 flex items-center justify-center gap-2 p-2.5 rounded-md border transition-colors',
-                feedType === 'url'
-                  ? 'bg-accent text-white border-accent'
-                  : 'bg-bg-secondary text-text-primary border-border hover:bg-bg-tertiary',
-              ]"
-            >
-              <PhRss :size="18" />
-              {{ t('rssUrl') }}
-            </button>
-            <button
-              type="button"
-              @click="feedType = 'script'"
-              :class="[
-                'flex-1 flex items-center justify-center gap-2 p-2.5 rounded-md border transition-colors',
-                feedType === 'script'
-                  ? 'bg-accent text-white border-accent'
-                  : 'bg-bg-secondary text-text-primary border-border hover:bg-bg-tertiary',
-              ]"
-            >
-              <PhCode :size="18" />
-              {{ t('customScript') }}
-            </button>
-          </div>
-        </div>
-
         <div class="mb-4">
           <label class="block mb-1.5 font-semibold text-sm text-text-secondary"
             >{{ t('title') }} ({{ t('optional') }})</label
@@ -166,7 +137,7 @@ async function openScriptsFolder() {
           />
         </div>
 
-        <!-- URL Input (when URL type is selected) -->
+        <!-- URL Input (default mode) -->
         <div v-if="feedType === 'url'" class="mb-4">
           <label class="block mb-1.5 font-semibold text-sm text-text-secondary">{{
             t('rssUrl')
@@ -177,9 +148,18 @@ async function openScriptsFolder() {
             :placeholder="t('rssUrlPlaceholder')"
             class="input-field"
           />
+          <div class="mt-2">
+            <button
+              type="button"
+              @click="feedType = 'script'"
+              class="text-sm text-accent hover:underline"
+            >
+              {{ t('useCustomScript') }}
+            </button>
+          </div>
         </div>
 
-        <!-- Script Selection (when Script type is selected) -->
+        <!-- Script Selection (advanced mode) -->
         <div v-else class="mb-4">
           <label class="block mb-1.5 font-semibold text-sm text-text-secondary">{{
             t('selectScript')
@@ -198,24 +178,33 @@ async function openScriptsFolder() {
           >
             <p class="mb-2">{{ t('noScriptsFound') }}</p>
           </div>
-          <div class="flex items-center gap-3 mt-2">
+          <div class="flex items-center justify-between mt-2">
             <button
               type="button"
-              @click="openScriptsFolder"
-              class="text-sm text-accent hover:underline flex items-center gap-1"
+              @click="feedType = 'url'"
+              class="text-sm text-accent hover:underline"
             >
-              <PhCode :size="14" />
-              {{ t('openScriptsFolder') }}
+              {{ t('useRssUrl') }}
             </button>
-            <a
-              href="https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_SCRIPTS.md"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-sm text-accent hover:underline flex items-center gap-1"
-            >
-              <PhBookOpen :size="14" />
-              {{ t('scriptDocumentation') }}
-            </a>
+            <div class="flex items-center gap-3">
+              <a
+                href="https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_SCRIPTS.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm text-accent hover:underline flex items-center gap-1"
+              >
+                <PhBookOpen :size="14" />
+                {{ t('scriptDocumentation') }}
+              </a>
+              <button
+                type="button"
+                @click="openScriptsFolder"
+                class="text-sm text-accent hover:underline flex items-center gap-1"
+              >
+                <PhCode :size="14" />
+                {{ t('openScriptsFolder') }}
+              </button>
+            </div>
           </div>
         </div>
 

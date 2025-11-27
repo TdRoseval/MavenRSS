@@ -179,7 +179,7 @@ MrRSS/
 ├── README_zh.md                 # Chinese documentation (version badge)
 ├── SECURITY.md                  # Security policy
 ├── CONTRIBUTING.md              # Contribution guidelines
-├── LICENSE                      # MIT License
+├── LICENSE                      # GPLv3 License
 └── AGENTS.md                    # This file
 ```
 
@@ -333,6 +333,7 @@ watch(() => props.settings, debouncedAutoSave, { deep: true });
 The project includes automated scripts for development tasks:
 
 **Linux/macOS:**
+
 ```bash
 # Run all quality checks (lint, test, build)
 ./scripts/check.sh
@@ -345,6 +346,7 @@ The project includes automated scripts for development tasks:
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 # Run all quality checks (lint, test, build)
 .\scripts\check.ps1
@@ -513,7 +515,17 @@ wails build -platform darwin/amd64
 
 ### Release Checklist
 
-1. Update version in all 7 files
+1. Update version in all files below:
+    - `internal/version/version.go`
+    - `wails.json`
+    - `frontend/package.json`
+    - `frontend/package-lock.json`
+    - `frontend/src/components/modals/settings/AboutTab.vue`
+    - `website/package.json`
+    - `website/package-lock.json`
+    - `README.md`
+    - `README_zh.md`
+    - `CHANGELOG.md`
 2. Update CHANGELOG.md
 3. Run full test suite
 4. Build for all platforms

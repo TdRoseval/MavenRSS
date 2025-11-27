@@ -9,6 +9,7 @@ const zh: TranslationMessages = {
   unread: '未读',
   favorites: '收藏',
   uncategorized: '未分类',
+  searchFeeds: '搜索订阅源...',
   addFeed: '添加订阅',
   settings: '设置',
 
@@ -157,8 +158,6 @@ const zh: TranslationMessages = {
   importOPML: '导入 OPML',
   exportOPML: '导出 OPML',
   cleanDatabase: '清理数据库',
-  cleanDatabaseDesc:
-    '删除除已读和已收藏外的所有文章。如果在常规设置中启用了"自动清理"，旧文章也会被自动清理。',
   manageFeeds: '管理订阅源',
   deleteSelected: '删除选中',
   moveSelected: '移动选中',
@@ -246,6 +245,7 @@ const zh: TranslationMessages = {
   filterArticles: '过滤文章',
   addCondition: '添加条件',
   clearFilters: '清除过滤',
+  clear: '清除',
   applyFilters: '应用过滤',
   noFiltersApplied: '未应用过滤条件',
   feedName: '订阅源名称',
@@ -269,6 +269,8 @@ const zh: TranslationMessages = {
   filterOperator: '运算符',
   filterValue: '值',
   removeCondition: '删除',
+  selectItems: '选择项目',
+  itemsSelected: '已选择 {count} 项',
   filtersActive: '已启用 {count} 个过滤条件',
   andNMore: '等 {count} 个',
 
@@ -346,12 +348,13 @@ const zh: TranslationMessages = {
   openScriptsFolder: '打开脚本文件夹',
   scriptHelp: '脚本应输出有效的 RSS/Atom XML。支持：Python、Shell、PowerShell、Node.js、Ruby。',
   scriptsFolderOpened: '脚本文件夹已打开',
-  scriptDocumentation: '文档',
+  scriptDocumentation: '查看文档',
+  useCustomScript: '使用自定义脚本',
+  useRssUrl: '使用 RSS 地址',
 
   // Feed Management
   refreshFeed: '刷新订阅源',
   feedRefreshStarted: '订阅源刷新已开始',
-  sortBy: '排序',
   sortByName: '名称',
   sortByDate: '添加时间',
   sortByCategory: '分类',

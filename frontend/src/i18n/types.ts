@@ -1,4 +1,5 @@
 export interface TranslationMessages {
+  [key: string]: string | TranslationMessages;
   // App
   appName: string;
 
@@ -7,6 +8,7 @@ export interface TranslationMessages {
   unread: string;
   favorites: string;
   uncategorized: string;
+  searchFeeds: string;
   addFeed: string;
   settings: string;
 
@@ -155,7 +157,6 @@ export interface TranslationMessages {
   importOPML: string;
   exportOPML: string;
   cleanDatabase: string;
-  cleanDatabaseDesc: string;
   manageFeeds: string;
   deleteSelected: string;
   moveSelected: string;
@@ -243,6 +244,7 @@ export interface TranslationMessages {
   filterArticles: string;
   addCondition: string;
   clearFilters: string;
+  clear: string;
   applyFilters: string;
   noFiltersApplied: string;
   feedName: string;
@@ -266,6 +268,8 @@ export interface TranslationMessages {
   filterOperator: string;
   filterValue: string;
   removeCondition: string;
+  selectItems: string;
+  itemsSelected: string;
   filtersActive: string;
   andNMore: string;
 
@@ -344,14 +348,15 @@ export interface TranslationMessages {
   scriptHelp: string;
   scriptsFolderOpened: string;
   scriptDocumentation: string;
+  useCustomScript: string;
+  useRssUrl: string;
 
   // Feed Management
   refreshFeed: string;
   feedRefreshStarted: string;
-  sortBy: string;
   sortByName: string;
   sortByDate: string;
   sortByCategory: string;
 }
 
-export type SupportedLocale = 'en' | 'zh';
+export type SupportedLocale = 'en-US' | 'zh-CN';

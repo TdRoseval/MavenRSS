@@ -4,7 +4,7 @@
   <p><strong>一个现代化的跨平台桌面 RSS 阅读器</strong></p>
 
    [![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
-  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v2-red)](https://wails.io/)
   [![Vue.js](https://img.shields.io/badge/Vue.js-3.x-4FC08D?logo=vue.js)](https://vuejs.org/)
@@ -26,6 +26,7 @@
 - 📦 **OPML 导入/导出**: 轻松从其他 RSS 阅读器迁移
 - ⌨️ **快捷键**: 通过可自定义的键盘快捷键提升效率，快速导航和操作
 - 📋 **智能过滤规则**: 使用强大的自定义规则自动组织订阅源
+- 🏭 **自定义自动化脚本**: 支持运行用户定义的自动化脚本以获取订阅源
 
 ## 📸 截图
 
@@ -37,7 +38,7 @@
 
 #### 选项 1: 下载预构建安装包（推荐）
 
-从 [Releases](https://github.com/WCY-dt/MrRSS/releases) 页面下载适合您平台的最新安装包：
+从 [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) 页面下载适合您平台的最新安装包：
 
 - **Windows:** `MrRSS-{version}-windows-amd64-installer.exe` / `MrRSS-{version}-windows-arm64-installer.exe`
 - **macOS:** `MrRSS-{version}-darwin-universal.dmg`
@@ -45,7 +46,13 @@
 
 #### 选项 2: 源码构建
 
-### 前置要求
+<details>
+
+<summary>点击展开源码构建指南</summary>
+
+<div markdown="1">
+
+##### 前置要求
 
 在开始之前，请确保已安装以下环境：
 
@@ -63,7 +70,7 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev gcc pkg-config
 # sudo apt-get install libgtk-3-dev libwebkit2gtk-4.0-dev gcc pkg-config
 ```
 
-### 安装步骤
+##### 安装步骤
 
 1. **克隆仓库**
 
@@ -94,6 +101,10 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev gcc pkg-config
    - macOS: `build/bin/MrRSS.app`
    - Linux: `build/bin/MrRSS`
 
+</div>
+
+</details>
+
 ### 数据存储
 
 MrRSS 将所有用户数据（数据库、设置）存储在特定平台的目录中：
@@ -105,6 +116,12 @@ MrRSS 将所有用户数据（数据库、设置）存储在特定平台的目�
 这确保了您的数据在应用更新和重新安装时得以保留。
 
 ## 🛠️ 开发指南
+
+<details>
+
+<summary>点击展开开发指南</summary>
+
+<div markdown="1">
 
 ### 开发模式运行
 
@@ -187,6 +204,10 @@ cd frontend
 npm test
 ```
 
+</div>
+
+</details>
+
 ## 🤝 贡献
 
 我们欢迎贡献！详情请参阅我们的 [贡献指南](CONTRIBUTING.md)。
@@ -205,7 +226,7 @@ npm test
 
 ## 📝 许可证
 
-本项目采用 MIT 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
+本项目采用 GPLv3 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
 
 ## 🙏 致谢
 

@@ -44,7 +44,7 @@ export function formatRelativeTime(
     if (diffDays < 7) return t('daysAgo', { count: diffDays });
 
     // Get locale for date formatting
-    return date.toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US');
+    return date.toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US');
   } catch {
     return t('never');
   }

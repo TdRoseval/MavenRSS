@@ -32,10 +32,11 @@ export function useArticleDetail() {
   const currentArticleId = ref<number | null>(null);
   const defaultViewMode = ref<ViewMode>('original');
   const pendingRenderAction = ref<RenderAction>(null);
+  const userPreferredMode = ref<ViewMode | null>(null); // Remember user's manual choice
   const imageViewerSrc = ref<string | null>(null);
   const imageViewerAlt = ref('');
 
-  // Watch for article changes and apply default view mode
+  // Watch for article changes and apply view mode
   watch(
     () => store.currentArticleId,
     async (newId, oldId) => {
@@ -49,14 +50,17 @@ export function useArticleDetail() {
           // Apply the explicit action instead of default
           if (pendingRenderAction.value === 'showContent') {
             showContent.value = true;
+            userPreferredMode.value = 'rendered';
             await fetchArticleContent();
           } else if (pendingRenderAction.value === 'showOriginal') {
             showContent.value = false;
+            userPreferredMode.value = 'original';
           }
           pendingRenderAction.value = null; // Clear the pending action
         } else {
-          // Apply default view mode
-          if (defaultViewMode.value === 'rendered') {
+          // Apply user's preferred mode or default view mode
+          const preferredMode = userPreferredMode.value || defaultViewMode.value;
+          if (preferredMode === 'rendered') {
             showContent.value = true;
             await fetchArticleContent();
           } else {
@@ -71,6 +75,8 @@ export function useArticleDetail() {
   window.addEventListener('default-view-mode-changed', (e: Event) => {
     const event = e as ViewModeChangeEvent;
     defaultViewMode.value = event.detail.mode;
+    // Reset user preference when default changes
+    userPreferredMode.value = null;
   });
 
   function close() {
@@ -108,6 +114,8 @@ export function useArticleDetail() {
       }
     }
     showContent.value = !showContent.value;
+    // Remember user's preference
+    userPreferredMode.value = showContent.value ? 'rendered' : 'original';
   }
 
   async function fetchArticleContent() {
@@ -185,8 +193,10 @@ export function useArticleDetail() {
         await fetchArticleContent();
       }
       showContent.value = true;
+      userPreferredMode.value = 'rendered';
     } else if (action === 'showOriginal') {
       showContent.value = false;
+      userPreferredMode.value = 'original';
     }
   }
 
@@ -203,10 +213,16 @@ export function useArticleDetail() {
     }
   }
 
+  // Handle reset user preference from normal article selection
+  function handleResetUserPreference() {
+    userPreferredMode.value = null;
+  }
+
   onMounted(async () => {
     window.addEventListener('render-article-content', handleRenderContent);
     window.addEventListener('explicit-render-action', handleExplicitRenderAction);
     window.addEventListener('toggle-content-view', handleToggleContentView);
+    window.addEventListener('reset-user-view-preference', handleResetUserPreference);
 
     // Load default view mode from settings
     try {
@@ -222,6 +238,7 @@ export function useArticleDetail() {
     window.removeEventListener('render-article-content', handleRenderContent);
     window.removeEventListener('explicit-render-action', handleExplicitRenderAction);
     window.removeEventListener('toggle-content-view', handleToggleContentView);
+    window.removeEventListener('reset-user-view-preference', handleResetUserPreference);
   });
 
   return {

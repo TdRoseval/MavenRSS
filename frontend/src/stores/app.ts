@@ -252,10 +252,9 @@ export const useAppStore = defineStore('app', () => {
           isRunning: data.is_running,
         };
 
-        // Progressive refresh: update articles and unread counts whenever progress advances
+        // Update unread counts whenever progress advances (but don't refresh articles to avoid disrupting scroll position)
         if (data.current > lastCurrent) {
           lastCurrent = data.current;
-          fetchArticles();
           fetchUnreadCounts();
         }
 

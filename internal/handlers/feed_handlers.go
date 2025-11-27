@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // HandleFeeds returns all feeds.
@@ -98,8 +99,24 @@ func (h *Handler) HandleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if FetchAll is currently running
+	progress := h.Fetcher.GetProgress()
+	wasRunning := progress.IsRunning
+
+	if wasRunning {
+		// Wait for the current FetchAll to complete
+		for h.Fetcher.GetProgress().IsRunning {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
 	// Refresh the feed in background
 	go h.Fetcher.FetchFeed(context.Background(), *feed)
+
+	// If FetchAll was running, restart it
+	if wasRunning {
+		go h.Fetcher.FetchAll(context.Background())
+	}
 
 	w.WriteHeader(http.StatusOK)
 }

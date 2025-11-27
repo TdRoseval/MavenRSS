@@ -26,7 +26,7 @@ defineProps<Props>();
       >
         <span>{{ article.feed_title }}</span>
         <span class="hidden sm:inline">•</span>
-        <span>{{ formatDate(article.published_at, locale === 'zh' ? 'zh-CN' : 'en-US') }}</span>
+        <span>{{ formatDate(article.published_at, locale === 'zh-CN' ? 'zh-CN' : 'en-US') }}</span>
       </div>
 
       <!-- Loading state with proper background -->

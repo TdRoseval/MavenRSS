@@ -5,6 +5,7 @@ import { PhX, PhCircleNotch } from '@phosphor-icons/vue';
 import { useDiscoverAllFeeds } from '@/composables/discovery/useDiscoverAllFeeds';
 import DiscoveryProgress from './DiscoveryProgress.vue';
 import DiscoveryResults from './DiscoveryResults.vue';
+import { useModalClose } from '@/composables/ui/useModalClose';
 
 const { t } = useI18n();
 
@@ -36,6 +37,9 @@ const {
   cleanup,
 } = useDiscoverAllFeeds();
 
+// Modal close handling
+useModalClose(() => close());
+
 function close() {
   cleanup();
   emit('close');
@@ -64,6 +68,7 @@ watch(
     v-if="show"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
     @click.self="close"
+    data-modal-open="true"
   >
     <div
       class="bg-bg-primary w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-border flex flex-col"

@@ -9,6 +9,7 @@ import (
 	"context"
 	"log"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -224,9 +225,15 @@ func (f *Fetcher) FetchFeed(ctx context.Context, feed models.Feed) {
 			content = item.Description
 		}
 
+		// Generate title if missing
+		title := item.Title
+		if title == "" {
+			title = generateTitleFromContent(content)
+		}
+
 		article := &models.Article{
 			FeedID:          feed.ID,
-			Title:           item.Title,
+			Title:           title,
 			URL:             item.Link,
 			ImageURL:        imageURL,
 			Content:         content,
@@ -353,4 +360,30 @@ func (f *Fetcher) ImportSubscription(title, url, category string) error {
 // ParseFeed parses an RSS feed from a URL and returns the parsed feed
 func (f *Fetcher) ParseFeed(ctx context.Context, url string) (*gofeed.Feed, error) {
 	return f.fp.ParseURLWithContext(url, ctx)
+}
+
+// generateTitleFromContent generates a title from content when title is missing
+func generateTitleFromContent(content string) string {
+	if content == "" {
+		return "Untitled Article"
+	}
+
+	// Remove HTML tags
+	htmlTagRegex := regexp.MustCompile(`<[^>]+>`)
+	plainText := htmlTagRegex.ReplaceAllString(content, "")
+
+	// Trim whitespace
+	plainText = strings.TrimSpace(plainText)
+
+	// Limit to 100 characters
+	if len(plainText) > 100 {
+		plainText = plainText[:100] + "..."
+	}
+
+	// If still empty after cleaning, use default
+	if plainText == "" {
+		return "Untitled Article"
+	}
+
+	return plainText
 }

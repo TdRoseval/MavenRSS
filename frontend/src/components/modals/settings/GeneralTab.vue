@@ -51,10 +51,10 @@ function formatLastUpdate(timestamp: string): string {
         {{ t('appearance') }}
       </label>
       <div class="setting-item">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhMoon :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('theme') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">{{ t('theme') }}</div>
             <div class="text-xs text-text-secondary hidden sm:block">{{ t('themeDesc') }}</div>
           </div>
         </div>
@@ -65,23 +65,25 @@ function formatLastUpdate(timestamp: string): string {
         </select>
       </div>
       <div class="setting-item mt-2 sm:mt-3">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhTranslate :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('language') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">{{ t('language') }}</div>
             <div class="text-xs text-text-secondary hidden sm:block">{{ t('languageDesc') }}</div>
           </div>
         </div>
         <select v-model="settings.language" class="input-field w-24 sm:w-48 text-xs sm:text-sm">
-          <option value="en">{{ t('english') }}</option>
-          <option value="zh">{{ t('chinese') }}</option>
+          <option value="en-US">{{ t('english') }}</option>
+          <option value="zh-CN">{{ t('chinese') }}</option>
         </select>
       </div>
       <div class="setting-item mt-2 sm:mt-3">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhArticle :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('defaultViewMode') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+              {{ t('defaultViewMode') }}
+            </div>
             <div class="text-xs text-text-secondary hidden sm:block">
               {{ t('defaultViewModeDesc') }}
             </div>
@@ -105,10 +107,12 @@ function formatLastUpdate(timestamp: string): string {
         {{ t('updates') }}
       </label>
       <div class="setting-item">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhClock :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('autoUpdateInterval') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+              {{ t('autoUpdateInterval') }}
+            </div>
             <div class="text-xs text-text-secondary hidden sm:block">
               {{ t('autoUpdateIntervalDesc') }}
             </div>
@@ -138,10 +142,12 @@ function formatLastUpdate(timestamp: string): string {
       </div>
 
       <div class="setting-item mt-2 sm:mt-3">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhPower :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('startupOnBoot') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+              {{ t('startupOnBoot') }}
+            </div>
             <div class="text-xs text-text-secondary hidden sm:block">
               {{ t('startupOnBootDesc') }}
             </div>
@@ -159,10 +165,10 @@ function formatLastUpdate(timestamp: string): string {
         {{ t('database') }}
       </label>
       <div class="setting-item">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhBroom :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('autoCleanup') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">{{ t('autoCleanup') }}</div>
             <div class="text-xs text-text-secondary hidden sm:block">
               {{ t('autoCleanupDesc') }}
             </div>
@@ -176,10 +182,10 @@ function formatLastUpdate(timestamp: string): string {
         class="ml-2 sm:ml-4 mt-2 sm:mt-3 space-y-2 sm:space-y-3 border-l-2 border-border pl-2 sm:pl-4"
       >
         <div class="sub-setting-item">
-          <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
             <PhHardDrive :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
-              <div class="font-medium mb-1 text-sm">{{ t('maxCacheSize') }}</div>
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('maxCacheSize') }}</div>
               <div class="text-xs text-text-secondary hidden sm:block">
                 {{ t('maxCacheSizeDesc') }}
               </div>
@@ -198,10 +204,10 @@ function formatLastUpdate(timestamp: string): string {
         </div>
 
         <div class="sub-setting-item">
-          <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
             <PhCalendarX :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
-              <div class="font-medium mb-1 text-sm">{{ t('maxArticleAge') }}</div>
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('maxArticleAge') }}</div>
               <div class="text-xs text-text-secondary hidden sm:block">
                 {{ t('maxArticleAgeDesc') }}
               </div>
@@ -221,10 +227,12 @@ function formatLastUpdate(timestamp: string): string {
       </div>
 
       <div class="setting-item mt-2 sm:mt-3">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhEyeSlash :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('showHiddenArticles') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+              {{ t('showHiddenArticles') }}
+            </div>
             <div class="text-xs text-text-secondary hidden sm:block">
               {{ t('showHiddenArticlesDesc') }}
             </div>
@@ -242,10 +250,12 @@ function formatLastUpdate(timestamp: string): string {
         {{ t('translation') }}
       </label>
       <div class="setting-item mb-2 sm:mb-4">
-        <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhArticle :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
-            <div class="font-medium mb-1 text-sm sm:text-base">{{ t('enableTranslation') }}</div>
+            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+              {{ t('enableTranslation') }}
+            </div>
             <div class="text-xs text-text-secondary hidden sm:block">
               {{ t('enableTranslationDesc') }}
             </div>
@@ -259,10 +269,10 @@ function formatLastUpdate(timestamp: string): string {
         class="ml-2 sm:ml-4 space-y-2 sm:space-y-3 border-l-2 border-border pl-2 sm:pl-4"
       >
         <div class="sub-setting-item">
-          <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
             <PhPackage :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
-              <div class="font-medium mb-1 text-sm">{{ t('translationProvider') }}</div>
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('translationProvider') }}</div>
               <div class="text-xs text-text-secondary hidden sm:block">
                 {{ t('translationProviderDesc') || 'Choose the translation service to use' }}
               </div>
@@ -278,10 +288,10 @@ function formatLastUpdate(timestamp: string): string {
         </div>
 
         <div v-if="settings.translation_provider === 'deepl'" class="sub-setting-item">
-          <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
             <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
-              <div class="font-medium mb-1 text-sm">{{ t('deeplApiKey') }}</div>
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('deeplApiKey') }}</div>
               <div class="text-xs text-text-secondary hidden sm:block">
                 {{ t('deeplApiKeyDesc') || 'Enter your DeepL API key' }}
               </div>
@@ -296,10 +306,10 @@ function formatLastUpdate(timestamp: string): string {
         </div>
 
         <div class="sub-setting-item">
-          <div class="flex-1 flex items-start gap-2 sm:gap-3 min-w-0">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
             <PhGlobe :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
-              <div class="font-medium mb-1 text-sm">{{ t('targetLanguage') }}</div>
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('targetLanguage') }}</div>
               <div class="text-xs text-text-secondary hidden sm:block">
                 {{ t('targetLanguageDesc') || 'Language to translate article titles to' }}
               </div>
@@ -337,10 +347,10 @@ function formatLastUpdate(timestamp: string): string {
   transform: translateX(20px);
 }
 .setting-item {
-  @apply flex items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
+  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
 }
 .sub-setting-item {
-  @apply flex items-start justify-between gap-2 sm:gap-4 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
+  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
 }
 .info-display {
   @apply px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-border;

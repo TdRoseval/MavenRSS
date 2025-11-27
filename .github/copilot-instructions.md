@@ -758,7 +758,17 @@ const Version = "1.3.0"
 - Use `os.Remove()` instead of shell commands for file operations
 - Clean up resources (timers, goroutines, event listeners) properly
 - Preserve favorited articles during any cleanup operation
-- Update all 7 version files when bumping version
+- Update all files below when bumping version:
+  - `internal/version/version.go`
+  - `wails.json`
+  - `frontend/package.json`
+  - `frontend/package-lock.json`
+  - `frontend/src/components/modals/settings/AboutTab.vue`
+  - `website/package.json`
+  - `website/package-lock.json`
+  - `README.md`
+  - `README_zh.md`
+  - `CHANGELOG.md`
 - Use prepared statements for all database queries
 - Implement proper loading states and progress indicators
 - Follow semantic versioning (MAJOR.MINOR.PATCH)

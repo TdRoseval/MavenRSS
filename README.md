@@ -4,7 +4,7 @@
   <p><strong>A Modern, Cross-Platform Desktop RSS Reader</strong></p>
 
    [![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
-  [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v2-red)](https://wails.io/)
   [![Vue.js](https://img.shields.io/badge/Vue.js-3.x-4FC08D?logo=vue.js)](https://vuejs.org/)
@@ -26,6 +26,7 @@
 - 📦 **OPML Import/Export**: Easy migration from other RSS readers
 - ⌨️ **Keyboard Shortcuts**: Boost productivity with customizable keyboard shortcuts for quick navigation and actions
 - 📋 **Smart Filtering Rules**: Automate feed organization with powerful custom rules
+- 🏭 **Custom Automation Scripts**: Support for running user-defined automation scripts to fetch feeds
 
 ## 📸 Screenshots
 
@@ -37,13 +38,19 @@
 
 #### Option 1: Download Pre-built Installer (Recommended)
 
-Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases) page:
+Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page:
 
 - **Windows:** `MrRSS-{version}-windows-amd64-installer.exe` / `MrRSS-{version}-windows-arm64-installer.exe`
 - **macOS:** `MrRSS-{version}-darwin-universal.dmg`
 - **Linux:** `MrRSS-{version}-linux-amd64.AppImage` / `MrRSS-{version}-linux-arm64.AppImage`
 
 #### Option 2: Build from Source
+
+<details>
+
+<summary>Click to expand the build from source guide</summary>
+
+<div markdown="1">
 
 ### Prerequisites
 
@@ -94,6 +101,10 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev gcc pkg-config
    - macOS: `build/bin/MrRSS.app`
    - Linux: `build/bin/MrRSS`
 
+</div>
+
+</details>
+
 ### Data Storage
 
 MrRSS stores all user data (database, settings) in platform-specific directories:
@@ -105,6 +116,12 @@ MrRSS stores all user data (database, settings) in platform-specific directories
 This ensures your data persists across application updates and reinstalls.
 
 ## 🛠️ Development
+
+<details>
+
+<summary>Click to expand the development guide</summary>
+
+<div markdown="1">
 
 ### Running in Development Mode
 
@@ -187,6 +204,10 @@ cd frontend
 npm test
 ```
 
+</div>
+
+</details>
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
@@ -205,7 +226,7 @@ If you discover a security vulnerability, please follow our [Security Policy](SE
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 

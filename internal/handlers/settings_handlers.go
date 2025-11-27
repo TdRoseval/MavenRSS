@@ -10,7 +10,8 @@ import (
 
 // HandleSettings handles GET and POST requests for application settings.
 func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		interval, _ := h.DB.GetSetting("update_interval")
 		translationEnabled, _ := h.DB.GetSetting("translation_enabled")
 		targetLang, _ := h.DB.GetSetting("target_language")
@@ -26,6 +27,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		startupOnBoot, _ := h.DB.GetSetting("startup_on_boot")
 		shortcuts, _ := h.DB.GetSetting("shortcuts")
 		rules, _ := h.DB.GetSetting("rules")
+		defaultViewMode, _ := h.DB.GetSetting("default_view_mode")
 		json.NewEncoder(w).Encode(map[string]string{
 			"update_interval":      interval,
 			"translation_enabled":  translationEnabled,
@@ -42,8 +44,9 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 			"startup_on_boot":      startupOnBoot,
 			"shortcuts":            shortcuts,
 			"rules":                rules,
+			"default_view_mode":    defaultViewMode,
 		})
-	} else if r.Method == http.MethodPost {
+	case http.MethodPost:
 		var req struct {
 			UpdateInterval      string `json:"update_interval"`
 			TranslationEnabled  string `json:"translation_enabled"`
@@ -59,6 +62,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 			StartupOnBoot       string `json:"startup_on_boot"`
 			Shortcuts           string `json:"shortcuts"`
 			Rules               string `json:"rules"`
+			DefaultViewMode     string `json:"default_view_mode"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -109,6 +113,10 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		// Always update rules as it might be cleared or modified
 		h.DB.SetSetting("rules", req.Rules)
 
+		if req.DefaultViewMode != "" {
+			h.DB.SetSetting("default_view_mode", req.DefaultViewMode)
+		}
+
 		if req.StartupOnBoot != "" {
 			// Get current value to check if it changed
 			currentValue, err := h.DB.GetSetting("startup_on_boot")
@@ -134,5 +142,7 @@ func (h *Handler) HandleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(http.StatusOK)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }

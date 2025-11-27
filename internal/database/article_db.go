@@ -65,9 +65,10 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 		whereClauses = append(whereClauses, "a.is_hidden = 0")
 	}
 
-	if filter == "unread" {
+	switch filter {
+	case "unread":
 		whereClauses = append(whereClauses, "a.is_read = 0")
-	} else if filter == "favorites" {
+	case "favorites":
 		whereClauses = append(whereClauses, "a.is_favorite = 1")
 	}
 

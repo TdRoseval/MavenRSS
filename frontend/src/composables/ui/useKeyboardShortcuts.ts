@@ -160,12 +160,17 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     // Check for escape key to close modals first (always allow)
     if (key === shortcuts.value.closeArticle) {
-      // Emit event for modal closes
-      window.dispatchEvent(new CustomEvent('keyboard-escape'));
-      if (store.currentArticleId) {
-        store.currentArticleId = null;
-        e.preventDefault();
+      // Check if there are any open modals
+      const hasOpenModal = document.querySelector('[data-modal-open="true"]') !== null;
+
+      if (!hasOpenModal) {
+        // No modals open, handle article close
+        if (store.currentArticleId) {
+          store.currentArticleId = null;
+          e.preventDefault();
+        }
       }
+      // If modals are open, let them handle ESC themselves
       return;
     }
 
