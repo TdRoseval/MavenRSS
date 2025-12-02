@@ -294,6 +294,11 @@ func sentenceSimilarity(s1, s2 string) float64 {
 		set2[w] = true
 	}
 
+	// Guard against empty sets to avoid math.Log(0) which returns -Inf
+	if len(set1) == 0 || len(set2) == 0 {
+		return 0
+	}
+
 	// Count common words
 	common := 0
 	for w := range set1 {
