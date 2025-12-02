@@ -3,7 +3,7 @@
   <h1>MrRSS</h1>
   <p><strong>一个现代化的跨平台桌面 RSS 阅读器</strong></p>
 
-   [![Version](https://img.shields.io/badge/version-1.2.5-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+   [![Version](https://img.shields.io/badge/version-1.2.6-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v2-red)](https://wails.io/)
@@ -19,9 +19,10 @@
 ## ✨ 功能特性
 
 - 🖥️ **跨平台**: 适用于 Windows、macOS 和 Linux 的原生桌面应用
-- 🌐 **自动翻译**: 使用 Google Translate 或 DeepL API 翻译文章标题
+- 🌐 **自动翻译**: 使用 Google Translate 或 DeepL API 翻译文章标题和内容
 - 🔍 **智能订阅源发现**: 自动从友链和相关来源发现新的订阅源
 - ⭐ **收藏与阅读追踪**: 保存文章并追踪已读/未读状态
+- 📝 **本地生成文章摘要**: 使用 TF-IDF 和 TextRank 算法本地生成文章摘要
 - 🎨 **现代 UI**: 简洁、响应式的界面，支持深色模式
 - 📦 **OPML 导入/导出**: 轻松从其他 RSS 阅读器迁移
 - ⌨️ **快捷键**: 通过可自定义的键盘快捷键提升效率，快速导航和操作
@@ -163,9 +164,6 @@ make setup
 
 # 发布前检查
 ./scripts/pre-release.sh
-
-# 更新版本
-./scripts/bump-version.sh x.y.z
 ```
 
 **Windows (PowerShell):**
@@ -176,9 +174,6 @@ make setup
 
 # 发布前检查
 .\scripts\pre-release.ps1
-
-# 更新版本
-.\scripts\bump-version.ps1 -NewVersion x.y.z
 ```
 
 ### Pre-commit Hooks

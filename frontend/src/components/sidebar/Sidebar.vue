@@ -69,8 +69,8 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
       />
     </nav>
 
-    <div class="flex-1 overflow-y-auto p-1.5 sm:p-2 border-t border-border">
-      <!-- Search Box -->
+    <!-- Search Box (kept outside scrollable list so it doesn't scroll) -->
+    <div class="px-2 sm:px-3 pt-2 border-t border-border bg-bg-secondary z-10">
       <div class="mb-3">
         <div
           class="flex items-center bg-bg-secondary border border-border rounded-lg px-3 py-2 focus-within:border-accent transition-colors"
@@ -92,7 +92,9 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
           </button>
         </div>
       </div>
+    </div>
 
+    <div class="flex-1 overflow-y-auto p-1.5 sm:p-2">
       <!-- Categories -->
       <SidebarCategory
         v-for="(data, name) in tree.tree"

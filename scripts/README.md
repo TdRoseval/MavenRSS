@@ -43,26 +43,6 @@ Performs pre-release checks including:
 .\scripts\pre-release.ps1
 ```
 
-### bump-version.sh / bump-version.ps1
-
-Updates version numbers across all relevant files:
-
-- `frontend/package.json`
-- `wails.json` (version and productVersion)
-- `internal/version/version.go`
-- `frontend/src/components/modals/settings/AboutTab.vue`
-- README badges
-
-**Usage:**
-
-```bash
-# Linux/macOS
-./scripts/bump-version.sh 1.2.4
-
-# Windows
-.\scripts\bump-version.ps1 -NewVersion 1.2.4
-```
-
 ## Integration with CI/CD
 
 These scripts are used in GitHub Actions workflows:

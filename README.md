@@ -3,7 +3,7 @@
   <h1>MrRSS</h1>
   <p><strong>A Modern, Cross-Platform Desktop RSS Reader</strong></p>
 
-   [![Version](https://img.shields.io/badge/version-1.2.5-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+   [![Version](https://img.shields.io/badge/version-1.2.6-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v2-red)](https://wails.io/)
@@ -19,9 +19,10 @@
 ## ✨ Features
 
 - 🖥️ **Cross-Platform**: Native desktop app for Windows, macOS, and Linux
-- 🌐 **Auto-Translation**: Translate article titles using Google Translate or DeepL API
+- 🌐 **Auto-Translation**: Translate article titles and content using Google Translate or DeepL API
 - 🔍 **Smart Feed Discovery**: Automatically discover new feeds from friend links and related sources
 - ⭐ **Favorites & Reading Tracking**: Save articles and track read/unread status
+- 📝 **Local Article Summarization**: Generate article summaries locally using TF-IDF and TextRank algorithms
 - 🎨 **Modern UI**: Clean, responsive interface with dark mode support
 - 📦 **OPML Import/Export**: Easy migration from other RSS readers
 - ⌨️ **Keyboard Shortcuts**: Boost productivity with customizable keyboard shortcuts for quick navigation and actions
@@ -163,9 +164,6 @@ Cross-platform scripts are available in the `scripts/` directory:
 
 # Pre-release checks
 ./scripts/pre-release.sh
-
-# Bump version
-./scripts/bump-version.sh x.y.z
 ```
 
 **Windows (PowerShell):**
@@ -176,9 +174,6 @@ Cross-platform scripts are available in the `scripts/` directory:
 
 # Pre-release checks
 .\scripts\pre-release.ps1
-
-# Bump version
-.\scripts\bump-version.ps1 -NewVersion x.y.z
 ```
 
 ### Pre-commit Hooks
