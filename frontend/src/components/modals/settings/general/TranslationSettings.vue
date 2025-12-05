@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { PhGlobe, PhArticle, PhPackage, PhKey } from '@phosphor-icons/vue';
+import { PhGlobe, PhArticle, PhPackage, PhKey, PhLink, PhRobot } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
 
 const { t } = useI18n();
@@ -55,9 +55,12 @@ defineProps<Props>();
         >
           <option value="google">Google Translate (Free)</option>
           <option value="deepl">DeepL API</option>
+          <option value="baidu">{{ t('baiduTranslate') }}</option>
+          <option value="ai">{{ t('aiTranslation') }}</option>
         </select>
       </div>
 
+      <!-- DeepL API Key -->
       <div v-if="settings.translation_provider === 'deepl'" class="sub-setting-item">
         <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
@@ -75,6 +78,99 @@ defineProps<Props>();
           class="input-field w-32 sm:w-48 text-xs sm:text-sm"
         />
       </div>
+
+      <!-- Baidu Translate Settings -->
+      <template v-if="settings.translation_provider === 'baidu'">
+        <div class="sub-setting-item">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('baiduAppId') }}</div>
+              <div class="text-xs text-text-secondary hidden sm:block">
+                {{ t('baiduAppIdDesc') }}
+              </div>
+            </div>
+          </div>
+          <input
+            type="text"
+            v-model="settings.baidu_app_id"
+            :placeholder="t('baiduAppIdPlaceholder')"
+            class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+          />
+        </div>
+        <div class="sub-setting-item">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('baiduSecretKey') }}</div>
+              <div class="text-xs text-text-secondary hidden sm:block">
+                {{ t('baiduSecretKeyDesc') }}
+              </div>
+            </div>
+          </div>
+          <input
+            type="password"
+            v-model="settings.baidu_secret_key"
+            :placeholder="t('baiduSecretKeyPlaceholder')"
+            class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+          />
+        </div>
+      </template>
+
+      <!-- AI Translation Settings -->
+      <template v-if="settings.translation_provider === 'ai'">
+        <div class="sub-setting-item">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('aiApiKey') }}</div>
+              <div class="text-xs text-text-secondary hidden sm:block">
+                {{ t('aiApiKeyDesc') }}
+              </div>
+            </div>
+          </div>
+          <input
+            type="password"
+            v-model="settings.ai_api_key"
+            :placeholder="t('aiApiKeyPlaceholder')"
+            class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+          />
+        </div>
+        <div class="sub-setting-item">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhLink :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('aiEndpoint') }}</div>
+              <div class="text-xs text-text-secondary hidden sm:block">
+                {{ t('aiEndpointDesc') }}
+              </div>
+            </div>
+          </div>
+          <input
+            type="text"
+            v-model="settings.ai_endpoint"
+            :placeholder="t('aiEndpointPlaceholder')"
+            class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+          />
+        </div>
+        <div class="sub-setting-item">
+          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhRobot :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('aiModel') }}</div>
+              <div class="text-xs text-text-secondary hidden sm:block">
+                {{ t('aiModelDesc') }}
+              </div>
+            </div>
+          </div>
+          <input
+            type="text"
+            v-model="settings.ai_model"
+            :placeholder="t('aiModelPlaceholder')"
+            class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+          />
+        </div>
+      </template>
 
       <div class="sub-setting-item">
         <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">

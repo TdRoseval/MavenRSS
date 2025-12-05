@@ -15,9 +15,14 @@ export function useSettingsAutoSave(settings: Ref<SettingsData>) {
   let isInitialLoad = true;
 
   // Track previous translation settings
-  const prevTranslationSettings: Ref<{ enabled: boolean; targetLang: string }> = ref({
+  const prevTranslationSettings: Ref<{
+    enabled: boolean;
+    targetLang: string;
+    provider: string;
+  }> = ref({
     enabled: settingsDefaults.translation_enabled,
     targetLang: settingsDefaults.target_language,
+    provider: settingsDefaults.translation_provider,
   });
 
   /**
@@ -28,6 +33,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData>) {
       prevTranslationSettings.value = {
         enabled: settings.value.translation_enabled,
         targetLang: settings.value.target_language,
+        provider: settings.value.translation_provider,
       };
       isInitialLoad = false;
     }, 100);
@@ -46,6 +52,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData>) {
       // Check if translation settings changed
       const translationChanged =
         prevTranslationSettings.value.enabled !== settings.value.translation_enabled ||
+        prevTranslationSettings.value.provider !== settings.value.translation_provider ||
         (settings.value.translation_enabled &&
           prevTranslationSettings.value.targetLang !== settings.value.target_language);
 
@@ -63,6 +70,11 @@ export function useSettingsAutoSave(settings: Ref<SettingsData>) {
           translation_provider:
             settings.value.translation_provider ?? settingsDefaults.translation_provider,
           deepl_api_key: settings.value.deepl_api_key ?? settingsDefaults.deepl_api_key,
+          baidu_app_id: settings.value.baidu_app_id ?? settingsDefaults.baidu_app_id,
+          baidu_secret_key: settings.value.baidu_secret_key ?? settingsDefaults.baidu_secret_key,
+          ai_api_key: settings.value.ai_api_key ?? settingsDefaults.ai_api_key,
+          ai_endpoint: settings.value.ai_endpoint ?? settingsDefaults.ai_endpoint,
+          ai_model: settings.value.ai_model ?? settingsDefaults.ai_model,
           auto_cleanup_enabled: (
             settings.value.auto_cleanup_enabled ?? settingsDefaults.auto_cleanup_enabled
           ).toString(),
@@ -110,6 +122,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData>) {
         prevTranslationSettings.value = {
           enabled: settings.value.translation_enabled,
           targetLang: settings.value.target_language,
+          provider: settings.value.translation_provider,
         };
         // Notify ArticleList about translation settings change
         window.dispatchEvent(

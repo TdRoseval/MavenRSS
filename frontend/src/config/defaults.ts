@@ -17,6 +17,11 @@ export const settingsDefaults = {
   target_language: 'zh',
   translation_provider: 'google',
   deepl_api_key: '',
+  baidu_app_id: '',
+  baidu_secret_key: '',
+  ai_api_key: '',
+  ai_endpoint: '',
+  ai_model: '',
 
   // Summary settings
   summary_enabled: true,

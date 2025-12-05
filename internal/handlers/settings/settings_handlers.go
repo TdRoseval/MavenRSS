@@ -18,6 +18,11 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		targetLang, _ := h.DB.GetSetting("target_language")
 		provider, _ := h.DB.GetSetting("translation_provider")
 		apiKey, _ := h.DB.GetSetting("deepl_api_key")
+		baiduAppID, _ := h.DB.GetSetting("baidu_app_id")
+		baiduSecretKey, _ := h.DB.GetSetting("baidu_secret_key")
+		aiAPIKey, _ := h.DB.GetSetting("ai_api_key")
+		aiEndpoint, _ := h.DB.GetSetting("ai_endpoint")
+		aiModel, _ := h.DB.GetSetting("ai_model")
 		autoCleanup, _ := h.DB.GetSetting("auto_cleanup_enabled")
 		maxCacheSize, _ := h.DB.GetSetting("max_cache_size_mb")
 		maxArticleAge, _ := h.DB.GetSetting("max_article_age_days")
@@ -37,6 +42,11 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"target_language":      targetLang,
 			"translation_provider": provider,
 			"deepl_api_key":        apiKey,
+			"baidu_app_id":         baiduAppID,
+			"baidu_secret_key":     baiduSecretKey,
+			"ai_api_key":           aiAPIKey,
+			"ai_endpoint":          aiEndpoint,
+			"ai_model":             aiModel,
 			"auto_cleanup_enabled": autoCleanup,
 			"max_cache_size_mb":    maxCacheSize,
 			"max_article_age_days": maxArticleAge,
@@ -58,6 +68,11 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			TargetLanguage      string `json:"target_language"`
 			TranslationProvider string `json:"translation_provider"`
 			DeepLAPIKey         string `json:"deepl_api_key"`
+			BaiduAppID          string `json:"baidu_app_id"`
+			BaiduSecretKey      string `json:"baidu_secret_key"`
+			AIAPIKey            string `json:"ai_api_key"`
+			AIEndpoint          string `json:"ai_endpoint"`
+			AIModel             string `json:"ai_model"`
 			AutoCleanupEnabled  string `json:"auto_cleanup_enabled"`
 			MaxCacheSizeMB      string `json:"max_cache_size_mb"`
 			MaxArticleAgeDays   string `json:"max_article_age_days"`
@@ -87,8 +102,13 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		if req.TranslationProvider != "" {
 			h.DB.SetSetting("translation_provider", req.TranslationProvider)
 		}
-		// Always update API key as it might be cleared
+		// Always update API keys as they might be cleared
 		h.DB.SetSetting("deepl_api_key", req.DeepLAPIKey)
+		h.DB.SetSetting("baidu_app_id", req.BaiduAppID)
+		h.DB.SetSetting("baidu_secret_key", req.BaiduSecretKey)
+		h.DB.SetSetting("ai_api_key", req.AIAPIKey)
+		h.DB.SetSetting("ai_endpoint", req.AIEndpoint)
+		h.DB.SetSetting("ai_model", req.AIModel)
 
 		if req.AutoCleanupEnabled != "" {
 			h.DB.SetSetting("auto_cleanup_enabled", req.AutoCleanupEnabled)

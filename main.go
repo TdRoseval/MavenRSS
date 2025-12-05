@@ -87,7 +87,7 @@ func main() {
 	}
 	log.Println("Database initialized successfully")
 
-	translator := translation.NewGoogleFreeTranslator()
+	translator := translation.NewDynamicTranslator(db)
 	fetcher := feed.NewFetcher(db, translator)
 	h := handlers.NewHandler(db, fetcher, translator)
 
