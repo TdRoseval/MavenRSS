@@ -46,6 +46,8 @@ const en: TranslationMessages = {
   play: 'Play',
   pause: 'Pause',
   downloadAudio: 'Download Audio File',
+  audioPlaybackError:
+    'Failed to play audio. The file may be unavailable or in an unsupported format.',
 
   // Context Menu
   unsubscribe: 'Unsubscribe',

@@ -26,13 +26,18 @@ function formatTime(seconds: number): string {
 }
 
 // Toggle play/pause
-function togglePlay() {
+async function togglePlay() {
   if (!audioRef.value) return;
 
   if (isPlaying.value) {
     audioRef.value.pause();
   } else {
-    audioRef.value.play();
+    try {
+      await audioRef.value.play();
+    } catch (error) {
+      console.error('Failed to play audio:', error);
+      window.showToast(t('audioPlaybackError'), 'error');
+    }
   }
 }
 
@@ -74,6 +79,23 @@ function seek(event: MouseEvent) {
 const progressPercentage = computed(() => {
   if (!duration.value) return 0;
   return (currentTime.value / duration.value) * 100;
+});
+
+// Extract filename from audio URL
+const downloadFilename = computed(() => {
+  try {
+    const url = new URL(props.audioUrl);
+    const pathname = url.pathname;
+    const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+    // If filename has no extension or is empty, use article title with .mp3
+    if (!filename || !filename.includes('.')) {
+      return `${props.articleTitle}.mp3`;
+    }
+    return filename;
+  } catch {
+    // Fallback if URL parsing fails
+    return `${props.articleTitle}.mp3`;
+  }
 });
 </script>
 
@@ -127,7 +149,7 @@ const progressPercentage = computed(() => {
     <div class="mt-3 pt-3 border-t border-border">
       <a
         :href="audioUrl"
-        :download="`${articleTitle}.mp3`"
+        :download="downloadFilename"
         class="text-xs text-accent hover:underline flex items-center gap-1"
         target="_blank"
       >

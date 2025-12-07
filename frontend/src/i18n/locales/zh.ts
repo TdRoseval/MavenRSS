@@ -45,6 +45,7 @@ const zh: TranslationMessages = {
   play: '播放',
   pause: '暂停',
   downloadAudio: '下载音频文件',
+  audioPlaybackError: '无法播放音频。文件可能不可用或格式不受支持。',
 
   // Context Menu
   unsubscribe: '取消订阅',
