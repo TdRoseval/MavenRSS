@@ -163,22 +163,21 @@ export function useArticleDetail() {
 
   // Attach event listeners to links and images in rendered content
   function attachContentEventListeners() {
-    // Handle all images - make them clickable for zoom/pan and add context menu
-    // Do this BEFORE unwrapping from links
+    // Attach image event handlers BEFORE unwrapping from links to ensure click events work properly on images within anchor tags.
     const images = document.querySelectorAll<HTMLImageElement>('.prose img');
     images.forEach((img) => {
       img.style.cursor = 'pointer';
       // Left click - open image viewer
       img.addEventListener('click', (e: Event) => {
         e.preventDefault();
-        e.stopPropagation(); // Prevent link navigation if image is in a link
+        e.stopPropagation(); // Prevent event bubbling to parent link elements
         imageViewerSrc.value = img.src;
         imageViewerAlt.value = img.alt || '';
       });
       // Right click - show context menu for saving
       img.addEventListener('contextmenu', (e: MouseEvent) => {
         e.preventDefault();
-        e.stopPropagation(); // Prevent default context menu
+        e.stopPropagation(); // Prevent event bubbling to parent link elements
         // Use global context menu system
         window.dispatchEvent(
           new CustomEvent('open-context-menu', {
