@@ -25,6 +25,8 @@ const PRESERVED_SELECTORS = [
   'video',
   'audio',
   'canvas',
+  // Hyperlinks (anchor tags)
+  'a',
   // Special inline elements
   'sub',
   'sup',

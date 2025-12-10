@@ -163,6 +163,17 @@ export function useArticleDetail() {
 
   // Attach event listeners to links and images in rendered content
   function attachContentEventListeners() {
+    // Unwrap images from anchor tags to prevent navigation conflicts
+    const imagesInLinks = document.querySelectorAll<HTMLImageElement>('.prose a img');
+    imagesInLinks.forEach((img) => {
+      const anchor = img.closest('a');
+      if (anchor && anchor.parentNode) {
+        // Replace the anchor with just the image
+        anchor.parentNode.insertBefore(img, anchor);
+        anchor.remove();
+      }
+    });
+
     // Handle all links - open in default browser
     const links = document.querySelectorAll('.prose a');
     links.forEach((link) => {

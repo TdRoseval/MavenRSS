@@ -179,6 +179,9 @@ async function translateContentParagraphs(content: string) {
   ];
   const elements = proseContainer.querySelectorAll(textTags.join(','));
 
+  // Track which elements we've already translated to avoid duplicates
+  const translatedElements = new Set<HTMLElement>();
+
   for (const el of elements) {
     const htmlEl = el as HTMLElement;
 
@@ -187,6 +190,22 @@ async function translateContentParagraphs(content: string) {
 
     // Skip if already has translation inside
     if (htmlEl.querySelector('.translation-text')) continue;
+
+    // Skip if we've already translated this element
+    if (translatedElements.has(htmlEl)) continue;
+
+    // Skip if this element's parent was already translated
+    // This prevents duplicate translations of nested elements
+    let hasTranslatedAncestor = false;
+    let ancestor = htmlEl.parentElement;
+    while (ancestor && ancestor !== proseContainer) {
+      if (translatedElements.has(ancestor)) {
+        hasTranslatedAncestor = true;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    if (hasTranslatedAncestor) continue;
 
     // Skip elements that are entirely technical content (no translatable text)
     if (
@@ -247,6 +266,9 @@ async function translateContentParagraphs(content: string) {
       translationEl.innerHTML = translatedHTML;
       htmlEl.parentNode?.insertBefore(translationEl, htmlEl.nextSibling);
     }
+
+    // Mark this element as translated
+    translatedElements.add(htmlEl);
   }
 
   // Re-apply rendering enhancements to translation elements (for math formulas)
