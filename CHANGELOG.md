@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Supported portable mode for running MrRSS from USB drives with all data stored in a single folder.
 
+### Fixed
+
+- Fixed the issue where icons on MacOS were not displayed correctly.
+- Fixed the issue where the window size and position were not restored correctly.
+
 ## [1.2.13] - 2025-12-11
 
 ### Added
