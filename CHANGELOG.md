@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the issue where single-line link can not be translated correctly.
 - Fixed the issue where some links can not be opened in the default browser.
 
+### Fixed
+
+- Fixed the issue where icons on MacOS were not displayed correctly.
+- Fixed the issue where the window size and position were not restored correctly.
+
 ## [1.2.13] - 2025-12-11
 
 ### Added

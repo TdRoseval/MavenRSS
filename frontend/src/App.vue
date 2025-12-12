@@ -17,6 +17,7 @@ import { useNotifications } from './composables/ui/useNotifications';
 import { useKeyboardShortcuts } from './composables/ui/useKeyboardShortcuts';
 import { useContextMenu } from './composables/ui/useContextMenu';
 import { useResizablePanels } from './composables/ui/useResizablePanels';
+import { useWindowState } from './composables/core/useWindowState';
 import type { Feed } from './types/models';
 
 const store = useAppStore();
@@ -38,6 +39,10 @@ const { contextMenu, openContextMenu, handleContextMenuAction } = useContextMenu
 
 const { sidebarWidth, articleListWidth, startResizeSidebar, startResizeArticleList } =
   useResizablePanels();
+
+// Initialize window state management
+const windowState = useWindowState();
+windowState.init();
 
 // Initialize keyboard shortcuts
 const { shortcuts } = useKeyboardShortcuts({

@@ -31,6 +31,7 @@ import (
 	summary "MrRSS/internal/handlers/summary"
 	translationhandlers "MrRSS/internal/handlers/translation"
 	update "MrRSS/internal/handlers/update"
+	window "MrRSS/internal/handlers/window"
 	"MrRSS/internal/translation"
 	"MrRSS/internal/tray"
 	"MrRSS/internal/utils"
@@ -179,6 +180,8 @@ func main() {
 	apiMux.HandleFunc("/api/media/proxy", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaProxy(h, w, r) })
 	apiMux.HandleFunc("/api/media/cleanup", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheCleanup(h, w, r) })
 	apiMux.HandleFunc("/api/media/info", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheInfo(h, w, r) })
+	apiMux.HandleFunc("/api/window/state", func(w http.ResponseWriter, r *http.Request) { window.HandleGetWindowState(h, w, r) })
+	apiMux.HandleFunc("/api/window/save", func(w http.ResponseWriter, r *http.Request) { window.HandleSaveWindowState(h, w, r) })
 
 	// Static Files
 	log.Println("Setting up static files...")
@@ -237,11 +240,10 @@ func main() {
 
 	log.Println("Starting Wails...")
 	err = wails.Run(&options.App{
-		Title:            "MrRSS",
-		Width:            1024,
-		Height:           768,
-		WindowStartState: options.Maximised,
-		LogLevel:         logger.DEBUG,
+		Title:    "MrRSS",
+		Width:    1024,
+		Height:   768,
+		LogLevel: logger.DEBUG,
 		AssetServer: &assetserver.Options{
 			Assets:  frontendFS,
 			Handler: combinedHandler,

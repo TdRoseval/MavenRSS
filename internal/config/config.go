@@ -56,6 +56,11 @@ type Defaults struct {
 	LastArticleUpdate        string `json:"last_article_update"`
 	GoogleTranslateEndpoint  string `json:"google_translate_endpoint"`
 	ShowArticlePreviewImages bool   `json:"show_article_preview_images"`
+  WindowX                  string `json:"window_x"`
+	WindowY                  string `json:"window_y"`
+	WindowWidth              string `json:"window_width"`
+	WindowHeight             string `json:"window_height"`
+	WindowMaximized          string `json:"window_maximized"`
 }
 
 var defaults Defaults
@@ -156,6 +161,16 @@ func GetString(key string) string {
 		return defaults.LastArticleUpdate
 	case "google_translate_endpoint":
 		return defaults.GoogleTranslateEndpoint
+	case "window_x":
+		return defaults.WindowX
+	case "window_y":
+		return defaults.WindowY
+	case "window_width":
+		return defaults.WindowWidth
+	case "window_height":
+		return defaults.WindowHeight
+	case "window_maximized":
+		return defaults.WindowMaximized
 	case "show_article_preview_images":
 		return strconv.FormatBool(defaults.ShowArticlePreviewImages)
 	default:
