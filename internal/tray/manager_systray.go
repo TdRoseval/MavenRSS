@@ -40,13 +40,24 @@ func (m *Manager) Start(ctx context.Context, onQuit func(), onShow func()) {
 		return
 	}
 
+	if m.stopCh != nil {
+		select {
+		case <-m.stopCh:
+		default:
+			close(m.stopCh)
+		}
+		m.stopCh = nil
+	}
+
 	m.stopCh = make(chan struct{})
 	m.running.Store(true)
 	m.mu.Unlock()
 
 	if m.handler != nil && m.handler.DB != nil {
 		if lang, err := m.handler.DB.GetSetting("language"); err == nil && lang != "" {
+			m.mu.Lock()
 			m.lang = lang
+			m.mu.Unlock()
 		}
 	}
 
@@ -80,7 +91,7 @@ func (m *Manager) run(ctx context.Context, onQuit func(), onShow func()) {
 				}
 			case <-refreshItem.ClickedCh:
 				if m.handler != nil && m.handler.Fetcher != nil {
-					go m.handler.Fetcher.FetchAll(context.Background())
+					go m.handler.Fetcher.FetchAll(ctx)
 				}
 			case <-quitItem.ClickedCh:
 				if onQuit != nil {
@@ -108,7 +119,9 @@ type trayLabels struct {
 }
 
 func (m *Manager) getLabels() trayLabels {
+	m.mu.Lock()
 	lang := m.lang
+	m.mu.Unlock()
 	switch lang {
 	case "zh-CN", "zh", "zh-cn":
 		return trayLabels{

@@ -296,6 +296,7 @@ func main() {
 
 			if shouldCloseToTray() {
 				storeWindowState(ctx)
+				// Fallback start in case tray failed to start on startup
 				startTray(ctx)
 				if trayManager != nil && trayManager.IsRunning() {
 					runtime.WindowHide(ctx)

@@ -20,7 +20,7 @@ type Defaults struct {
 	Theme                    string `json:"theme"`
 	DefaultViewMode          string `json:"default_view_mode"`
 	StartupOnBoot            bool   `json:"startup_on_boot"`
-  CloseToTray              bool   `json:"close_to_tray"`
+	CloseToTray              bool   `json:"close_to_tray"`
 	ShowHiddenArticles       bool   `json:"show_hidden_articles"`
 	TranslationEnabled       bool   `json:"translation_enabled"`
 	TargetLanguage           string `json:"target_language"`
