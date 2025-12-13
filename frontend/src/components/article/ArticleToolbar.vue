@@ -9,6 +9,7 @@ import {
   PhStar,
   PhClockCountdown,
   PhArrowSquareOut,
+  PhTranslate,
 } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 
@@ -17,9 +18,12 @@ const { t } = useI18n();
 interface Props {
   article: Article;
   showContent: boolean;
+  showTranslations?: boolean;
 }
 
-defineProps<Props>();
+withDefaults(defineProps<Props>(), {
+  showTranslations: true,
+});
 
 defineEmits<{
   close: [];
@@ -28,6 +32,7 @@ defineEmits<{
   toggleFavorite: [];
   toggleReadLater: [];
   openOriginal: [];
+  toggleTranslations: [];
 }>();
 </script>
 
@@ -50,6 +55,18 @@ defineEmits<{
       >
         <PhGlobe v-if="showContent" :size="18" class="sm:w-5 sm:h-5" />
         <PhArticle v-else :size="18" class="sm:w-5 sm:h-5" />
+      </button>
+      <button
+        v-if="showContent"
+        class="action-btn"
+        :title="showTranslations ? t('hideTranslations') : t('showTranslations')"
+        @click="$emit('toggleTranslations')"
+      >
+        <PhTranslate
+          :size="18"
+          class="sm:w-5 sm:h-5"
+          :weight="showTranslations ? 'fill' : 'regular'"
+        />
       </button>
       <button
         class="action-btn"

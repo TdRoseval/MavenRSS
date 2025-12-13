@@ -429,6 +429,14 @@ jobs:
           # Clean up any cached appimagetool to ensure correct architecture is downloaded
           rm -f build/appimagetool-*.AppImage
 
+          # Debug: Show system architecture info
+          echo "System architecture: $(uname -m)"
+          echo "Target architecture: ${{ matrix.arch }}"
+
+          # Debug: Verify binary architecture
+          echo "Binary architecture check:"
+          file build/bin/MrRSS || true
+
           chmod +x build/linux/create-appimage.sh
           ARCH=${{ matrix.arch }} ./build/linux/create-appimage.sh || echo "AppImage creation failed, will use tar.gz"
         continue-on-error: true

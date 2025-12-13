@@ -49,6 +49,8 @@ const zh: TranslationMessages = {
   youtubeVideo: 'YouTube 视频',
   openInYouTube: '在 YouTube 中打开',
   videoLoadError: '无法加载视频。请尝试在 YouTube 中打开。',
+  hideTranslations: '隐藏翻译',
+  showTranslations: '显示翻译',
 
   // Context Menu
   unsubscribe: '取消订阅',

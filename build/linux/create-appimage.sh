@@ -163,16 +163,27 @@ elif [ "${ARCH}" = "arm64" ]; then
     APPIMAGE_ARCH="aarch64"
 fi
 
+# Verify binary architecture before creating AppImage
+echo "Verifying binary architecture..."
+BINARY_ARCH=$(file "${APPDIR}/usr/bin/${APP_NAME}" | grep -o 'aarch64\|x86-64\|ARM aarch64' || true)
+echo "Binary architecture: ${BINARY_ARCH}"
+
 if [ -n "${CI}" ] || ! [ -e /dev/fuse ]; then
     echo "FUSE not available, using --appimage-extract-and-run mode"
-    if ! ARCH="${APPIMAGE_ARCH}" "${APPIMAGETOOL}" --appimage-extract-and-run "${APPDIR}" "${BUILD_DIR}/${APPIMAGE_NAME}" 2>&1; then
+    echo "Running: ARCH=${APPIMAGE_ARCH} ${APPIMAGETOOL} --appimage-extract-and-run ${APPDIR} ${BUILD_DIR}/${APPIMAGE_NAME}"
+    if ! ARCH="${APPIMAGE_ARCH}" "${APPIMAGETOOL}" --appimage-extract-and-run --no-appstream "${APPDIR}" "${BUILD_DIR}/${APPIMAGE_NAME}" 2>&1; then
         echo "Error: AppImage creation failed"
         echo "This might be due to architecture mismatch or missing dependencies"
+        echo "Checking AppDir contents..."
+        find "${APPDIR}" -type f -exec file {} \; | grep -E 'ELF|shared object' || true
         exit 1
     fi
 else
-    if ! ARCH="${APPIMAGE_ARCH}" "${APPIMAGETOOL}" "${APPDIR}" "${BUILD_DIR}/${APPIMAGE_NAME}" 2>&1; then
+    echo "Running: ARCH=${APPIMAGE_ARCH} ${APPIMAGETOOL} ${APPDIR} ${BUILD_DIR}/${APPIMAGE_NAME}"
+    if ! ARCH="${APPIMAGE_ARCH}" "${APPIMAGETOOL}" --no-appstream "${APPDIR}" "${BUILD_DIR}/${APPIMAGE_NAME}" 2>&1; then
         echo "Error: AppImage creation failed"
+        echo "Checking AppDir contents..."
+        find "${APPDIR}" -type f -exec file {} \; | grep -E 'ELF|shared object' || true
         exit 1
     fi
 fi

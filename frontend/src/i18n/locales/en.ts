@@ -51,6 +51,8 @@ const en: TranslationMessages = {
   youtubeVideo: 'YouTube Video',
   openInYouTube: 'Open in YouTube',
   videoLoadError: 'Failed to load video. Please try opening it in YouTube.',
+  hideTranslations: 'Hide Translations',
+  showTranslations: 'Show Translations',
 
   // Context Menu
   unsubscribe: 'Unsubscribe',

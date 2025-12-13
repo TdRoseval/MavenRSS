@@ -30,9 +30,12 @@ interface Props {
   articleContent: string;
   isLoadingContent: boolean;
   attachImageEventListeners?: () => void;
+  showTranslations?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  showTranslations: true,
+});
 
 const { t } = useI18n();
 
@@ -373,7 +376,10 @@ watch(
 
 <template>
   <div class="flex-1 overflow-y-auto bg-bg-primary p-3 sm:p-6">
-    <div class="max-w-3xl mx-auto bg-bg-primary">
+    <div
+      class="max-w-3xl mx-auto bg-bg-primary"
+      :class="{ 'hide-translations': !showTranslations }"
+    >
       <ArticleTitle
         :article="article"
         :translated-title="translatedTitle"

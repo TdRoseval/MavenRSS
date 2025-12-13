@@ -401,6 +401,11 @@
    Translation text styling
    ============================================ */
 
+/* Hide translations when toggled off */
+.hide-translations .prose .translation-text {
+  display: none !important;
+}
+
 /* Base translation style - consistent dashed line separator */
 .prose .translation-text {
   display: block;

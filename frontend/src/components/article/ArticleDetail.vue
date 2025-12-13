@@ -5,6 +5,8 @@ import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 
+import { ref } from 'vue';
+
 const {
   article,
   showContent,
@@ -22,6 +24,12 @@ const {
   attachImageEventListeners,
   t,
 } = useArticleDetail();
+
+const showTranslations = ref(true);
+
+function toggleTranslations() {
+  showTranslations.value = !showTranslations.value;
+}
 </script>
 
 <template>
@@ -43,12 +51,14 @@ const {
       <ArticleToolbar
         :article="article"
         :show-content="showContent"
+        :show-translations="showTranslations"
         @close="close"
         @toggle-content-view="toggleContentView"
         @toggle-read="toggleRead"
         @toggle-favorite="toggleFavorite"
         @toggle-read-later="toggleReadLater"
         @open-original="openOriginal"
+        @toggle-translations="toggleTranslations"
       />
 
       <!-- Original webpage view -->
@@ -67,6 +77,7 @@ const {
         :article-content="articleContent"
         :is-loading-content="isLoadingContent"
         :attach-image-event-listeners="attachImageEventListeners"
+        :show-translations="showTranslations"
       />
     </div>
 
