@@ -216,6 +216,15 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           },
         })
       );
+
+      // Notify about image_gallery_enabled change
+      window.dispatchEvent(
+        new CustomEvent('image-gallery-setting-changed', {
+          detail: {
+            enabled: settingsRef.value.image_gallery_enabled,
+          },
+        })
+      );
     } catch (e) {
       console.error('Error auto-saving settings:', e);
     }

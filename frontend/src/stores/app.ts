@@ -79,13 +79,25 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function setFeed(feedId: number): void {
-    currentFilter.value = '';
-    currentFeedId.value = feedId;
-    currentCategory.value = null;
-    page.value = 1;
-    articles.value = [];
-    hasMore.value = true;
-    fetchArticles();
+    // Check if this feed is an image mode feed
+    const feed = feeds.value.find((f) => f.id === feedId);
+    if (feed?.is_image_mode) {
+      // Switch to image gallery mode for image mode feeds
+      currentFilter.value = 'imageGallery';
+      currentFeedId.value = feedId;
+      currentCategory.value = null;
+      page.value = 1;
+      articles.value = [];
+      hasMore.value = true;
+    } else {
+      currentFilter.value = '';
+      currentFeedId.value = feedId;
+      currentCategory.value = null;
+      page.value = 1;
+      articles.value = [];
+      hasMore.value = true;
+      fetchArticles();
+    }
   }
 
   function setCategory(category: string): void {

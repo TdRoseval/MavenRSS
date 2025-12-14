@@ -11,9 +11,7 @@ const store = useAppStore();
 // Check if image gallery feature is enabled
 const imageGalleryEnabled = ref(false);
 
-onMounted(async () => {
-  await loadScripts();
-  // Load image gallery enabled setting
+async function loadImageGallerySetting() {
   try {
     const res = await fetch('/api/settings');
     if (res.ok) {
@@ -23,6 +21,17 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
+}
+
+onMounted(async () => {
+  await loadScripts();
+  await loadImageGallerySetting();
+  
+  // Listen for settings changes
+  window.addEventListener('image-gallery-setting-changed', (e: Event) => {
+    const customEvent = e as CustomEvent;
+    imageGalleryEnabled.value = customEvent.detail.enabled;
+  });
 });
 
 type FeedType = 'url' | 'script';

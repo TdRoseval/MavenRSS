@@ -90,15 +90,25 @@ onMounted(async () => {
   isImageMode.value = props.feed.is_image_mode || false;
 
   // Load image gallery enabled setting
-  try {
-    const res = await fetch('/api/settings');
-    if (res.ok) {
-      const data = await res.json();
-      imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
+  async function loadImageGallerySetting() {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
+      }
+    } catch (e) {
+      console.error('Failed to load settings:', e);
     }
-  } catch (e) {
-    console.error('Failed to load settings:', e);
   }
+  
+  await loadImageGallerySetting();
+  
+  // Listen for settings changes
+  window.addEventListener('image-gallery-setting-changed', (e: Event) => {
+    const customEvent = e as CustomEvent;
+    imageGalleryEnabled.value = customEvent.detail.enabled;
+  });
 
   // Initialize proxy settings
   if (props.feed.proxy_url) {

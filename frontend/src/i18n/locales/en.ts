@@ -68,6 +68,7 @@ const en: TranslationMessages = {
   showOriginal: 'Show Original Webpage',
   openWebsite: 'Open Website',
   discoverFeeds: 'Discover Feeds',
+  toggleSidebar: 'Toggle Sidebar',
 
   // Feed Discovery
   fromFeed: 'From Feed',

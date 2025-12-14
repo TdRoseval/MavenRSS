@@ -66,6 +66,7 @@ const zh: TranslationMessages = {
   showOriginal: '显示原网页',
   openWebsite: '打开网站',
   discoverFeeds: '发现订阅源',
+  toggleSidebar: '切换侧边栏',
 
   // Feed Discovery
   fromFeed: '来自订阅源',

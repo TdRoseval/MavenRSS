@@ -1,16 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
-import { PhImage, PhHeart } from '@phosphor-icons/vue';
+import { PhImage, PhHeart, PhList, PhFloppyDisk, PhGlobe } from '@phosphor-icons/vue';
+import { BrowserOpenURL } from '@/wailsjs/wailsjs/runtime/runtime';
 
 const store = useAppStore();
 const { t } = useI18n();
 
+interface Props {
+  isSidebarOpen?: boolean;
+}
+
+defineProps<Props>();
+
+const emit = defineEmits<{
+  toggleSidebar: [];
+}>();
+
 // Constants
 const ITEMS_PER_PAGE = 50;
 const SCROLL_THRESHOLD_PX = 500; // Start loading more items when user is 500px from bottom
+const COLUMN_GAP = 16; // px
 
 const articles = ref<Article[]>([]);
 const isLoading = ref(false);
@@ -18,6 +30,15 @@ const page = ref(1);
 const hasMore = ref(true);
 const selectedArticle = ref<Article | null>(null);
 const showImageViewer = ref(false);
+const columns = ref<Article[][]>([]);
+const columnCount = ref(4);
+const containerRef = ref<HTMLElement | null>(null);
+const contextMenu = ref<{ show: boolean; x: number; y: number; article: Article | null }>({
+  show: false,
+  x: 0,
+  y: 0,
+  article: null,
+});
 
 // Compute which feed ID to fetch (if viewing a specific feed)
 const feedId = computed(() => store.currentFeedId);
@@ -50,6 +71,50 @@ async function fetchImages(loadMore = false) {
   } finally {
     isLoading.value = false;
   }
+}
+
+// Calculate number of columns based on container width
+function calculateColumns() {
+  if (!containerRef.value) return;
+  const width = containerRef.value.offsetWidth;
+  if (width < 640) {
+    columnCount.value = 2;
+  } else if (width < 768) {
+    columnCount.value = 3;
+  } else if (width < 1024) {
+    columnCount.value = 4;
+  } else if (width < 1280) {
+    columnCount.value = 5;
+  } else {
+    columnCount.value = 6;
+  }
+}
+
+// Arrange articles into columns by time, balancing heights
+function arrangeColumns() {
+  if (articles.value.length === 0) {
+    columns.value = [];
+    return;
+  }
+
+  // Initialize columns
+  const cols: Article[][] = Array.from({ length: columnCount.value }, () => []);
+  const colHeights: number[] = Array(columnCount.value).fill(0);
+
+  // Sort articles by published date (newest first)
+  const sortedArticles = [...articles.value].sort((a, b) => {
+    return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+  });
+
+  // Place each article in the shortest column
+  sortedArticles.forEach((article) => {
+    const shortestColIndex = colHeights.indexOf(Math.min(...colHeights));
+    cols[shortestColIndex].push(article);
+    // Estimate height: 200px for image + 80px for info
+    colHeights[shortestColIndex] += 280;
+  });
+
+  columns.value = cols;
 }
 
 // Handle scroll for infinite loading
@@ -130,13 +195,80 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString();
 }
 
+// Handle right-click context menu
+function handleContextMenu(event: MouseEvent, article: Article) {
+  event.preventDefault();
+  event.stopPropagation();
+  contextMenu.value = {
+    show: true,
+    x: event.clientX,
+    y: event.clientY,
+    article,
+  };
+}
+
+// Close context menu
+function closeContextMenu() {
+  contextMenu.value.show = false;
+}
+
+// Download image
+async function downloadImage(article: Article) {
+  try {
+    const response = await fetch(article.image_url || '');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${article.title}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('Failed to download image:', e);
+    window.showToast(t('downloadFailed'), 'error');
+  }
+  closeContextMenu();
+}
+
+// Open original article
+function openOriginal(article: Article) {
+  BrowserOpenURL(article.url);
+  closeContextMenu();
+}
+
+// Watch for articles changes and rearrange
+watch(articles, () => {
+  nextTick(() => {
+    arrangeColumns();
+  });
+});
+
+// Watch for feed ID changes and refetch
+watch(feedId, () => {
+  page.value = 1;
+  articles.value = [];
+  hasMore.value = true;
+  fetchImages();
+});
+
 onMounted(() => {
   fetchImages();
   window.addEventListener('scroll', handleScroll);
+  window.addEventListener('resize', calculateColumns);
+  window.addEventListener('click', closeContextMenu);
+  
+  nextTick(() => {
+    calculateColumns();
+    arrangeColumns();
+  });
 });
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll);
+  window.removeEventListener('resize', calculateColumns);
+  window.removeEventListener('click', closeContextMenu);
 });
 </script>
 
@@ -144,6 +276,13 @@ onUnmounted(() => {
   <div class="image-gallery-container">
     <!-- Header -->
     <div class="gallery-header">
+      <button
+        class="menu-btn md:hidden"
+        @click="emit('toggleSidebar')"
+        :title="t('toggleSidebar')"
+      >
+        <PhList :size="24" />
+      </button>
       <div class="flex items-center gap-2">
         <PhImage :size="24" class="text-accent" />
         <h1 class="text-xl font-bold text-text-primary">{{ t('imageGallery') }}</h1>
@@ -151,38 +290,45 @@ onUnmounted(() => {
     </div>
 
     <!-- Masonry Grid -->
-    <div v-if="articles.length > 0" class="masonry-grid">
+    <div v-if="articles.length > 0" ref="containerRef" class="masonry-container">
       <div
-        v-for="article in articles"
-        :key="article.id"
-        class="masonry-item"
-        @click="openImage(article)"
+        v-for="(column, colIndex) in columns"
+        :key="colIndex"
+        class="masonry-column"
       >
-        <div class="image-container">
-          <img
-            :src="article.image_url"
-            :alt="article.title"
-            class="gallery-image"
-            loading="lazy"
-          />
-          <div class="image-overlay">
-            <button
-              class="favorite-btn"
-              @click="toggleFavorite(article, $event)"
-            >
-              <PhHeart
-                :size="20"
-                :weight="article.is_favorite ? 'fill' : 'regular'"
-                :class="article.is_favorite ? 'text-red-500' : 'text-white'"
-              />
-            </button>
+        <div
+          v-for="article in column"
+          :key="article.id"
+          class="masonry-item"
+          @click="openImage(article)"
+          @contextmenu="handleContextMenu($event, article)"
+        >
+          <div class="image-container">
+            <img
+              :src="article.image_url"
+              :alt="article.title"
+              class="gallery-image"
+              loading="lazy"
+            />
+            <div class="image-overlay">
+              <button
+                class="favorite-btn"
+                @click="toggleFavorite(article, $event)"
+              >
+                <PhHeart
+                  :size="20"
+                  :weight="article.is_favorite ? 'fill' : 'regular'"
+                  :class="article.is_favorite ? 'text-red-500' : 'text-white'"
+                />
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="image-info">
-          <p class="image-title">{{ article.title }}</p>
-          <div class="image-meta">
-            <span class="feed-name">{{ article.feed_title }}</span>
-            <span class="image-date">{{ formatDate(article.published_at) }}</span>
+          <div class="image-info">
+            <p class="image-title">{{ article.title }}</p>
+            <div class="image-meta">
+              <span class="feed-name">{{ article.feed_title }}</span>
+              <span class="image-date">{{ formatDate(article.published_at) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -229,6 +375,29 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Context Menu -->
+    <div
+      v-if="contextMenu.show && contextMenu.article"
+      class="context-menu"
+      :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+      @click.stop
+    >
+      <button
+        class="context-menu-item"
+        @click="downloadImage(contextMenu.article)"
+      >
+        <PhFloppyDisk :size="16" />
+        <span>{{ t('downloadImage') }}</span>
+      </button>
+      <button
+        class="context-menu-item"
+        @click="openOriginal(contextMenu.article)"
+      >
+        <PhGlobe :size="16" />
+        <span>{{ t('openInBrowser') }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -238,15 +407,23 @@ onUnmounted(() => {
 }
 
 .gallery-header {
-  @apply sticky top-0 z-10 bg-bg-primary border-b border-border px-4 py-3;
+  @apply sticky top-0 z-10 bg-bg-primary border-b border-border px-4 py-3 flex items-center gap-3;
 }
 
-.masonry-grid {
-  @apply p-4 columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4;
+.menu-btn {
+  @apply p-2 rounded-lg hover:bg-bg-tertiary text-text-primary transition-colors;
+}
+
+.masonry-container {
+  @apply p-4 flex gap-4;
+}
+
+.masonry-column {
+  @apply flex-1 flex flex-col gap-4;
 }
 
 .masonry-item {
-  @apply break-inside-avoid mb-4 cursor-pointer;
+  @apply cursor-pointer;
 }
 
 .image-container {
@@ -338,5 +515,19 @@ onUnmounted(() => {
 .view-original-btn {
   @apply inline-block px-4 py-2 bg-accent text-white rounded-lg;
   @apply hover:bg-accent-hover transition-colors duration-200;
+}
+
+/* Context Menu */
+.context-menu {
+  @apply fixed z-50 bg-bg-primary border border-border rounded-lg shadow-lg py-1 min-w-[180px];
+}
+
+.context-menu-item {
+  @apply w-full px-4 py-2 flex items-center gap-3 text-sm text-text-primary;
+  @apply hover:bg-bg-tertiary transition-colors cursor-pointer;
+}
+
+.context-menu-item:active {
+  @apply bg-bg-secondary;
 }
 </style>

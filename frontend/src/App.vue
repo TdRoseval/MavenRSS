@@ -189,7 +189,7 @@ function onFeedUpdated(): void {
 
     <!-- Show ImageGalleryView when in image gallery mode -->
     <template v-if="isImageGalleryMode">
-      <ImageGalleryView />
+      <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
     </template>
 
     <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
