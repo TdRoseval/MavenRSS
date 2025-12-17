@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed the issue where MacOS window can not be closed correctly after maximizing.
-- Fixed the issue where images in article content rendering mode can not be displayed correctly.
+- Fixed the issue where MacOS window cannot be closed correctly after maximizing.
+- Fixed the issue where images in article content rendering mode cannot be displayed correctly.
+- Fixed the issue where windows app cannot be packaged correctly due to wrong version number format.
 
 ## [1.3.0] - 2025-12-17
 
@@ -38,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated icons for better appearance.
   - Added more white space on top of the main window for better visual balance.
   - Disabled icon name on tray.
-  - Fixed the issue where window can not be dragged.
+  - Fixed the issue where window cannot be dragged.
   - Fixed the issue where application not closing correctly after maximizing.
 
 ## [1.2.19] - 2025-12-15
@@ -72,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed the issue where settings can not be saved and applied by downgrade TailwindCSS version.
+- Fixed the issue where settings cannot be saved and applied by downgrade TailwindCSS version.
 
 ## [1.2.16] - 2025-12-13
 
@@ -86,8 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed the issue where MacOS can not complile correctly for system tray support.
-- Fixed the issue where Linux-ARM64 AppImage can not run correctly.
+- Fixed the issue where MacOS cannot complile correctly for system tray support.
+- Fixed the issue where Linux-ARM64 AppImage cannot run correctly.
 
 ## [1.2.15] - 2025-12-13
 
@@ -106,9 +107,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed the issue where some images wrapped in links can not be operated correctly.
-- Fixed the issue where single-line link can not be translated correctly.
-- Fixed the issue where some links can not be opened in the default browser.
+- Fixed the issue where some images wrapped in links cannot be operated correctly.
+- Fixed the issue where single-line link cannot be translated correctly.
+- Fixed the issue where some links cannot be opened in the default browser.
 - Fixed the issue where icons on MacOS were not displayed correctly.
 - Fixed the issue where the window size and position were not restored correctly.
 
@@ -128,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed the issue where title and summary can not be selected and copied in article content rendering mode.
+- Fixed the issue where title and summary cannot be selected and copied in article content rendering mode.
 - Fixed the issue where some articles are rendered with incorrect formatting in article content rendering mode.
 
 ## [1.2.12] - 2025-12-10
@@ -156,7 +157,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed the issue where some feeds can not be handled due to invalid styles in RSS XML.
+- Fixed the issue where some feeds cannot be handled due to invalid styles in RSS XML.
 - Fixed the issue where inline elements (e.g. code, formulas) were not handled correctly in translation.
 - Fixed the issue where toast notifications not supporting dark mode caused visibility problems.
 - Fixed the issue related to importing OPML files.
