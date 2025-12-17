@@ -99,10 +99,22 @@ tasks:
   generate:syso:
     summary: Generates Windows `.syso` file
     dir: build
+    deps:
+      - task: generate:icon:ico
     cmds:
       - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
+
+  generate:icon:ico:
+    summary: Generates Windows `.ico` file from `.png`
+    dir: build
+    sources:
+      - "windows/icon.png"
+    generates:
+      - "windows/icon.ico"
+    cmds:
+      - wails3 generate icons -input windows/icon.png -windowsfilename windows/icon.ico
 
   create:nsis:installer:
     summary: Creates an NSIS installer

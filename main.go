@@ -42,8 +42,23 @@ import (
 //go:embed frontend/dist
 var frontendFiles embed.FS
 
+// Platform-specific icon embedding
+// Windows and macOS both use PNG format for system tray
+// Windows .ico is only used for executable icon (via syso)
+//
+//go:embed build/windows/icon.png
+var appIconWindows []byte
+
 //go:embed build/appicon.png
-var appIconPNG []byte
+var appIconMacOS []byte
+
+// getAppIcon returns the appropriate icon for the current platform
+func getAppIcon() []byte {
+	if runtime.GOOS == "windows" {
+		return appIconWindows
+	}
+	return appIconMacOS
+}
 
 type windowState struct {
 	width  int
@@ -333,7 +348,7 @@ func main() {
 		URL:    "/",
 		Mac: application.MacWindow{
 			TitleBar:                application.MacTitleBarHiddenInset,
-			InvisibleTitleBarHeight: 50,
+			InvisibleTitleBarHeight: 60,
 		},
 		BackgroundColour: application.NewRGB(255, 255, 255),
 	}
@@ -387,7 +402,7 @@ func main() {
 		}
 
 		systemTray = app.SystemTray.New()
-		systemTray.SetIcon(appIconPNG)
+		systemTray.SetIcon(getAppIcon())
 
 		// Create tray menu
 		trayMenu := app.NewMenu()
@@ -472,6 +487,15 @@ func main() {
 		}
 
 		if shouldCloseToTray() {
+			// On macOS, exit fullscreen before hiding to prevent black screen
+			if runtime.GOOS == "darwin" {
+				// Check if window is fullscreen and exit if necessary
+				// Note: We don't have a direct way to check fullscreen state in Wails v3
+				// but calling Restore() will exit fullscreen if currently fullscreen
+				mainWindow.Restore()
+				// Small delay to allow fullscreen exit to complete
+				time.Sleep(100 * time.Millisecond)
+			}
 			storeWindowState()
 			// Setup tray if not already
 			setupSystemTray()

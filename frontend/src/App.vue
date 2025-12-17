@@ -49,6 +49,9 @@ const { sidebarWidth, articleListWidth, startResizeSidebar, startResizeArticleLi
 const windowState = useWindowState();
 windowState.init();
 
+// Track fullscreen state for macOS
+const isFullscreen = ref(false);
+
 // Detect platform for MacOS-specific styles
 const { isMacOS } = usePlatform();
 
@@ -72,6 +75,29 @@ onMounted(async () => {
 
   // Initialize theme system immediately (lightweight)
   store.initTheme();
+
+  // Monitor fullscreen state for macOS
+  if (isMacOS.value) {
+    const checkFullscreen = async () => {
+      try {
+        const { WindowIsFullscreen } = await import('@/wailsjs/wailsjs/runtime/runtime');
+        isFullscreen.value = await WindowIsFullscreen();
+      } catch (error) {
+        console.error('Failed to check fullscreen state:', error);
+      }
+    };
+
+    // Check initial state
+    checkFullscreen();
+
+    // Poll for fullscreen state changes (every 500ms)
+    const fullscreenInterval = setInterval(checkFullscreen, 500);
+
+    // Cleanup on unmount
+    window.addEventListener('beforeunload', () => {
+      clearInterval(fullscreenInterval);
+    });
+  }
 
   // Load remaining settings (theme and other settings are already loaded in main.ts)
   let updateInterval = 10;
@@ -182,7 +208,7 @@ function onFeedUpdated(): void {
 <template>
   <div
     class="app-container flex h-screen w-full bg-bg-primary text-text-primary overflow-hidden"
-    :class="{ 'macos-padding': isMacOS }"
+    :class="{ 'macos-padding': isMacOS && !isFullscreen }"
     :style="{
       '--sidebar-width': sidebarWidth + 'px',
       '--article-list-width': articleListWidth + 'px',
@@ -272,7 +298,7 @@ function onFeedUpdated(): void {
 <style>
 /* MacOS-specific styles */
 .app-container.macos-padding {
-  padding-top: 28px; /* Space for MacOS window controls */
+  padding-top: 32px; /* Space for MacOS window controls */
 }
 
 /* MacOS window dragging support - enable drag on top sections only */
@@ -310,9 +336,9 @@ function onFeedUpdated(): void {
   pointer-events: none;
 }
 
-/* Adjust toast position for MacOS */
+/* Adjust toast position for MacOS (only when padding is applied) */
 .app-container.macos-padding .toast-container {
-  top: 38px; /* Account for MacOS top padding */
+  top: 42px; /* Account for MacOS top padding */
 }
 
 .toast-container > * {
@@ -324,7 +350,7 @@ function onFeedUpdated(): void {
     gap: 10px;
   }
   .app-container.macos-padding .toast-container {
-    top: 48px;
+    top: 52px; /* Account for MacOS top padding on larger screens */
   }
 }
 .resizer {
