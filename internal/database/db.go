@@ -157,6 +157,18 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(feed_id) REFERENCES feeds(id)
 	);
 
+	-- Translation cache table to avoid redundant API calls
+	CREATE TABLE IF NOT EXISTS translation_cache (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		source_text_hash TEXT NOT NULL,
+		source_text TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		translated_text TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(source_text_hash, target_lang, provider)
+	);
+
 	-- Create indexes for better query performance
 	CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id);
 	CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
@@ -171,6 +183,9 @@ func initSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_articles_read_published ON articles(is_read, published_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_articles_fav_published ON articles(is_favorite, published_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_articles_readlater_published ON articles(is_read_later, published_at DESC);
+
+	-- Translation cache index
+	CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
 	`
 	_, err := db.Exec(query)
 	return err
@@ -194,4 +209,56 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN video_url TEXT DEFAULT ''`)
 
 	return nil
+}
+
+// TranslationCache represents a cached translation entry
+type TranslationCache struct {
+	ID             int64
+	SourceTextHash string
+	SourceText     string
+	TargetLang     string
+	TranslatedText string
+	Provider       string
+	CreatedAt      string
+}
+
+// GetCachedTranslation retrieves a translation from cache if available
+func (db *DB) GetCachedTranslation(sourceTextHash, targetLang, provider string) (string, bool, error) {
+	var translatedText string
+	err := db.QueryRow(
+		`SELECT translated_text FROM translation_cache 
+		 WHERE source_text_hash = ? AND target_lang = ? AND provider = ?`,
+		sourceTextHash, targetLang, provider,
+	).Scan(&translatedText)
+
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return translatedText, true, nil
+}
+
+// SetCachedTranslation stores a translation in cache
+func (db *DB) SetCachedTranslation(sourceTextHash, sourceText, targetLang, translatedText, provider string) error {
+	_, err := db.Exec(
+		`INSERT OR REPLACE INTO translation_cache 
+		 (source_text_hash, source_text, target_lang, translated_text, provider, created_at) 
+		 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		sourceTextHash, sourceText, targetLang, translatedText, provider,
+	)
+	return err
+}
+
+// CleanupTranslationCache removes cached translations older than maxAgeDays
+func (db *DB) CleanupTranslationCache(maxAgeDays int) (int64, error) {
+	result, err := db.Exec(
+		`DELETE FROM translation_cache WHERE created_at < datetime('now', ?)`,
+		fmt.Sprintf("-%d days", maxAgeDays),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
