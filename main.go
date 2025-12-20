@@ -267,45 +267,51 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
-		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID:      "com.mrrss.app",
-			EncryptionKey: encryptionKey,
-			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
-				log.Printf("Second instance detected, bringing window to front")
-				if mainWindow != nil {
-					// Restore window state if it was stored (minimized to tray)
-					if lastWindowState.valid.Load() {
-						width := lastWindowState.width
-						height := lastWindowState.height
-						x := lastWindowState.x
-						y := lastWindowState.y
+		SingleInstance: func() *application.SingleInstanceOptions {
+			// Disable single instance on Linux due to potential D-Bus issues
+			if runtime.GOOS == "linux" {
+				return nil
+			}
+			return &application.SingleInstanceOptions{
+				UniqueID:      "com.mrrss.app",
+				EncryptionKey: encryptionKey,
+				OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+					log.Printf("Second instance detected, bringing window to front")
+					if mainWindow != nil {
+						// Restore window state if it was stored (minimized to tray)
+						if lastWindowState.valid.Load() {
+							width := lastWindowState.width
+							height := lastWindowState.height
+							x := lastWindowState.x
+							y := lastWindowState.y
 
-						// Ensure minimum window size
-						if width < 400 {
-							width = 1024
-						}
-						if height < 300 {
-							height = 768
-						}
+							// Ensure minimum window size
+							if width < 400 {
+								width = 1024
+							}
+							if height < 300 {
+								height = 768
+							}
 
-						// Ensure window is at least partially on screen
-						if x < -1000 || x > 3000 {
-							x = 100
-						}
-						if y < -1000 || y > 3000 {
-							y = 100
-						}
+							// Ensure window is at least partially on screen
+							if x < -1000 || x > 3000 {
+								x = 100
+							}
+							if y < -1000 || y > 3000 {
+								y = 100
+							}
 
-						log.Printf("Restoring window state: x=%d, y=%d, width=%d, height=%d", x, y, width, height)
-						mainWindow.SetSize(width, height)
-						mainWindow.SetPosition(x, y)
+							log.Printf("Restoring window state: x=%d, y=%d, width=%d, height=%d", x, y, width, height)
+							mainWindow.SetSize(width, height)
+							mainWindow.SetPosition(x, y)
+						}
+						// Show and unminimize the window
+						mainWindow.Show()
+						mainWindow.Restore()
 					}
-					// Show and unminimize the window
-					mainWindow.Show()
-					mainWindow.Restore()
-				}
-			},
-		},
+				},
+			}
+		}(),
 	})
 
 	// Set app instance to handler for browser integration
