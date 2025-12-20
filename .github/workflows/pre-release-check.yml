@@ -185,9 +185,9 @@ jobs:
 
           Write-Host "Using NSIS at: $nsisPath"
 
-          # Get version from wails.json
-          $wailsJson = Get-Content "wails.json" -Raw | ConvertFrom-Json
-          $version = $wailsJson.info.productVersion
+          # Get version from package.json
+          $packageJson = Get-Content "frontend/package.json" -Raw | ConvertFrom-Json
+          $version = $packageJson.version
           $arch = "${{ matrix.arch }}"
           $installerPath = "build/windows/installer.nsi"
 
@@ -241,8 +241,8 @@ jobs:
         run: |
           cd build/bin
           if [ -f "MrRSS" ]; then
-            # Get version from wails.json
-            VERSION=$(jq -r '.info.productVersion' ../../wails.json)
+            # Get version from package.json
+            VERSION=$(jq -r '.version' ../../frontend/package.json)
             tar -czf MrRSS-${VERSION}-linux-${{ matrix.arch }}.tar.gz MrRSS
             echo "Created tar.gz package"
           else

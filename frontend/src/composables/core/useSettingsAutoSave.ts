@@ -101,12 +101,18 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           translation_provider:
             settingsRef.value.translation_provider ?? settingsDefaults.translation_provider,
           deepl_api_key: settingsRef.value.deepl_api_key ?? settingsDefaults.deepl_api_key,
+          deepl_endpoint: settingsRef.value.deepl_endpoint ?? settingsDefaults.deepl_endpoint,
           baidu_app_id: settingsRef.value.baidu_app_id ?? settingsDefaults.baidu_app_id,
           baidu_secret_key: settingsRef.value.baidu_secret_key ?? settingsDefaults.baidu_secret_key,
           ai_api_key: settingsRef.value.ai_api_key ?? settingsDefaults.ai_api_key,
           ai_endpoint: settingsRef.value.ai_endpoint ?? settingsDefaults.ai_endpoint,
           ai_model: settingsRef.value.ai_model ?? settingsDefaults.ai_model,
-          ai_system_prompt: settingsRef.value.ai_system_prompt ?? settingsDefaults.ai_system_prompt,
+          ai_translation_prompt:
+            settingsRef.value.ai_translation_prompt ?? settingsDefaults.ai_translation_prompt,
+          ai_summary_prompt:
+            settingsRef.value.ai_summary_prompt ?? settingsDefaults.ai_summary_prompt,
+          ai_usage_tokens: settingsRef.value.ai_usage_tokens ?? settingsDefaults.ai_usage_tokens,
+          ai_usage_limit: settingsRef.value.ai_usage_limit ?? settingsDefaults.ai_usage_limit,
           auto_cleanup_enabled: (
             settingsRef.value.auto_cleanup_enabled ?? settingsDefaults.auto_cleanup_enabled
           ).toString(),
@@ -120,6 +126,9 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           theme: settingsRef.value.theme ?? settingsDefaults.theme,
           show_hidden_articles: (
             settingsRef.value.show_hidden_articles ?? settingsDefaults.show_hidden_articles
+          ).toString(),
+          hover_mark_as_read: (
+            settingsRef.value.hover_mark_as_read ?? settingsDefaults.hover_mark_as_read
           ).toString(),
           default_view_mode:
             settingsRef.value.default_view_mode ?? settingsDefaults.default_view_mode,
@@ -144,13 +153,6 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           ).toString(),
           summary_length: settingsRef.value.summary_length ?? settingsDefaults.summary_length,
           summary_provider: settingsRef.value.summary_provider ?? settingsDefaults.summary_provider,
-          summary_ai_api_key:
-            settingsRef.value.summary_ai_api_key ?? settingsDefaults.summary_ai_api_key,
-          summary_ai_endpoint:
-            settingsRef.value.summary_ai_endpoint ?? settingsDefaults.summary_ai_endpoint,
-          summary_ai_model: settingsRef.value.summary_ai_model ?? settingsDefaults.summary_ai_model,
-          summary_ai_system_prompt:
-            settingsRef.value.summary_ai_system_prompt ?? settingsDefaults.summary_ai_system_prompt,
           proxy_enabled: (
             settingsRef.value.proxy_enabled ?? settingsDefaults.proxy_enabled
           ).toString(),

@@ -28,7 +28,7 @@ export function useSettingsValidation(settings: Ref<SettingsData>) {
     } else if (settings.value.translation_provider === 'baidu') {
       return !!(settings.value.baidu_app_id?.trim() && settings.value.baidu_secret_key?.trim());
     } else if (settings.value.translation_provider === 'ai') {
-      return !!settings.value.ai_api_key?.trim();
+      // return !!settings.value.ai_api_key?.trim();
     }
 
     return true; // Google Translate doesn't need API key
@@ -42,9 +42,9 @@ export function useSettingsValidation(settings: Ref<SettingsData>) {
       return true; // Not enabled, so no validation needed
     }
 
-    if (settings.value.summary_provider === 'ai') {
-      return !!settings.value.summary_ai_api_key?.trim();
-    }
+    // if (settings.value.summary_provider === 'ai') {
+    //   return !!settings.value.summary_ai_api_key?.trim();
+    // }
     return true; // Local summary doesn't need API key
   });
 

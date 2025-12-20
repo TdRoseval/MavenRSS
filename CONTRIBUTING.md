@@ -172,24 +172,8 @@ docs(readme): update installation instructions
 
 ## Testing
 
-### Backend Tests
-
 ```bash
-# Run all tests
-go test ./...
-
-# Run with coverage
-go test -cover ./...
-
-# Run specific package
-go test ./internal/feed
-```
-
-### Frontend Tests
-
-```bash
-cd frontend
-npm test
+make test
 ```
 
 ### Cross-Platform Scripts

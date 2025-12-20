@@ -79,6 +79,11 @@ export function useArticleTranslation() {
         const data = await res.json();
         // Update the article in the store
         article.translated_title = data.translated_title;
+
+        // Show notification if AI limit was reached
+        if (data.limit_reached) {
+          window.showToast(t('aiLimitReached'), 'warning');
+        }
       } else {
         console.error('Error translating article:', res.status);
         window.showToast(t('errorTranslatingTitle'), 'error');

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, onMounted, onBeforeUnmount, watch, type Ref } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, type Ref } from 'vue';
 import {
   PhCheckCircle,
   PhArrowClockwise,
@@ -105,13 +105,19 @@ onMounted(async () => {
   window.addEventListener('toggle-filter', onToggleFilter);
 });
 
-// Watch for articles changes during refresh to maintain scroll position
+// Watch for articles changes to maintain scroll position
 watch(
   () => store.articles,
-  () => {
+  async () => {
     if (isRefreshing.value && listRef.value) {
       // Restore scroll position during refresh
       listRef.value.scrollTop = savedScrollTop.value;
+    } else if (!isRefreshing.value && listRef.value) {
+      // For non-refresh changes (like clicking article to load content),
+      // save and restore scroll position to prevent jumping to top
+      const currentScroll = listRef.value.scrollTop;
+      await nextTick();
+      listRef.value.scrollTop = currentScroll;
     }
   },
   { deep: true }
@@ -267,6 +273,20 @@ async function clearReadLater(): Promise<void> {
     console.error('Error clearing read later:', e);
   }
 }
+
+// Handle hover mark as read event from ArticleItem
+function handleHoverMarkAsRead(articleId: number): void {
+  // Find and update the article in the store
+  const article = store.articles.find((a) => a.id === articleId);
+  if (article) {
+    article.is_read = true;
+  }
+  // Also update in filtered articles if applicable
+  const filteredArticle = filteredArticlesFromServer.value.find((a) => a.id === articleId);
+  if (filteredArticle) {
+    filteredArticle.is_read = true;
+  }
+}
 </script>
 
 <template>
@@ -354,6 +374,7 @@ async function clearReadLater(): Promise<void> {
         @click="selectArticle(article)"
         @contextmenu="(e) => showArticleContextMenu(e, article)"
         @observe-element="observeArticle"
+        @hover-mark-as-read="handleHoverMarkAsRead"
       />
 
       <div

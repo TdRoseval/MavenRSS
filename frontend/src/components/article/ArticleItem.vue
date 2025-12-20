@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhEyeSlash, PhStar, PhClockCountdown } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 import { formatDate as formatDateUtil } from '@/utils/date';
 import { getProxiedMediaUrl, isMediaCacheEnabled } from '@/utils/mediaProxy';
 import { useShowPreviewImages } from '@/composables/ui/useShowPreviewImages';
+import { useAppStore } from '@/stores/app';
 
 interface Props {
   article: Article;
@@ -18,12 +19,16 @@ const emit = defineEmits<{
   click: [];
   contextmenu: [event: MouseEvent];
   observeElement: [element: Element | null];
+  hoverMarkAsRead: [articleId: number];
 }>();
 
 const { t, locale } = useI18n();
 const { showPreviewImages } = useShowPreviewImages();
+const store = useAppStore();
 
 const mediaCacheEnabled = ref(false);
+const hoverMarkAsRead = ref(false);
+let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const imageUrl = computed(() => {
   if (!props.article.image_url) return '';
@@ -46,8 +51,63 @@ function handleImageError(event: Event) {
   target.style.display = 'none';
 }
 
+// Hover mark as read functionality
+function handleMouseEnter() {
+  // Don't mark as read if:
+  // - Setting is disabled
+  // - Article is already read
+  // - Article is in "Read Later" list (user explicitly wants to read it later)
+  if (!hoverMarkAsRead.value || props.article.is_read || props.article.is_read_later) {
+    return;
+  }
+
+  // Use a small delay to avoid marking as read when quickly scrolling through the list
+  hoverTimeout = setTimeout(() => {
+    markAsRead();
+  }, 300);
+}
+
+function handleMouseLeave() {
+  if (hoverTimeout) {
+    clearTimeout(hoverTimeout);
+    hoverTimeout = null;
+  }
+}
+
+async function markAsRead() {
+  if (props.article.is_read) return;
+
+  try {
+    await fetch(`/api/articles/read?id=${props.article.id}&read=true`, {
+      method: 'POST',
+    });
+    // Emit event to parent to update article state
+    emit('hoverMarkAsRead', props.article.id);
+    store.fetchUnreadCounts();
+  } catch (e) {
+    console.error('Error marking as read on hover:', e);
+  }
+}
+
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    hoverMarkAsRead.value = data.hover_mark_as_read === 'true';
+  } catch (e) {
+    console.error('Error loading hover mark as read setting:', e);
+  }
+}
+
 onMounted(async () => {
   mediaCacheEnabled.value = await isMediaCacheEnabled();
+  await loadSettings();
+});
+
+onUnmounted(() => {
+  if (hoverTimeout) {
+    clearTimeout(hoverTimeout);
+  }
 });
 </script>
 
@@ -65,6 +125,8 @@ onMounted(async () => {
     ]"
     @click="emit('click')"
     @contextmenu="emit('contextmenu', $event)"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave"
   >
     <img
       v-if="shouldShowImage"

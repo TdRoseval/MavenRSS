@@ -58,7 +58,6 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add wails.json
           git commit -m "Release ${{ steps.get_version.outputs.tag }}" || echo "No changes to commit"
           git tag ${{ steps.get_version.outputs.tag }}
           git push origin ${{ steps.get_version.outputs.tag }}

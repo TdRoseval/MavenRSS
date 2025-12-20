@@ -81,3 +81,31 @@ func TestAITranslate_SuccessAndEmpty(t *testing.T) {
 		t.Fatalf("expected Bonjour, got %s", out2)
 	}
 }
+
+func TestAITranslate_AutoDetectOllama(t *testing.T) {
+	t1 := NewAITranslator("", "http://localhost:11434/api/generate", "llama3.2:1b")
+
+	// Mock Ollama response (first try OpenAI format, which should fail, then try Ollama format)
+	callCount := 0
+	t1.client = &http.Client{Transport: rtFunc(func(req *http.Request) (*http.Response, error) {
+		callCount++
+		if callCount == 1 {
+			// First call - OpenAI format fails
+			return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"Invalid format"}}`)), Header: http.Header{"Content-Type": {"application/json"}}}, nil
+		}
+		// Second call - Ollama format succeeds
+		body := `{"response":"Bonjour","done":true}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{"Content-Type": {"application/json"}}}, nil
+	}), Timeout: 5 * time.Second}
+
+	out, err := t1.Translate("Hello", "fr")
+	if err != nil {
+		t.Fatalf("AI translate auto-detect failed: %v", err)
+	}
+	if out != "Bonjour" {
+		t.Fatalf("expected Bonjour, got %s", out)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 API calls (OpenAI then Ollama), got %d", callCount)
+	}
+}

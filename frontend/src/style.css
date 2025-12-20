@@ -120,3 +120,10 @@ textarea,
 .dark-mode ::-webkit-scrollbar-thumb:hover {
   background: #666;
 }
+
+/* Firefox select styling fix for dark mode */
+.dark-mode select {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}

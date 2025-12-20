@@ -74,7 +74,7 @@ func TestHandleTranslateArticle_SuccessAndDBUpdate(t *testing.T) {
 		t.Fatalf("expected 200 got %d", rr.Code)
 	}
 
-	var resp map[string]string
+	var resp map[string]interface{}
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}

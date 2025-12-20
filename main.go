@@ -40,6 +40,14 @@ import (
 	"MrRSS/internal/utils"
 )
 
+var debugLogging = os.Getenv("MRRSS_DEBUG") != ""
+
+func debugLog(format string, args ...interface{}) {
+	if debugLogging {
+		log.Printf(format, args...)
+	}
+}
+
 //go:embed frontend/dist
 var frontendFiles embed.FS
 
@@ -126,7 +134,7 @@ func main() {
 		log.Printf("Error getting database path: %v", err)
 		log.Fatal(err)
 	}
-	log.Printf("Database path: %s", dbPath)
+	debugLog("Database path: %s", dbPath)
 
 	// Initialize database
 	log.Println("Initializing Database...")
@@ -144,7 +152,7 @@ func main() {
 	}
 	log.Println("Database initialized successfully")
 
-	translator := translation.NewDynamicTranslator(db)
+	translator := translation.NewDynamicTranslatorWithCache(db, db)
 	fetcher := feed.NewFetcher(db, translator)
 	h := handlers.NewHandler(db, fetcher, translator)
 
@@ -176,6 +184,8 @@ func main() {
 	apiMux.HandleFunc("/api/articles/translate", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleTranslateArticle(h, w, r) })
 	apiMux.HandleFunc("/api/articles/translate-text", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleTranslateText(h, w, r) })
 	apiMux.HandleFunc("/api/articles/clear-translations", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleClearTranslations(h, w, r) })
+	apiMux.HandleFunc("/api/ai-usage", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleGetAIUsage(h, w, r) })
+	apiMux.HandleFunc("/api/ai-usage/reset", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleResetAIUsage(h, w, r) })
 	apiMux.HandleFunc("/api/articles/toggle-hide", func(w http.ResponseWriter, r *http.Request) { article.HandleToggleHideArticle(h, w, r) })
 	apiMux.HandleFunc("/api/articles/toggle-read-later", func(w http.ResponseWriter, r *http.Request) { article.HandleToggleReadLater(h, w, r) })
 	apiMux.HandleFunc("/api/articles/content", func(w http.ResponseWriter, r *http.Request) { article.HandleGetArticleContent(h, w, r) })

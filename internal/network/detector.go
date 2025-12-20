@@ -109,7 +109,12 @@ func (d *Detector) testLatency(ctx context.Context) (int64, error) {
 		if err != nil {
 			continue
 		}
-		resp.Body.Close()
+		defer resp.Body.Close()
+
+		// Check if response is successful
+		if resp.StatusCode >= 400 {
+			continue
+		}
 
 		latency := time.Since(start).Milliseconds()
 		totalLatency += latency
@@ -147,6 +152,11 @@ func (d *Detector) testBandwidth(ctx context.Context) (float64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
+
+	// Check if response is successful
+	if resp.StatusCode >= 400 {
+		return 0, fmt.Errorf("HTTP %d error", resp.StatusCode)
+	}
 
 	// Read the response body
 	bytesRead, err := io.Copy(io.Discard, resp.Body)

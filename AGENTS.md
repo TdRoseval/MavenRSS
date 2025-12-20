@@ -31,7 +31,6 @@
 ```plaintext
 MrRSS/
 ├── main.go                      # Application entry point
-├── wails.json                   # Wails configuration
 ├── internal/                    # Backend Go code
 │   ├── cache/                   # Media cache management
 │   ├── config/                  # Configuration management

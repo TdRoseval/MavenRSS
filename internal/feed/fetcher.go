@@ -25,6 +25,7 @@ type FeedParser interface {
 type Fetcher struct {
 	db                *database.DB
 	fp                FeedParser
+	highPriorityFp    FeedParser // High priority parser for content fetching
 	translator        translation.Translator
 	scriptExecutor    *ScriptExecutor
 	progress          Progress
@@ -33,6 +34,8 @@ type Fetcher struct {
 	// Queue tracking for individual feed refreshes
 	queuedFeeds map[int64]bool // Tracks feeds that are queued for refresh
 	queueMu     sync.Mutex
+	// Priority system
+	priorityMu sync.Mutex // Protects priority operations
 }
 
 func NewFetcher(db *database.DB, translator translation.Translator) *Fetcher {
@@ -43,9 +46,15 @@ func NewFetcher(db *database.DB, translator translation.Translator) *Fetcher {
 		executor = NewScriptExecutor(scriptsDir)
 	}
 
+	// Create high priority parser with shorter timeout for content fetching
+	highPriorityParser := gofeed.NewParser()
+	// Note: We can't easily set custom HTTP client on gofeed parser
+	// The priority will be handled at the application level
+
 	return &Fetcher{
 		db:                db,
 		fp:                gofeed.NewParser(),
+		highPriorityFp:    highPriorityParser,
 		translator:        translator,
 		scriptExecutor:    executor,
 		refreshCalculator: NewIntelligentRefreshCalculator(db),
@@ -229,44 +238,12 @@ Finish:
 }
 
 func (f *Fetcher) FetchFeed(ctx context.Context, feed models.Feed) {
-	var parsedFeed *gofeed.Feed
-	var err error
-
-	// Check if this feed uses a custom script
-	if feed.ScriptPath != "" {
-		// Execute the custom script to fetch feed
-		if f.scriptExecutor == nil {
-			log.Printf("Script executor not initialized for feed %s", feed.Title)
-			f.db.UpdateFeedError(feed.ID, "Script executor not initialized")
-			return
-		}
-		parsedFeed, err = f.scriptExecutor.ExecuteScript(ctx, feed.ScriptPath)
-		if err != nil {
-			log.Printf("Error executing script for feed %s: %v", feed.Title, err)
-			f.db.UpdateFeedError(feed.ID, err.Error())
-			return
-		}
-	} else {
-		// Get HTTP client with proxy support
-		httpClient, err := f.getHTTPClient(feed)
-		if err != nil {
-			log.Printf("Error creating HTTP client for feed %s: %v", feed.Title, err)
-			f.db.UpdateFeedError(feed.ID, err.Error())
-			return
-		}
-
-		// Set HTTP client on parser if it's a gofeed parser
-		if gp, ok := f.fp.(*gofeed.Parser); ok {
-			gp.Client = httpClient
-		}
-
-		// Use parser to fetch feed
-		parsedFeed, err = f.fp.ParseURLWithContext(feed.URL, ctx)
-		if err != nil {
-			log.Printf("Error parsing feed %s: %v", feed.URL, err)
-			f.db.UpdateFeedError(feed.ID, err.Error())
-			return
-		}
+	// Use ParseFeedWithScript with normal priority for feed refresh
+	parsedFeed, err := f.ParseFeedWithScript(ctx, feed.URL, feed.ScriptPath, false) // Normal priority for refresh
+	if err != nil {
+		log.Printf("Error parsing feed %s: %v", feed.URL, err)
+		f.db.UpdateFeedError(feed.ID, err.Error())
+		return
 	}
 
 	// Clear any previous error on successful fetch
@@ -306,12 +283,12 @@ func (f *Fetcher) FetchFeed(ctx context.Context, feed models.Feed) {
 				if err != nil {
 					log.Printf("Error applying rules for feed %s: %v", feed.Title, err)
 				} else if affected > 0 {
-					log.Printf("Applied rules to %d articles in feed %s", affected, feed.Title)
+					utils.DebugLog("Applied rules to %d articles in feed %s", affected, feed.Title)
 				}
 			}
 		}
 	}
-	log.Printf("Updated feed: %s", feed.Title)
+	utils.DebugLog("Updated feed: %s", feed.Title)
 }
 
 // FetchSingleFeed fetches a single feed with progress tracking.
@@ -323,7 +300,7 @@ func (f *Fetcher) FetchSingleFeed(ctx context.Context, feed models.Feed) {
 	if f.queuedFeeds[feed.ID] {
 		// Feed is already queued, skip duplicate
 		f.queueMu.Unlock()
-		log.Printf("Feed %s is already queued for refresh, skipping", feed.Title)
+		utils.DebugLog("Feed %s is already queued for refresh, skipping", feed.Title)
 		return
 	}
 	f.queuedFeeds[feed.ID] = true
@@ -370,7 +347,7 @@ func (f *Fetcher) FetchSingleFeed(ctx context.Context, feed models.Feed) {
 		f.db.SetSetting("last_article_update", time.Now().Format(time.RFC3339))
 		log.Printf("All queued feed updates complete")
 	} else {
-		log.Printf("Feed update complete: %s (%d remaining)", feed.Title, remainingCount)
+		utils.DebugLog("Feed update complete: %s (%d remaining)", feed.Title, remainingCount)
 	}
 }
 
@@ -450,5 +427,5 @@ Finish:
 
 	// Update last article update time
 	f.db.SetSetting("last_article_update", time.Now().Format(time.RFC3339))
-	log.Printf("Batch feed update complete for %d feeds", len(feedIDs))
+	utils.DebugLog("Batch feed update complete for %d feeds", len(feedIDs))
 }

@@ -3,7 +3,7 @@
   <h1>MrRSS</h1>
   <p><strong>A Modern, Cross-Platform Desktop RSS Reader</strong></p>
 
-   [![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+   [![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -28,7 +28,6 @@
 - 📝 **Article Summarization**: Generate article summaries using local TF-IDF/TextRank algorithms or AI
 - 🎨 **Modern UI**: Clean, responsive interface with dark mode support
 - 📦 **OPML Import/Export**: Easy migration from other RSS readers
-- ⌨️ **Keyboard Shortcuts**: Boost productivity with customizable keyboard shortcuts for quick navigation and actions
 - 📋 **Smart Filtering Rules**: Automate feed organization with powerful custom rules
 - 🏭 **Custom Automation Scripts**: Support for running user-defined automation scripts to fetch feeds
 

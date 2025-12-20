@@ -99,6 +99,7 @@ export interface TranslationMessages {
   settingsTitle: string;
   general: string;
   feeds: string;
+  ai: string;
   about: string;
 
   // General Settings
@@ -162,6 +163,18 @@ export interface TranslationMessages {
   targetLanguageDesc: string;
   language: string;
   languageDesc: string;
+
+  // AI Settings Tab
+  aiIsDanger: string;
+  aiSettings: string;
+  aiSettingsDesc: string;
+  aiTranslationPrompt: string;
+  aiTranslationPromptDesc: string;
+  aiTranslationPromptPlaceholder: string;
+  aiSummaryPrompt: string;
+  aiSummaryPromptDesc: string;
+  aiSummaryPromptPlaceholder: string;
+  aiSettingsConfiguredInAITab: string;
 
   // Summary
   summary: string;
@@ -276,11 +289,13 @@ export interface TranslationMessages {
   markedAllAsRead: string;
   databaseCleanedSuccess: string;
   opmlImportedSuccess: string;
+  opmlExportedSuccess: string;
   errorSavingSettings: string;
   errorAddingFeed: string;
   errorUpdatingFeed: string;
   errorCleaningDatabase: string;
   importFailed: string;
+  exportFailed: string;
 
   // Loading Messages
   loadingContent: string;

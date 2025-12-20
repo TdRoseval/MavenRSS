@@ -35,6 +35,9 @@ func (db *DB) CleanupOldArticles() (int64, error) {
 
 	count, _ := result.RowsAffected()
 
+	// Also cleanup translation cache with the same age limit
+	_, _ = db.CleanupTranslationCache(maxAgeDays)
+
 	// Run VACUUM to reclaim space
 	_, _ = db.Exec("VACUUM")
 
@@ -56,6 +59,9 @@ func (db *DB) CleanupUnimportantArticles() (int64, error) {
 	}
 
 	count, _ := result.RowsAffected()
+
+	// Also cleanup translation cache (remove entries older than 7 days)
+	_, _ = db.CleanupTranslationCache(7)
 
 	// Run VACUUM to reclaim space
 	_, _ = db.Exec("VACUUM")

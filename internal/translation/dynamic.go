@@ -2,6 +2,8 @@ package translation
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 )
 
@@ -11,10 +13,17 @@ type SettingsProvider interface {
 	GetEncryptedSetting(key string) (string, error)
 }
 
+// CacheProvider is an interface for translation caching
+type CacheProvider interface {
+	GetCachedTranslation(sourceTextHash, targetLang, provider string) (string, bool, error)
+	SetCachedTranslation(sourceTextHash, sourceText, targetLang, translatedText, provider string) error
+}
+
 // DynamicTranslator is a translator that dynamically selects the translation provider
 // based on user settings. It creates the appropriate translator at translation time.
 type DynamicTranslator struct {
 	settings SettingsProvider
+	cache    CacheProvider
 	mu       sync.RWMutex
 	// Cache the current translator to avoid recreating it for every translation
 	cachedTranslator Translator
@@ -34,23 +43,37 @@ func NewDynamicTranslator(settings SettingsProvider) *DynamicTranslator {
 	}
 }
 
+// NewDynamicTranslatorWithCache creates a new dynamic translator with translation caching.
+func NewDynamicTranslatorWithCache(settings SettingsProvider, cache CacheProvider) *DynamicTranslator {
+	return &DynamicTranslator{
+		settings: settings,
+		cache:    cache,
+	}
+}
+
 // Translate translates text using the currently configured translation provider.
 func (t *DynamicTranslator) Translate(text, targetLang string) (string, error) {
 	if text == "" {
 		return "", nil
 	}
 
-	translator, err := t.getTranslator()
+	translator, provider, err := t.getTranslatorWithProvider()
 	if err != nil {
 		return "", err
+	}
+
+	// Wrap with caching if cache is available
+	if t.cache != nil {
+		cachedTranslator := NewCachedTranslator(translator, t.cache, provider)
+		return cachedTranslator.Translate(text, targetLang)
 	}
 
 	return translator.Translate(text, targetLang)
 }
 
-// getTranslator returns the appropriate translator based on current settings.
+// getTranslatorWithProvider returns the appropriate translator and provider name based on current settings.
 // It caches the translator and only recreates it if settings have changed.
-func (t *DynamicTranslator) getTranslator() (Translator, error) {
+func (t *DynamicTranslator) getTranslatorWithProvider() (Translator, string, error) {
 	provider, _ := t.settings.GetSetting("translation_provider")
 	if provider == "" {
 		provider = "google" // Default to Google Free
@@ -61,6 +84,7 @@ func (t *DynamicTranslator) getTranslator() (Translator, error) {
 	switch provider {
 	case "deepl":
 		apiKey, _ = t.settings.GetEncryptedSetting("deepl_api_key")
+		endpoint, _ = t.settings.GetSetting("deepl_endpoint")
 	case "baidu":
 		appID, _ = t.settings.GetSetting("baidu_app_id")
 		secretKey, _ = t.settings.GetEncryptedSetting("baidu_secret_key")
@@ -68,7 +92,7 @@ func (t *DynamicTranslator) getTranslator() (Translator, error) {
 		apiKey, _ = t.settings.GetEncryptedSetting("ai_api_key")
 		endpoint, _ = t.settings.GetSetting("ai_endpoint")
 		model, _ = t.settings.GetSetting("ai_model")
-		systemPrompt, _ = t.settings.GetSetting("ai_system_prompt")
+		systemPrompt, _ = t.settings.GetSetting("ai_translation_prompt")
 	}
 
 	// Check if we can reuse the cached translator
@@ -83,7 +107,7 @@ func (t *DynamicTranslator) getTranslator() (Translator, error) {
 		t.cachedPrompt == systemPrompt {
 		translator := t.cachedTranslator
 		t.mu.RUnlock()
-		return translator, nil
+		return translator, provider, nil
 	}
 	t.mu.RUnlock()
 
@@ -96,18 +120,24 @@ func (t *DynamicTranslator) getTranslator() (Translator, error) {
 	case "google":
 		translator = NewGoogleFreeTranslator()
 	case "deepl":
-		if apiKey == "" {
-			return nil, fmt.Errorf("DeepL API key is required")
+		// For deeplx self-hosted, endpoint is required but API key is optional
+		if endpoint == "" && apiKey == "" {
+			return nil, "", fmt.Errorf("DeepL API key is required (or provide a custom endpoint for deeplx)")
 		}
-		translator = NewDeepLTranslator(apiKey)
+		if endpoint != "" {
+			translator = NewDeepLTranslatorWithEndpoint(apiKey, endpoint)
+		} else {
+			translator = NewDeepLTranslator(apiKey)
+		}
 	case "baidu":
 		if appID == "" || secretKey == "" {
-			return nil, fmt.Errorf("Baidu App ID and Secret Key are required")
+			return nil, "", fmt.Errorf("Baidu App ID and Secret Key are required")
 		}
 		translator = NewBaiduTranslator(appID, secretKey)
 	case "ai":
-		if apiKey == "" {
-			return nil, fmt.Errorf("AI API key is required")
+		// Allow empty API key for local endpoints (e.g., Ollama)
+		if apiKey == "" && !isLocalEndpoint(endpoint) {
+			return nil, "", fmt.Errorf("AI API key is required for non-local endpoints")
 		}
 		aiTranslator := NewAITranslator(apiKey, endpoint, model)
 		if systemPrompt != "" {
@@ -128,5 +158,36 @@ func (t *DynamicTranslator) getTranslator() (Translator, error) {
 	t.cachedModel = model
 	t.cachedPrompt = systemPrompt
 
-	return translator, nil
+	return translator, provider, nil
+}
+
+// isLocalEndpoint checks if an endpoint URL points to a local service (localhost, 127.0.0.1, etc.)
+// This allows using empty API keys for local LLM services like Ollama
+func isLocalEndpoint(endpointURL string) bool {
+	if endpointURL == "" {
+		return false
+	}
+
+	// Parse the URL to extract the host
+	parsedURL, err := url.Parse(endpointURL)
+	if err != nil {
+		return false
+	}
+
+	host := parsedURL.Host
+	// Remove port if present
+	if idx := strings.LastIndex(host, ":"); idx != -1 {
+		// Handle IPv6 addresses like [::1]:8080
+		if !strings.Contains(host[idx:], "]") {
+			host = host[:idx]
+		}
+	}
+	// Remove brackets from IPv6 addresses
+	host = strings.Trim(host, "[]")
+
+	return host == "localhost" ||
+		host == "127.0.0.1" ||
+		host == "::1" ||
+		strings.HasPrefix(host, "127.") ||
+		host == "0.0.0.0"
 }

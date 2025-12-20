@@ -12,8 +12,8 @@
 set -e
 
 APP_NAME="MrRSS"
-# Get version from wails.json if available, otherwise use default
-VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' wails.json 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)".*/\1/' || echo "1.3.4")
+# Get version from frontend/package.json if available, otherwise use default
+VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' frontend/package.json 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)".*/\1/' || echo "1.3.5")
 # Get architecture from environment variable or default to amd64
 ARCH=${ARCH:-amd64}
 echo "Target architecture: ${ARCH}"

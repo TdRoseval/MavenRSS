@@ -19,12 +19,16 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		targetLang, _ := h.DB.GetSetting("target_language")
 		provider, _ := h.DB.GetSetting("translation_provider")
 		apiKey, _ := h.DB.GetEncryptedSetting("deepl_api_key")
+		deeplEndpoint, _ := h.DB.GetSetting("deepl_endpoint")
 		baiduAppID, _ := h.DB.GetSetting("baidu_app_id")
 		baiduSecretKey, _ := h.DB.GetEncryptedSetting("baidu_secret_key")
 		aiAPIKey, _ := h.DB.GetEncryptedSetting("ai_api_key")
 		aiEndpoint, _ := h.DB.GetSetting("ai_endpoint")
 		aiModel, _ := h.DB.GetSetting("ai_model")
-		aiSystemPrompt, _ := h.DB.GetSetting("ai_system_prompt")
+		aiTranslationPrompt, _ := h.DB.GetSetting("ai_translation_prompt")
+		aiSummaryPrompt, _ := h.DB.GetSetting("ai_summary_prompt")
+		aiUsageTokens, _ := h.DB.GetSetting("ai_usage_tokens")
+		aiUsageLimit, _ := h.DB.GetSetting("ai_usage_limit")
 		autoCleanup, _ := h.DB.GetSetting("auto_cleanup_enabled")
 		maxCacheSize, _ := h.DB.GetSetting("max_cache_size_mb")
 		maxArticleAge, _ := h.DB.GetSetting("max_article_age_days")
@@ -32,6 +36,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		theme, _ := h.DB.GetSetting("theme")
 		lastUpdate, _ := h.DB.GetSetting("last_article_update")
 		showHidden, _ := h.DB.GetSetting("show_hidden_articles")
+		hoverMarkAsRead, _ := h.DB.GetSetting("hover_mark_as_read")
 		startupOnBoot, _ := h.DB.GetSetting("startup_on_boot")
 		closeToTray, _ := h.DB.GetSetting("close_to_tray")
 		shortcuts, _ := h.DB.GetSetting("shortcuts")
@@ -43,10 +48,6 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		summaryEnabled, _ := h.DB.GetSetting("summary_enabled")
 		summaryLength, _ := h.DB.GetSetting("summary_length")
 		summaryProvider, _ := h.DB.GetSetting("summary_provider")
-		summaryAIAPIKey, _ := h.DB.GetEncryptedSetting("summary_ai_api_key")
-		summaryAIEndpoint, _ := h.DB.GetSetting("summary_ai_endpoint")
-		summaryAIModel, _ := h.DB.GetSetting("summary_ai_model")
-		summaryAISystemPrompt, _ := h.DB.GetSetting("summary_ai_system_prompt")
 		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 		proxyType, _ := h.DB.GetSetting("proxy_type")
 		proxyHost, _ := h.DB.GetSetting("proxy_host")
@@ -68,12 +69,16 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"target_language":             targetLang,
 			"translation_provider":        provider,
 			"deepl_api_key":               apiKey,
+			"deepl_endpoint":              deeplEndpoint,
 			"baidu_app_id":                baiduAppID,
 			"baidu_secret_key":            baiduSecretKey,
 			"ai_api_key":                  aiAPIKey,
 			"ai_endpoint":                 aiEndpoint,
 			"ai_model":                    aiModel,
-			"ai_system_prompt":            aiSystemPrompt,
+			"ai_translation_prompt":       aiTranslationPrompt,
+			"ai_summary_prompt":           aiSummaryPrompt,
+			"ai_usage_tokens":             aiUsageTokens,
+			"ai_usage_limit":              aiUsageLimit,
 			"auto_cleanup_enabled":        autoCleanup,
 			"max_cache_size_mb":           maxCacheSize,
 			"max_article_age_days":        maxArticleAge,
@@ -81,6 +86,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"theme":                       theme,
 			"last_article_update":         lastUpdate,
 			"show_hidden_articles":        showHidden,
+			"hover_mark_as_read":          hoverMarkAsRead,
 			"startup_on_boot":             startupOnBoot,
 			"close_to_tray":               closeToTray,
 			"shortcuts":                   shortcuts,
@@ -92,10 +98,6 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"summary_enabled":             summaryEnabled,
 			"summary_length":              summaryLength,
 			"summary_provider":            summaryProvider,
-			"summary_ai_api_key":          summaryAIAPIKey,
-			"summary_ai_endpoint":         summaryAIEndpoint,
-			"summary_ai_model":            summaryAIModel,
-			"summary_ai_system_prompt":    summaryAISystemPrompt,
 			"proxy_enabled":               proxyEnabled,
 			"proxy_type":                  proxyType,
 			"proxy_host":                  proxyHost,
@@ -119,18 +121,23 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			TargetLanguage           string `json:"target_language"`
 			TranslationProvider      string `json:"translation_provider"`
 			DeepLAPIKey              string `json:"deepl_api_key"`
+			DeepLEndpoint            string `json:"deepl_endpoint"`
 			BaiduAppID               string `json:"baidu_app_id"`
 			BaiduSecretKey           string `json:"baidu_secret_key"`
 			AIAPIKey                 string `json:"ai_api_key"`
 			AIEndpoint               string `json:"ai_endpoint"`
 			AIModel                  string `json:"ai_model"`
-			AISystemPrompt           string `json:"ai_system_prompt"`
+			AITranslationPrompt      string `json:"ai_translation_prompt"`
+			AISummaryPrompt          string `json:"ai_summary_prompt"`
+			AIUsageTokens            string `json:"ai_usage_tokens"`
+			AIUsageLimit             string `json:"ai_usage_limit"`
 			AutoCleanupEnabled       string `json:"auto_cleanup_enabled"`
 			MaxCacheSizeMB           string `json:"max_cache_size_mb"`
 			MaxArticleAgeDays        string `json:"max_article_age_days"`
 			Language                 string `json:"language"`
 			Theme                    string `json:"theme"`
 			ShowHiddenArticles       string `json:"show_hidden_articles"`
+			HoverMarkAsRead          string `json:"hover_mark_as_read"`
 			StartupOnBoot            string `json:"startup_on_boot"`
 			CloseToTray              string `json:"close_to_tray"`
 			Shortcuts                string `json:"shortcuts"`
@@ -142,10 +149,6 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			SummaryEnabled           string `json:"summary_enabled"`
 			SummaryLength            string `json:"summary_length"`
 			SummaryProvider          string `json:"summary_provider"`
-			SummaryAIAPIKey          string `json:"summary_ai_api_key"`
-			SummaryAIEndpoint        string `json:"summary_ai_endpoint"`
-			SummaryAIModel           string `json:"summary_ai_model"`
-			SummaryAISystemPrompt    string `json:"summary_ai_system_prompt"`
 			ProxyEnabled             string `json:"proxy_enabled"`
 			ProxyType                string `json:"proxy_type"`
 			ProxyHost                string `json:"proxy_host"`
@@ -186,6 +189,8 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to save DeepL API key", http.StatusInternalServerError)
 			return
 		}
+		// Always update DeepL endpoint (for deeplx self-hosted support)
+		h.DB.SetSetting("deepl_endpoint", req.DeepLEndpoint)
 		h.DB.SetSetting("baidu_app_id", req.BaiduAppID)
 		if err := h.DB.SetEncryptedSetting("baidu_secret_key", req.BaiduSecretKey); err != nil {
 			log.Printf("Failed to save Baidu secret key: %v", err)
@@ -199,7 +204,12 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 		h.DB.SetSetting("ai_endpoint", req.AIEndpoint)
 		h.DB.SetSetting("ai_model", req.AIModel)
-		h.DB.SetSetting("ai_system_prompt", req.AISystemPrompt)
+		h.DB.SetSetting("ai_translation_prompt", req.AITranslationPrompt)
+		h.DB.SetSetting("ai_summary_prompt", req.AISummaryPrompt)
+
+		// Always update AI usage settings
+		h.DB.SetSetting("ai_usage_tokens", req.AIUsageTokens)
+		h.DB.SetSetting("ai_usage_limit", req.AIUsageLimit)
 
 		if req.AutoCleanupEnabled != "" {
 			h.DB.SetSetting("auto_cleanup_enabled", req.AutoCleanupEnabled)
@@ -223,6 +233,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 		if req.ShowHiddenArticles != "" {
 			h.DB.SetSetting("show_hidden_articles", req.ShowHiddenArticles)
+		}
+
+		if req.HoverMarkAsRead != "" {
+			h.DB.SetSetting("hover_mark_as_read", req.HoverMarkAsRead)
 		}
 
 		if req.CloseToTray != "" {
@@ -263,15 +277,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			h.DB.SetSetting("summary_provider", req.SummaryProvider)
 		}
 
-		// Always update AI summary keys as they might be cleared (use encrypted storage for API key)
-		if err := h.DB.SetEncryptedSetting("summary_ai_api_key", req.SummaryAIAPIKey); err != nil {
-			log.Printf("Failed to save summary AI API key: %v", err)
-			http.Error(w, "Failed to save summary AI API key", http.StatusInternalServerError)
-			return
-		}
-		h.DB.SetSetting("summary_ai_endpoint", req.SummaryAIEndpoint)
-		h.DB.SetSetting("summary_ai_model", req.SummaryAIModel)
-		h.DB.SetSetting("summary_ai_system_prompt", req.SummaryAISystemPrompt)
+		// AI summary prompt is now handled by common AI settings (ai_summary_prompt)
 
 		if req.ProxyEnabled != "" {
 			h.DB.SetSetting("proxy_enabled", req.ProxyEnabled)

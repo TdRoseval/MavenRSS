@@ -39,11 +39,11 @@ if ($frontendVersion -ne $goVersion) {
     exit 1
 }
 
-$wailsVersion = (Get-Content wails.json | ConvertFrom-Json).version
-Write-Host "Wails version: $wailsVersion" -ForegroundColor Cyan
+$packageVersion = (Get-Content frontend/package.json | ConvertFrom-Json).version
+Write-Host "Wails version: $packageVersion" -ForegroundColor Cyan
 
-if ($frontendVersion -ne $wailsVersion) {
-    Write-Host "❌ Version mismatch! Frontend: $frontendVersion, Wails: $wailsVersion" -ForegroundColor Red
+if ($frontendVersion -ne $packageVersion) {
+    Write-Host "❌ Version mismatch! Frontend: $frontendVersion, Wails: $packageVersion" -ForegroundColor Red
     exit 1
 }
 

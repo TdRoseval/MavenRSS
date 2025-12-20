@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
 
 interface SummarySettings {
@@ -15,6 +16,7 @@ interface SummaryResult {
 }
 
 export function useArticleSummary() {
+  const { t } = useI18n();
   const summarySettings = ref<SummarySettings>({
     enabled: false,
     length: 'medium',
@@ -69,6 +71,12 @@ export function useArticleSummary() {
       if (res.ok) {
         const data: SummaryResult = await res.json();
         summaryCache.value.set(article.id, data);
+
+        // Show notification if AI limit was reached
+        if (data.limit_reached) {
+          window.showToast(t('aiLimitReached'), 'warning');
+        }
+
         return data;
       }
     } catch (e) {

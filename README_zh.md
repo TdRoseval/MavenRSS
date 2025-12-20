@@ -3,7 +3,7 @@
   <h1>MrRSS</h1>
   <p><strong>一个现代化的跨平台桌面 RSS 阅读器</strong></p>
 
-   [![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+   [![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -28,7 +28,6 @@
 - 📝 **文章摘要**: 使用本地 TF-IDF/TextRank 算法或 AI 生成文章摘要
 - 🎨 **现代 UI**: 简洁、响应式的界面，支持深色模式
 - 📦 **OPML 导入/导出**: 轻松从其他 RSS 阅读器迁移
-- ⌨️ **快捷键**: 通过可自定义的键盘快捷键提升效率，快速导航和操作
 - 📋 **智能过滤规则**: 使用强大的自定义规则自动组织订阅源
 - 🏭 **自定义自动化脚本**: 支持运行用户定义的自动化脚本以获取订阅源
 

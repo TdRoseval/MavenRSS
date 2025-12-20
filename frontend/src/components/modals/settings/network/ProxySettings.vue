@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { PhShield, PhGlobe, PhPlug, PhLock, PhUser, PhKey } from '@phosphor-icons/vue';
+import { PhShield, PhGlobe, PhPlug, PhLock, PhUser, PhKey, PhInfo } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
 
 const { t } = useI18n();
@@ -24,13 +24,13 @@ const emit = defineEmits<{
       <PhShield :size="14" class="sm:w-4 sm:h-4" />
       {{ t('proxySettings') }}
     </label>
-
-    <div class="text-xs sm:text-sm text-text-secondary mb-3 sm:mb-4">
-      {{ t('systemProxyInfo') }}
+    <div class="tip-box">
+      <PhInfo :size="16" class="text-accent shrink-0 sm:w-5 sm:h-5" />
+      <span class="text-xs sm:text-sm">{{ t('systemProxyInfo') }}</span>
     </div>
 
     <!-- Enable Proxy Toggle -->
-    <div class="setting-item">
+    <div class="setting-item mt-2 sm:mt-3">
       <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
         <PhGlobe :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
         <div class="flex-1 min-w-0">
@@ -246,5 +246,11 @@ const emit = defineEmits<{
 
 .setting-group {
   @apply mb-4 sm:mb-6;
+}
+
+.tip-box {
+  @apply flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 px-2.5 sm:px-3 rounded-lg;
+  background-color: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.3);
 }
 </style>

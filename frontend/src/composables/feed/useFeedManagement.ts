@@ -15,28 +15,51 @@ export function useFeedManagement() {
   function handleImportOPML(event: Event) {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.warn('No file selected for OPML import');
+      return;
+    }
+
+    console.log('Starting OPML import:', file.name, file.type);
 
     const reader = new FileReader();
+    reader.onerror = () => {
+      console.error('Error reading OPML file');
+      window.showToast(t('importFailed', { error: 'File read error' }), 'error');
+    };
     reader.onload = (e: ProgressEvent<FileReader>) => {
       const content = e.target?.result;
+      if (!content) {
+        console.error('No content read from OPML file');
+        window.showToast(t('importFailed', { error: 'Empty file' }), 'error');
+        return;
+      }
+
+      console.log('OPML file read successfully, sending to backend...');
       fetch('/api/opml/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml',
         },
         body: content,
-      }).then(async (res) => {
-        if (res.ok) {
-          window.showToast(t('opmlImportedSuccess'), 'success');
-          store.fetchFeeds();
-          // Start polling for progress as the backend is now fetching articles for imported feeds
-          store.pollProgress();
-        } else {
-          const text = await res.text();
-          window.showToast(t('importFailed', { error: text }), 'error');
-        }
-      });
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            console.log('OPML import successful');
+            window.showToast(t('opmlImportedSuccess'), 'success');
+            store.fetchFeeds();
+            // Start polling for progress as the backend is now fetching articles for imported feeds
+            store.pollProgress();
+          } else {
+            const text = await res.text();
+            console.error('OPML import failed:', text);
+            window.showToast(t('importFailed', { error: text }), 'error');
+          }
+        })
+        .catch((error) => {
+          console.error('OPML import network error:', error);
+          window.showToast(t('importFailed', { error: error.message }), 'error');
+        });
     };
     reader.readAsText(file);
   }
@@ -44,8 +67,29 @@ export function useFeedManagement() {
   /**
    * Export OPML file
    */
-  function handleExportOPML() {
-    window.location.href = '/api/opml/export';
+  async function handleExportOPML() {
+    try {
+      const response = await fetch('/api/opml/export');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const blob = await response.blob();
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'subscriptions.opml';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      window.showToast(t('opmlExportedSuccess'), 'success');
+    } catch (error) {
+      console.error('Failed to export OPML:', error);
+      window.showToast(t('exportFailed', { error: error.message }), 'error');
+    }
   }
 
   /**

@@ -2,8 +2,7 @@
 import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
 import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
-import NetworkSettings from './NetworkSettings.vue';
-import ProxySettings from './ProxySettings.vue';
+import AISettings from './AISettings.vue';
 
 interface Props {
   settings: SettingsData;
@@ -29,12 +28,6 @@ function handleUpdateSettings(updatedSettings: SettingsData) {
 
 <template>
   <div class="space-y-4 sm:space-y-6">
-    <NetworkSettings />
-
-    <ProxySettings :settings="settings" @update:settings="handleUpdateSettings" />
+    <AISettings :settings="settings" @update:settings="handleUpdateSettings" />
   </div>
 </template>
-
-<style scoped>
-@reference "../../../../style.css";
-</style>

@@ -26,6 +26,10 @@ function clickFileInput() {
 
 function handleImportOPML(event: Event) {
   emit('import-opml', event);
+  // Reset the input value so the same file can be selected again
+  if (opmlInput.value) {
+    opmlInput.value.value = '';
+  }
 }
 
 function handleExportOPML() {
@@ -56,7 +60,13 @@ function handleDiscoverAll() {
       >
         <PhUpload :size="18" class="sm:w-5 sm:h-5" /> {{ t('importOPML') }}
       </button>
-      <input ref="opmlInput" type="file" class="hidden" @change="handleImportOPML" />
+      <input
+        ref="opmlInput"
+        type="file"
+        accept=".opml,.xml,application/xml,text/xml"
+        class="hidden"
+        @change="handleImportOPML"
+      />
       <button
         class="btn-secondary flex-1 justify-center text-sm sm:text-base"
         @click="handleExportOPML"

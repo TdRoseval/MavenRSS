@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { PhPalette, PhMoon, PhTranslate, PhArticle, PhImage } from '@phosphor-icons/vue';
+import {
+  PhPalette,
+  PhMoon,
+  PhTranslate,
+  PhArticle,
+  PhImage,
+  PhCursorClick,
+} from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
 
 const { t } = useI18n();
@@ -141,6 +148,31 @@ const emit = defineEmits<{
             emit('update:settings', {
               ...settings,
               image_gallery_enabled: (e.target as HTMLInputElement).checked,
+            })
+        "
+      />
+    </div>
+    <div class="setting-item mt-2 sm:mt-3">
+      <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+        <PhCursorClick :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+        <div class="flex-1 min-w-0">
+          <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+            {{ t('hoverMarkAsRead') }}
+          </div>
+          <div class="text-xs text-text-secondary hidden sm:block">
+            {{ t('hoverMarkAsReadDesc') }}
+          </div>
+        </div>
+      </div>
+      <input
+        :checked="settings.hover_mark_as_read"
+        type="checkbox"
+        class="toggle"
+        @change="
+          (e) =>
+            emit('update:settings', {
+              ...settings,
+              hover_mark_as_read: (e.target as HTMLInputElement).checked,
             })
         "
       />

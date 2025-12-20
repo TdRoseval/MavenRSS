@@ -312,7 +312,8 @@ watch(
 
       if (props.article) {
         if (summaryEnabled.value) {
-          generateSummary(props.article);
+          // Delay summary generation when switching articles
+          setTimeout(() => generateSummary(props.article), 100);
         }
         if (translationEnabled.value) {
           translateTitle(props.article);
@@ -332,8 +333,9 @@ watch(
         enhanceRendering('.prose-content');
       });
 
+      // Delay summary generation to prioritize content display
       if (summaryEnabled.value) {
-        generateSummary(props.article);
+        setTimeout(() => generateSummary(props.article), 100);
       }
       if (translationEnabled.value && lastTranslatedArticleId.value !== props.article.id) {
         nextTick(() => translateContentParagraphs(props.articleContent));
@@ -352,7 +354,8 @@ onMounted(async () => {
     }
 
     if (summaryEnabled.value && props.articleContent) {
-      generateSummary(props.article);
+      // Delay summary generation to ensure content displays first
+      setTimeout(() => generateSummary(props.article), 100);
     }
     if (translationEnabled.value) {
       translateTitle(props.article);

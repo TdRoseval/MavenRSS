@@ -36,11 +36,11 @@ if [ "$VERSION" != "$GO_VERSION" ]; then
     exit 1
 fi
 
-WAILS_VERSION=$(grep '"version"' wails.json | sed 's/.*"version": "\([^"]*\)".*/\1/')
-echo "Wails version: $WAILS_VERSION"
+PACKAGE_VERSION=$(grep '"version"' frontend/package.json | sed 's/.*"version": "\([^"]*\)".*/\1/')
+echo "Wails version: $PACKAGE_VERSION"
 
-if [ "$VERSION" != "$WAILS_VERSION" ]; then
-    echo "❌ Version mismatch! Frontend: $VERSION, Wails: $WAILS_VERSION"
+if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+    echo "❌ Version mismatch! Frontend: $VERSION, Wails: $PACKAGE_VERSION"
     exit 1
 fi
 

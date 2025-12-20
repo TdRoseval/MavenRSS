@@ -95,16 +95,49 @@ func (f *Fetcher) ParseFeed(ctx context.Context, url string) (*gofeed.Feed, erro
 // ParseFeedWithScript parses an RSS feed, using a custom script if specified.
 // If scriptPath is non-empty, it executes the script to get the feed content.
 // Otherwise, it fetches from the URL as normal.
-func (f *Fetcher) ParseFeedWithScript(ctx context.Context, url string, scriptPath string) (*gofeed.Feed, error) {
+// priority: true for high-priority requests (like article content fetching), false for normal requests (like feed refresh)
+func (f *Fetcher) ParseFeedWithScript(ctx context.Context, url string, scriptPath string, priority bool) (*gofeed.Feed, error) {
+	if priority {
+		// High priority requests get dedicated processing without interference from low priority operations
+		f.priorityMu.Lock()
+		defer f.priorityMu.Unlock()
+
+		return f.parseFeedWithScriptInternal(ctx, url, scriptPath, true)
+	}
+
+	// Normal priority requests
+	return f.parseFeedWithScriptInternal(ctx, url, scriptPath, false)
+}
+
+// parseFeedWithScriptInternal does the actual parsing work
+func (f *Fetcher) parseFeedWithScriptInternal(ctx context.Context, url string, scriptPath string, priority bool) (*gofeed.Feed, error) {
 	if scriptPath != "" {
 		// Execute the custom script to fetch feed
 		if f.scriptExecutor == nil {
 			return nil, &ScriptError{Message: "Script executor not initialized"}
 		}
-		return f.scriptExecutor.ExecuteScript(ctx, scriptPath)
+
+		// For high priority requests, use shorter timeout
+		scriptCtx := ctx
+		if priority {
+			var cancel context.CancelFunc
+			scriptCtx, cancel = context.WithTimeout(ctx, 15*time.Second) // Shorter timeout for content fetching
+			defer cancel()
+		}
+
+		return f.scriptExecutor.ExecuteScript(scriptCtx, scriptPath)
 	}
+
 	// Use traditional URL-based fetching
-	return f.fp.ParseURLWithContext(url, ctx)
+	// For high priority requests, use shorter timeout
+	fetchCtx := ctx
+	if priority {
+		var cancel context.CancelFunc
+		fetchCtx, cancel = context.WithTimeout(ctx, 15*time.Second) // Shorter timeout for content fetching
+		defer cancel()
+	}
+
+	return f.fp.ParseURLWithContext(url, fetchCtx)
 }
 
 // ScriptError represents an error related to script execution

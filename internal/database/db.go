@@ -69,11 +69,10 @@ func (db *DB) Init() error {
 		// Insert default settings if they don't exist (using centralized defaults from config)
 		settingsKeys := []string{
 			"update_interval", "refresh_mode", "translation_enabled", "target_language", "translation_provider",
-			"deepl_api_key", "baidu_app_id", "baidu_secret_key", "ai_api_key", "ai_endpoint", "ai_model",
-			"ai_system_prompt", "auto_cleanup_enabled", "max_cache_size_mb", "max_article_age_days", "language", "theme",
-			"last_article_update", "show_hidden_articles", "default_view_mode", "summary_enabled", "summary_length",
-			"summary_provider", "summary_ai_api_key", "summary_ai_endpoint", "summary_ai_model", "summary_ai_system_prompt",
-			"media_cache_enabled", "media_cache_max_size_mb", "media_cache_max_age_days",
+			"deepl_api_key", "deepl_endpoint", "baidu_app_id", "baidu_secret_key", "ai_api_key", "ai_endpoint", "ai_model",
+			"ai_translation_prompt", "ai_summary_prompt", "ai_usage_tokens", "ai_usage_limit", "auto_cleanup_enabled", "max_cache_size_mb", "max_article_age_days", "language", "theme",
+			"last_article_update", "show_hidden_articles", "hover_mark_as_read", "default_view_mode", "summary_enabled", "summary_length",
+			"summary_provider", "media_cache_enabled", "media_cache_max_size_mb", "media_cache_max_age_days",
 			"proxy_enabled", "proxy_type", "proxy_host", "proxy_port", "proxy_username", "proxy_password",
 			"shortcuts", "rules", "startup_on_boot", "close_to_tray", "google_translate_endpoint", "show_article_preview_images",
 			"window_x", "window_y", "window_width", "window_height", "window_maximized",
@@ -157,6 +156,18 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(feed_id) REFERENCES feeds(id)
 	);
 
+	-- Translation cache table to avoid redundant API calls
+	CREATE TABLE IF NOT EXISTS translation_cache (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		source_text_hash TEXT NOT NULL,
+		source_text TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		translated_text TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(source_text_hash, target_lang, provider)
+	);
+
 	-- Create indexes for better query performance
 	CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id);
 	CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
@@ -171,6 +182,9 @@ func initSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_articles_read_published ON articles(is_read, published_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_articles_fav_published ON articles(is_favorite, published_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_articles_readlater_published ON articles(is_read_later, published_at DESC);
+
+	-- Translation cache index
+	CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
 	`
 	_, err := db.Exec(query)
 	return err
@@ -194,4 +208,56 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN video_url TEXT DEFAULT ''`)
 
 	return nil
+}
+
+// TranslationCache represents a cached translation entry
+type TranslationCache struct {
+	ID             int64
+	SourceTextHash string
+	SourceText     string
+	TargetLang     string
+	TranslatedText string
+	Provider       string
+	CreatedAt      string
+}
+
+// GetCachedTranslation retrieves a translation from cache if available
+func (db *DB) GetCachedTranslation(sourceTextHash, targetLang, provider string) (string, bool, error) {
+	var translatedText string
+	err := db.QueryRow(
+		`SELECT translated_text FROM translation_cache
+		 WHERE source_text_hash = ? AND target_lang = ? AND provider = ?`,
+		sourceTextHash, targetLang, provider,
+	).Scan(&translatedText)
+
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return translatedText, true, nil
+}
+
+// SetCachedTranslation stores a translation in cache
+func (db *DB) SetCachedTranslation(sourceTextHash, sourceText, targetLang, translatedText, provider string) error {
+	_, err := db.Exec(
+		`INSERT OR REPLACE INTO translation_cache
+		 (source_text_hash, source_text, target_lang, translated_text, provider, created_at)
+		 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		sourceTextHash, sourceText, targetLang, translatedText, provider,
+	)
+	return err
+}
+
+// CleanupTranslationCache removes cached translations older than maxAgeDays
+func (db *DB) CleanupTranslationCache(maxAgeDays int) (int64, error) {
+	result, err := db.Exec(
+		`DELETE FROM translation_cache WHERE created_at < datetime('now', ?)`,
+		fmt.Sprintf("-%d days", maxAgeDays),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
