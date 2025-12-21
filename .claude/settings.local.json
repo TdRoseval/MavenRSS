@@ -3,8 +3,13 @@
     "allow": [
       "Bash(npm run dev:*)",
       "Bash(wails3 dev:*)",
+      "Bash(wails3 build:*)",
       "Bash(npx vue-tsc:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(task dev)",
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(go build:*)"
     ]
   }
 }

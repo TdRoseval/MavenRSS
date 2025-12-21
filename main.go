@@ -25,6 +25,7 @@ import (
 	handlers "MrRSS/internal/handlers/core"
 	discovery "MrRSS/internal/handlers/discovery"
 	feedhandlers "MrRSS/internal/handlers/feed"
+	freshrssHandler "MrRSS/internal/handlers/freshrss"
 	media "MrRSS/internal/handlers/media"
 	networkhandlers "MrRSS/internal/handlers/network"
 	opml "MrRSS/internal/handlers/opml"
@@ -216,6 +217,8 @@ func main() {
 	apiMux.HandleFunc("/api/network/detect", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleDetectNetwork(h, w, r) })
 	apiMux.HandleFunc("/api/network/info", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleGetNetworkInfo(h, w, r) })
 	apiMux.HandleFunc("/api/browser/open", func(w http.ResponseWriter, r *http.Request) { browser.HandleOpenURL(h, w, r) })
+	apiMux.HandleFunc("/api/freshrss/sync", func(w http.ResponseWriter, r *http.Request) { freshrssHandler.HandleSync(h, w, r) })
+	apiMux.HandleFunc("/api/freshrss/test-connection", func(w http.ResponseWriter, r *http.Request) { freshrssHandler.HandleTestConnection(h, w, r) })
 
 	// Static Files
 	log.Println("Setting up static files...")

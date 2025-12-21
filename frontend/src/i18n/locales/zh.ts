@@ -647,6 +647,37 @@ const zh: TranslationMessages = {
   backToSimple: '返回简单模式',
   backToUrl: '返回 URL 模式',
   useAdvancedOptions: '使用高级选项',
+
+  // FreshRSS Integration
+  freshrss: 'FreshRSS',
+  freshrssEnabled: '启用 FreshRSS 同步',
+  freshrssEnabledDesc: '与 FreshRSS 服务器同步订阅源和文章',
+  freshrssServerUrl: '服务器地址',
+  freshrssServerUrlDesc: '您的 FreshRSS 服务器地址',
+  freshrssServerUrlPlaceholder: 'https://freshrss.example.com',
+  freshrssUsername: '用户名',
+  freshrssUsernameDesc: '您的 FreshRSS 用户名',
+  freshrssUsernamePlaceholder: '输入用户名',
+  freshrssPassword: '密码',
+  freshrssPasswordDesc: '您的 FreshRSS 密码',
+  freshrssPasswordPlaceholder: '输入密码',
+  freshrssApiPassword: 'API 密码',
+  freshrssApiPasswordDesc: 'FreshRSS API 密码（不同于登录密码）',
+  freshrssApiPasswordPlaceholder: '输入 API 密码',
+  testConnection: '测试连接',
+  testConnectionDesc: '测试与 FreshRSS 服务器的连接',
+  testingConnection: '正在测试连接...',
+  connectionSuccessful: '连接成功',
+  connectionFailed: '连接失败',
+  syncNow: '立即同步',
+  syncing: '正在同步...',
+  syncCompleted: '同步完成',
+  syncFailed: '同步失败',
+  lastSync: '最后同步',
+  neverSynced: '从未',
+  freshrssMissingCredentials: '请提供所有 FreshRSS 凭据以启用同步',
+
+  isInDevelopment: '该功能仍在开发中，可能不稳定且存在问题。',
 };
 
 export default zh;

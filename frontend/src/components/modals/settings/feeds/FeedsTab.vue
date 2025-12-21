@@ -1,7 +1,17 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import DataManagementSettings from './DataManagementSettings.vue';
 import FeedManagementSettings from './FeedManagementSettings.vue';
+import FreshRSSSettings from './FreshRSSSettings.vue';
 import type { Feed } from '@/types/models';
+import type { SettingsData } from '@/types/settings';
+import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
+
+interface Props {
+  settings: SettingsData;
+}
+
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
   'import-opml': [];
@@ -13,7 +23,15 @@ const emit = defineEmits<{
   'batch-delete': [ids: number[]];
   'batch-move': [ids: number[]];
   'discover-all': [];
+  'update:settings': [settings: SettingsData];
 }>();
+
+// Create a computed ref that returns the settings object
+// This ensures reactivity while allowing modifications
+const settingsRef = computed(() => props.settings);
+
+// Use composable for auto-save with reactivity
+useSettingsAutoSave(settingsRef);
 
 // Event handlers that pass through to parent
 function handleImportOPML() {
@@ -51,6 +69,10 @@ function handleBatchDelete(ids: number[]) {
 function handleBatchMove(ids: number[]) {
   emit('batch-move', ids);
 }
+
+function handleUpdateSettings(settings: SettingsData) {
+  emit('update:settings', settings);
+}
 </script>
 
 <template>
@@ -69,5 +91,7 @@ function handleBatchMove(ids: number[]) {
       @batch-delete="handleBatchDelete"
       @batch-move="handleBatchMove"
     />
+
+    <FreshRSSSettings :settings="settings" @update:settings="handleUpdateSettings" />
   </div>
 </template>

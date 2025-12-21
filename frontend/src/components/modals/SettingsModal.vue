@@ -141,6 +141,7 @@ function handleDiscoverAll() {
 
         <FeedsTab
           v-if="activeTab === 'feeds'"
+          :settings="settings"
           @import-opml="handleImportOPML"
           @export-opml="handleExportOPML"
           @cleanup-database="handleCleanupDatabase"
@@ -150,6 +151,7 @@ function handleDiscoverAll() {
           @batch-delete="handleBatchDelete"
           @batch-move="handleBatchMove"
           @discover-all="handleDiscoverAll"
+          @update:settings="settings = $event"
         />
 
         <AITab

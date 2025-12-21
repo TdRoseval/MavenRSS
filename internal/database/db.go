@@ -77,7 +77,7 @@ func (db *DB) Init() error {
 			"shortcuts", "rules", "startup_on_boot", "close_to_tray", "google_translate_endpoint", "show_article_preview_images",
 			"window_x", "window_y", "window_width", "window_height", "window_maximized",
 			"network_speed", "network_bandwidth_mbps", "network_latency_ms", "max_concurrent_refreshes", "last_network_test",
-			"image_gallery_enabled",
+			"image_gallery_enabled", "freshrss_enabled", "freshrss_server_url", "freshrss_username", "freshrss_api_password",
 		}
 		for _, key := range settingsKeys {
 			defaultVal := config.GetString(key)

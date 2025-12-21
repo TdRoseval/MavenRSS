@@ -63,6 +63,10 @@ type Defaults struct {
 	WindowHeight             string `json:"window_height"`
 	WindowMaximized          string `json:"window_maximized"`
 	ImageGalleryEnabled      bool   `json:"image_gallery_enabled"`
+	FreshRSSSyncEnabled      bool   `json:"freshrss_enabled"`
+	FreshRSSServerURL        string `json:"freshrss_server_url"`
+	FreshRSSUsername         string `json:"freshrss_username"`
+	FreshRSSAPIPassword      string `json:"freshrss_api_password"`
 }
 
 var defaults Defaults
@@ -179,6 +183,14 @@ func GetString(key string) string {
 		return strconv.FormatBool(defaults.ShowArticlePreviewImages)
 	case "image_gallery_enabled":
 		return strconv.FormatBool(defaults.ImageGalleryEnabled)
+	case "freshrss_enabled":
+		return strconv.FormatBool(defaults.FreshRSSSyncEnabled)
+	case "freshrss_server_url":
+		return defaults.FreshRSSServerURL
+	case "freshrss_username":
+		return defaults.FreshRSSUsername
+	case "freshrss_api_password":
+		return defaults.FreshRSSAPIPassword
 	default:
 		return ""
 	}

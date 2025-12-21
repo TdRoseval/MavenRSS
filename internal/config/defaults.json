@@ -52,5 +52,9 @@
   "network_latency_ms": "0",
   "max_concurrent_refreshes": "5",
   "last_network_test": "",
-  "image_gallery_enabled": false
+  "image_gallery_enabled": false,
+  "freshrss_enabled": false,
+  "freshrss_server_url": "",
+  "freshrss_username": "",
+  "freshrss_api_password": ""
 }

@@ -495,6 +495,37 @@ export interface TranslationMessages {
   backToSimple: string;
   backToUrl: string;
   useAdvancedOptions: string;
+
+  // FreshRSS Integration
+  freshrss: string;
+  freshrssEnabled: string;
+  freshrssEnabledDesc: string;
+  freshrssServerUrl: string;
+  freshrssServerUrlDesc: string;
+  freshrssServerUrlPlaceholder: string;
+  freshrssUsername: string;
+  freshrssUsernameDesc: string;
+  freshrssUsernamePlaceholder: string;
+  freshrssPassword: string;
+  freshrssPasswordDesc: string;
+  freshrssPasswordPlaceholder: string;
+  freshrssApiPassword: string;
+  freshrssApiPasswordDesc: string;
+  freshrssApiPasswordPlaceholder: string;
+  testConnection: string;
+  testConnectionDesc: string;
+  testingConnection: string;
+  connectionSuccessful: string;
+  connectionFailed: string;
+  syncNow: string;
+  syncing: string;
+  syncCompleted: string;
+  syncFailed: string;
+  lastSync: string;
+  neverSynced: string;
+  freshrssMissingCredentials: string;
+
+  isInDevelopment: string;
 }
 
 export type SupportedLocale = 'en-US' | 'zh-CN';

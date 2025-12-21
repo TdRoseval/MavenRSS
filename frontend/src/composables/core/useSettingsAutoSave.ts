@@ -180,6 +180,15 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           image_gallery_enabled: (
             settingsRef.value.image_gallery_enabled ?? settingsDefaults.image_gallery_enabled
           ).toString(),
+          freshrss_enabled: (
+            settingsRef.value.freshrss_enabled ?? settingsDefaults.freshrss_enabled
+          ).toString(),
+          freshrss_server_url:
+            settingsRef.value.freshrss_server_url ?? settingsDefaults.freshrss_server_url,
+          freshrss_username:
+            settingsRef.value.freshrss_username ?? settingsDefaults.freshrss_username,
+          freshrss_api_password:
+            settingsRef.value.freshrss_api_password ?? settingsDefaults.freshrss_api_password,
         }),
       });
 

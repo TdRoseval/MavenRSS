@@ -655,6 +655,37 @@ const en: TranslationMessages = {
   backToSimple: 'Back to Simple',
   backToUrl: 'Back to URL',
   useAdvancedOptions: 'Use advanced options',
+
+  // FreshRSS Integration
+  freshrss: 'FreshRSS',
+  freshrssEnabled: 'Enable FreshRSS Sync',
+  freshrssEnabledDesc: 'Sync feeds and articles with a FreshRSS server',
+  freshrssServerUrl: 'Server URL',
+  freshrssServerUrlDesc: 'URL of your FreshRSS server',
+  freshrssServerUrlPlaceholder: 'https://freshrss.example.com',
+  freshrssUsername: 'Username',
+  freshrssUsernameDesc: 'Your FreshRSS username',
+  freshrssUsernamePlaceholder: 'Enter your username',
+  freshrssPassword: 'Password',
+  freshrssPasswordDesc: 'Your FreshRSS password',
+  freshrssPasswordPlaceholder: 'Enter your password',
+  freshrssApiPassword: 'API Password',
+  freshrssApiPasswordDesc: 'FreshRSS API password (different from login password)',
+  freshrssApiPasswordPlaceholder: 'Enter your API password',
+  testConnection: 'Test Connection',
+  testConnectionDesc: 'Test the connection to FreshRSS server',
+  testingConnection: 'Testing connection...',
+  connectionSuccessful: 'Connection successful',
+  connectionFailed: 'Connection failed',
+  syncNow: 'Sync Now',
+  syncing: 'Syncing...',
+  syncCompleted: 'Sync completed',
+  syncFailed: 'Sync failed',
+  lastSync: 'Last sync',
+  neverSynced: 'Never',
+  freshrssMissingCredentials: 'Please enter FreshRSS server URL, username, and password',
+
+  isInDevelopment: 'This feature is in development and may not work as expected.',
 };
 
 export default en;

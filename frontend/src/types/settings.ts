@@ -52,6 +52,10 @@ export interface SettingsData {
   max_concurrent_refreshes: string;
   last_network_test: string;
   image_gallery_enabled: boolean;
+  freshrss_enabled: boolean;
+  freshrss_server_url: string;
+  freshrss_username: string;
+  freshrss_api_password: string;
   [key: string]: unknown; // Allow additional properties
 }
 

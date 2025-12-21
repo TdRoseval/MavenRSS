@@ -62,6 +62,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		maxConcurrentRefreshes, _ := h.DB.GetSetting("max_concurrent_refreshes")
 		lastNetworkTest, _ := h.DB.GetSetting("last_network_test")
 		imageGalleryEnabled, _ := h.DB.GetSetting("image_gallery_enabled")
+		freshRSSSyncEnabled, _ := h.DB.GetSetting("freshrss_enabled")
+		freshRSSServerURL, _ := h.DB.GetSetting("freshrss_server_url")
+		freshRSSUsername, _ := h.DB.GetSetting("freshrss_username")
+		freshRSSAPIPassword, _ := h.DB.GetEncryptedSetting("freshrss_api_password")
 		json.NewEncoder(w).Encode(map[string]string{
 			"update_interval":             interval,
 			"refresh_mode":                refreshMode,
@@ -112,6 +116,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"max_concurrent_refreshes":    maxConcurrentRefreshes,
 			"last_network_test":           lastNetworkTest,
 			"image_gallery_enabled":       imageGalleryEnabled,
+			"freshrss_enabled":            freshRSSSyncEnabled,
+			"freshrss_server_url":         freshRSSServerURL,
+			"freshrss_username":           freshRSSUsername,
+			"freshrss_api_password":       freshRSSAPIPassword,
 		})
 	case http.MethodPost:
 		var req struct {
@@ -163,6 +171,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			MaxConcurrentRefreshes   string `json:"max_concurrent_refreshes"`
 			LastNetworkTest          string `json:"last_network_test"`
 			ImageGalleryEnabled      string `json:"image_gallery_enabled"`
+			FreshRSSSyncEnabled      string `json:"freshrss_enabled"`
+			FreshRSSServerURL        string `json:"freshrss_server_url"`
+			FreshRSSUsername         string `json:"freshrss_username"`
+			FreshRSSAPIPassword      string `json:"freshrss_api_password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -351,6 +363,24 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		}
+
+		if req.FreshRSSSyncEnabled != "" {
+			h.DB.SetSetting("freshrss_enabled", req.FreshRSSSyncEnabled)
+		}
+
+		if req.FreshRSSServerURL != "" {
+			h.DB.SetSetting("freshrss_server_url", req.FreshRSSServerURL)
+		}
+
+		if req.FreshRSSUsername != "" {
+			h.DB.SetSetting("freshrss_username", req.FreshRSSUsername)
+		}
+
+		if err := h.DB.SetEncryptedSetting("freshrss_api_password", req.FreshRSSAPIPassword); err != nil {
+			log.Printf("Failed to save FreshRSS API password: %v", err)
+			http.Error(w, "Failed to save FreshRSS API password", http.StatusInternalServerError)
+			return
 		}
 
 		w.WriteHeader(http.StatusOK)
