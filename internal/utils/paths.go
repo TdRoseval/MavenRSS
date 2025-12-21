@@ -10,7 +10,18 @@ import (
 var (
 	isPortableMode   bool
 	portableModeOnce sync.Once
+	isServerMode     bool
 )
+
+// SetServerMode sets the server mode flag
+func SetServerMode(v bool) {
+	isServerMode = v
+}
+
+// IsServerMode returns true if running in server mode
+func IsServerMode() bool {
+	return isServerMode
+}
 
 // IsPortableMode checks if the application is running in portable mode
 // Portable mode is enabled if a "portable.txt" file exists in the executable's directory
@@ -37,6 +48,11 @@ func IsPortableMode() bool {
 func GetDataDir() (string, error) {
 	var dataDir string
 	var err error
+
+	// Check if server mode is enabled - this takes precedence
+	if IsServerMode() {
+		return os.Getwd()
+	}
 
 	// Check if portable mode is enabled
 	if IsPortableMode() {

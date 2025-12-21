@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	handlers "MrRSS/internal/handlers/core"
+	"MrRSS/internal/utils"
 )
 
 // HandleOpenURL opens a URL in the user's default web browser using Wails v3 Browser API.
@@ -54,6 +55,15 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 
 	// Check if app instance is available
 	if h.App == nil {
+		// specific check for server mode to redirect to client side
+		if utils.IsServerMode() {
+			log.Printf("Server mode detected, instructing client to open URL: %s", req.URL)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"redirect": req.URL})
+			return
+		}
+
 		log.Printf("App instance not available for browser integration")
 		http.Error(w, "Browser integration not available", http.StatusInternalServerError)
 		return

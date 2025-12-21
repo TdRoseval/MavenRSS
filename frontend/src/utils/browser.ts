@@ -26,6 +26,12 @@ export async function openInBrowser(url: string): Promise<void> {
       const errorText = await response.text();
       throw new Error(`Failed to open URL: ${errorText}`);
     }
+
+    // Check for redirect instruction (server mode)
+    const data = await response.json();
+    if (data.redirect) {
+      window.open(data.redirect, '_blank');
+    }
   } catch (error) {
     console.error('Error opening URL in browser:', error);
     // Show user-friendly error message

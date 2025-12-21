@@ -3,16 +3,20 @@ package main
 import (
 	"context"
 	"embed"
+	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -106,6 +110,19 @@ func APIMiddleware(combinedHandler *CombinedHandler) application.Middleware {
 }
 
 func main() {
+	// Parse flags
+	flag.BoolFunc("server", "Run in headless server mode", func(s string) error {
+		v, err := strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+		utils.SetServerMode(v)
+		return nil
+	})
+	host := flag.String("host", "0.0.0.0", "Host to listen on in server mode")
+	port := flag.String("port", "1234", "Port to listen on in server mode")
+	flag.Parse()
+
 	// Get proper paths for data files
 	logPath, err := utils.GetLogPath()
 	if err != nil {
@@ -113,9 +130,21 @@ func main() {
 		logPath = "debug.log"
 	}
 
-	f, _ := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	defer f.Close()
-	log.SetOutput(f)
+	if utils.IsServerMode() {
+		// In server mode, log to both stdout and file
+		f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			log.SetOutput(os.Stdout) // Fallback
+		} else {
+			// Note: we don't close f here as it needs to stay open for logging
+			// It will be closed by OS on process exit
+			log.SetOutput(io.MultiWriter(os.Stdout, f))
+		}
+	} else {
+		f, _ := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		defer f.Close()
+		log.SetOutput(f)
+	}
 
 	log.Println("Starting application...")
 
@@ -227,6 +256,70 @@ func main() {
 	combinedHandler := &CombinedHandler{
 		apiMux:     apiMux,
 		fileServer: fileServer,
+	}
+
+	// Server Mode Handling
+	if utils.IsServerMode() {
+		log.Printf("Starting in headless server mode on http://%s:%s", *host, *port)
+
+		// Start background scheduler
+		// Use a context that we can cancel on shutdown
+		bgCtx, bgCancel := context.WithCancel(context.Background())
+		
+		log.Println("Starting background scheduler...")
+		go h.StartBackgroundScheduler(bgCtx)
+
+		// Start Network Speed Detection (optional but good to have)
+		go func() {
+			log.Println("Detecting network speed...")
+			detector := network.NewDetector()
+			detectCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			result := detector.DetectSpeed(detectCtx)
+			if result.DetectionSuccess {
+				db.SetSetting("network_speed", string(result.SpeedLevel))
+				db.SetSetting("network_bandwidth_mbps", fmt.Sprintf("%.2f", result.BandwidthMbps))
+				log.Printf("Network detection complete: %s", result.SpeedLevel)
+			}
+		}()
+
+		// Start HTTP Server
+		srv := &http.Server{
+			Addr:    *host + ":" + *port,
+			Handler: combinedHandler,
+		}
+
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTP server failed: %v", err)
+			}
+		}()
+
+		// Wait for interrupt
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+
+		log.Println("Shutting down server...")
+		bgCancel()
+
+		// Shutdown HTTP server
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("Server forced to shutdown: %v", err)
+		}
+
+		// Close Database
+		if err := db.Close(); err != nil {
+			log.Printf("Error closing database: %v", err)
+		} else {
+			log.Println("Database closed")
+		}
+
+		log.Println("Server exited")
+		return
 	}
 
 	shouldCloseToTray := func() bool {
