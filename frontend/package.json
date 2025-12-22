@@ -25,7 +25,7 @@
     "katex": "^0.16.27",
     "pinia": "^3.0.4",
     "tailwindcss": "^3.4.17",
-    "vue": "^3.5.25",
+    "vue": "^3.5.26",
     "vue-i18n": "^11.2.2"
   },
   "devDependencies": {
