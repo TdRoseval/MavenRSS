@@ -14,22 +14,17 @@
   </p>
 </div>
 
-> [!NOTE]
-> This project is a cross-platform application, and some features on MacOS may be limited due to system permission settings. If you encounter any issues, please [report them on GitHub](https://github.com/WCY-dt/MrRSS/issues).
-
 ---
 
 ## ✨ Features
 
-- 🖥️ **Cross-Platform**: Native desktop app for Windows, macOS, and Linux
-- 🌐 **Auto-Translation**: Translate article titles and content using translate service or AI
-- 🔍 **Smart Feed Discovery**: Automatically discover new feeds from friend links and related sources
-- ⭐ **Favorites & Reading Tracking**: Save articles and track read/unread status
-- 📝 **Article Summarization**: Generate article summaries using local TF-IDF/TextRank algorithms or AI
-- 🎨 **Modern UI**: Clean, responsive interface with dark mode support
-- 📦 **OPML Import/Export**: Easy migration from other RSS readers
-- 📋 **Smart Filtering Rules**: Automate feed organization with powerful custom rules
-- 🏭 **Custom Automation Scripts**: Support for running user-defined automation scripts to fetch feeds
+- 🖥️ **Cross-platform Support**: Native desktop apps for Windows, macOS, and Linux, providing a smooth and consistent experience
+- 🌐 **Automatic Translation and Summary**: Automatically translates article titles and content, and generates concise summaries to help you quickly grasp information
+- 🔍 **Smart Feed Discovery**: Automatically discovers and recommends new RSS feeds from relevant sources, continuously enriching your reading library
+- 🤖 **AI-enhanced Features**: Integrates advanced AI technology to empower various functions like translation, summarization, and recommendation, making reading smarter
+- 🎨 **Modern User Interface**: Features a clean, beautiful, and responsive design, supports dark mode, providing a comfortable and immersive visual experience
+- 📦 **OPML Import/Export**: Supports one-click import or export of OPML files, making it easy to migrate subscriptions from other RSS readers
+- 🏭 **Custom Scripts and Automation**: Built-in filters, scripts, and XPath system, supporting highly customizable automation workflows
 
 ## 📸 Screenshots
 
@@ -272,6 +267,7 @@ This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) fi
 ---
 
 <div align="center">
+  <img src="imgs/sponsor.png" alt="Sponsor MrRSS"/>
   <p>Made with ❤️ by the MrRSS Team</p>
   <p>⭐ Star us on GitHub if you find this project useful!</p>
 </div>
