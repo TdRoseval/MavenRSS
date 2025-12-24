@@ -1,8 +1,10 @@
 import { ref, type Ref } from 'vue';
+import { useAppStore } from '@/stores/app';
 import type { Article } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 
 export function useArticleFilter() {
+  const store = useAppStore();
   const activeFilters: Ref<FilterCondition[]> = ref([]);
   const filteredArticlesFromServer: Ref<Article[]> = ref([]);
   const isFilterLoading = ref(false);
@@ -48,6 +50,18 @@ export function useArticleFilter() {
           filteredArticlesFromServer.value = articles;
           filterPage.value = 1;
         }
+
+        // Ensure filtered articles are also in the store for article detail view
+        articles.forEach((article) => {
+          const existingIndex = store.articles.findIndex((a) => a.id === article.id);
+          if (existingIndex === -1) {
+            // Article not in store, add it
+            store.articles.push(article);
+          } else {
+            // Article already in store, update it
+            store.articles[existingIndex] = article;
+          }
+        });
 
         filterHasMore.value = data.has_more;
         filterTotal.value = data.total;
