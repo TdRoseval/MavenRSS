@@ -1,7 +1,7 @@
 {
-  "name": "mrrss-website",
-  "version": "1.3.8",
-  "description": "Website for MrRSS",
+  "name": "mrrss-landing-page",
+  "version": "1.0.0",
+  "description": "MrRSS - AI-Powered RSS Reader Landing Page",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,22 +11,16 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "autoprefixer": "^10.4.22",
-    "tailwindcss": "^3.4.19",
-    "vue": "^3.5.26",
-    "vue-i18n": "^11.2.7"
+    "@phosphor-icons/vue": "^2.2.1",
+    "vue": "^3.4.0"
   },
   "devDependencies": {
-    "@typescript-eslint/parser": "^8.50.0",
-    "@typescript-eslint/eslint-plugin": "^8.50.0",
-    "@types/node": "^25.0.3",
+    "@eslint/js": "^9.39.2",
+    "@typescript-eslint/eslint-plugin": "^8.50.1",
+    "@typescript-eslint/parser": "^8.50.1",
     "@vitejs/plugin-vue": "^6.0.3",
-    "@vue/eslint-config-prettier": "^10.2.0",
-    "@vue/eslint-config-typescript": "^14.6.0",
     "eslint": "^9.39.2",
-    "eslint-plugin-vue": "^10.6.2",
     "prettier": "^3.7.4",
-    "typescript": "^5.9.3",
     "vite": "^7.3.0"
   }
 }
