@@ -5,7 +5,7 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.10] - 2025-12-26
 
 ### Added
 
@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the issue where length limit for AI-generated summaries was not applied correctly. (#323)
 - Fixed the issue where the last time of network detect displays 739609 days ago if never detected before. (#314)
 - Fixed the issue where multi-layer categories in sidebar do not display correctly. (#322)
+- Fixed the issue of incorrect folder path in server mode. (#321)
 
 ## [1.3.9] - 2025-12-25
 
