@@ -52,6 +52,7 @@ function formatLastUpdate(timestamp: string): string {
       </div>
       <select
         :value="props.settings.refresh_mode"
+        data-testid="refresh-mode-selector"
         class="input-field w-32 sm:w-40 text-xs sm:text-sm"
         @change="
           (e) =>

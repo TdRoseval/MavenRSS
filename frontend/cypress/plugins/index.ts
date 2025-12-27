@@ -1,10 +1,16 @@
-import { defineConfig } from 'cypress'
-import { devServer } from '@cypress/vite-dev-server'
+/**
+ * Cypress Plugins Configuration
+ *
+ * This file sets up Cypress plugins and configures the test environment.
+ */
+
+import { defineConfig } from 'cypress';
+import { devServer } from '@cypress/vite-dev-server';
+import viteConfig from '../../vite.config.js';
 
 export default defineConfig({
   e2e: {
-    // Use Vite dev server port in development, production port otherwise
-    baseUrl: process.env.CI === 'true' ? 'http://localhost:34115' : 'http://localhost:9245',
+    baseUrl: 'http://localhost:34115',
     specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
     supportFile: 'cypress/support/e2e.ts',
     videosFolder: 'cypress/videos',
@@ -16,31 +22,36 @@ export default defineConfig({
     defaultCommandTimeout: 10000,
     requestTimeout: 10000,
     responseTimeout: 10000,
+
+    // Setup node events
     setupNodeEvents(on, config) {
       // Use Vite dev server for component testing
       on('dev-server:start', (options) => {
         return devServer({
           ...options,
-          viteConfig: {},
-        })
-      })
+          viteConfig,
+        });
+      });
 
       // Environment-specific configuration
-      const isCI = process.env.CI === 'true'
-      const devPort = isCI ? 34115 : 9245
+      const isCI = process.env.CI === 'true';
+      const isLocal = !isCI;
 
       return {
         ...config,
         env: {
           ...config.env,
           isCI,
-          backendUrl: process.env.BACKEND_URL || `http://localhost:${devPort}`,
+          isLocal,
+          // Add custom environment variables
+          backendUrl: process.env.BACKEND_URL || 'http://localhost:34115',
+          testMode: process.env.TEST_MODE || 'e2e',
         },
         // Adjust timeouts for CI
         defaultCommandTimeout: isCI ? 15000 : 10000,
         requestTimeout: isCI ? 15000 : 10000,
         responseTimeout: isCI ? 15000 : 10000,
-      }
+      };
     },
   },
   component: {
@@ -54,9 +65,9 @@ export default defineConfig({
       on('dev-server:start', (options) => {
         return devServer({
           ...options,
-          viteConfig: {},
-        })
-      })
+          viteConfig,
+        });
+      });
     },
   },
-})
+});

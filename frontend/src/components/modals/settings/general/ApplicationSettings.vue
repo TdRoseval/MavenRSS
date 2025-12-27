@@ -87,6 +87,7 @@ const emit = defineEmits<{
       </div>
       <select
         :value="settings.theme"
+        data-testid="theme-selector"
         class="input-field w-24 sm:w-48 text-xs sm:text-sm"
         @change="
           (e) =>
@@ -109,6 +110,7 @@ const emit = defineEmits<{
       </div>
       <select
         :value="settings.language"
+        data-testid="language-selector"
         class="input-field w-24 sm:w-48 text-xs sm:text-sm"
         @change="
           (e) =>

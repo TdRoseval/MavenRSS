@@ -13,10 +13,15 @@
     "prepare": "husky",
     "test": "vitest",
     "test:ui": "vitest --ui",
+    "test:unit": "vitest run",
+    "test:component": "cypress open --component",
+    "test:component:headless": "cypress run --component",
     "cypress": "cypress open",
     "cypress:headless": "cypress run",
     "test:e2e": "cypress run",
-    "test:e2e:headed": "cypress open"
+    "test:e2e:headed": "cypress open",
+    "test:e2e:spec": "cypress run --spec",
+    "test:all": "npm run test:unit && npm run test:e2e"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
