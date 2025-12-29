@@ -40,6 +40,7 @@ The following changes may affect existing setups:
 - Fixed the issue where clicking mark all as read button in article list does not work correctly. (#318)(#353)
 - Fixed the issue where opening an article makes it disappear from article list when filter is applied. (#318)(#353)
 - Fixed the issue where application name is displayed as `{{.info.ProductName}}` on Windows platform. (#351)
+- Fixed the issue where moving a feed removes advanced setting for that feed. (#356)
 
 ## [1.3.11] - 2025-12-26
 
