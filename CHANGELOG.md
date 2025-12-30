@@ -5,6 +5,16 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Supported email newsletter feeds via IMAP. (#313)
+
+### Fixed
+
+- Fixed the issue where python command not found error occurs. (#364)
+
 ## [1.3.12] - 2025-12-29
 
 **BREAKING**: The core system (including the feed fetcher, scheduler, and database cleaner) has been re-architected to improve performance and maintainability. (#350, #366)

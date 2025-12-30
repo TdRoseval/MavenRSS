@@ -34,6 +34,14 @@ type Feed struct {
 	XPathItemUid        string `json:"xpath_item_uid"`         // XPath to extract item unique ID
 	ArticleViewMode     string `json:"article_view_mode"`      // Article view mode override ('global', 'webpage', 'rendered')
 	AutoExpandContent   string `json:"auto_expand_content"`    // Auto expand content mode ('global', 'enabled', 'disabled')
+	// Email/Newsletter support
+	EmailAddress    string `json:"email_address,omitempty"`     // Email address for newsletter subscriptions
+	EmailIMAPServer string `json:"email_imap_server,omitempty"` // IMAP server address
+	EmailIMAPPort   int    `json:"email_imap_port"`             // IMAP server port (default 993)
+	EmailUsername   string `json:"email_username,omitempty"`    // IMAP username
+	EmailPassword   string `json:"email_password,omitempty"`    // IMAP password (encrypted)
+	EmailFolder     string `json:"email_folder"`                // IMAP folder to monitor (default INBOX)
+	EmailLastUID    int    `json:"email_last_uid"`              // Last processed email UID for incremental updates
 }
 
 type Article struct {

@@ -28,6 +28,7 @@ type Fetcher struct {
 	highPriorityFp    FeedParser // High priority parser for content fetching
 	translator        translation.Translator
 	scriptExecutor    *ScriptExecutor
+	emailFetcher      *EmailFetcher
 	progress          Progress
 	mu                sync.Mutex
 	refreshCalculator *IntelligentRefreshCalculator
@@ -64,6 +65,7 @@ func NewFetcher(db *database.DB, translator translation.Translator) *Fetcher {
 		highPriorityFp:    highPriorityParser,
 		translator:        translator,
 		scriptExecutor:    executor,
+		emailFetcher:      NewEmailFetcher(db),
 		refreshCalculator: NewIntelligentRefreshCalculator(db),
 	}
 

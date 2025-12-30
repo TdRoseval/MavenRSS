@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
 import { ref, type Ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 import type { Article, Feed, UnreadCounts, RefreshProgress } from '@/types/models';
 
 export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | '';
@@ -47,8 +46,6 @@ export interface AppActions {
 }
 
 export const useAppStore = defineStore('app', () => {
-  const { t } = useI18n();
-
   // State
   const articles = ref<Article[]>([]);
   const feeds = ref<Feed[]>([]);
@@ -158,12 +155,29 @@ export const useAppStore = defineStore('app', () => {
 
   async function fetchFeeds(): Promise<void> {
     try {
+      console.log('[App Store] Fetching feeds...');
       const res = await fetch('/api/feeds');
-      const data: Feed[] = (await res.json()) || [];
+      console.log('[App Store] Response status:', res.status);
+
+      const text = await res.text();
+      console.log('[App Store] Response length:', text.length);
+
+      let data;
+      try {
+        data = JSON.parse(text) || [];
+      } catch (e) {
+        console.error('[App Store] JSON parse error:', e);
+        console.error('[App Store] Response text (first 500 chars):', text.substring(0, 500));
+        throw e;
+      }
+
       feeds.value = data;
+      console.log('[App Store] Feeds loaded successfully, count:', data.length);
+
       // Fetch unread counts after fetching feeds
       await fetchUnreadCounts();
-    } catch {
+    } catch (e) {
+      console.error('[App Store] Fetch feeds error:', e);
       feeds.value = [];
     }
   }

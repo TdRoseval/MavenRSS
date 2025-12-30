@@ -11,6 +11,8 @@ import {
   PhSortAscending,
   PhCode,
   PhEyeSlash,
+  PhFileCode,
+  PhEnvelope,
 } from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
 
@@ -114,6 +116,14 @@ function getFavicon(url: string): string {
 
 function isScriptFeed(feed: Feed): boolean {
   return !!feed.script_path;
+}
+
+function isXPathFeed(feed: Feed): boolean {
+  return feed.type === 'HTML+XPath' || feed.type === 'XML+XPath';
+}
+
+function isEmailFeed(feed: Feed): boolean {
+  return feed.type === 'email';
 }
 
 async function openScriptsFolder() {
@@ -258,8 +268,12 @@ async function openScriptsFolder() {
                 {{ feed.category }}
                 <span class="mx-1">•</span>
               </span>
-              <span v-if="isScriptFeed(feed)" class="inline-flex items-center gap-1">
-                <PhCode :size="10" class="inline" />
+              <span
+                v-if="isScriptFeed(feed)"
+                class="inline-flex items-center gap-1"
+                :title="t('customScript')"
+              >
+                <PhCode :size="10" class="inline text-accent" />
                 <button
                   class="text-accent hover:underline"
                   :title="t('openScriptsFolder')"
@@ -267,6 +281,26 @@ async function openScriptsFolder() {
                 >
                   {{ feed.script_path }}
                 </button>
+              </span>
+              <span
+                v-else-if="isXPathFeed(feed)"
+                class="inline-flex items-center gap-1"
+                :title="feed.type"
+              >
+                <PhFileCode :size="10" class="inline text-accent" />
+                <span class="text-accent">{{ feed.type }}</span>
+                <span class="mx-1">•</span>
+                {{ feed.url }}
+              </span>
+              <span
+                v-else-if="isEmailFeed(feed)"
+                class="inline-flex items-center gap-1"
+                :title="t('emailNewsletter')"
+              >
+                <PhEnvelope :size="10" class="inline text-accent" />
+                <span class="text-accent">{{ t('emailNewsletter') }}</span>
+                <span v-if="feed.email_address" class="mx-1">•</span>
+                <span v-if="feed.email_address">{{ feed.email_address }}</span>
               </span>
               <span v-else>{{ feed.url }}</span>
             </div>

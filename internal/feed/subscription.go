@@ -389,6 +389,30 @@ func (f *Fetcher) ParseFeedWithFeed(ctx context.Context, feed *models.Feed, prio
 func (f *Fetcher) parseFeedWithFeedInternal(ctx context.Context, feed *models.Feed, priority bool) (*gofeed.Feed, error) {
 	utils.DebugLog("parseFeedWithFeedInternal: Starting parsing for URL: %s, scriptPath: %s, type: %s, priority: %v", feed.URL, feed.ScriptPath, feed.Type, priority)
 
+	// Check if this is an email-based newsletter feed
+	if feed.Type == "email" {
+		utils.DebugLog("parseFeedWithFeedInternal: Using email fetching for newsletter: %s", feed.EmailAddress)
+		if f.emailFetcher == nil {
+			return nil, fmt.Errorf("email fetcher not initialized")
+		}
+
+		// Fetch emails from IMAP
+		items, err := f.emailFetcher.FetchEmails(ctx, feed)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch emails: %w", err)
+		}
+
+		// Create gofeed.Feed from email items
+		parsedFeed := &gofeed.Feed{
+			Title:       feed.Title,
+			Link:        feed.URL,
+			Description: feed.Description,
+			Items:       items,
+		}
+
+		return parsedFeed, nil
+	}
+
 	if feed.ScriptPath != "" {
 		utils.DebugLog("parseFeedWithFeedInternal: Using script execution for %s", feed.ScriptPath)
 		// Execute the custom script to fetch feed
@@ -1126,4 +1150,63 @@ func (f *Fetcher) parseFeedWithJavaScript(ctx context.Context, feedURL string, p
 
 	utils.DebugLog("parseFeedWithJavaScript: RSS/Atom parsing succeeded, feed title: %s, items count: %d", feed.Title, len(feed.Items))
 	return feed, nil
+}
+
+// AddEmailSubscription adds a new newsletter subscription via IMAP email
+func (f *Fetcher) AddEmailSubscription(emailAddress, imapServer, username, password, category, customTitle, folder string, imapPort int) (int64, error) {
+	utils.DebugLog("AddEmailSubscription: Starting to add newsletter subscription for: %s", emailAddress)
+
+	// Validate required fields
+	if emailAddress == "" {
+		return 0, fmt.Errorf("email address is required")
+	}
+	if imapServer == "" {
+		return 0, fmt.Errorf("IMAP server is required")
+	}
+	if username == "" {
+		return 0, fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return 0, fmt.Errorf("password is required")
+	}
+
+	// Set default IMAP port if not specified
+	if imapPort == 0 {
+		imapPort = 993
+	}
+
+	// Set default folder if not specified
+	if folder == "" {
+		folder = "INBOX"
+	}
+
+	// Create feed object for email newsletter
+	title := customTitle
+	if title == "" {
+		title = emailAddress
+	}
+
+	feed := &models.Feed{
+		Title:           title,
+		URL:             "email://" + emailAddress,
+		Description:     fmt.Sprintf("Newsletter subscription for %s", emailAddress),
+		Category:        category,
+		Type:            "email",
+		EmailAddress:    emailAddress,
+		EmailIMAPServer: imapServer,
+		EmailIMAPPort:   imapPort,
+		EmailUsername:   username,
+		EmailPassword:   password,
+		EmailFolder:     folder,
+		EmailLastUID:    0,
+	}
+
+	// Add to database
+	feedID, err := f.db.AddFeed(feed)
+	if err != nil {
+		return 0, fmt.Errorf("failed to add email subscription: %w", err)
+	}
+
+	utils.DebugLog("AddEmailSubscription: Successfully added newsletter subscription with ID: %d", feedID)
+	return feedID, nil
 }

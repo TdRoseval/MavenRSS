@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,5 +109,29 @@ print("This should not print")
 	_, err := executor.ExecuteScript(ctx, "slow_script.py")
 	if err == nil {
 		t.Error("ExecuteScript() should return error for timeout")
+	}
+}
+
+func TestFindPythonExecutable(t *testing.T) {
+	ctx := context.Background()
+
+	// This test will pass if any Python executable is found
+	pythonCmd, err := findPythonExecutable(ctx)
+
+	// If no Python is found, that's okay - just skip the test
+	if err != nil {
+		t.Skipf("No Python executable found: %v", err)
+	}
+
+	// If Python is found, verify it works
+	if pythonCmd == "" {
+		t.Error("findPythonExecutable returned empty string")
+	}
+
+	// Test that the found executable actually works
+	cmd := exec.CommandContext(ctx, pythonCmd, "--version")
+	err = cmd.Run()
+	if err != nil {
+		t.Errorf("Found Python executable '%s' failed to run: %v", pythonCmd, err)
 	}
 }

@@ -16,6 +16,12 @@ func HandleFeeds(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Clear sensitive password fields before sending to frontend
+	for i := range feeds {
+		feeds[i].EmailPassword = ""
+	}
+
 	json.NewEncoder(w).Encode(feeds)
 }
 
@@ -45,6 +51,13 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		XPathItemUid        string `json:"xpath_item_uid"`
 		ArticleViewMode     string `json:"article_view_mode"`
 		AutoExpandContent   string `json:"auto_expand_content"`
+		// Email/Newsletter fields
+		EmailAddress    string `json:"email_address"`
+		EmailIMAPServer string `json:"email_imap_server"`
+		EmailIMAPPort   int    `json:"email_imap_port"`
+		EmailUsername   string `json:"email_username"`
+		EmailPassword   string `json:"email_password"`
+		EmailFolder     string `json:"email_folder"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -59,6 +72,9 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	} else if req.XPathItem != "" {
 		// Add feed using XPath
 		feedID, err = h.Fetcher.AddXPathSubscription(req.URL, req.Category, req.Title, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid)
+	} else if req.Type == "email" {
+		// Add feed as email newsletter subscription
+		feedID, err = h.Fetcher.AddEmailSubscription(req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.Category, req.Title, req.EmailFolder, req.EmailIMAPPort)
 	} else {
 		// Add feed using URL
 		feedID, err = h.Fetcher.AddSubscription(req.URL, req.Category, req.Title)
@@ -77,7 +93,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "feed created but failed to update settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := h.DB.UpdateFeed(feed.ID, feed.Title, feed.URL, feed.Category, feed.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, feed.Type, feed.XPathItem, feed.XPathItemTitle, feed.XPathItemContent, feed.XPathItemUri, feed.XPathItemAuthor, feed.XPathItemTimestamp, feed.XPathItemTimeFormat, feed.XPathItemThumbnail, feed.XPathItemCategories, feed.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent); err != nil {
+	if err := h.DB.UpdateFeed(feed.ID, feed.Title, feed.URL, feed.Category, feed.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, feed.Type, feed.XPathItem, feed.XPathItemTitle, feed.XPathItemContent, feed.XPathItemUri, feed.XPathItemAuthor, feed.XPathItemTimestamp, feed.XPathItemTimeFormat, feed.XPathItemThumbnail, feed.XPathItemCategories, feed.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, feed.EmailAddress, feed.EmailIMAPServer, feed.EmailUsername, feed.EmailPassword, feed.EmailFolder, feed.EmailIMAPPort); err != nil {
 		http.Error(w, "feed created but failed to update settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -133,13 +149,20 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		XPathItemUid        string `json:"xpath_item_uid"`
 		ArticleViewMode     string `json:"article_view_mode"`
 		AutoExpandContent   string `json:"auto_expand_content"`
+		// Email/Newsletter fields
+		EmailAddress    string `json:"email_address"`
+		EmailIMAPServer string `json:"email_imap_server"`
+		EmailIMAPPort   int    `json:"email_imap_port"`
+		EmailUsername   string `json:"email_username"`
+		EmailPassword   string `json:"email_password"`
+		EmailFolder     string `json:"email_folder"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := h.DB.UpdateFeed(req.ID, req.Title, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent); err != nil {
+	if err := h.DB.UpdateFeed(req.ID, req.Title, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.EmailIMAPPort); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

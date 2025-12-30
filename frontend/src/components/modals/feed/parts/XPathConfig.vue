@@ -61,7 +61,7 @@ const xpathPlaceholders = {
   <div class="mb-3 sm:mb-4">
     <div class="mb-3">
       <label class="block mb-1 sm:mb-1.5 font-semibold text-xs sm:text-sm text-text-secondary"
-        >{{ t('sourceUrl') }} <span v-if="props.mode === 'add'" class="text-red-500">*</span></label
+        >{{ t('sourceUrl') }} <span class="text-red-500">*</span></label
       >
       <input
         :value="props.url"
@@ -88,7 +88,7 @@ const xpathPlaceholders = {
 
     <div class="mb-3">
       <label class="block mb-1 sm:mb-1.5 font-semibold text-xs sm:text-sm text-text-secondary"
-        >{{ t('xpathItem') }} <span v-if="props.mode === 'add'" class="text-red-500">*</span></label
+        >{{ t('xpathItem') }} <span class="text-red-500">*</span></label
       >
       <input
         :value="props.xpathItem"

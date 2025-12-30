@@ -23,6 +23,21 @@ func NewScriptExecutor(scriptsDir string) *ScriptExecutor {
 	return &ScriptExecutor{scriptsDir: scriptsDir}
 }
 
+// findPythonExecutable tries to find a working Python executable
+func findPythonExecutable(ctx context.Context) (string, error) {
+	// Try different Python executables in order of preference
+	candidates := []string{"python", "python3", "py"}
+
+	for _, candidate := range candidates {
+		cmd := exec.CommandContext(ctx, candidate, "--version")
+		if err := cmd.Run(); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("no Python executable found")
+}
+
 // ExecuteScript runs the given script and parses the output as an RSS feed
 // The script should output valid RSS/Atom XML to stdout
 func (e *ScriptExecutor) ExecuteScript(ctx context.Context, scriptPath string) (*gofeed.Feed, error) {
@@ -50,10 +65,10 @@ func (e *ScriptExecutor) ExecuteScript(ctx context.Context, scriptPath string) (
 
 	switch ext {
 	case ".py":
-		// Python script
-		pythonCmd := "python3"
-		if runtime.GOOS == "windows" {
-			pythonCmd = "python"
+		// Python script - try to find a working Python executable
+		pythonCmd, err := findPythonExecutable(execCtx)
+		if err != nil {
+			return nil, fmt.Errorf("python script execution failed: %w", err)
 		}
 		cmd = exec.CommandContext(execCtx, pythonCmd, fullPath)
 	case ".sh":

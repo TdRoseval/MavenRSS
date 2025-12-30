@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n';
 import type { Feed } from '@/types/models';
 import { useAppStore } from '@/stores/app';
 
-export type FeedType = 'url' | 'script' | 'xpath';
+export type FeedType = 'url' | 'script' | 'xpath' | 'email';
 export type ProxyMode = 'global' | 'custom' | 'none';
 export type RefreshMode = 'global' | 'fixed' | 'intelligent' | 'custom';
 
@@ -36,6 +36,14 @@ export function useFeedForm(feed?: Feed) {
   const xpathItemThumbnail = ref('');
   const xpathItemCategories = ref('');
   const xpathItemUid = ref('');
+
+  // Email/Newsletter fields
+  const emailAddress = ref('');
+  const imapServer = ref('');
+  const imapPort = ref(993);
+  const emailUsername = ref('');
+  const emailPassword = ref('');
+  const emailFolder = ref('INBOX');
 
   // Article view mode
   const articleViewMode = ref<'global' | 'webpage' | 'rendered'>('global');
@@ -119,6 +127,13 @@ export function useFeedForm(feed?: Feed) {
       return scriptPath.value.trim() !== '';
     } else if (feedType.value === 'xpath') {
       return url.value.trim() !== '' && xpathItem.value.trim() !== '';
+    } else if (feedType.value === 'email') {
+      return (
+        emailAddress.value.trim() !== '' &&
+        imapServer.value.trim() !== '' &&
+        emailUsername.value.trim() !== '' &&
+        emailPassword.value.trim() !== ''
+      );
     }
     return false;
   });
@@ -204,6 +219,15 @@ export function useFeedForm(feed?: Feed) {
       feedType.value = 'script';
     } else if (feed.xpath_item) {
       feedType.value = 'xpath';
+    } else if (feed.type === 'email') {
+      feedType.value = 'email';
+      // Initialize email fields
+      emailAddress.value = feed.email_address || '';
+      imapServer.value = feed.email_imap_server || '';
+      imapPort.value = feed.email_imap_port || 993;
+      emailUsername.value = feed.email_username || '';
+      emailPassword.value = feed.email_password || '';
+      emailFolder.value = feed.email_folder || 'INBOX';
     } else {
       feedType.value = 'url';
     }
@@ -268,6 +292,13 @@ export function useFeedForm(feed?: Feed) {
     xpathItemThumbnail.value = '';
     xpathItemCategories.value = '';
     xpathItemUid.value = '';
+    // Reset email fields
+    emailAddress.value = '';
+    imapServer.value = '';
+    imapPort.value = 993;
+    emailUsername.value = '';
+    emailPassword.value = '';
+    emailFolder.value = 'INBOX';
     articleViewMode.value = 'global';
     autoExpandContent.value = 'global';
     proxyMode.value = 'global';
@@ -327,6 +358,13 @@ export function useFeedForm(feed?: Feed) {
     xpathItemThumbnail,
     xpathItemCategories,
     xpathItemUid,
+    // Email fields
+    emailAddress,
+    imapServer,
+    imapPort,
+    emailUsername,
+    emailPassword,
+    emailFolder,
     articleViewMode,
     autoExpandContent,
     proxyMode,

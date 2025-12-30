@@ -7,6 +7,7 @@ import { useFeedForm } from '@/composables/feed/useFeedForm';
 import UrlInput from './parts/UrlInput.vue';
 import ScriptSelector from './parts/ScriptSelector.vue';
 import XPathConfig from './parts/XPathConfig.vue';
+import EmailConfig from './parts/EmailConfig.vue';
 import CategorySelector from './parts/CategorySelector.vue';
 import AdvancedSettings from './parts/AdvancedSettings.vue';
 
@@ -66,6 +67,13 @@ const {
   getRefreshInterval,
   resetForm,
   openScriptsFolder,
+  // Email fields
+  emailAddress,
+  imapServer,
+  imapPort,
+  emailUsername,
+  emailPassword,
+  emailFolder,
 } = useFeedForm(props.feed);
 
 const emit = defineEmits<{
@@ -82,7 +90,9 @@ function close() {
 }
 
 async function submit() {
-  if (!isFormValid.value) return;
+  if (!isFormValid.value) {
+    return;
+  }
   isSubmitting.value = true;
 
   try {
@@ -134,6 +144,14 @@ async function submit() {
       body.xpath_item_thumbnail = xpathItemThumbnail.value;
       body.xpath_item_categories = xpathItemCategories.value;
       body.xpath_item_uid = xpathItemUid.value;
+    } else if (feedType.value === 'email') {
+      body.type = 'email';
+      body.email_address = emailAddress.value;
+      body.email_imap_server = imapServer.value;
+      body.email_imap_port = imapPort.value;
+      body.email_username = emailUsername.value;
+      body.email_password = emailPassword.value;
+      body.email_folder = emailFolder.value;
     }
 
     // Add article view mode
@@ -181,8 +199,7 @@ async function submit() {
         window.showToast(`${t(errorKey)}: ${errorText}`, 'error');
       }
     }
-  } catch (e) {
-    console.error(e);
+  } catch {
     const errorKey = props.mode === 'add' ? 'errorAddingFeed' : 'errorUpdatingFeed';
     window.showToast(t(errorKey), 'error');
   } finally {
@@ -225,155 +242,229 @@ async function submit() {
         </div>
 
         <!-- Content switching with different modes -->
-        <Transition
-          name="mode-transition"
-          mode="out-in"
-          enter-active-class="transition-all duration-300 ease-out"
-          leave-active-class="transition-all duration-200 ease-in"
-          enter-from-class="opacity-0 transform translate-y-4"
-          enter-to-class="opacity-100 transform translate-y-0"
-          leave-from-class="opacity-100 transform translate-y-0"
-          leave-to-class="opacity-0 transform -translate-y-4"
-        >
-          <!-- URL Input (default mode) -->
-          <div v-if="feedType === 'url'" key="url-mode">
-            <UrlInput v-model="url" :mode="mode" :is-invalid="mode === 'add' && isUrlInvalid" />
+        <!-- URL Input (default mode) -->
+        <div v-if="feedType === 'url'" key="url-mode" class="mb-3 sm:mb-4">
+          <UrlInput v-model="url" :mode="mode" :is-invalid="mode === 'add' && isUrlInvalid" />
 
-            <!-- Mode switching links -->
-            <div class="mt-3 text-center">
-              <div class="text-xs text-text-tertiary">
-                {{ mode === 'add' ? t('orTry') : t('switchTo') }}
-                <button
-                  type="button"
-                  class="text-xs text-accent hover:underline mx-1"
-                  @click="feedType = 'script'"
-                >
-                  {{ t('customScript') }}
-                </button>
-                {{ t('or') }}
-                <button
-                  type="button"
-                  class="text-xs text-accent hover:underline mx-1"
-                  @click="feedType = 'xpath'"
-                >
-                  {{ t('xpath') }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Script Selection (advanced mode) -->
-          <div v-else-if="feedType === 'script'" key="script-mode" class="mb-3 sm:mb-4">
-            <!-- Back to URL link -->
-            <div class="mb-3 text-center">
+          <!-- Mode switching links -->
+          <div class="mt-3 text-center">
+            <div class="text-xs text-text-tertiary">
+              {{ mode === 'add' ? t('orTry') : t('switchTo') }}
               <button
                 type="button"
-                class="text-xs text-accent hover:underline transition-colors"
-                @click="feedType = 'url'"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'script'"
               >
-                ← {{ t('backToUrl') }}
+                {{ t('customScript') }}
               </button>
-            </div>
-
-            <!-- Script Selection Component -->
-            <ScriptSelector
-              v-model="scriptPath"
-              :mode="mode"
-              :is-invalid="mode === 'add' && isScriptInvalid"
-              :available-scripts="availableScripts"
-              :scripts-dir="scriptsDir"
-              @open-scripts-folder="openScriptsFolder"
-            />
-
-            <!-- Switch to other mode links -->
-            <div class="mt-3 text-center">
-              <div class="text-xs text-text-tertiary">
-                {{ mode === 'add' ? t('orTry') : t('switchTo') }}
-                <button
-                  type="button"
-                  class="text-xs text-accent hover:underline mx-1"
-                  @click="feedType = 'url'"
-                >
-                  {{ t('rssUrl') }}
-                </button>
-                {{ t('or') }}
-                <button
-                  type="button"
-                  class="text-xs text-accent hover:underline mx-1"
-                  @click="feedType = 'xpath'"
-                >
-                  {{ t('xpath') }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- XPath Configuration (advanced mode) -->
-          <div v-else-if="feedType === 'xpath'" key="xpath-mode" class="mb-3 sm:mb-4">
-            <!-- Back to URL link -->
-            <div class="mb-3 text-center">
+              {{ t('or') }}
               <button
                 type="button"
-                class="text-xs text-accent hover:underline transition-colors"
-                @click="feedType = 'url'"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'xpath'"
               >
-                ← {{ t('backToUrl') }}
+                {{ t('xpath') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'email'"
+              >
+                {{ t('emailNewsletter') }}
               </button>
             </div>
+          </div>
+        </div>
 
-            <!-- XPath Configuration Component -->
-            <XPathConfig
-              :mode="mode"
-              :url="url"
-              :xpath-type="xpathType"
-              :xpath-item="xpathItem"
-              :xpath-item-title="xpathItemTitle"
-              :xpath-item-content="xpathItemContent"
-              :xpath-item-uri="xpathItemUri"
-              :xpath-item-author="xpathItemAuthor"
-              :xpath-item-timestamp="xpathItemTimestamp"
-              :xpath-item-time-format="xpathItemTimeFormat"
-              :xpath-item-thumbnail="xpathItemThumbnail"
-              :xpath-item-categories="xpathItemCategories"
-              :xpath-item-uid="xpathItemUid"
-              :is-xpath-item-invalid="mode === 'add' && isXpathItemInvalid"
-              @update:url="url = $event"
-              @update:xpath-type="xpathType = $event as 'HTML+XPath' | 'XML+XPath'"
-              @update:xpath-item="xpathItem = $event"
-              @update:xpath-item-title="xpathItemTitle = $event"
-              @update:xpath-item-content="xpathItemContent = $event"
-              @update:xpath-item-uri="xpathItemUri = $event"
-              @update:xpath-item-author="xpathItemAuthor = $event"
-              @update:xpath-item-timestamp="xpathItemTimestamp = $event"
-              @update:xpath-item-time-format="xpathItemTimeFormat = $event"
-              @update:xpath-item-thumbnail="xpathItemThumbnail = $event"
-              @update:xpath-item-categories="xpathItemCategories = $event"
-              @update:xpath-item-uid="xpathItemUid = $event"
-            />
+        <!-- Script Selection (advanced mode) -->
+        <div v-else-if="feedType === 'script'" key="script-mode" class="mb-3 sm:mb-4">
+          <!-- Back to URL link -->
+          <div class="mb-3 text-center">
+            <button
+              type="button"
+              class="text-xs text-accent hover:underline transition-colors"
+              @click="feedType = 'url'"
+            >
+              ← {{ t('backToUrl') }}
+            </button>
+          </div>
 
-            <!-- Switch to other mode links -->
-            <div class="mt-3 text-center">
-              <div class="text-xs text-text-tertiary">
-                {{ mode === 'add' ? t('orTry') : t('switchTo') }}
-                <button
-                  type="button"
-                  class="text-xs text-accent hover:underline mx-1"
-                  @click="feedType = 'url'"
-                >
-                  {{ t('rssUrl') }}
-                </button>
-                {{ t('or') }}
-                <button
-                  type="button"
-                  class="text-xs text-accent hover:underline mx-1"
-                  @click="feedType = 'script'"
-                >
-                  {{ t('customScript') }}
-                </button>
-              </div>
+          <!-- Script Selection Component -->
+          <ScriptSelector
+            v-model="scriptPath"
+            :mode="mode"
+            :is-invalid="mode === 'add' && isScriptInvalid"
+            :available-scripts="availableScripts"
+            :scripts-dir="scriptsDir"
+            @open-scripts-folder="openScriptsFolder"
+          />
+
+          <!-- Switch to other mode links -->
+          <div class="mt-3 text-center">
+            <div class="text-xs text-text-tertiary">
+              {{ mode === 'add' ? t('orTry') : t('switchTo') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'url'"
+              >
+                {{ t('rssUrl') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'xpath'"
+              >
+                {{ t('xpath') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'email'"
+              >
+                {{ t('emailNewsletter') }}
+              </button>
             </div>
           </div>
-        </Transition>
+        </div>
+
+        <!-- XPath Configuration (advanced mode) -->
+        <div v-else-if="feedType === 'xpath'" key="xpath-mode" class="mb-3 sm:mb-4">
+          <!-- Back to URL link -->
+          <div class="mb-3 text-center">
+            <button
+              type="button"
+              class="text-xs text-accent hover:underline transition-colors"
+              @click="feedType = 'url'"
+            >
+              ← {{ t('backToUrl') }}
+            </button>
+          </div>
+
+          <!-- XPath Configuration Component -->
+          <XPathConfig
+            :mode="mode"
+            :url="url"
+            :xpath-type="xpathType"
+            :xpath-item="xpathItem"
+            :xpath-item-title="xpathItemTitle"
+            :xpath-item-content="xpathItemContent"
+            :xpath-item-uri="xpathItemUri"
+            :xpath-item-author="xpathItemAuthor"
+            :xpath-item-timestamp="xpathItemTimestamp"
+            :xpath-item-time-format="xpathItemTimeFormat"
+            :xpath-item-thumbnail="xpathItemThumbnail"
+            :xpath-item-categories="xpathItemCategories"
+            :xpath-item-uid="xpathItemUid"
+            :is-xpath-item-invalid="mode === 'add' && isXpathItemInvalid"
+            @update:url="url = $event"
+            @update:xpath-type="xpathType = $event as 'HTML+XPath' | 'XML+XPath'"
+            @update:xpath-item="xpathItem = $event"
+            @update:xpath-item-title="xpathItemTitle = $event"
+            @update:xpath-item-content="xpathItemContent = $event"
+            @update:xpath-item-uri="xpathItemUri = $event"
+            @update:xpath-item-author="xpathItemAuthor = $event"
+            @update:xpath-item-timestamp="xpathItemTimestamp = $event"
+            @update:xpath-item-time-format="xpathItemTimeFormat = $event"
+            @update:xpath-item-thumbnail="xpathItemThumbnail = $event"
+            @update:xpath-item-categories="xpathItemCategories = $event"
+            @update:xpath-item-uid="xpathItemUid = $event"
+          />
+
+          <!-- Switch to other mode links -->
+          <div class="mt-3 text-center">
+            <div class="text-xs text-text-tertiary">
+              {{ mode === 'add' ? t('orTry') : t('switchTo') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'url'"
+              >
+                {{ t('rssUrl') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'script'"
+              >
+                {{ t('customScript') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'email'"
+              >
+                {{ t('emailNewsletter') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Email Configuration (newsletter mode) -->
+        <div v-else-if="feedType === 'email'" key="email-mode" class="mb-3 sm:mb-4">
+          <!-- Back to URL link -->
+          <div class="mb-3 text-center">
+            <button
+              type="button"
+              class="text-xs text-accent hover:underline transition-colors"
+              @click="feedType = 'url'"
+            >
+              ← {{ t('backToUrl') }}
+            </button>
+          </div>
+
+          <!-- Email Configuration Component -->
+          <EmailConfig
+            :mode="mode"
+            :email-address="emailAddress"
+            :imap-server="imapServer"
+            :imap-port="imapPort"
+            :username="emailUsername"
+            :password="emailPassword"
+            :folder="emailFolder"
+            @update:email-address="emailAddress = $event"
+            @update:imap-server="imapServer = $event"
+            @update:imap-port="imapPort = $event"
+            @update:username="emailUsername = $event"
+            @update:password="emailPassword = $event"
+            @update:folder="emailFolder = $event"
+          />
+
+          <!-- Switch to other mode links -->
+          <div class="mt-3 text-center">
+            <div class="text-xs text-text-tertiary">
+              {{ mode === 'add' ? t('orTry') : t('switchTo') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'url'"
+              >
+                {{ t('rssUrl') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'xpath'"
+              >
+                {{ t('xpath') }}
+              </button>
+              {{ t('or') }}
+              <button
+                type="button"
+                class="text-xs text-accent hover:underline mx-1"
+                @click="feedType = 'script'"
+              >
+                {{ t('customScript') }}
+              </button>
+            </div>
+          </div>
+        </div>
 
         <CategorySelector
           :category="category"

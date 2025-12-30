@@ -51,6 +51,13 @@ export interface Feed {
   xpath_item_uid?: string;
   article_view_mode?: string; // Article view mode override ('global', 'webpage', 'rendered')
   auto_expand_content?: string; // Auto expand content mode ('global', 'enabled', 'disabled')
+  // Email/Newsletter support
+  email_address?: string;
+  email_imap_server?: string;
+  email_imap_port?: number;
+  email_username?: string;
+  email_password?: string;
+  email_folder?: string;
 }
 
 export interface UnreadCounts {
