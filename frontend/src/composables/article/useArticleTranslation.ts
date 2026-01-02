@@ -56,6 +56,15 @@ export function useArticleTranslation() {
         threshold: 0.1,
       }
     );
+
+    // Automatically observe all current article elements
+    if (listRef && translationSettings.value.enabled) {
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        const cards = listRef.querySelectorAll('[data-article-id]');
+        cards.forEach((card) => observer?.observe(card));
+      }, 0);
+    }
   }
 
   // Translate an article

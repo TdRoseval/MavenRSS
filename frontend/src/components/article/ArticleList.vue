@@ -122,7 +122,7 @@ onMounted(async () => {
   window.addEventListener('toggle-filter', onToggleFilter);
 });
 
-// Watch for articles changes to maintain scroll position
+// Watch for articles changes to maintain scroll position and re-observe new articles
 watch(
   () => store.articles,
   async () => {
@@ -135,6 +135,12 @@ watch(
       const currentScroll = listRef.value.scrollTop;
       await nextTick();
       listRef.value.scrollTop = currentScroll;
+    }
+
+    // Re-setup observer to observe newly added articles
+    if (translationSettings.value.enabled && listRef.value) {
+      await nextTick();
+      setupIntersectionObserver(listRef.value, store.articles);
     }
   },
   { deep: true }
@@ -152,6 +158,19 @@ watch(
       }
     }
   }
+);
+
+// Watch for filtered articles changes to re-observe new articles
+watch(
+  () => filteredArticlesFromServer.value,
+  async () => {
+    // Re-setup observer to observe newly added filtered articles
+    if (translationSettings.value.enabled && listRef.value) {
+      await nextTick();
+      setupIntersectionObserver(listRef.value, filteredArticlesFromServer.value);
+    }
+  },
+  { deep: true }
 );
 
 onBeforeUnmount(() => {

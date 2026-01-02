@@ -23,9 +23,6 @@ interface Props {
     error?: string;
   } | null;
   isLoadingSummary: boolean;
-  translatedSummary: string;
-  translatedSummaryHTML: string;
-  isTranslatingSummary: boolean;
   translationEnabled: boolean;
   summaryProvider?: string;
   summaryTriggerMode?: string;
@@ -221,23 +218,11 @@ function handleGenerateSummary() {
           <div class="whitespace-pre-wrap">{{ summaryResult.thinking }}</div>
         </div>
 
-        <!-- Show translated summary only when translation is enabled -->
+        <!-- Show original summary -->
         <div
-          v-if="translationEnabled && translatedSummaryHTML"
-          class="text-sm text-text-primary leading-relaxed select-text prose prose-sm max-w-none"
-          v-html="translatedSummaryHTML"
-        ></div>
-        <!-- Show original summary when no translation or as fallback -->
-        <div
-          v-else
           class="text-sm text-text-primary leading-relaxed select-text prose prose-sm max-w-none"
           v-html="summaryResult.html || summaryResult.summary"
         ></div>
-        <!-- Translation loading indicator -->
-        <div v-if="isTranslatingSummary" class="flex items-center gap-1 mt-2 text-text-secondary">
-          <PhSpinnerGap :size="12" class="animate-spin" />
-          <span class="text-xs">{{ t('translating') }}</span>
-        </div>
       </div>
 
       <!-- Error State -->

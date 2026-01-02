@@ -153,11 +153,6 @@ const isLoadingSummary = computed(() =>
   props.article ? isSummaryLoading(props.article.id) : false
 );
 
-// Additional state for summary translation
-const translatedSummary = ref('');
-const translatedSummaryHTML = ref(''); // HTML version of translated summary
-const isTranslatingSummary = ref(false);
-
 // Additional state for translation
 const translatedTitle = ref('');
 const isTranslatingTitle = ref(false);
@@ -172,7 +167,18 @@ async function loadSettings() {
 
 // Translate text using the API
 async function translateText(text: string): Promise<{ text: string; html: string }> {
-  if (!text || !translationEnabled.value) return { text: '', html: '' };
+  if (!text || !translationEnabled.value) {
+    console.log('[translateText] Skipping translation:', {
+      hasText: !!text,
+      enabled: translationEnabled.value,
+    });
+    return { text: '', html: '' };
+  }
+
+  console.log('[translateText] Starting translation:', {
+    textLength: text.length,
+    targetLanguage: targetLanguage.value,
+  });
 
   try {
     const res = await fetch('/api/articles/translate-text', {
@@ -186,18 +192,25 @@ async function translateText(text: string): Promise<{ text: string; html: string
 
     if (res.ok) {
       const data = await res.json();
+      console.log('[translateText] Translation successful:', {
+        translatedLength: data.translated_text?.length || 0,
+        htmlLength: data.html?.length || 0,
+      });
       return {
         text: data.translated_text || '',
         html: data.html || '',
       };
     } else {
-      console.error('Error translating text:', res.status);
+      console.error('[translateText] API error:', res.status);
+      const errorText = await res.text();
+      console.error('[translateText] Error response:', errorText);
       window.showToast(t('errorTranslatingContent'), 'error');
     }
   } catch (e) {
-    console.error('Error translating text:', e);
+    console.error('[translateText] Network error:', e);
     window.showToast(t('errorTranslating'), 'error');
   }
+  console.log('[translateText] Translation failed, returning empty strings');
   return { text: '', html: '' };
 }
 
@@ -261,27 +274,17 @@ async function generateSummary(article: Article, force: boolean = false) {
   // Only clear state if forcing regeneration
   if (force) {
     summaryResult.value = null;
-    translatedSummary.value = '';
-    translatedSummaryHTML.value = '';
   }
 
   const result = await generateSummaryComposable(article, displayContent.value, force);
-  summaryResult.value = result;
 
   // Update the article summary in store for caching
   if (result?.summary) {
     store.updateArticleSummary(article.id, result.summary);
   }
 
-  // Auto-translate summary if translation is enabled
-  // Only translate if we got a new summary (result is from API, not cached)
-  if (translationEnabled.value && result?.summary && !result.is_too_short) {
-    isTranslatingSummary.value = true;
-    const translation = await translateText(result.summary);
-    translatedSummary.value = translation.text;
-    translatedSummaryHTML.value = translation.html;
-    isTranslatingSummary.value = false;
-  }
+  // Set summary result
+  summaryResult.value = result;
 }
 
 // Check if should auto-generate summary
@@ -563,8 +566,6 @@ watch(
       }
 
       summaryResult.value = null;
-      translatedSummary.value = '';
-      translatedSummaryHTML.value = '';
       translatedTitle.value = '';
       lastTranslatedArticleId.value = null; // Reset translation tracking
       fullArticleContent.value = ''; // Reset full article content when switching articles
@@ -575,17 +576,10 @@ watch(
           // Load the cached summary by calling API to get HTML
           // Don't use on-the-fly summarization, let backend convert cached markdown to HTML
           const result = await generateSummaryComposable(props.article, '', false);
+
+          // Set summary result
           if (result) {
             summaryResult.value = result;
-          }
-
-          // Translate the cached summary if translation is enabled
-          if (translationEnabled.value && result?.summary) {
-            isTranslatingSummary.value = true;
-            const translation = await translateText(result.summary);
-            translatedSummary.value = translation.text;
-            translatedSummaryHTML.value = translation.html;
-            isTranslatingSummary.value = false;
           }
         } else if (shouldAutoGenerateSummary()) {
           // Only auto-generate if no cached summary exists
@@ -654,17 +648,10 @@ onMounted(async () => {
     if (props.article.summary && props.article.summary.trim() !== '') {
       // Load the cached summary by calling API to get HTML
       const result = await generateSummaryComposable(props.article, '', false);
+
+      // Set summary result
       if (result) {
         summaryResult.value = result;
-      }
-
-      // Translate the cached summary if translation is enabled
-      if (translationEnabled.value && result?.summary) {
-        isTranslatingSummary.value = true;
-        const translation = await translateText(result.summary);
-        translatedSummary.value = translation.text;
-        translatedSummaryHTML.value = translation.html;
-        isTranslatingSummary.value = false;
       }
     } else if (shouldAutoGenerateSummary() && props.articleContent) {
       // Only auto-generate if no cached summary exists
@@ -741,9 +728,6 @@ onBeforeUnmount(() => {
       <ArticleSummary
         :summary-result="summaryResult"
         :is-loading-summary="isLoadingSummary"
-        :translated-summary="translatedSummary"
-        :translated-summary-html="translatedSummaryHTML"
-        :is-translating-summary="isTranslatingSummary"
         :translation-enabled="translationEnabled"
         :summary-provider="summaryProvider"
         :summary-trigger-mode="summaryTriggerMode"
