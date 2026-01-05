@@ -11,6 +11,16 @@ import (
 )
 
 // HandleSummarizeArticle generates a summary for an article's content.
+// @Summary      Summarize article
+// @Description  Generate a summary for an article's content (uses local algorithm or AI based on settings)
+// @Tags         summary
+// @Accept       json
+// @Produce      json
+// @Param        request  body      object  true  "Summarize request (article_id, length, content)"
+// @Success      200  {object}  map[string]interface{}  "Summary result (summary, html, sentence_count, is_too_short, cached, limit_reached, thinking)"
+// @Failure      400  {object}  map[string]string  "Bad request (invalid length parameter)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /summarize [post]
 func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -173,10 +183,19 @@ func getArticleContent(h *core.Handler, articleID int64, providedContent string)
 	}
 
 	// Otherwise, fetch from database/cache
-	return h.GetArticleContent(articleID)
+	content, _, err := h.GetArticleContent(articleID)
+	return content, err
 }
 
 // HandleClearSummaries clears all cached summaries from the database.
+// @Summary      Clear all summaries
+// @Description  Clear all cached article summaries from the database
+// @Tags         summary
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  map[string]bool  "Success status"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /summaries/clear [delete]
 func HandleClearSummaries(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

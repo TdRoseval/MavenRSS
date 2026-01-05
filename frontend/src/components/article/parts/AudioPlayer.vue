@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { PhSpeakerHigh, PhPlay, PhPause, PhGauge, PhTimer, PhSpinner } from '@phosphor-icons/vue';
+import {
+  PhMusicNotes,
+  PhSpeakerHigh,
+  PhPlay,
+  PhPause,
+  PhGauge,
+  PhSpinner,
+} from '@phosphor-icons/vue';
 import { useI18n } from 'vue-i18n';
 
 interface Props {
@@ -173,9 +180,9 @@ function updateBufferedProgress() {
   }
 
   try {
-    const buffered = audioRef.value.buffered;
-    if (buffered && buffered.length > 0) {
-      const bufferedEnd = buffered.end(buffered.length - 1);
+    const audioBuffered = audioRef.value.buffered;
+    if (audioBuffered && audioBuffered.length > 0) {
+      const bufferedEnd = audioBuffered.end(audioBuffered.length - 1);
       buffered.value = (bufferedEnd / duration.value) * 100;
     } else {
       buffered.value = 0;
@@ -302,7 +309,7 @@ const downloadFilename = computed(() => {
 <template>
   <div class="bg-bg-secondary border border-border rounded-lg p-4 mb-4 sm:mb-6">
     <div class="flex items-center gap-3 mb-3">
-      <PhSpeakerHigh :size="20" class="text-accent flex-shrink-0" />
+      <PhMusicNotes :size="20" class="text-accent flex-shrink-0" />
       <span class="text-sm font-medium text-text-primary">{{ t('podcastAudio') }}</span>
     </div>
 
@@ -392,17 +399,17 @@ const downloadFilename = computed(() => {
         <div class="flex items-center gap-3">
           <!-- Playback speed control -->
           <button
-            class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-tertiary hover:bg-bg-tertiary/80 transition-colors text-xs font-medium text-text-primary"
+            class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-tertiary hover:bg-bg-tertiary/80 transition-colors text-xs font-medium text-text-primary min-w-[70px]"
             :title="t('playbackSpeed')"
             @click="cycleSpeed"
           >
-            <PhTimer :size="12" class="text-text-secondary" />
+            <PhGauge :size="12" class="text-text-secondary" />
             <span>{{ playbackSpeed }}x</span>
           </button>
 
           <!-- Volume control -->
           <div class="flex items-center gap-1.5">
-            <PhGauge :size="14" class="text-text-secondary flex-shrink-0" />
+            <PhSpeakerHigh :size="14" class="text-text-secondary flex-shrink-0" />
             <input
               type="range"
               min="0"
@@ -413,7 +420,7 @@ const downloadFilename = computed(() => {
               :title="t('volume')"
               @input="onVolumeChange"
             />
-            <span class="text-xs text-text-secondary min-w-[28px] text-right"
+            <span class="text-xs text-text-secondary w-[35px] text-right"
               >{{ Math.round(volume * 100) }}%</span
             >
           </div>

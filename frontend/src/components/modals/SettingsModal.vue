@@ -168,7 +168,7 @@ function handleDiscoverAll() {
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto p-3 sm:p-6 min-h-0 scroll-smooth">
+      <div class="flex-1 overflow-y-scroll p-3 sm:p-6 min-h-0 scroll-smooth">
         <GeneralTab
           v-if="activeTab === 'general'"
           :settings="settings"

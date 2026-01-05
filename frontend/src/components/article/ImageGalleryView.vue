@@ -32,6 +32,8 @@ const showImageViewer = ref(false);
 const columns = ref<Article[][]>([]);
 const columnCount = ref(4);
 const containerRef = ref<HTMLElement | null>(null);
+// eslint-disable-next-line no-undef
+let resizeObserver: ResizeObserver | null = null;
 const contextMenu = ref<{ show: boolean; x: number; y: number; article: Article | null }>({
   show: false,
   x: 0,
@@ -53,11 +55,9 @@ async function fetchImages(loadMore = false) {
       url += `&feed_id=${feedId.value}`;
     }
 
-    console.log('Fetching images from:', url);
     const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
-      console.log('Response data:', data);
 
       // Validate that data is an array
       if (!Array.isArray(data)) {
@@ -74,16 +74,6 @@ async function fetchImages(loadMore = false) {
       }
 
       hasMore.value = newArticles.length >= ITEMS_PER_PAGE;
-      console.log(
-        'Loaded articles:',
-        newArticles.length,
-        'Total:',
-        articles.value.length,
-        'Has more:',
-        hasMore.value
-      );
-    } else {
-      console.error('API request failed:', res.status, res.statusText);
     }
   } catch (e) {
     console.error('Failed to load images:', e);
@@ -144,23 +134,11 @@ function handleScroll() {
   const containerHeight = containerRef.value.clientHeight;
   const scrollHeight = containerRef.value.scrollHeight;
 
-  console.log('Scroll:', {
-    scrollTop,
-    containerHeight,
-    scrollHeight,
-    threshold: scrollHeight - SCROLL_THRESHOLD_PX,
-    isLoading: isLoading.value,
-    hasMore: hasMore.value,
-    shouldLoad: scrollTop + containerHeight >= scrollHeight - SCROLL_THRESHOLD_PX,
-  });
-
   if (
     scrollTop + containerHeight >= scrollHeight - SCROLL_THRESHOLD_PX &&
     !isLoading.value &&
     hasMore.value
   ) {
-    console.log('Loading more images, current page:', page.value, 'next page:', page.value + 1);
-
     // Increment page before fetching
     const nextPage = page.value + 1;
     page.value = nextPage;
@@ -285,34 +263,42 @@ watch(articles, () => {
 });
 
 // Watch for feed ID changes and refetch
-watch(feedId, () => {
+watch(feedId, async () => {
   page.value = 1;
   articles.value = [];
   hasMore.value = true;
-  fetchImages();
+  await fetchImages();
+  // Recalculate columns after fetching new articles
+  await nextTick();
+  calculateColumns();
 });
 
 onMounted(() => {
   fetchImages();
   if (containerRef.value) {
-    console.log('Adding scroll listener to container:', containerRef.value);
     containerRef.value.addEventListener('scroll', handleScroll);
-  } else {
-    console.error('containerRef is null in onMounted!');
   }
-  window.addEventListener('resize', calculateColumns);
   window.addEventListener('click', closeContextMenu);
 
-  nextTick(() => {
-    calculateColumns(); // This now also calls arrangeColumns()
-  });
+  // Set up ResizeObserver to watch for container size changes
+  if (containerRef.value) {
+    // eslint-disable-next-line no-undef
+    resizeObserver = new ResizeObserver(() => {
+      calculateColumns();
+    });
+    resizeObserver.observe(containerRef.value);
+  }
 });
 
 onUnmounted(() => {
   if (containerRef.value) {
     containerRef.value.removeEventListener('scroll', handleScroll);
   }
-  window.removeEventListener('resize', calculateColumns);
+  if (resizeObserver && containerRef.value) {
+    resizeObserver.unobserve(containerRef.value);
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
   window.removeEventListener('click', closeContextMenu);
 });
 </script>

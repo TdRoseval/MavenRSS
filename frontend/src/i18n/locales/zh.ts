@@ -268,6 +268,7 @@ const zh: TranslationMessages = {
   discoveryComplete: '发现完成',
   discoveryFailed: '发现失败',
   done: '完成',
+  dropHere: '拖放到此处',
   downloadAudio: '下载音频文件',
   downloadComplete: '下载完成',
   downloadFailed: '下载失败',

@@ -178,8 +178,19 @@ function handleGenerateSummary() {
       </div>
 
       <!-- Too Short Warning -->
-      <div v-else-if="summaryResult?.is_too_short" class="text-sm text-text-secondary italic">
-        {{ t('summaryTooShort') }}
+      <div v-else-if="summaryResult?.is_too_short" class="flex flex-col items-center gap-3 py-4">
+        <div class="text-sm text-text-secondary text-center">
+          {{ t('summaryTooShort') }}
+        </div>
+        <button
+          class="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+          :disabled="isLoadingSummary"
+          @click="handleGenerateSummary"
+        >
+          <PhSpinnerGap v-if="isLoadingSummary" :size="16" class="animate-spin" />
+          <PhPlay v-else :size="16" />
+          <span class="text-sm font-medium">{{ t('regenerateSummary') }}</span>
+        </button>
       </div>
 
       <!-- Summary Display -->

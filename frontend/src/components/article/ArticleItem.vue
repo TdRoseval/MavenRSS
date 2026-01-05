@@ -170,7 +170,7 @@ onUnmounted(() => {
         <span class="font-medium text-accent truncate flex-1 min-w-0 mr-2">
           {{ article.feed_title }}
         </span>
-        <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+        <div class="flex items-center gap-1 sm:gap-2 shrink-0 min-h-[14px] sm:min-h-[18px]">
           <PhClockCountdown
             v-if="article.is_read_later"
             :size="14"

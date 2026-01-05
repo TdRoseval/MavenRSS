@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick, type Ref, type Component } from 'vue';
+import {
+  ref,
+  onMounted,
+  onUnmounted,
+  computed,
+  nextTick,
+  watch,
+  type Ref,
+  type Component,
+} from 'vue';
 import * as PhosphorIcons from '@phosphor-icons/vue';
 
 export interface ContextMenuItem {
@@ -105,6 +114,14 @@ onMounted(() => {
     document.addEventListener('contextmenu', handleClickOutside);
   }, 0);
 });
+
+// Watch for position changes and re-adjust
+watch(
+  () => [props.x, props.y],
+  () => {
+    adjustMenuPosition();
+  }
+);
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);

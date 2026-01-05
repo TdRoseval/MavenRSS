@@ -109,6 +109,12 @@ function handleDragOver(categoryName: string, feedId: number | null, event: Even
   onDragOverComposable(categoryName, feedId, event);
 }
 
+function handleCategoryDragOver(categoryName: string, event: Event) {
+  console.log('[Sidebar] handleCategoryDragOver called with:', categoryName);
+  // Update dragOverCategory when hovering over a category
+  onDragOverComposable(categoryName, null, event);
+}
+
 function handleDragLeave(categoryName: string, event: Event) {
   onDragLeaveComposable(categoryName, event);
 }
@@ -195,6 +201,34 @@ watch(draggingFeedId, (newValue, oldValue) => {
     setTimeout(() => {
       isDragging.value = false;
     }, 100);
+  }
+});
+
+// Auto-expand collapsed categories when dragging over them
+let autoExpandTimeout: ReturnType<typeof setTimeout> | null = null;
+watch(dragOverCategory, (newCategory) => {
+  // Clear any existing timeout
+  if (autoExpandTimeout) {
+    clearTimeout(autoExpandTimeout);
+    autoExpandTimeout = null;
+  }
+
+  if (newCategory && isDragging.value) {
+    // Check if the category is currently collapsed
+    const isClosed = !checkIsCategoryOpen(newCategory);
+
+    if (isClosed) {
+      console.log('[Sidebar] Auto-expanding collapsed category:', newCategory);
+      // Add a small delay before expanding to prevent accidental expansion
+      // when quickly dragging over categories
+      autoExpandTimeout = setTimeout(() => {
+        // Double-check we're still dragging over this category
+        if (dragOverCategory.value === newCategory && isDragging.value) {
+          toggleCategory(newCategory);
+          console.log('[Sidebar] Expanded category:', newCategory);
+        }
+      }, 300); // 300ms delay
+    }
   }
 });
 
@@ -308,6 +342,7 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
         @dragstart="(feedId, e) => handleDragStart(feedId, e)"
         @dragend="handleDragEnd"
         @feed-drag-over="(feedId, e) => handleDragOver(name, feedId, e)"
+        @category-drag-over="(categoryName, e) => handleCategoryDragOver(categoryName, e)"
         @dragleave="(categoryName, e) => handleDragLeave(categoryName, e)"
         @drop="() => handleDrop(name, data._feeds)"
       />
@@ -337,6 +372,7 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
         @dragstart="(feedId, e) => handleDragStart(feedId, e)"
         @dragend="handleDragEnd"
         @feed-drag-over="(feedId, e) => handleDragOver('uncategorized', feedId, e)"
+        @category-drag-over="(categoryName, e) => handleCategoryDragOver(categoryName, e)"
         @dragleave="(categoryName, e) => handleDragLeave(categoryName, e)"
         @drop="() => handleDrop('uncategorized', tree.uncategorized)"
       />

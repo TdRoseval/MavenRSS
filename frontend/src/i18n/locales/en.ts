@@ -272,6 +272,7 @@ const en: TranslationMessages = {
   discoveryComplete: 'Discovery complete',
   discoveryFailed: 'Discovery failed',
   done: 'Done',
+  dropHere: 'Drop here',
   downloadAudio: 'Download Audio File',
   downloadComplete: 'Download complete',
   downloadFailed: 'Download failed',

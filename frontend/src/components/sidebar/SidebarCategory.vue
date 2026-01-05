@@ -55,6 +55,7 @@ const emit = defineEmits<{
   dragstart: [feedId: number, event: Event];
   dragend: [];
   dragleave: [categoryName: string, event: Event];
+  categoryDragOver: [categoryName: string, event: Event];
   // Multi-level events
   childToggle: [path: string];
   childSelectCategory: [path: string];
@@ -128,6 +129,10 @@ function handleDrop(event: DragEvent) {
 // Handle dragover on category container (for dropping at category level)
 function handleCategoryDragOver(event: DragEvent) {
   event.preventDefault();
+  event.stopPropagation();
+  // Notify parent that we're dragging over this category
+  emit('categoryDragOver', props.name, event);
+  // Also emit feedDragOver for drop preview
   emit('feedDragOver', null, event);
 }
 
@@ -170,9 +175,11 @@ const isFreshRSSCategory = computed(() => {
   >
     <div
       :class="['category-header', isActive ? 'active' : '']"
+      @click="emit('selectCategory')"
       @contextmenu="(e) => emit('categoryContextMenu', e)"
+      @dragover="handleCategoryDragOver"
     >
-      <span class="flex-1 flex items-center gap-2" @click="emit('selectCategory')">
+      <span class="flex-1 flex items-center gap-2">
         <PhFolderDashed v-if="isUncategorized" :size="20" />
         <PhFolder v-else :size="20" :weight="'fill'" />
         {{ name }}

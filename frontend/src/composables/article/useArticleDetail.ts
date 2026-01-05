@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
@@ -157,8 +157,8 @@ export function useArticleDetail() {
   async function fetchArticleContent() {
     if (!article.value) return;
 
-    isLoadingContent.value = true;
     currentArticleId.value = article.value.id; // Track which article we're loading
+
     try {
       const res = await fetch(`/api/articles/content?id=${article.value.id}`);
       if (res.ok) {
@@ -174,16 +174,23 @@ export function useArticleDetail() {
         }
 
         articleContent.value = content;
-        // Don't attach event listeners here - let ArticleContent.vue handle it
-        // after enhanceRendering is complete
+
+        // Only show loading animation for non-cached content
+        if (!data.cached) {
+          // Content was fetched from feed, show loading and trigger watch
+          isLoadingContent.value = true;
+          await nextTick(); // Ensure content is rendered first
+          isLoadingContent.value = false;
+        }
+        // If cached, we don't touch isLoadingContent at all - no animation!
       } else {
         console.error('Failed to fetch article content');
         articleContent.value = '';
+        isLoadingContent.value = false;
       }
     } catch (e) {
       console.error('Error fetching article content:', e);
       articleContent.value = '';
-    } finally {
       isLoadingContent.value = false;
     }
   }

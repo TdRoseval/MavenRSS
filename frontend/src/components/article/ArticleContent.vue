@@ -681,6 +681,17 @@ watch(
   { immediate: true }
 );
 
+// Watch for full article content changes and reattach event listeners
+// This is necessary because displayContent uses fullArticleContent when available,
+// but the watch above only monitors props.articleContent
+watch(fullArticleContent, async (content) => {
+  if (content) {
+    // Wait for v-html to update the DOM before attaching event listeners
+    await nextTick();
+    await reattachImageInteractions();
+  }
+});
+
 // Clean up event listeners
 onBeforeUnmount(() => {
   // Cancel any ongoing summary generation

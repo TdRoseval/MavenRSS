@@ -5,6 +5,18 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed the issue where URLs are not trimmed correctly when adding or editing feeds. (#413)
+- Fixed the issue where summary can not be regenerated after the article content changed. (#412)
+- Fixed the issue of some small style problems. (#396, #397, #402, #407)
+- Fixed the issue where image gallery view shows only 2 columns. (#399)
+- Fixed the issue of left and right click actions not working correctly in feeds list. (#394)
+- Fixed the issue where can not dragging feeds into collapsed categories. (#394)
+- Fixed the issue where links can not be opened in default browser after extracting full article content. (#409)
+
 ## [1.3.13] - 2026-01-03
 
 **BREAKING**: The FreshRSS synchronization feature has been significantly enhanced, offering more options and improved reliability. You may need to remove and re-add your FreshRSS feeds after upgrading.

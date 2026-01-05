@@ -117,7 +117,7 @@ async function submit() {
     }
 
     if (feedType.value === 'url') {
-      body.url = url.value;
+      body.url = url.value.trim();
       if (props.mode === 'edit') {
         body.script_path = '';
       }
@@ -129,7 +129,7 @@ async function submit() {
         body.script_path = scriptPath.value;
       }
     } else if (feedType.value === 'xpath') {
-      body.url = url.value;
+      body.url = url.value.trim();
       if (props.mode === 'edit') {
         body.script_path = '';
       }

@@ -66,17 +66,15 @@ function handleWheel(e: WheelEvent) {
 }
 
 function startDrag(e: MouseEvent) {
-  if (scale.value > 1) {
-    isDragging.value = true;
-    dragStart.value = {
-      x: e.clientX - position.value.x,
-      y: e.clientY - position.value.y,
-    };
-  }
+  isDragging.value = true;
+  dragStart.value = {
+    x: e.clientX - position.value.x,
+    y: e.clientY - position.value.y,
+  };
 }
 
 function onDrag(e: MouseEvent) {
-  if (isDragging.value && scale.value > 1) {
+  if (isDragging.value) {
     position.value = {
       x: e.clientX - dragStart.value.x,
       y: e.clientY - dragStart.value.y,
@@ -154,7 +152,6 @@ async function downloadImage() {
 
 const imageStyle = computed<CSSProperties>(() => ({
   transform: `translate(${position.value.x}px, ${position.value.y}px) scale(${scale.value})`,
-  cursor: scale.value > 1 ? (isDragging.value ? 'grabbing' : 'grab') : 'default',
 }));
 
 onMounted(() => {
@@ -198,6 +195,7 @@ onUnmounted(() => {
     <!-- Image Container -->
     <div
       class="relative w-full h-full flex items-center justify-center overflow-hidden image-container"
+      :class="{ 'cursor-grab': !isDragging, 'cursor-grabbing': isDragging }"
       @click.stop
       @wheel="handleWheel"
       @mousedown="startDrag"
@@ -255,7 +253,11 @@ onUnmounted(() => {
   cursor: default;
 }
 
-.image-container.dragging {
+.image-container.cursor-grab {
+  cursor: grab;
+}
+
+.image-container.cursor-grabbing {
   cursor: grabbing;
 }
 </style>
