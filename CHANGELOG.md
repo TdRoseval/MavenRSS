@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the issue where sidebar width would shrink when feed titles are short. (#433)
 - Fixed the issue where image viewer can not be closed automatically after switching articles or feeds. (#431)
 - Fixed the issue where AI summaries are always regenerated in English or not accurate enough. (#424, #438)
+- Fixed the issue where FreshRSS synchronization fails for feeds in some cases. (#440)
 
 **Special Thanks** to @EnterMan123 for carefully testing and reporting many of these issues!
 

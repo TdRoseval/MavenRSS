@@ -93,7 +93,9 @@ export function useArticleActions(
       const newState = !article.is_read;
       article.is_read = newState;
       try {
-        await fetch(`/api/articles/read?id=${article.id}&read=${newState}`, { method: 'POST' });
+        await fetch(`/api/articles/mark-read-sync?id=${article.id}&read=${newState}`, {
+          method: 'POST',
+        });
         // Update unread counts after toggling read status
         if (onReadStatusChange) {
           onReadStatusChange();
@@ -108,7 +110,7 @@ export function useArticleActions(
       const newState = !article.is_favorite;
       article.is_favorite = newState;
       try {
-        await fetch(`/api/articles/favorite?id=${article.id}`, { method: 'POST' });
+        await fetch(`/api/articles/toggle-favorite-sync?id=${article.id}`, { method: 'POST' });
       } catch (e) {
         console.error('Error toggling favorite:', e);
         // Revert the state change on error
@@ -161,7 +163,9 @@ export function useArticleActions(
       if (!article.is_read) {
         article.is_read = true;
         try {
-          await fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' });
+          await fetch(`/api/articles/mark-read-sync?id=${article.id}&read=true`, {
+            method: 'POST',
+          });
           if (onReadStatusChange) {
             onReadStatusChange();
           }

@@ -59,69 +59,6 @@ func HandleArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(articles)
 }
 
-// HandleMarkRead marks an article as read or unread.
-// @Summary      Mark article as read/unread
-// @Description  Mark a specific article as read or unread
-// @Tags         articles
-// @Accept       json
-// @Produce      json
-// @Param        id   query     int64   true  "Article ID"
-// @Param        read query     string  true  "Read status: 'true', '1', 'false', or '0'"  Enums(true, 1, false, 0)
-// @Success      200  {string}  string  "Article marked successfully"
-// @Failure      500  {object}  map[string]string  "Internal server error"
-// @Router       /articles/mark-read [post]
-func HandleMarkRead(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-
-	readStr := r.URL.Query().Get("read")
-	read := true
-	if readStr == "false" || readStr == "0" {
-		read = false
-	}
-
-	syncReq, err := h.DB.MarkArticleReadWithSync(id, read)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-
-	// Trigger background sync if needed (non-blocking)
-	if syncReq != nil {
-		// Note: This is a simplified version. For production, use the new HandleMarkReadWithImmediateSync
-		_ = syncReq
-	}
-}
-
-// HandleToggleFavorite toggles the favorite status of an article.
-// @Summary      Toggle article favorite status
-// @Description  Toggle the favorite/starred status of an article
-// @Tags         articles
-// @Accept       json
-// @Produce      json
-// @Param        id   query     int64   true  "Article ID"
-// @Success      200  {string}  string  "Favorite status toggled successfully"
-// @Failure      500  {object}  map[string]string  "Internal server error"
-// @Router       /articles/toggle-favorite [post]
-func HandleToggleFavorite(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-
-	syncReq, err := h.DB.ToggleFavoriteWithSync(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-
-	// Trigger background sync if needed (non-blocking)
-	if syncReq != nil {
-		// Note: This is a simplified version. For production, use the new HandleToggleFavoriteWithImmediateSync
-		_ = syncReq
-	}
-}
-
 // HandleToggleHideArticle toggles the hidden status of an article.
 // @Summary      Toggle article hidden status
 // @Description  Toggle the hidden status of an article (hidden articles are filtered out by default)

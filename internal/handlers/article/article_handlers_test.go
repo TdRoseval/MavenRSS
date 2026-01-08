@@ -102,17 +102,17 @@ func TestArticleActions_MarkRead_Favorite_Hide_ReadLater(t *testing.T) {
 	id := arts[0].ID
 
 	// Mark unread -> read
-	req := httptest.NewRequest(http.MethodPost, "/api/articles/mark_read?id="+fmt.Sprint(id)+"&read=true", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/mark-read-sync?id="+fmt.Sprint(id)+"&read=true", nil)
 	w := httptest.NewRecorder()
-	article.HandleMarkRead(h, w, req)
+	article.HandleMarkReadWithImmediateSync(h, w, req)
 	if w.Result().StatusCode != http.StatusOK {
 		t.Fatalf("mark read failed: %d", w.Result().StatusCode)
 	}
 
 	// Toggle favorite
-	req2 := httptest.NewRequest(http.MethodPost, "/api/articles/toggle_fav?id="+fmt.Sprint(id), nil)
+	req2 := httptest.NewRequest(http.MethodPost, "/api/articles/toggle-favorite-sync?id="+fmt.Sprint(id), nil)
 	w2 := httptest.NewRecorder()
-	article.HandleToggleFavorite(h, w2, req2)
+	article.HandleToggleFavoriteWithImmediateSync(h, w2, req2)
 	if w2.Result().StatusCode != http.StatusOK {
 		t.Fatalf("toggle fav failed: %d", w2.Result().StatusCode)
 	}

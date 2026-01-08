@@ -150,7 +150,7 @@ function handleScroll() {
 async function toggleFavorite(article: Article, event: Event) {
   event.stopPropagation();
   try {
-    const res = await fetch(`/api/articles/favorite?id=${article.id}`, {
+    const res = await fetch(`/api/articles/toggle-favorite-sync?id=${article.id}`, {
       method: 'POST',
     });
     if (res.ok) {
@@ -175,7 +175,7 @@ function openImage(article: Article) {
 // Mark article as read
 async function markAsRead(article: Article) {
   try {
-    const res = await fetch(`/api/articles/read?id=${article.id}&read=true`, {
+    const res = await fetch(`/api/articles/mark-read-sync?id=${article.id}&read=true`, {
       method: 'POST',
     });
     if (res.ok) {

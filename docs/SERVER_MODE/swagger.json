@@ -257,6 +257,61 @@
                 }
             }
         },
+        "/api/rsshub/transform-url": {
+            "post": {
+                "description": "Transforms a rsshub:// protocol URL to full RSSHub URL with endpoint and API key",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rsshub"
+                ],
+                "summary": "Transform RSSHub URL",
+                "parameters": [
+                    {
+                        "description": "RSSHub URL to transform (rsshub:// protocol)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "url": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Transformed URL",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "url": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or URL",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/rsshub/validate-route": {
             "post": {
                 "description": "Validates if a specific RSSHub route exists and is accessible using the configured endpoint and API key",
@@ -976,61 +1031,6 @@
                 }
             }
         },
-        "/articles/mark-read": {
-            "post": {
-                "description": "Mark a specific article as read or unread",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "articles"
-                ],
-                "summary": "Mark article as read/unread",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "format": "int64",
-                        "description": "Article ID",
-                        "name": "id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "enum": [
-                            "true",
-                            "1",
-                            "false",
-                            "0"
-                        ],
-                        "type": "string",
-                        "description": "Read status: 'true', '1', 'false', or '0'",
-                        "name": "read",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Article marked successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/articles/mark-read-sync": {
             "post": {
                 "description": "Mark a specific article as read or unread and immediately sync to FreshRSS if configured",
@@ -1104,48 +1104,6 @@
                         "description": "Refresh started successfully",
                         "schema": {
                             "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/articles/toggle-favorite": {
-            "post": {
-                "description": "Toggle the favorite/starred status of an article",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "articles"
-                ],
-                "summary": "Toggle article favorite status",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "format": "int64",
-                        "description": "Article ID",
-                        "name": "id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Favorite status toggled successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
                         }
                     }
                 }

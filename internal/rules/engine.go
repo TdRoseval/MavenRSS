@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"MrRSS/internal/database"
+	"MrRSS/internal/freshrss"
 	"MrRSS/internal/models"
 	"MrRSS/internal/rsshub"
 )
@@ -354,28 +356,73 @@ func matchMultiSelect(fieldValue string, values []string, singleValue string) bo
 	return true
 }
 
-// applyAction applies an action to an article
+// applyAction applies an action to an article with FreshRSS sync if enabled
 func (e *Engine) applyAction(articleID int64, action string) error {
+	var syncReq *database.SyncRequest
+	var err error
+
+	// Apply the action and get sync request if applicable
 	switch action {
 	case "favorite":
-		return e.db.SetArticleFavorite(articleID, true)
+		syncReq, err = e.db.SetArticleFavoriteWithSync(articleID, true)
 	case "unfavorite":
-		return e.db.SetArticleFavorite(articleID, false)
+		syncReq, err = e.db.SetArticleFavoriteWithSync(articleID, false)
 	case "hide":
-		return e.db.SetArticleHidden(articleID, true)
+		err = e.db.SetArticleHidden(articleID, true)
 	case "unhide":
-		return e.db.SetArticleHidden(articleID, false)
+		err = e.db.SetArticleHidden(articleID, false)
 	case "mark_read":
-		return e.db.MarkArticleRead(articleID, true)
+		syncReq, err = e.db.MarkArticleReadWithSync(articleID, true)
 	case "mark_unread":
-		return e.db.MarkArticleRead(articleID, false)
+		syncReq, err = e.db.MarkArticleReadWithSync(articleID, false)
 	case "read_later":
-		return e.db.SetArticleReadLater(articleID, true)
+		err = e.db.SetArticleReadLater(articleID, true)
 	case "remove_read_later":
-		return e.db.SetArticleReadLater(articleID, false)
+		err = e.db.SetArticleReadLater(articleID, false)
 	default:
 		log.Printf("Unknown action: %s", action)
 		return nil
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// Perform immediate sync to FreshRSS if needed
+	if syncReq != nil {
+		go e.performImmediateSync(syncReq)
+	}
+
+	return nil
+}
+
+// performImmediateSync performs an immediate sync to FreshRSS in a background goroutine
+func (e *Engine) performImmediateSync(syncReq *database.SyncRequest) {
+	// Check if FreshRSS is enabled and configured
+	enabled, _ := e.db.GetSetting("freshrss_enabled")
+	if enabled != "true" {
+		return
+	}
+
+	serverURL, username, password, err := e.db.GetFreshRSSConfig()
+	if err != nil || serverURL == "" || username == "" || password == "" {
+		log.Printf("[Rule Sync] FreshRSS not configured, skipping sync")
+		return
+	}
+
+	// Create sync service
+	syncService := freshrss.NewBidirectionalSyncService(serverURL, username, password, e.db)
+
+	// Perform immediate sync
+	ctx := context.Background()
+	err = syncService.SyncArticleStatus(ctx, syncReq.ArticleID, syncReq.ArticleURL, syncReq.Action)
+	if err != nil {
+		log.Printf("[Rule Sync] Failed for article %d: %v", syncReq.ArticleID, err)
+		// Enqueue for retry during next global sync
+		_ = e.db.EnqueueSyncChange(syncReq.ArticleID, syncReq.ArticleURL, syncReq.Action)
+		log.Printf("[Rule Sync] Enqueued article %d for retry", syncReq.ArticleID)
+	} else {
+		log.Printf("[Rule Sync] Success for article %d: %s", syncReq.ArticleID, syncReq.Action)
 	}
 }
 

@@ -122,14 +122,16 @@ export function useArticleDetail() {
     if (!article.value) return;
     const newState = !article.value.is_read;
     article.value.is_read = newState;
-    fetch(`/api/articles/read?id=${article.value.id}&read=${newState}`, { method: 'POST' });
+    fetch(`/api/articles/mark-read-sync?id=${article.value.id}&read=${newState}`, {
+      method: 'POST',
+    });
   }
 
   function toggleFavorite() {
     if (!article.value) return;
     const newState = !article.value.is_favorite;
     article.value.is_favorite = newState;
-    fetch(`/api/articles/favorite?id=${article.value.id}`, { method: 'POST' });
+    fetch(`/api/articles/toggle-favorite-sync?id=${article.value.id}`, { method: 'POST' });
   }
 
   async function toggleReadLater() {
@@ -541,7 +543,7 @@ export function useArticleDetail() {
     // Mark as read when rendering content
     if (!article.value.is_read) {
       article.value.is_read = true;
-      fetch(`/api/articles/read?id=${article.value.id}&read=true`, { method: 'POST' });
+      fetch(`/api/articles/mark-read-sync?id=${article.value.id}&read=true`, { method: 'POST' });
     }
 
     if (action === 'showContent') {

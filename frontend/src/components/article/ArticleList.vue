@@ -278,7 +278,7 @@ function selectArticle(article: Article): void {
     article.is_read = true;
     // Add to temporarily keep list so it doesn't disappear immediately
     temporarilyKeepArticles.value.add(article.id);
-    fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
+    fetch(`/api/articles/mark-read-sync?id=${article.id}&read=true`, { method: 'POST' })
       .then(() => {
         store.fetchUnreadCounts();
       })

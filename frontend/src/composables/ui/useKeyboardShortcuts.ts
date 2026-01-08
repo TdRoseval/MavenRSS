@@ -101,7 +101,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     // Mark as read
     if (!article.is_read) {
       article.is_read = true;
-      fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
+      fetch(`/api/articles/mark-read-sync?id=${article.id}&read=true`, { method: 'POST' })
         .then(() => store.fetchUnreadCounts())
         .catch((e) => console.error('Error marking as read:', e));
     }
@@ -121,7 +121,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     const newState = !article.is_read;
     article.is_read = newState;
-    fetch(`/api/articles/read?id=${article.id}&read=${newState}`, { method: 'POST' })
+    fetch(`/api/articles/mark-read-sync?id=${article.id}&read=${newState}`, { method: 'POST' })
       .then(() => store.fetchUnreadCounts())
       .catch((e) => {
         console.error('Error toggling read:', e);
@@ -135,7 +135,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     const newState = !article.is_favorite;
     article.is_favorite = newState;
-    fetch(`/api/articles/favorite?id=${article.id}`, { method: 'POST' }).catch((e) => {
+    fetch(`/api/articles/toggle-favorite-sync?id=${article.id}`, { method: 'POST' }).catch((e) => {
       console.error('Error toggling favorite:', e);
       article.is_favorite = !newState;
     });
