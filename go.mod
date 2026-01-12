@@ -20,7 +20,7 @@ require (
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.48
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
-	modernc.org/sqlite v1.42.2
+	modernc.org/sqlite v1.43.0
 )
 
 require (
