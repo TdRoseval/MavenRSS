@@ -158,8 +158,8 @@ input[type='number']::-moz-number-spin-box {
   opacity: 1;
 }
 
-/* Native checkbox styling */
-input[type='checkbox'] {
+/* Native checkbox styling (not .toggle) */
+input[type='checkbox']:not(.toggle) {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -180,12 +180,12 @@ input[type='checkbox'] {
   line-height: 1;
 }
 
-input[type='checkbox']:checked {
+input[type='checkbox']:not(.toggle):checked {
   background-color: var(--accent-color);
   border-color: var(--accent-color);
 }
 
-input[type='checkbox']:checked::after {
+input[type='checkbox']:not(.toggle):checked::after {
   content: '*';
   position: absolute;
   top: 50%;
@@ -193,14 +193,19 @@ input[type='checkbox']:checked::after {
   transform: translate(-50%, -50%);
 }
 
-input[type='checkbox']:focus {
+input[type='checkbox']:not(.toggle):focus {
   outline: none;
 }
 
-/* Dark mode checkbox */
-.dark-mode input[type='checkbox'] {
+/* Dark mode checkbox (not .toggle) */
+.dark-mode input[type='checkbox']:not(.toggle) {
   background-color: var(--bg-primary);
   border-color: var(--border-color);
+}
+
+.dark-mode input[type='checkbox']:not(.toggle):checked {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 /* Fixed line height utility */
