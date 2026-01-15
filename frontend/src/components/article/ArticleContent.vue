@@ -158,6 +158,7 @@ const translatedTitle = ref('');
 const isTranslatingTitle = ref(false);
 const isTranslatingContent = ref(false);
 const lastTranslatedArticleId = ref<number | null>(null);
+const translationSkipped = ref(false);
 
 // Load settings using composables
 async function loadSettings() {
@@ -166,7 +167,10 @@ async function loadSettings() {
 }
 
 // Translate text using the API
-async function translateText(text: string): Promise<{ text: string; html: string }> {
+async function translateText(
+  text: string,
+  force: boolean = false
+): Promise<{ text: string; html: string }> {
   if (!text || !translationEnabled.value) {
     return { text: '', html: '' };
   }
@@ -174,6 +178,7 @@ async function translateText(text: string): Promise<{ text: string; html: string
   const requestBody = {
     text: text,
     target_language: targetLanguage.value,
+    force: force,
   };
 
   try {
@@ -185,6 +190,17 @@ async function translateText(text: string): Promise<{ text: string; html: string
 
     if (res.ok) {
       const data = await res.json();
+
+      // Check if translation was skipped
+      if (data.skipped === 'true' || data.skipped === true) {
+        if (data.reason === 'already_target_language') {
+          translationSkipped.value = true;
+        }
+      } else {
+        // Reset skip flags on successful translation
+        translationSkipped.value = false;
+      }
+
       return {
         text: data.translated_text || '',
         html: data.html || '',
@@ -198,6 +214,13 @@ async function translateText(text: string): Promise<{ text: string; html: string
     window.showToast(t('errorTranslating'), 'error');
   }
   return { text: '', html: '' };
+}
+
+// Force translate content
+async function forceTranslateContent() {
+  if (!props.articleContent) return;
+
+  await translateContentParagraphs(props.articleContent, true);
 }
 
 // Fetch full article content from the original URL
@@ -233,10 +256,11 @@ async function fetchFullArticle() {
         if (translationEnabled.value) {
           // Reset translation tracking to allow re-translation with full content
           lastTranslatedArticleId.value = null;
+          translationSkipped.value = false; // Reset skip status
           translateTitle(props.article);
           // Wait for DOM to update with new content before translating
           await nextTick();
-          translateContentParagraphs(fullArticleContent.value);
+          await translateContentParagraphs(fullArticleContent.value);
         }
       }
     } else {
@@ -731,13 +755,19 @@ onBeforeUnmount(() => {
   >
     <div
       class="max-w-3xl mx-auto bg-bg-primary"
-      :class="{ 'hide-translations': !showTranslations }"
+      :class="{
+        'hide-translations': !showTranslations,
+        'translation-only-mode': translationSettings.translationOnlyMode,
+      }"
     >
       <ArticleTitle
         :article="article"
         :translated-title="translatedTitle"
         :is-translating-title="isTranslatingTitle"
         :translation-enabled="translationEnabled"
+        :translation-skipped="translationSkipped"
+        :is-translating-content="isTranslatingContent"
+        @force-translate="forceTranslateContent"
       />
 
       <!-- Audio Player (if article has audio) -->

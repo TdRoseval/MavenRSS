@@ -70,7 +70,7 @@ defineEmits<{
         <PhArticle v-else :size="18" class="sm:w-5 sm:h-5" />
       </button>
       <button
-        v-if="showContent"
+        v-if="showContent && settings.translation_enabled && !settings.translation_only_mode"
         class="action-btn"
         :title="showTranslations ? t('hideTranslations') : t('showTranslations')"
         @click="$emit('toggleTranslations')"

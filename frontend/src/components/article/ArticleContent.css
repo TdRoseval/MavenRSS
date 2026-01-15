@@ -406,6 +406,93 @@
   display: none !important;
 }
 
+/* Translation-only mode: hide original text content that has been translated */
+.translation-only-mode .prose p:has(+ .translation-text),
+.translation-only-mode .prose h1:has(+ .translation-text),
+.translation-only-mode .prose h2:has(+ .translation-text),
+.translation-only-mode .prose h3:has(+ .translation-text),
+.translation-only-mode .prose h4:has(+ .translation-text),
+.translation-only-mode .prose h5:has(+ .translation-text),
+.translation-only-mode .prose h6:has(+ .translation-text) {
+  display: none !important;
+}
+
+/* Hide list items that have translations inside them */
+.translation-only-mode .prose li:has(> .translation-text) {
+  display: none !important;
+}
+
+/* Hide table cells that have translations inside them */
+.translation-only-mode .prose td:has(> .translation-text),
+.translation-only-mode .prose th:has(> .translation-text) {
+  display: none !important;
+}
+
+/* Hide figcaption that has translation following it */
+.translation-only-mode .prose figcaption:has(+ .translation-text) {
+  display: none !important;
+}
+
+/* Hide definition list items that have translations inside them */
+.translation-only-mode .prose dt:has(> .translation-text),
+.translation-only-mode .prose dd:has(> .translation-text) {
+  display: none !important;
+}
+
+/* In translation-only mode, hide elements that don't have translations */
+.translation-only-mode .prose p:empty,
+.translation-only-mode .prose h1:empty,
+.translation-only-mode .prose h2:empty,
+.translation-only-mode .prose h3:empty,
+.translation-only-mode .prose h4:empty,
+.translation-only-mode .prose h5:empty,
+.translation-only-mode .prose h6:empty {
+  display: none !important;
+}
+
+/* Translation-only mode: make translations look like main text */
+.translation-only-mode .prose .translation-text {
+  color: var(--text-primary);
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+  padding-top: 0;
+  border-top: none;
+  opacity: 1;
+  line-height: 1.75;
+}
+
+/* Translation-only mode: paragraph translations should match paragraph spacing */
+.translation-only-mode .prose p + .translation-text,
+.translation-only-mode .prose .translation-text.translation-inline {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+}
+
+/* Translation-only mode: heading translations */
+.translation-only-mode .prose h1 + .translation-text {
+  font-size: 2.25em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 0;
+  margin-bottom: 0.8888889em;
+}
+
+.translation-only-mode .prose h2 + .translation-text {
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 0;
+  margin-bottom: 1em;
+}
+
+.translation-only-mode .prose h3 + .translation-text {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 0;
+  margin-bottom: 1.6em;
+}
+
 /* Base translation style - consistent dashed line separator */
 .prose .translation-text {
   display: block;

@@ -16,11 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Supported displaying if a feed is image gallery mode in the feed list. (#485)
 - Supported customizing translation service endpoint. (#383)
 - Supported not refreshing feeds automatically. (#448)
+- Supported displaying translation text only without original text. (#464)
 
 ### Changed
 
 - All the documents will now be opened in the default browser, and multi-language support has been added. (#458)
 - Importing and exporting files will not show error messages if no file is selected. (#483)
+- If the target language in an article is more than 60%, the translation will be skipped to save API usage.
 
 ### Fixed
 

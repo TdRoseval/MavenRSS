@@ -5,6 +5,7 @@ import type { Article } from '@/types/models';
 interface TranslationSettings {
   enabled: boolean;
   targetLang: string;
+  translationOnlyMode: boolean;
 }
 
 export function useArticleTranslation() {
@@ -12,6 +13,7 @@ export function useArticleTranslation() {
   const translationSettings = ref<TranslationSettings>({
     enabled: false,
     targetLang: 'en',
+    translationOnlyMode: false,
   });
   const translatingArticles: Ref<Set<number>> = ref(new Set());
   let observer: IntersectionObserver | null = null;
@@ -24,6 +26,7 @@ export function useArticleTranslation() {
       translationSettings.value = {
         enabled: data.translation_enabled === 'true',
         targetLang: data.target_language || 'en',
+        translationOnlyMode: data.translation_only_mode === 'true',
       };
     } catch (e) {
       console.error('Error loading translation settings:', e);

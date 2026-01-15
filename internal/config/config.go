@@ -99,6 +99,7 @@ type Defaults struct {
 	TargetLanguage                string `json:"target_language"`
 	Theme                         string `json:"theme"`
 	TranslationEnabled            bool   `json:"translation_enabled"`
+	TranslationOnlyMode           bool   `json:"translation_only_mode"`
 	TranslationProvider           string `json:"translation_provider"`
 	UpdateInterval                int    `json:"update_interval"`
 	WindowHeight                  string `json:"window_height"`
@@ -286,6 +287,8 @@ func GetString(key string) string {
 		return defaults.Theme
 	case "translation_enabled":
 		return strconv.FormatBool(defaults.TranslationEnabled)
+	case "translation_only_mode":
+		return strconv.FormatBool(defaults.TranslationOnlyMode)
 	case "translation_provider":
 		return defaults.TranslationProvider
 	case "update_interval":

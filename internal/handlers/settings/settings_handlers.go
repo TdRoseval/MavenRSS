@@ -128,6 +128,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		targetLanguage := safeGetSetting(h, "target_language")
 		theme := safeGetSetting(h, "theme")
 		translationEnabled := safeGetSetting(h, "translation_enabled")
+		translationOnlyMode := safeGetSetting(h, "translation_only_mode")
 		translationProvider := safeGetSetting(h, "translation_provider")
 		updateInterval := safeGetSetting(h, "update_interval")
 		windowHeight := safeGetSetting(h, "window_height")
@@ -217,6 +218,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"target_language":                  targetLanguage,
 			"theme":                            theme,
 			"translation_enabled":              translationEnabled,
+			"translation_only_mode":            translationOnlyMode,
 			"translation_provider":             translationProvider,
 			"update_interval":                  updateInterval,
 			"window_height":                    windowHeight,
@@ -308,6 +310,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			TargetLanguage                string `json:"target_language"`
 			Theme                         string `json:"theme"`
 			TranslationEnabled            string `json:"translation_enabled"`
+			TranslationOnlyMode           string `json:"translation_only_mode"`
 			TranslationProvider           string `json:"translation_provider"`
 			UpdateInterval                string `json:"update_interval"`
 			WindowHeight                  string `json:"window_height"`
@@ -658,6 +661,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			h.DB.SetSetting("translation_enabled", req.TranslationEnabled)
 		}
 
+		if req.TranslationOnlyMode != "" {
+			h.DB.SetSetting("translation_only_mode", req.TranslationOnlyMode)
+		}
+
 		if req.TranslationProvider != "" {
 			h.DB.SetSetting("translation_provider", req.TranslationProvider)
 		}
@@ -767,6 +774,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		targetLanguage := safeGetSetting(h, "target_language")
 		theme := safeGetSetting(h, "theme")
 		translationEnabled := safeGetSetting(h, "translation_enabled")
+		translationOnlyMode := safeGetSetting(h, "translation_only_mode")
 		translationProvider := safeGetSetting(h, "translation_provider")
 		updateInterval := safeGetSetting(h, "update_interval")
 		windowHeight := safeGetSetting(h, "window_height")
@@ -856,6 +864,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"target_language":                  targetLanguage,
 			"theme":                            theme,
 			"translation_enabled":              translationEnabled,
+			"translation_only_mode":            translationOnlyMode,
 			"translation_provider":             translationProvider,
 			"update_interval":                  updateInterval,
 			"window_height":                    windowHeight,

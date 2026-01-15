@@ -86,6 +86,7 @@ export interface SettingsData {
   target_language: string;
   theme: string;
   translation_enabled: boolean;
+  translation_only_mode: boolean;
   translation_provider: string;
   update_interval: number;
   window_height: string;

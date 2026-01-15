@@ -94,6 +94,7 @@ export function generateInitialSettings(): SettingsData {
     target_language: settingsDefaults.target_language,
     theme: settingsDefaults.theme,
     translation_enabled: settingsDefaults.translation_enabled,
+    translation_only_mode: settingsDefaults.translation_only_mode,
     translation_provider: settingsDefaults.translation_provider,
     update_interval: settingsDefaults.update_interval,
     window_height: settingsDefaults.window_height,
@@ -109,7 +110,7 @@ export function generateInitialSettings(): SettingsData {
  * This should be used in useSettings() fetchSettings() to parse backend data
  */
 export function parseSettingsData(data: Record<string, string>): SettingsData {
-  const parsed = {
+  return {
     ai_api_key: data.ai_api_key || settingsDefaults.ai_api_key,
     ai_chat_enabled: data.ai_chat_enabled === 'true',
     ai_custom_headers: data.ai_custom_headers || settingsDefaults.ai_custom_headers,
@@ -207,6 +208,7 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     target_language: data.target_language || settingsDefaults.target_language,
     theme: data.theme || settingsDefaults.theme,
     translation_enabled: data.translation_enabled === 'true',
+    translation_only_mode: data.translation_only_mode === 'true',
     translation_provider: data.translation_provider || settingsDefaults.translation_provider,
     update_interval: parseInt(data.update_interval) || settingsDefaults.update_interval,
     window_height: data.window_height || settingsDefaults.window_height,
@@ -215,8 +217,6 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     window_x: data.window_x || settingsDefaults.window_x,
     window_y: data.window_y || settingsDefaults.window_y,
   } as SettingsData;
-
-  return parsed;
 }
 
 /**
@@ -373,6 +373,9 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     theme: settingsRef.value.theme ?? settingsDefaults.theme,
     translation_enabled: (
       settingsRef.value.translation_enabled ?? settingsDefaults.translation_enabled
+    ).toString(),
+    translation_only_mode: (
+      settingsRef.value.translation_only_mode ?? settingsDefaults.translation_only_mode
     ).toString(),
     translation_provider:
       settingsRef.value.translation_provider ?? settingsDefaults.translation_provider,

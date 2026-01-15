@@ -303,6 +303,30 @@ async function clearTranslationCache() {
     >
       <div class="sub-setting-item">
         <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+          <PhTranslate :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+          <div class="flex-1 min-w-0">
+            <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('translationOnlyMode') }}</div>
+            <div class="text-xs text-text-secondary hidden sm:block">
+              {{ t('translationOnlyModeDesc') }}
+            </div>
+          </div>
+        </div>
+        <input
+          :checked="props.settings.translation_only_mode"
+          type="checkbox"
+          class="toggle"
+          @change="
+            (e) =>
+              emit('update:settings', {
+                ...props.settings,
+                translation_only_mode: (e.target as HTMLInputElement).checked,
+              })
+          "
+        />
+      </div>
+
+      <div class="sub-setting-item">
+        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
           <PhPackage :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
           <div class="flex-1 min-w-0">
             <div class="font-medium mb-0 sm:mb-1 text-sm">{{ t('translationProvider') }}</div>

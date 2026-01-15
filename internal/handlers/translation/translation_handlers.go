@@ -187,6 +187,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	var req struct {
 		Text       string `json:"text"`
 		TargetLang string `json:"target_language"`
+		Force      bool   `json:"force"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -201,14 +202,17 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 
 	// Step 1: Pre-translation language detection to avoid unnecessary API calls
 	detector := translation.GetLanguageDetector()
-	if !detector.ShouldTranslate(req.Text, req.TargetLang) {
+	// Use full-text analysis for better accuracy on longer content
+	// Skip language detection if force flag is set
+	if !req.Force && !detector.ShouldTranslateFullText(req.Text, req.TargetLang) {
 		// Text is already in target language, return original text
-		log.Printf("Text is already in target language %s, skipping translation", req.TargetLang)
+		log.Printf("Text is already in target language %s (skipped by ratio check), skipping translation", req.TargetLang)
 		htmlText := utils.ConvertMarkdownToHTML(req.Text)
-		json.NewEncoder(w).Encode(map[string]string{
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"translated_text": req.Text,
 			"html":            htmlText,
 			"skipped":         "true", // Indicate translation was skipped
+			"reason":          "already_target_language",
 		})
 		return
 	}
