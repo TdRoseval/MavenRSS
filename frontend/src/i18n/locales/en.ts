@@ -569,6 +569,7 @@ const en: TranslationMessages = {
   networkSettingsDescription:
     'Automatic network speed detection to optimize parallel feed refresh performance',
   never: 'Never',
+  neverRefresh: 'Never Refresh',
   neverSynced: 'Never',
   nextArticle: 'Next Article',
   no: 'No',

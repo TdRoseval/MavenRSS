@@ -559,6 +559,7 @@ const zh: TranslationMessages = {
   networkSettings: '网络设置',
   networkSettingsDescription: '自动检测网络速度以优化并行刷新订阅源的性能',
   never: '从未',
+  neverRefresh: '不刷新',
   neverSynced: '从未',
   nextArticle: '下一篇文章',
   no: '否',

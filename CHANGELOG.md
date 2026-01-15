@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Supported hiding text overlay in image gallery view. (#486)
 - Supported displaying if a feed is image gallery mode in the feed list. (#485)
 - Supported customizing translation service endpoint. (#383)
+- Supported not refreshing feeds automatically. (#448)
 
 ### Changed
 
