@@ -589,6 +589,7 @@ export interface TranslationMessages {
   xpathItemCategories: string;
   xpathItemContent: string;
   xpathItemHelp: string;
+  xpathAutoFetchHint: string;
   xpathItemThumbnail: string;
   xpathItemTimeFormat: string;
   xpathItemTimestamp: string;

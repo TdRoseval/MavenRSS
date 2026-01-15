@@ -917,6 +917,8 @@ const en: TranslationMessages = {
   xpathItemCategories: 'Categories XPath',
   xpathItemContent: 'Content XPath',
   xpathItemHelp: 'XPath expression to select article containers',
+  xpathAutoFetchHint:
+    'Full article extraction will be automatically enabled since URL XPath is set but Content XPath is not',
   xpathItemThumbnail: 'Thumbnail XPath',
   xpathItemTimeFormat: 'Time Format',
   xpathItemTimestamp: 'Timestamp XPath',

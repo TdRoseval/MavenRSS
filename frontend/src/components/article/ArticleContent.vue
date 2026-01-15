@@ -75,6 +75,19 @@ const autoShowAllContent = ref(false);
 const shouldAutoExpandContent = computed(() => {
   // First check if feed has auto_expand_content setting
   const feed = store.feeds.find((f) => f.id === props.article.feed_id);
+
+  // Special case: For XPath feeds without content xpath, always auto-expand regardless of settings
+  const isXPathFeedWithoutContent =
+    feed &&
+    (feed.type === 'HTML+XPath' || feed.type === 'XML+XPath') &&
+    !feed.xpath_item_content &&
+    feed.xpath_item_uri;
+
+  // For XPath feeds without content xpath, always return true
+  if (isXPathFeedWithoutContent) {
+    return true;
+  }
+
   if (feed?.auto_expand_content) {
     if (feed.auto_expand_content === 'enabled') return true;
     if (feed.auto_expand_content === 'disabled') return false;
@@ -111,10 +124,15 @@ const showChatButton = computed(() => {
 
 // Computed to check if full-text fetching should be shown
 const showFullTextButton = computed(() => {
+  // For XPath feeds without content, show button even if articleContent is empty
+  const feed = store.feeds.find((f) => f.id === props.article.feed_id);
+  const isXPathFeedWithoutContent =
+    feed && (feed.type === 'HTML+XPath' || feed.type === 'XML+XPath') && !props.articleContent;
+
   return (
     appSettings.value.full_text_fetch_enabled &&
     !props.isLoadingContent &&
-    props.articleContent &&
+    (props.articleContent || isXPathFeedWithoutContent) && // Allow empty content for XPath feeds
     props.article?.url &&
     props.showContent &&
     !fullArticleContent.value // Don't show if we already have full content
@@ -220,7 +238,7 @@ async function translateText(
 async function forceTranslateContent() {
   if (!props.articleContent) return;
 
-  await translateContentParagraphs(props.articleContent, true);
+  await translateContentParagraphs(props.articleContent);
 }
 
 // Fetch full article content from the original URL

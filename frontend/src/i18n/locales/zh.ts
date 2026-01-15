@@ -911,6 +911,7 @@ const zh: TranslationMessages = {
   xpathItemCategories: '分类 XPath',
   xpathItemContent: '内容 XPath',
   xpathItemHelp: '用于选择文章容器的 XPath 表达式',
+  xpathAutoFetchHint: '由于已设置链接 XPath 但未设置内容 XPath，将自动启用提取完整文章',
   xpathItemThumbnail: '缩略图 XPath',
   xpathItemTimeFormat: '时间格式',
   xpathItemTimestamp: '时间 XPath',

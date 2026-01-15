@@ -170,7 +170,12 @@ async function submit() {
     body.article_view_mode = articleViewMode.value;
 
     // Add auto expand content mode
-    body.auto_expand_content = autoExpandContent.value;
+    // For XPath feeds: if there's a link xpath but no content xpath, auto-enable full article extraction
+    if (feedType.value === 'xpath' && !body.xpath_item_content && body.xpath_item_uri) {
+      body.auto_expand_content = 'enabled';
+    } else {
+      body.auto_expand_content = autoExpandContent.value;
+    }
 
     if (props.mode === 'edit') {
       body.id = props.feed!.id;
