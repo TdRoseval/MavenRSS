@@ -345,11 +345,12 @@ function getMultiSelectDisplayText(): string {
 }
 .dropdown-option {
   @apply flex items-center gap-2 px-2 sm:px-3 py-1.5 sm:py-2 cursor-pointer text-text-primary hover:bg-bg-tertiary;
+  min-height: 36px;
 }
 .dropdown-option.selected {
   background-color: rgba(59, 130, 246, 0.1);
 }
 .checkbox-input {
-  @apply w-3 h-3 sm:w-4 sm:h-4 accent-accent cursor-pointer;
+  @apply w-4 h-4 accent-accent cursor-pointer flex-shrink-0;
 }
 </style>

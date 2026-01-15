@@ -21,10 +21,13 @@ import { useArticleTranslation } from '@/composables/article/useArticleTranslati
 import { useArticleFilter } from '@/composables/article/useArticleFilter';
 import { useArticleActions } from '@/composables/article/useArticleActions';
 import { useShowPreviewImages } from '@/composables/ui/useShowPreviewImages';
+import { useSettings } from '@/composables/core/useSettings';
+import { parseSettingsData } from '@/composables/core/useSettings.generated';
 import type { Article } from '@/types/models';
 
 const store = useAppStore();
 const { t } = useI18n();
+const { settings } = useSettings();
 
 const listRef: Ref<HTMLDivElement | null> = ref(null);
 const defaultViewMode = ref<'original' | 'rendered'>('original');
@@ -66,9 +69,10 @@ const {
   loadMoreFilteredArticles,
 } = useArticleFilter();
 
-const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, () =>
-  store.fetchUnreadCounts()
-);
+const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, async () => {
+  await store.fetchUnreadCounts();
+  await store.fetchFilterCounts();
+});
 
 // Computed filtered articles - optimized to avoid excessive recomputation
 const filteredArticles = computed(() => {
@@ -94,6 +98,60 @@ const visibleArticles = computed(() => {
   // Keeping it simple to avoid complexity
   return filteredArticles.value;
 });
+
+// Helper to truncate text to max length
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength - 1) + '…';
+}
+
+// Dynamic title based on current filter and temporary selection
+const articleListTitle = computed(() => {
+  // If there's a temporary selection from feed drawer, show feed/category name with filter
+  if (store.tempSelection.feedId) {
+    const feed = store.feeds?.find((f) => f.id === store.tempSelection.feedId);
+    const feedName = feed?.title || '';
+    const filterText = getFilterText();
+
+    // Truncate feed name if it's too long (leave room for " - filterText")
+    const maxFeedNameLength = filterText ? 40 : 50;
+    const truncatedFeedName = truncateText(feedName, maxFeedNameLength);
+
+    return filterText ? `${truncatedFeedName} - ${filterText}` : truncatedFeedName;
+  }
+
+  if (store.tempSelection.category) {
+    const categoryName = store.tempSelection.category;
+    const filterText = getFilterText();
+
+    // Truncate category name if it's too long
+    const maxCategoryLength = filterText ? 40 : 50;
+    const truncatedCategory = truncateText(categoryName, maxCategoryLength);
+
+    return filterText ? `${truncatedCategory} - ${filterText}` : truncatedCategory;
+  }
+
+  // No temporary selection, show filter only
+  return getFilterText() || t('articles');
+});
+
+// Helper to get filter text
+function getFilterText(): string {
+  switch (store.currentFilter) {
+    case 'all':
+      return t('allArticles');
+    case 'unread':
+      return t('unreadArticles');
+    case 'favorites':
+      return t('favorites');
+    case 'readLater':
+      return t('readLater');
+    case 'imageGallery':
+      return t('imageGallery');
+    default:
+      return '';
+  }
+}
 
 // Initialize show preview images setting
 const { initialize: initializeShowPreviewImages } = useShowPreviewImages();
@@ -128,6 +186,10 @@ onMounted(async () => {
     'show-preview-images-changed',
     onShowPreviewImagesChanged as EventListener
   );
+  // Listen for compact mode changes
+  window.addEventListener('compact-mode-changed', onCompactModeChanged as EventListener);
+  // Listen for settings loaded event (from App.vue on startup)
+  window.addEventListener('settings-loaded', onSettingsLoaded as EventListener);
   // Listen for refresh articles events
   window.addEventListener('refresh-articles', onRefreshArticles);
   // Listen for toggle filter events (from keyboard shortcut)
@@ -208,6 +270,8 @@ onBeforeUnmount(() => {
     'show-preview-images-changed',
     onShowPreviewImagesChanged as EventListener
   );
+  window.removeEventListener('compact-mode-changed', onCompactModeChanged as EventListener);
+  window.removeEventListener('settings-loaded', onSettingsLoaded as EventListener);
   window.removeEventListener('refresh-articles', onRefreshArticles);
   window.removeEventListener('toggle-filter', onToggleFilter);
 });
@@ -245,6 +309,27 @@ function onShowPreviewImagesChanged(e: Event): void {
   updateValue(customEvent.detail.value);
 }
 
+function onCompactModeChanged(): void {
+  // Force a re-fetch of settings to update the reactive settings object
+  fetch('/api/settings')
+    .then((res) => res.json())
+    .then((data) => {
+      settings.value = parseSettingsData(data);
+    })
+    .catch((err) => console.error('Error refreshing settings after compact mode change:', err));
+}
+
+function onSettingsLoaded(): void {
+  // Load initial settings when App.vue has loaded them
+  fetch('/api/settings')
+    .then((res) => res.json())
+    .then((data) => {
+      settings.value = parseSettingsData(data);
+      console.log('ArticleList settings loaded on startup:', settings.value.compact_mode);
+    })
+    .catch((err) => console.error('Error loading initial settings in ArticleList:', err));
+}
+
 function onRefreshArticles(): void {
   store.fetchArticles();
 }
@@ -265,9 +350,6 @@ function onRefreshTooltipHide(): void {
 
 // Article selection and interaction
 function selectArticle(article: Article): void {
-  // Reset user preference when selecting article via normal click
-  window.dispatchEvent(new CustomEvent('reset-user-view-preference'));
-
   // If switching from one article to another, remove the previous one from temp list
   if (store.currentArticleId) {
     temporarilyKeepArticles.value.delete(store.currentArticleId);
@@ -279,8 +361,9 @@ function selectArticle(article: Article): void {
     // Add to temporarily keep list so it doesn't disappear immediately
     temporarilyKeepArticles.value.add(article.id);
     fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
-      .then(() => {
-        store.fetchUnreadCounts();
+      .then(async () => {
+        await store.fetchUnreadCounts();
+        await store.fetchFilterCounts();
       })
       .catch((e) => {
         console.error('Error marking as read:', e);
@@ -360,6 +443,7 @@ async function markAllAsRead(): Promise<void> {
       // Refresh articles and counts
       await store.fetchArticles();
       await store.fetchUnreadCounts();
+      await store.fetchFilterCounts();
       window.showToast(t('markedAllAsRead'), 'success');
     } catch (e) {
       console.error('Error marking filtered articles as read:', e);
@@ -384,6 +468,7 @@ async function clearReadLater(): Promise<void> {
     const res = await fetch('/api/articles/clear-read-later', { method: 'POST' });
     if (res.ok) {
       await store.fetchArticles();
+      await store.fetchFilterCounts();
       window.showToast(t('clearedReadLater'), 'success');
     }
   } catch (e) {
@@ -411,8 +496,13 @@ function handleHoverMarkAsRead(articleId: number): void {
     class="article-list flex flex-col w-full border-r border-border bg-bg-primary shrink-0 h-full"
   >
     <div class="p-2 sm:p-4 border-b border-border bg-bg-primary">
-      <div class="flex items-center justify-between sm:mb-2">
-        <h3 class="m-0 text-base sm:text-lg font-semibold">{{ t('articles') }}</h3>
+      <div class="flex items-center justify-between">
+        <h3
+          class="m-0 text-base sm:text-lg font-semibold truncate flex-1"
+          :title="articleListTitle"
+        >
+          {{ articleListTitle }}
+        </h3>
         <div class="flex items-center gap-1 sm:gap-2">
           <!-- Clear Read Later button - only shown when viewing Read Later list -->
           <button
@@ -421,14 +511,14 @@ function handleHoverMarkAsRead(articleId: number): void {
             :title="t('clearReadLater')"
             @click="clearReadLater"
           >
-            <PhTrash :size="20" class="sm:w-6 sm:h-6" />
+            <PhTrash :size="18" class="sm:w-5 sm:h-5" />
           </button>
           <button
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
             :title="t('markAllRead')"
             @click="markAllAsRead"
           >
-            <PhCheckCircle :size="20" class="sm:w-6 sm:h-6" />
+            <PhCheckCircle :size="18" class="sm:w-5 sm:h-5" />
           </button>
           <button
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
@@ -438,8 +528,8 @@ function handleHoverMarkAsRead(articleId: number): void {
           >
             <component
               :is="store.showOnlyUnread ? PhEye : PhEyeSlash"
-              :size="20"
-              class="sm:w-6 sm:h-6"
+              :size="18"
+              class="sm:w-5 sm:h-5"
             />
           </button>
           <div class="relative">
@@ -469,8 +559,8 @@ function handleHoverMarkAsRead(articleId: number): void {
               @click="refreshArticles"
             >
               <PhArrowClockwise
-                :size="20"
-                class="sm:w-6 sm:h-6"
+                :size="18"
+                class="sm:w-5 sm:h-5"
                 :class="store.refreshProgress.isRunning ? 'animate-spin' : ''"
               />
             </button>
@@ -584,7 +674,7 @@ function handleHoverMarkAsRead(articleId: number): void {
             </Transition>
           </div>
           <button class="md:hidden text-xl sm:text-2xl p-1" @click="emit('toggleSidebar')">
-            <PhList :size="20" class="sm:w-6 sm:h-6" />
+            <PhList :size="18" class="sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
@@ -619,15 +709,17 @@ function handleHoverMarkAsRead(articleId: number): void {
         <PhSpinner :size="20" class="animate-spin sm:w-6 sm:h-6" />
       </div>
     </div>
+  </section>
 
-    <!-- Filter Modal -->
+  <!-- Filter Modal - Teleported to body to avoid positioning constraints -->
+  <Teleport to="body">
     <ArticleFilterModal
       :show="showFilterModal"
       :current-filters="activeFilters"
       @close="showFilterModal = false"
       @apply="handleApplyFilters"
     />
-  </section>
+  </Teleport>
 </template>
 
 <style scoped>

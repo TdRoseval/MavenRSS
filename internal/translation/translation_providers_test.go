@@ -1,6 +1,7 @@
 package translation
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -95,15 +96,21 @@ func TestAITranslate_SuccessAndEmpty(t *testing.T) {
 func TestAITranslate_AutoDetectOllama(t *testing.T) {
 	t1 := NewAITranslator("", "http://localhost:11434/api/generate", "llama3.2:1b")
 
-	// Mock Ollama response (first try OpenAI format, which should fail, then try Ollama format)
+	// Mock Ollama response (since endpoint is localhost, Ollama format is tried first and should succeed)
 	callCount := 0
 	testHTTPClient := &http.Client{Transport: rtFunc(func(req *http.Request) (*http.Response, error) {
 		callCount++
-		if callCount == 1 {
-			// First call - OpenAI format fails
-			return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"Invalid format"}}`)), Header: http.Header{"Content-Type": {"application/json"}}}, nil
+		// Read request body to verify Ollama format
+		bodyBytes, _ := io.ReadAll(req.Body)
+		var requestBody map[string]interface{}
+		json.Unmarshal(bodyBytes, &requestBody)
+
+		// Ollama format should have "prompt" and "model" fields, not "messages"
+		if _, hasPrompt := requestBody["prompt"]; !hasPrompt {
+			t.Fatalf("expected Ollama format request with 'prompt' field, got: %s", string(bodyBytes))
 		}
-		// Second call - Ollama format succeeds
+
+		// Return successful Ollama response
 		body := `{"response":"Bonjour","done":true}`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{"Content-Type": {"application/json"}}}, nil
 	}), Timeout: 5 * time.Second}
@@ -123,7 +130,7 @@ func TestAITranslate_AutoDetectOllama(t *testing.T) {
 	if out != "Bonjour" {
 		t.Fatalf("expected Bonjour, got %s", out)
 	}
-	if callCount != 2 {
-		t.Fatalf("expected 2 API calls (OpenAI then Ollama), got %d", callCount)
+	if callCount != 1 {
+		t.Fatalf("expected 1 API call (Ollama format should succeed on first try), got %d", callCount)
 	}
 }

@@ -129,8 +129,11 @@ func (s *AISummarizer) SetCustomHeaders(headers string) {
 }
 
 // SetLanguage sets the language for the summarizer.
+// If language is empty, it keeps the current language setting.
 func (s *AISummarizer) SetLanguage(language string) {
-	s.Language = language
+	if language != "" {
+		s.Language = language
+	}
 }
 
 // recreateClient re-creates the AI client with current configuration
@@ -148,22 +151,20 @@ func (s *AISummarizer) recreateClient() {
 
 // getDefaultSystemPrompt returns the default system prompt based on the configured language.
 func (s *AISummarizer) getDefaultSystemPrompt() string {
-	switch s.Language {
-	case "zh":
+	// Check if language starts with "zh" to handle locale codes like "zh", "zh-CN", "zh-TW", etc.
+	if strings.HasPrefix(s.Language, "zh") {
 		return "你是一个专业的文章摘要助手。请为给定的文章生成清晰、格式良好的摘要。在列出项目、特性或要点时，请优先使用项目符号或编号列表来组织内容。使摘要易于阅读和浏览。"
-	default:
-		return "You are a helpful AI assistant that creates clear, well-formatted summaries. When listing items, features, or points, prefer using bullet points or numbered lists to organize the content. Make the summary scannable and easy to read."
 	}
+	return "You are a helpful AI assistant that creates clear, well-formatted summaries. When listing items, features, or points, prefer using bullet points or numbered lists to organize the content. Make the summary scannable and easy to read."
 }
 
 // getUserPrompt generates a localized user prompt with target language specification.
 func (s *AISummarizer) getUserPrompt(targetWords int, text string) string {
-	switch s.Language {
-	case "zh":
+	// Check if language starts with "zh" to handle locale codes like "zh", "zh-CN", "zh-TW", etc.
+	if strings.HasPrefix(s.Language, "zh") {
 		return fmt.Sprintf("请用中文将以下内容总结为大约 %d 字：\n\n%s", targetWords, text)
-	default:
-		return fmt.Sprintf("Summarize the following text in English in approximately %d words:\n\n%s", targetWords, text)
 	}
+	return fmt.Sprintf("Summarize the following text in English in approximately %d words:\n\n%s", targetWords, text)
 }
 
 // Summarize generates a summary of the given text using an OpenAI-compatible API.

@@ -5,6 +5,8 @@ import { openInBrowser } from '@/utils/browser';
 export interface KeyboardShortcuts {
   nextArticle: string;
   previousArticle: string;
+  nextArticleArrow: string;
+  previousArticleArrow: string;
   openArticle: string;
   closeArticle: string;
   toggleReadStatus: string;
@@ -37,6 +39,8 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   const shortcuts = ref<KeyboardShortcuts>({
     nextArticle: 'j',
     previousArticle: 'k',
+    nextArticleArrow: 'ArrowRight',
+    previousArticleArrow: 'ArrowLeft',
     openArticle: 'Enter',
     closeArticle: 'Escape',
     toggleReadStatus: 'r',
@@ -180,6 +184,20 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
       return;
     }
 
+    // Check if image viewer is open - if so, let it handle arrow keys
+    const imageViewerOpen = document.querySelector('[data-image-viewer="true"]') !== null;
+    if (imageViewerOpen) {
+      // Image viewer handles its own keyboard events
+      // Only ESC key should be handled here to close the viewer
+      const key = buildKeyCombo(e);
+      if (key === shortcuts.value.closeArticle) {
+        // Let the image viewer's ESC handler close it
+        return;
+      }
+      // Block all other shortcuts when image viewer is open
+      return;
+    }
+
     // Check if settings modal is open
     const settingsModalOpen = document.querySelector('[data-settings-modal="true"]') !== null;
 
@@ -236,6 +254,12 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
         navigateArticle(1);
         break;
       case 'previousArticle':
+        navigateArticle(-1);
+        break;
+      case 'nextArticleArrow':
+        navigateArticle(1);
+        break;
+      case 'previousArticleArrow':
         navigateArticle(-1);
         break;
       case 'openArticle':

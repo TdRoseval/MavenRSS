@@ -47,6 +47,67 @@ func HandleGetUnreadCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// HandleGetFilterCounts returns article counts for different filters (unread, favorites, read_later, images).
+// @Summary      Get filter-specific feed counts
+// @Description  Get per-feed counts for different filter types (unread, favorites, read_later, images)
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "Filter counts for all filter types"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /articles/filter-counts [get]
+func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get unread counts per feed
+	unreadCounts, err := h.DB.GetUnreadCountsForAllFeeds()
+	if err != nil {
+		log.Printf("[HandleGetFilterCounts] ERROR getting unread counts: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get favorite counts per feed
+	favoriteCounts, err := h.DB.GetFavoriteCountsForAllFeeds()
+	if err != nil {
+		log.Printf("[HandleGetFilterCounts] ERROR getting favorite counts: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get read_later counts per feed
+	readLaterCounts, err := h.DB.GetReadLaterCountsForAllFeeds()
+	if err != nil {
+		log.Printf("[HandleGetFilterCounts] ERROR getting read_later counts: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get image mode counts per feed
+	imageCounts, err := h.DB.GetImageModeCountsForAllFeeds()
+	if err != nil {
+		log.Printf("[HandleGetFilterCounts] ERROR getting image counts: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"unread":     unreadCounts,
+		"favorites":  favoriteCounts,
+		"read_later": readLaterCounts,
+		"images":     imageCounts,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("[HandleGetFilterCounts] ERROR encoding response: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+	}
+}
+
 // HandleMarkAllAsRead marks all articles as read.
 // @Summary      Mark all articles as read
 // @Description  Mark all articles as read globally, by feed, or by category

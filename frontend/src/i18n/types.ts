@@ -294,6 +294,7 @@ export interface TranslationMessages {
   hideArticle: string;
   hideFromTimeline: string;
   hideFromTimelineDesc: string;
+  hideText: string;
   hideTranslations: string;
   hoursAgo: string;
   htmlXpath: string;
@@ -491,6 +492,7 @@ export interface TranslationMessages {
   showHiddenArticlesDesc: string;
   showOriginal: string;
   showRendered: string;
+  showText: string;
   showTranslations: string;
   sortByCategory: string;
   sortByDate: string;
@@ -587,6 +589,7 @@ export interface TranslationMessages {
   xpathItemCategories: string;
   xpathItemContent: string;
   xpathItemHelp: string;
+  xpathAutoFetchHint: string;
   xpathItemThumbnail: string;
   xpathItemTimeFormat: string;
   xpathItemTimestamp: string;

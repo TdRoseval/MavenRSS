@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { PhBookOpen } from '@phosphor-icons/vue';
+import { openInBrowser } from '@/utils/browser';
 
 interface Props {
   mode: 'add' | 'edit';
@@ -40,7 +41,14 @@ const emit = defineEmits<{
   'update:xpath-item-uid': [value: string];
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+function openDocumentation() {
+  const docUrl = locale.value.startsWith('zh')
+    ? 'https://github.com/WCY-dt/MrRSS/blob/main/docs/XPATH_MODE.zh.md'
+    : 'https://github.com/WCY-dt/MrRSS/blob/main/docs/XPATH_MODE.md';
+  openInBrowser(docUrl);
+}
 
 // Hardcoded XPath placeholders - same across all languages
 const xpathPlaceholders = {
@@ -225,15 +233,14 @@ const xpathPlaceholders = {
     </div>
 
     <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
-      <a
-        href="https://github.com/WCY-dt/MrRSS/blob/main/docs/XPATH_MODE.md"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
         class="text-xs sm:text-sm text-accent hover:underline flex items-center gap-1"
+        @click="openDocumentation"
       >
         <PhBookOpen :size="14" />
         {{ t('xpathDocumentation') }}
-      </a>
+      </button>
     </div>
   </div>
 </template>

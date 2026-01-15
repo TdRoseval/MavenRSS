@@ -111,6 +111,10 @@ export function useArticleActions(
       article.is_favorite = newState;
       try {
         await fetch(`/api/articles/favorite?id=${article.id}`, { method: 'POST' });
+        // Update filter counts after toggling favorite status
+        if (onReadStatusChange) {
+          onReadStatusChange();
+        }
       } catch (e) {
         console.error('Error toggling favorite:', e);
         // Revert the state change on error

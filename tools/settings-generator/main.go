@@ -390,7 +390,11 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 %s
-		w.WriteHeader(http.StatusOK)
+		// Re-fetch all settings after save to return updated values
+%s
+		json.NewEncoder(w).Encode(map[string]string{
+%s
+		})
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -401,7 +405,9 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		strings.Join(getVars, "\n"),
 		strings.Join(jsonFields, "\n"),
 		strings.Join(structFields, "\n"),
-		strings.Join(saveStatements, "\n\n"))
+		strings.Join(saveStatements, "\n\n"),
+		strings.Join(getVars, "\n"),
+		strings.Join(jsonFields, "\n"))
 
 	return os.WriteFile("internal/handlers/settings/settings_handlers.go", []byte(content), 0644)
 }

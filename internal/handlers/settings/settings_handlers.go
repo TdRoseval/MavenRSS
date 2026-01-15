@@ -58,14 +58,25 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		aiUsageTokens := safeGetSetting(h, "ai_usage_tokens")
 		autoCleanupEnabled := safeGetSetting(h, "auto_cleanup_enabled")
 		autoShowAllContent := safeGetSetting(h, "auto_show_all_content")
-		autoUpdate := safeGetSetting(h, "auto_update")
 		baiduAppId := safeGetSetting(h, "baidu_app_id")
 		baiduSecretKey := safeGetEncryptedSetting(h, "baidu_secret_key")
 		closeToTray := safeGetSetting(h, "close_to_tray")
+		compactMode := safeGetSetting(h, "compact_mode")
 		customCssFile := safeGetSetting(h, "custom_css_file")
+		customTranslationBodyTemplate := safeGetSetting(h, "custom_translation_body_template")
+		customTranslationEnabled := safeGetSetting(h, "custom_translation_enabled")
+		customTranslationEndpoint := safeGetSetting(h, "custom_translation_endpoint")
+		customTranslationHeaders := safeGetSetting(h, "custom_translation_headers")
+		customTranslationLangMapping := safeGetSetting(h, "custom_translation_lang_mapping")
+		customTranslationMethod := safeGetSetting(h, "custom_translation_method")
+		customTranslationName := safeGetSetting(h, "custom_translation_name")
+		customTranslationResponsePath := safeGetSetting(h, "custom_translation_response_path")
+		customTranslationTimeout := safeGetSetting(h, "custom_translation_timeout")
 		deeplApiKey := safeGetEncryptedSetting(h, "deepl_api_key")
 		deeplEndpoint := safeGetSetting(h, "deepl_endpoint")
 		defaultViewMode := safeGetSetting(h, "default_view_mode")
+		feedDrawerExpanded := safeGetSetting(h, "feed_drawer_expanded")
+		feedDrawerPinned := safeGetSetting(h, "feed_drawer_pinned")
 		freshrssApiPassword := safeGetEncryptedSetting(h, "freshrss_api_password")
 		freshrssAutoSyncInterval := safeGetSetting(h, "freshrss_auto_sync_interval")
 		freshrssEnabled := safeGetSetting(h, "freshrss_enabled")
@@ -117,6 +128,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		targetLanguage := safeGetSetting(h, "target_language")
 		theme := safeGetSetting(h, "theme")
 		translationEnabled := safeGetSetting(h, "translation_enabled")
+		translationOnlyMode := safeGetSetting(h, "translation_only_mode")
 		translationProvider := safeGetSetting(h, "translation_provider")
 		updateInterval := safeGetSetting(h, "update_interval")
 		windowHeight := safeGetSetting(h, "window_height")
@@ -125,163 +137,187 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		windowX := safeGetSetting(h, "window_x")
 		windowY := safeGetSetting(h, "window_y")
 		json.NewEncoder(w).Encode(map[string]string{
-			"ai_api_key":                  aiApiKey,
-			"ai_chat_enabled":             aiChatEnabled,
-			"ai_custom_headers":           aiCustomHeaders,
-			"ai_endpoint":                 aiEndpoint,
-			"ai_model":                    aiModel,
-			"ai_summary_prompt":           aiSummaryPrompt,
-			"ai_translation_prompt":       aiTranslationPrompt,
-			"ai_usage_limit":              aiUsageLimit,
-			"ai_usage_tokens":             aiUsageTokens,
-			"auto_cleanup_enabled":        autoCleanupEnabled,
-			"auto_show_all_content":       autoShowAllContent,
-			"auto_update":                 autoUpdate,
-			"baidu_app_id":                baiduAppId,
-			"baidu_secret_key":            baiduSecretKey,
-			"close_to_tray":               closeToTray,
-			"custom_css_file":             customCssFile,
-			"deepl_api_key":               deeplApiKey,
-			"deepl_endpoint":              deeplEndpoint,
-			"default_view_mode":           defaultViewMode,
-			"freshrss_api_password":       freshrssApiPassword,
-			"freshrss_auto_sync_interval": freshrssAutoSyncInterval,
-			"freshrss_enabled":            freshrssEnabled,
-			"freshrss_last_sync_time":     freshrssLastSyncTime,
-			"freshrss_server_url":         freshrssServerUrl,
-			"freshrss_sync_on_startup":    freshrssSyncOnStartup,
-			"freshrss_username":           freshrssUsername,
-			"full_text_fetch_enabled":     fullTextFetchEnabled,
-			"google_translate_endpoint":   googleTranslateEndpoint,
-			"hover_mark_as_read":          hoverMarkAsRead,
-			"image_gallery_enabled":       imageGalleryEnabled,
-			"language":                    language,
-			"last_global_refresh":         lastGlobalRefresh,
-			"last_network_test":           lastNetworkTest,
-			"max_article_age_days":        maxArticleAgeDays,
-			"max_cache_size_mb":           maxCacheSizeMb,
-			"max_concurrent_refreshes":    maxConcurrentRefreshes,
-			"media_cache_enabled":         mediaCacheEnabled,
-			"media_cache_max_age_days":    mediaCacheMaxAgeDays,
-			"media_cache_max_size_mb":     mediaCacheMaxSizeMb,
-			"media_proxy_fallback":        mediaProxyFallback,
-			"network_bandwidth_mbps":      networkBandwidthMbps,
-			"network_latency_ms":          networkLatencyMs,
-			"network_speed":               networkSpeed,
-			"obsidian_enabled":            obsidianEnabled,
-			"obsidian_vault":              obsidianVault,
-			"obsidian_vault_path":         obsidianVaultPath,
-			"proxy_enabled":               proxyEnabled,
-			"proxy_host":                  proxyHost,
-			"proxy_password":              proxyPassword,
-			"proxy_port":                  proxyPort,
-			"proxy_type":                  proxyType,
-			"proxy_username":              proxyUsername,
-			"refresh_mode":                refreshMode,
-			"retry_timeout_seconds":       retryTimeoutSeconds,
-			"rsshub_api_key":              rsshubApiKey,
-			"rsshub_enabled":              rsshubEnabled,
-			"rsshub_endpoint":             rsshubEndpoint,
-			"rules":                       rules,
-			"shortcuts":                   shortcuts,
-			"shortcuts_enabled":           shortcutsEnabled,
-			"show_article_preview_images": showArticlePreviewImages,
-			"show_hidden_articles":        showHiddenArticles,
-			"startup_on_boot":             startupOnBoot,
-			"summary_enabled":             summaryEnabled,
-			"summary_length":              summaryLength,
-			"summary_provider":            summaryProvider,
-			"summary_trigger_mode":        summaryTriggerMode,
-			"target_language":             targetLanguage,
-			"theme":                       theme,
-			"translation_enabled":         translationEnabled,
-			"translation_provider":        translationProvider,
-			"update_interval":             updateInterval,
-			"window_height":               windowHeight,
-			"window_maximized":            windowMaximized,
-			"window_width":                windowWidth,
-			"window_x":                    windowX,
-			"window_y":                    windowY,
+			"ai_api_key":                       aiApiKey,
+			"ai_chat_enabled":                  aiChatEnabled,
+			"ai_custom_headers":                aiCustomHeaders,
+			"ai_endpoint":                      aiEndpoint,
+			"ai_model":                         aiModel,
+			"ai_summary_prompt":                aiSummaryPrompt,
+			"ai_translation_prompt":            aiTranslationPrompt,
+			"ai_usage_limit":                   aiUsageLimit,
+			"ai_usage_tokens":                  aiUsageTokens,
+			"auto_cleanup_enabled":             autoCleanupEnabled,
+			"auto_show_all_content":            autoShowAllContent,
+			"baidu_app_id":                     baiduAppId,
+			"baidu_secret_key":                 baiduSecretKey,
+			"close_to_tray":                    closeToTray,
+			"compact_mode":                     compactMode,
+			"custom_css_file":                  customCssFile,
+			"custom_translation_body_template": customTranslationBodyTemplate,
+			"custom_translation_enabled":       customTranslationEnabled,
+			"custom_translation_endpoint":      customTranslationEndpoint,
+			"custom_translation_headers":       customTranslationHeaders,
+			"custom_translation_lang_mapping":  customTranslationLangMapping,
+			"custom_translation_method":        customTranslationMethod,
+			"custom_translation_name":          customTranslationName,
+			"custom_translation_response_path": customTranslationResponsePath,
+			"custom_translation_timeout":       customTranslationTimeout,
+			"deepl_api_key":                    deeplApiKey,
+			"deepl_endpoint":                   deeplEndpoint,
+			"default_view_mode":                defaultViewMode,
+			"feed_drawer_expanded":             feedDrawerExpanded,
+			"feed_drawer_pinned":               feedDrawerPinned,
+			"freshrss_api_password":            freshrssApiPassword,
+			"freshrss_auto_sync_interval":      freshrssAutoSyncInterval,
+			"freshrss_enabled":                 freshrssEnabled,
+			"freshrss_last_sync_time":          freshrssLastSyncTime,
+			"freshrss_server_url":              freshrssServerUrl,
+			"freshrss_sync_on_startup":         freshrssSyncOnStartup,
+			"freshrss_username":                freshrssUsername,
+			"full_text_fetch_enabled":          fullTextFetchEnabled,
+			"google_translate_endpoint":        googleTranslateEndpoint,
+			"hover_mark_as_read":               hoverMarkAsRead,
+			"image_gallery_enabled":            imageGalleryEnabled,
+			"language":                         language,
+			"last_global_refresh":              lastGlobalRefresh,
+			"last_network_test":                lastNetworkTest,
+			"max_article_age_days":             maxArticleAgeDays,
+			"max_cache_size_mb":                maxCacheSizeMb,
+			"max_concurrent_refreshes":         maxConcurrentRefreshes,
+			"media_cache_enabled":              mediaCacheEnabled,
+			"media_cache_max_age_days":         mediaCacheMaxAgeDays,
+			"media_cache_max_size_mb":          mediaCacheMaxSizeMb,
+			"media_proxy_fallback":             mediaProxyFallback,
+			"network_bandwidth_mbps":           networkBandwidthMbps,
+			"network_latency_ms":               networkLatencyMs,
+			"network_speed":                    networkSpeed,
+			"obsidian_enabled":                 obsidianEnabled,
+			"obsidian_vault":                   obsidianVault,
+			"obsidian_vault_path":              obsidianVaultPath,
+			"proxy_enabled":                    proxyEnabled,
+			"proxy_host":                       proxyHost,
+			"proxy_password":                   proxyPassword,
+			"proxy_port":                       proxyPort,
+			"proxy_type":                       proxyType,
+			"proxy_username":                   proxyUsername,
+			"refresh_mode":                     refreshMode,
+			"retry_timeout_seconds":            retryTimeoutSeconds,
+			"rsshub_api_key":                   rsshubApiKey,
+			"rsshub_enabled":                   rsshubEnabled,
+			"rsshub_endpoint":                  rsshubEndpoint,
+			"rules":                            rules,
+			"shortcuts":                        shortcuts,
+			"shortcuts_enabled":                shortcutsEnabled,
+			"show_article_preview_images":      showArticlePreviewImages,
+			"show_hidden_articles":             showHiddenArticles,
+			"startup_on_boot":                  startupOnBoot,
+			"summary_enabled":                  summaryEnabled,
+			"summary_length":                   summaryLength,
+			"summary_provider":                 summaryProvider,
+			"summary_trigger_mode":             summaryTriggerMode,
+			"target_language":                  targetLanguage,
+			"theme":                            theme,
+			"translation_enabled":              translationEnabled,
+			"translation_only_mode":            translationOnlyMode,
+			"translation_provider":             translationProvider,
+			"update_interval":                  updateInterval,
+			"window_height":                    windowHeight,
+			"window_maximized":                 windowMaximized,
+			"window_width":                     windowWidth,
+			"window_x":                         windowX,
+			"window_y":                         windowY,
 		})
 	case http.MethodPost:
 		var req struct {
-			AIAPIKey                 string `json:"ai_api_key"`
-			AIChatEnabled            string `json:"ai_chat_enabled"`
-			AICustomHeaders          string `json:"ai_custom_headers"`
-			AIEndpoint               string `json:"ai_endpoint"`
-			AIModel                  string `json:"ai_model"`
-			AISummaryPrompt          string `json:"ai_summary_prompt"`
-			AITranslationPrompt      string `json:"ai_translation_prompt"`
-			AIUsageLimit             string `json:"ai_usage_limit"`
-			AIUsageTokens            string `json:"ai_usage_tokens"`
-			AutoCleanupEnabled       string `json:"auto_cleanup_enabled"`
-			AutoShowAllContent       string `json:"auto_show_all_content"`
-			AutoUpdate               string `json:"auto_update"`
-			BaiduAppId               string `json:"baidu_app_id"`
-			BaiduSecretKey           string `json:"baidu_secret_key"`
-			CloseToTray              string `json:"close_to_tray"`
-			CustomCssFile            string `json:"custom_css_file"`
-			DeeplAPIKey              string `json:"deepl_api_key"`
-			DeeplEndpoint            string `json:"deepl_endpoint"`
-			DefaultViewMode          string `json:"default_view_mode"`
-			FreshRSSAPIPassword      string `json:"freshrss_api_password"`
-			FreshRSSAutoSyncInterval string `json:"freshrss_auto_sync_interval"`
-			FreshRSSEnabled          string `json:"freshrss_enabled"`
-			FreshRSSLastSyncTime     string `json:"freshrss_last_sync_time"`
-			FreshRSSServerUrl        string `json:"freshrss_server_url"`
-			FreshRSSSyncOnStartup    string `json:"freshrss_sync_on_startup"`
-			FreshRSSUsername         string `json:"freshrss_username"`
-			FullTextFetchEnabled     string `json:"full_text_fetch_enabled"`
-			GoogleTranslateEndpoint  string `json:"google_translate_endpoint"`
-			HoverMarkAsRead          string `json:"hover_mark_as_read"`
-			ImageGalleryEnabled      string `json:"image_gallery_enabled"`
-			Language                 string `json:"language"`
-			LastGlobalRefresh        string `json:"last_global_refresh"`
-			LastNetworkTest          string `json:"last_network_test"`
-			MaxArticleAgeDays        string `json:"max_article_age_days"`
-			MaxCacheSizeMb           string `json:"max_cache_size_mb"`
-			MaxConcurrentRefreshes   string `json:"max_concurrent_refreshes"`
-			MediaCacheEnabled        string `json:"media_cache_enabled"`
-			MediaCacheMaxAgeDays     string `json:"media_cache_max_age_days"`
-			MediaCacheMaxSizeMb      string `json:"media_cache_max_size_mb"`
-			MediaProxyFallback       string `json:"media_proxy_fallback"`
-			NetworkBandwidthMbps     string `json:"network_bandwidth_mbps"`
-			NetworkLatencyMs         string `json:"network_latency_ms"`
-			NetworkSpeed             string `json:"network_speed"`
-			ObsidianEnabled          string `json:"obsidian_enabled"`
-			ObsidianVault            string `json:"obsidian_vault"`
-			ObsidianVaultPath        string `json:"obsidian_vault_path"`
-			ProxyEnabled             string `json:"proxy_enabled"`
-			ProxyHost                string `json:"proxy_host"`
-			ProxyPassword            string `json:"proxy_password"`
-			ProxyPort                string `json:"proxy_port"`
-			ProxyType                string `json:"proxy_type"`
-			ProxyUsername            string `json:"proxy_username"`
-			RefreshMode              string `json:"refresh_mode"`
-			RetryTimeoutSeconds      string `json:"retry_timeout_seconds"`
-			RsshubAPIKey             string `json:"rsshub_api_key"`
-			RsshubEnabled            string `json:"rsshub_enabled"`
-			RsshubEndpoint           string `json:"rsshub_endpoint"`
-			Rules                    string `json:"rules"`
-			Shortcuts                string `json:"shortcuts"`
-			ShortcutsEnabled         string `json:"shortcuts_enabled"`
-			ShowArticlePreviewImages string `json:"show_article_preview_images"`
-			ShowHiddenArticles       string `json:"show_hidden_articles"`
-			StartupOnBoot            string `json:"startup_on_boot"`
-			SummaryEnabled           string `json:"summary_enabled"`
-			SummaryLength            string `json:"summary_length"`
-			SummaryProvider          string `json:"summary_provider"`
-			SummaryTriggerMode       string `json:"summary_trigger_mode"`
-			TargetLanguage           string `json:"target_language"`
-			Theme                    string `json:"theme"`
-			TranslationEnabled       string `json:"translation_enabled"`
-			TranslationProvider      string `json:"translation_provider"`
-			UpdateInterval           string `json:"update_interval"`
-			WindowHeight             string `json:"window_height"`
-			WindowMaximized          string `json:"window_maximized"`
-			WindowWidth              string `json:"window_width"`
-			WindowX                  string `json:"window_x"`
-			WindowY                  string `json:"window_y"`
+			AIAPIKey                      string `json:"ai_api_key"`
+			AIChatEnabled                 string `json:"ai_chat_enabled"`
+			AICustomHeaders               string `json:"ai_custom_headers"`
+			AIEndpoint                    string `json:"ai_endpoint"`
+			AIModel                       string `json:"ai_model"`
+			AISummaryPrompt               string `json:"ai_summary_prompt"`
+			AITranslationPrompt           string `json:"ai_translation_prompt"`
+			AIUsageLimit                  string `json:"ai_usage_limit"`
+			AIUsageTokens                 string `json:"ai_usage_tokens"`
+			AutoCleanupEnabled            string `json:"auto_cleanup_enabled"`
+			AutoShowAllContent            string `json:"auto_show_all_content"`
+			BaiduAppId                    string `json:"baidu_app_id"`
+			BaiduSecretKey                string `json:"baidu_secret_key"`
+			CloseToTray                   string `json:"close_to_tray"`
+			CompactMode                   string `json:"compact_mode"`
+			CustomCssFile                 string `json:"custom_css_file"`
+			CustomTranslationBodyTemplate string `json:"custom_translation_body_template"`
+			CustomTranslationEnabled      string `json:"custom_translation_enabled"`
+			CustomTranslationEndpoint     string `json:"custom_translation_endpoint"`
+			CustomTranslationHeaders      string `json:"custom_translation_headers"`
+			CustomTranslationLangMapping  string `json:"custom_translation_lang_mapping"`
+			CustomTranslationMethod       string `json:"custom_translation_method"`
+			CustomTranslationName         string `json:"custom_translation_name"`
+			CustomTranslationResponsePath string `json:"custom_translation_response_path"`
+			CustomTranslationTimeout      string `json:"custom_translation_timeout"`
+			DeeplAPIKey                   string `json:"deepl_api_key"`
+			DeeplEndpoint                 string `json:"deepl_endpoint"`
+			DefaultViewMode               string `json:"default_view_mode"`
+			FeedDrawerExpanded            string `json:"feed_drawer_expanded"`
+			FeedDrawerPinned              string `json:"feed_drawer_pinned"`
+			FreshRSSAPIPassword           string `json:"freshrss_api_password"`
+			FreshRSSAutoSyncInterval      string `json:"freshrss_auto_sync_interval"`
+			FreshRSSEnabled               string `json:"freshrss_enabled"`
+			FreshRSSLastSyncTime          string `json:"freshrss_last_sync_time"`
+			FreshRSSServerUrl             string `json:"freshrss_server_url"`
+			FreshRSSSyncOnStartup         string `json:"freshrss_sync_on_startup"`
+			FreshRSSUsername              string `json:"freshrss_username"`
+			FullTextFetchEnabled          string `json:"full_text_fetch_enabled"`
+			GoogleTranslateEndpoint       string `json:"google_translate_endpoint"`
+			HoverMarkAsRead               string `json:"hover_mark_as_read"`
+			ImageGalleryEnabled           string `json:"image_gallery_enabled"`
+			Language                      string `json:"language"`
+			LastGlobalRefresh             string `json:"last_global_refresh"`
+			LastNetworkTest               string `json:"last_network_test"`
+			MaxArticleAgeDays             string `json:"max_article_age_days"`
+			MaxCacheSizeMb                string `json:"max_cache_size_mb"`
+			MaxConcurrentRefreshes        string `json:"max_concurrent_refreshes"`
+			MediaCacheEnabled             string `json:"media_cache_enabled"`
+			MediaCacheMaxAgeDays          string `json:"media_cache_max_age_days"`
+			MediaCacheMaxSizeMb           string `json:"media_cache_max_size_mb"`
+			MediaProxyFallback            string `json:"media_proxy_fallback"`
+			NetworkBandwidthMbps          string `json:"network_bandwidth_mbps"`
+			NetworkLatencyMs              string `json:"network_latency_ms"`
+			NetworkSpeed                  string `json:"network_speed"`
+			ObsidianEnabled               string `json:"obsidian_enabled"`
+			ObsidianVault                 string `json:"obsidian_vault"`
+			ObsidianVaultPath             string `json:"obsidian_vault_path"`
+			ProxyEnabled                  string `json:"proxy_enabled"`
+			ProxyHost                     string `json:"proxy_host"`
+			ProxyPassword                 string `json:"proxy_password"`
+			ProxyPort                     string `json:"proxy_port"`
+			ProxyType                     string `json:"proxy_type"`
+			ProxyUsername                 string `json:"proxy_username"`
+			RefreshMode                   string `json:"refresh_mode"`
+			RetryTimeoutSeconds           string `json:"retry_timeout_seconds"`
+			RsshubAPIKey                  string `json:"rsshub_api_key"`
+			RsshubEnabled                 string `json:"rsshub_enabled"`
+			RsshubEndpoint                string `json:"rsshub_endpoint"`
+			Rules                         string `json:"rules"`
+			Shortcuts                     string `json:"shortcuts"`
+			ShortcutsEnabled              string `json:"shortcuts_enabled"`
+			ShowArticlePreviewImages      string `json:"show_article_preview_images"`
+			ShowHiddenArticles            string `json:"show_hidden_articles"`
+			StartupOnBoot                 string `json:"startup_on_boot"`
+			SummaryEnabled                string `json:"summary_enabled"`
+			SummaryLength                 string `json:"summary_length"`
+			SummaryProvider               string `json:"summary_provider"`
+			SummaryTriggerMode            string `json:"summary_trigger_mode"`
+			TargetLanguage                string `json:"target_language"`
+			Theme                         string `json:"theme"`
+			TranslationEnabled            string `json:"translation_enabled"`
+			TranslationOnlyMode           string `json:"translation_only_mode"`
+			TranslationProvider           string `json:"translation_provider"`
+			UpdateInterval                string `json:"update_interval"`
+			WindowHeight                  string `json:"window_height"`
+			WindowMaximized               string `json:"window_maximized"`
+			WindowWidth                   string `json:"window_width"`
+			WindowX                       string `json:"window_x"`
+			WindowY                       string `json:"window_y"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -333,10 +369,6 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			h.DB.SetSetting("auto_show_all_content", req.AutoShowAllContent)
 		}
 
-		if req.AutoUpdate != "" {
-			h.DB.SetSetting("auto_update", req.AutoUpdate)
-		}
-
 		if req.BaiduAppId != "" {
 			h.DB.SetSetting("baidu_app_id", req.BaiduAppId)
 		}
@@ -351,8 +383,48 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			h.DB.SetSetting("close_to_tray", req.CloseToTray)
 		}
 
+		if req.CompactMode != "" {
+			h.DB.SetSetting("compact_mode", req.CompactMode)
+		}
+
 		if req.CustomCssFile != "" {
 			h.DB.SetSetting("custom_css_file", req.CustomCssFile)
+		}
+
+		if req.CustomTranslationBodyTemplate != "" {
+			h.DB.SetSetting("custom_translation_body_template", req.CustomTranslationBodyTemplate)
+		}
+
+		if req.CustomTranslationEnabled != "" {
+			h.DB.SetSetting("custom_translation_enabled", req.CustomTranslationEnabled)
+		}
+
+		if req.CustomTranslationEndpoint != "" {
+			h.DB.SetSetting("custom_translation_endpoint", req.CustomTranslationEndpoint)
+		}
+
+		if req.CustomTranslationHeaders != "" {
+			h.DB.SetSetting("custom_translation_headers", req.CustomTranslationHeaders)
+		}
+
+		if req.CustomTranslationLangMapping != "" {
+			h.DB.SetSetting("custom_translation_lang_mapping", req.CustomTranslationLangMapping)
+		}
+
+		if req.CustomTranslationMethod != "" {
+			h.DB.SetSetting("custom_translation_method", req.CustomTranslationMethod)
+		}
+
+		if req.CustomTranslationName != "" {
+			h.DB.SetSetting("custom_translation_name", req.CustomTranslationName)
+		}
+
+		if req.CustomTranslationResponsePath != "" {
+			h.DB.SetSetting("custom_translation_response_path", req.CustomTranslationResponsePath)
+		}
+
+		if req.CustomTranslationTimeout != "" {
+			h.DB.SetSetting("custom_translation_timeout", req.CustomTranslationTimeout)
 		}
 
 		if err := h.DB.SetEncryptedSetting("deepl_api_key", req.DeeplAPIKey); err != nil {
@@ -369,6 +441,14 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			h.DB.SetSetting("default_view_mode", req.DefaultViewMode)
 		}
 
+		if req.FeedDrawerExpanded != "" {
+			h.DB.SetSetting("feed_drawer_expanded", req.FeedDrawerExpanded)
+		}
+
+		if req.FeedDrawerPinned != "" {
+			h.DB.SetSetting("feed_drawer_pinned", req.FeedDrawerPinned)
+		}
+
 		if err := h.DB.SetEncryptedSetting("freshrss_api_password", req.FreshRSSAPIPassword); err != nil {
 			log.Printf("Failed to save freshrss_api_password: %v", err)
 			http.Error(w, "Failed to save freshrss_api_password", http.StatusInternalServerError)
@@ -380,7 +460,24 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.FreshRSSEnabled != "" {
+			// Check if FreshRSS is being disabled
+			currentEnabled, _ := h.DB.GetSetting("freshrss_enabled")
+			wasEnabled := currentEnabled == "true"
+			isEnabled := req.FreshRSSEnabled == "true"
+
+			// Save the new setting first
 			h.DB.SetSetting("freshrss_enabled", req.FreshRSSEnabled)
+
+			// If FreshRSS is being disabled, cleanup all related data
+			if wasEnabled && !isEnabled {
+				log.Printf("[Settings] FreshRSS is being disabled, cleaning up all FreshRSS data...")
+				if err := h.DB.CleanupFreshRSSData(); err != nil {
+					log.Printf("[Settings] Error cleaning up FreshRSS data: %v", err)
+					// Continue anyway - the setting has been saved
+				} else {
+					log.Printf("[Settings] Successfully cleaned up FreshRSS data")
+				}
+			}
 		}
 
 		if req.FreshRSSLastSyncTime != "" {
@@ -581,6 +678,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			h.DB.SetSetting("translation_enabled", req.TranslationEnabled)
 		}
 
+		if req.TranslationOnlyMode != "" {
+			h.DB.SetSetting("translation_only_mode", req.TranslationOnlyMode)
+		}
+
 		if req.TranslationProvider != "" {
 			h.DB.SetSetting("translation_provider", req.TranslationProvider)
 		}
@@ -608,7 +709,187 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		if req.WindowY != "" {
 			h.DB.SetSetting("window_y", req.WindowY)
 		}
-		w.WriteHeader(http.StatusOK)
+		// Re-fetch all settings after save to return updated values
+		aiApiKey := safeGetEncryptedSetting(h, "ai_api_key")
+		aiChatEnabled := safeGetSetting(h, "ai_chat_enabled")
+		aiCustomHeaders := safeGetSetting(h, "ai_custom_headers")
+		aiEndpoint := safeGetSetting(h, "ai_endpoint")
+		aiModel := safeGetSetting(h, "ai_model")
+		aiSummaryPrompt := safeGetSetting(h, "ai_summary_prompt")
+		aiTranslationPrompt := safeGetSetting(h, "ai_translation_prompt")
+		aiUsageLimit := safeGetSetting(h, "ai_usage_limit")
+		aiUsageTokens := safeGetSetting(h, "ai_usage_tokens")
+		autoCleanupEnabled := safeGetSetting(h, "auto_cleanup_enabled")
+		autoShowAllContent := safeGetSetting(h, "auto_show_all_content")
+		baiduAppId := safeGetSetting(h, "baidu_app_id")
+		baiduSecretKey := safeGetEncryptedSetting(h, "baidu_secret_key")
+		closeToTray := safeGetSetting(h, "close_to_tray")
+		compactMode := safeGetSetting(h, "compact_mode")
+		customCssFile := safeGetSetting(h, "custom_css_file")
+		customTranslationBodyTemplate := safeGetSetting(h, "custom_translation_body_template")
+		customTranslationEnabled := safeGetSetting(h, "custom_translation_enabled")
+		customTranslationEndpoint := safeGetSetting(h, "custom_translation_endpoint")
+		customTranslationHeaders := safeGetSetting(h, "custom_translation_headers")
+		customTranslationLangMapping := safeGetSetting(h, "custom_translation_lang_mapping")
+		customTranslationMethod := safeGetSetting(h, "custom_translation_method")
+		customTranslationName := safeGetSetting(h, "custom_translation_name")
+		customTranslationResponsePath := safeGetSetting(h, "custom_translation_response_path")
+		customTranslationTimeout := safeGetSetting(h, "custom_translation_timeout")
+		deeplApiKey := safeGetEncryptedSetting(h, "deepl_api_key")
+		deeplEndpoint := safeGetSetting(h, "deepl_endpoint")
+		defaultViewMode := safeGetSetting(h, "default_view_mode")
+		feedDrawerExpanded := safeGetSetting(h, "feed_drawer_expanded")
+		feedDrawerPinned := safeGetSetting(h, "feed_drawer_pinned")
+		freshrssApiPassword := safeGetEncryptedSetting(h, "freshrss_api_password")
+		freshrssAutoSyncInterval := safeGetSetting(h, "freshrss_auto_sync_interval")
+		freshrssEnabled := safeGetSetting(h, "freshrss_enabled")
+		freshrssLastSyncTime := safeGetSetting(h, "freshrss_last_sync_time")
+		freshrssServerUrl := safeGetSetting(h, "freshrss_server_url")
+		freshrssSyncOnStartup := safeGetSetting(h, "freshrss_sync_on_startup")
+		freshrssUsername := safeGetSetting(h, "freshrss_username")
+		fullTextFetchEnabled := safeGetSetting(h, "full_text_fetch_enabled")
+		googleTranslateEndpoint := safeGetSetting(h, "google_translate_endpoint")
+		hoverMarkAsRead := safeGetSetting(h, "hover_mark_as_read")
+		imageGalleryEnabled := safeGetSetting(h, "image_gallery_enabled")
+		language := safeGetSetting(h, "language")
+		lastGlobalRefresh := safeGetSetting(h, "last_global_refresh")
+		lastNetworkTest := safeGetSetting(h, "last_network_test")
+		maxArticleAgeDays := safeGetSetting(h, "max_article_age_days")
+		maxCacheSizeMb := safeGetSetting(h, "max_cache_size_mb")
+		maxConcurrentRefreshes := safeGetSetting(h, "max_concurrent_refreshes")
+		mediaCacheEnabled := safeGetSetting(h, "media_cache_enabled")
+		mediaCacheMaxAgeDays := safeGetSetting(h, "media_cache_max_age_days")
+		mediaCacheMaxSizeMb := safeGetSetting(h, "media_cache_max_size_mb")
+		mediaProxyFallback := safeGetSetting(h, "media_proxy_fallback")
+		networkBandwidthMbps := safeGetSetting(h, "network_bandwidth_mbps")
+		networkLatencyMs := safeGetSetting(h, "network_latency_ms")
+		networkSpeed := safeGetSetting(h, "network_speed")
+		obsidianEnabled := safeGetSetting(h, "obsidian_enabled")
+		obsidianVault := safeGetSetting(h, "obsidian_vault")
+		obsidianVaultPath := safeGetSetting(h, "obsidian_vault_path")
+		proxyEnabled := safeGetSetting(h, "proxy_enabled")
+		proxyHost := safeGetSetting(h, "proxy_host")
+		proxyPassword := safeGetEncryptedSetting(h, "proxy_password")
+		proxyPort := safeGetSetting(h, "proxy_port")
+		proxyType := safeGetSetting(h, "proxy_type")
+		proxyUsername := safeGetEncryptedSetting(h, "proxy_username")
+		refreshMode := safeGetSetting(h, "refresh_mode")
+		retryTimeoutSeconds := safeGetSetting(h, "retry_timeout_seconds")
+		rsshubApiKey := safeGetEncryptedSetting(h, "rsshub_api_key")
+		rsshubEnabled := safeGetSetting(h, "rsshub_enabled")
+		rsshubEndpoint := safeGetSetting(h, "rsshub_endpoint")
+		rules := safeGetSetting(h, "rules")
+		shortcuts := safeGetSetting(h, "shortcuts")
+		shortcutsEnabled := safeGetSetting(h, "shortcuts_enabled")
+		showArticlePreviewImages := safeGetSetting(h, "show_article_preview_images")
+		showHiddenArticles := safeGetSetting(h, "show_hidden_articles")
+		startupOnBoot := safeGetSetting(h, "startup_on_boot")
+		summaryEnabled := safeGetSetting(h, "summary_enabled")
+		summaryLength := safeGetSetting(h, "summary_length")
+		summaryProvider := safeGetSetting(h, "summary_provider")
+		summaryTriggerMode := safeGetSetting(h, "summary_trigger_mode")
+		targetLanguage := safeGetSetting(h, "target_language")
+		theme := safeGetSetting(h, "theme")
+		translationEnabled := safeGetSetting(h, "translation_enabled")
+		translationOnlyMode := safeGetSetting(h, "translation_only_mode")
+		translationProvider := safeGetSetting(h, "translation_provider")
+		updateInterval := safeGetSetting(h, "update_interval")
+		windowHeight := safeGetSetting(h, "window_height")
+		windowMaximized := safeGetSetting(h, "window_maximized")
+		windowWidth := safeGetSetting(h, "window_width")
+		windowX := safeGetSetting(h, "window_x")
+		windowY := safeGetSetting(h, "window_y")
+		json.NewEncoder(w).Encode(map[string]string{
+			"ai_api_key":                       aiApiKey,
+			"ai_chat_enabled":                  aiChatEnabled,
+			"ai_custom_headers":                aiCustomHeaders,
+			"ai_endpoint":                      aiEndpoint,
+			"ai_model":                         aiModel,
+			"ai_summary_prompt":                aiSummaryPrompt,
+			"ai_translation_prompt":            aiTranslationPrompt,
+			"ai_usage_limit":                   aiUsageLimit,
+			"ai_usage_tokens":                  aiUsageTokens,
+			"auto_cleanup_enabled":             autoCleanupEnabled,
+			"auto_show_all_content":            autoShowAllContent,
+			"baidu_app_id":                     baiduAppId,
+			"baidu_secret_key":                 baiduSecretKey,
+			"close_to_tray":                    closeToTray,
+			"compact_mode":                     compactMode,
+			"custom_css_file":                  customCssFile,
+			"custom_translation_body_template": customTranslationBodyTemplate,
+			"custom_translation_enabled":       customTranslationEnabled,
+			"custom_translation_endpoint":      customTranslationEndpoint,
+			"custom_translation_headers":       customTranslationHeaders,
+			"custom_translation_lang_mapping":  customTranslationLangMapping,
+			"custom_translation_method":        customTranslationMethod,
+			"custom_translation_name":          customTranslationName,
+			"custom_translation_response_path": customTranslationResponsePath,
+			"custom_translation_timeout":       customTranslationTimeout,
+			"deepl_api_key":                    deeplApiKey,
+			"deepl_endpoint":                   deeplEndpoint,
+			"default_view_mode":                defaultViewMode,
+			"feed_drawer_expanded":             feedDrawerExpanded,
+			"feed_drawer_pinned":               feedDrawerPinned,
+			"freshrss_api_password":            freshrssApiPassword,
+			"freshrss_auto_sync_interval":      freshrssAutoSyncInterval,
+			"freshrss_enabled":                 freshrssEnabled,
+			"freshrss_last_sync_time":          freshrssLastSyncTime,
+			"freshrss_server_url":              freshrssServerUrl,
+			"freshrss_sync_on_startup":         freshrssSyncOnStartup,
+			"freshrss_username":                freshrssUsername,
+			"full_text_fetch_enabled":          fullTextFetchEnabled,
+			"google_translate_endpoint":        googleTranslateEndpoint,
+			"hover_mark_as_read":               hoverMarkAsRead,
+			"image_gallery_enabled":            imageGalleryEnabled,
+			"language":                         language,
+			"last_global_refresh":              lastGlobalRefresh,
+			"last_network_test":                lastNetworkTest,
+			"max_article_age_days":             maxArticleAgeDays,
+			"max_cache_size_mb":                maxCacheSizeMb,
+			"max_concurrent_refreshes":         maxConcurrentRefreshes,
+			"media_cache_enabled":              mediaCacheEnabled,
+			"media_cache_max_age_days":         mediaCacheMaxAgeDays,
+			"media_cache_max_size_mb":          mediaCacheMaxSizeMb,
+			"media_proxy_fallback":             mediaProxyFallback,
+			"network_bandwidth_mbps":           networkBandwidthMbps,
+			"network_latency_ms":               networkLatencyMs,
+			"network_speed":                    networkSpeed,
+			"obsidian_enabled":                 obsidianEnabled,
+			"obsidian_vault":                   obsidianVault,
+			"obsidian_vault_path":              obsidianVaultPath,
+			"proxy_enabled":                    proxyEnabled,
+			"proxy_host":                       proxyHost,
+			"proxy_password":                   proxyPassword,
+			"proxy_port":                       proxyPort,
+			"proxy_type":                       proxyType,
+			"proxy_username":                   proxyUsername,
+			"refresh_mode":                     refreshMode,
+			"retry_timeout_seconds":            retryTimeoutSeconds,
+			"rsshub_api_key":                   rsshubApiKey,
+			"rsshub_enabled":                   rsshubEnabled,
+			"rsshub_endpoint":                  rsshubEndpoint,
+			"rules":                            rules,
+			"shortcuts":                        shortcuts,
+			"shortcuts_enabled":                shortcutsEnabled,
+			"show_article_preview_images":      showArticlePreviewImages,
+			"show_hidden_articles":             showHiddenArticles,
+			"startup_on_boot":                  startupOnBoot,
+			"summary_enabled":                  summaryEnabled,
+			"summary_length":                   summaryLength,
+			"summary_provider":                 summaryProvider,
+			"summary_trigger_mode":             summaryTriggerMode,
+			"target_language":                  targetLanguage,
+			"theme":                            theme,
+			"translation_enabled":              translationEnabled,
+			"translation_only_mode":            translationOnlyMode,
+			"translation_provider":             translationProvider,
+			"update_interval":                  updateInterval,
+			"window_height":                    windowHeight,
+			"window_maximized":                 windowMaximized,
+			"window_width":                     windowWidth,
+			"window_x":                         windowX,
+			"window_y":                         windowY,
+		})
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

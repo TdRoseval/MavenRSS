@@ -48,8 +48,41 @@ func (h *OpenAIHandler) BuildRequest(config RequestConfig) (map[string]interface
 	if config.Temperature > 0 {
 		request["temperature"] = config.Temperature
 	}
-	if config.MaxTokens > 0 {
+
+	// Use max_completion_tokens if provided (new parameter)
+	if config.MaxCompletionTokens > 0 {
+		request["max_completion_tokens"] = config.MaxCompletionTokens
+	} else if config.MaxTokens > 0 {
+		// Fallback to max_tokens for backward compatibility
 		request["max_tokens"] = config.MaxTokens
+	}
+
+	// Reasoning effort for o-series models
+	if config.ReasoningEffort != "" {
+		request["reasoning_effort"] = config.ReasoningEffort
+	}
+
+	// Response format for structured outputs
+	if config.ResponseFormat != nil {
+		request["response_format"] = config.ResponseFormat
+	}
+
+	// Presence and frequency penalties
+	if config.PresencePenalty != 0 {
+		request["presence_penalty"] = config.PresencePenalty
+	}
+	if config.FrequencyPenalty != 0 {
+		request["frequency_penalty"] = config.FrequencyPenalty
+	}
+
+	// Top-p sampling
+	if config.TopP > 0 {
+		request["top_p"] = config.TopP
+	}
+
+	// Seed for reproducible outputs
+	if config.Seed > 0 {
+		request["seed"] = config.Seed
 	}
 
 	return request, nil

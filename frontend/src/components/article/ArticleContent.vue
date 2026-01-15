@@ -75,6 +75,19 @@ const autoShowAllContent = ref(false);
 const shouldAutoExpandContent = computed(() => {
   // First check if feed has auto_expand_content setting
   const feed = store.feeds.find((f) => f.id === props.article.feed_id);
+
+  // Special case: For XPath feeds without content xpath, always auto-expand regardless of settings
+  const isXPathFeedWithoutContent =
+    feed &&
+    (feed.type === 'HTML+XPath' || feed.type === 'XML+XPath') &&
+    !feed.xpath_item_content &&
+    feed.xpath_item_uri;
+
+  // For XPath feeds without content xpath, always return true
+  if (isXPathFeedWithoutContent) {
+    return true;
+  }
+
   if (feed?.auto_expand_content) {
     if (feed.auto_expand_content === 'enabled') return true;
     if (feed.auto_expand_content === 'disabled') return false;
@@ -111,10 +124,15 @@ const showChatButton = computed(() => {
 
 // Computed to check if full-text fetching should be shown
 const showFullTextButton = computed(() => {
+  // For XPath feeds without content, show button even if articleContent is empty
+  const feed = store.feeds.find((f) => f.id === props.article.feed_id);
+  const isXPathFeedWithoutContent =
+    feed && (feed.type === 'HTML+XPath' || feed.type === 'XML+XPath') && !props.articleContent;
+
   return (
     appSettings.value.full_text_fetch_enabled &&
     !props.isLoadingContent &&
-    props.articleContent &&
+    (props.articleContent || isXPathFeedWithoutContent) && // Allow empty content for XPath feeds
     props.article?.url &&
     props.showContent &&
     !fullArticleContent.value // Don't show if we already have full content
@@ -158,6 +176,7 @@ const translatedTitle = ref('');
 const isTranslatingTitle = ref(false);
 const isTranslatingContent = ref(false);
 const lastTranslatedArticleId = ref<number | null>(null);
+const translationSkipped = ref(false);
 
 // Load settings using composables
 async function loadSettings() {
@@ -166,7 +185,10 @@ async function loadSettings() {
 }
 
 // Translate text using the API
-async function translateText(text: string): Promise<{ text: string; html: string }> {
+async function translateText(
+  text: string,
+  force: boolean = false
+): Promise<{ text: string; html: string }> {
   if (!text || !translationEnabled.value) {
     return { text: '', html: '' };
   }
@@ -174,6 +196,7 @@ async function translateText(text: string): Promise<{ text: string; html: string
   const requestBody = {
     text: text,
     target_language: targetLanguage.value,
+    force: force,
   };
 
   try {
@@ -185,6 +208,17 @@ async function translateText(text: string): Promise<{ text: string; html: string
 
     if (res.ok) {
       const data = await res.json();
+
+      // Check if translation was skipped
+      if (data.skipped === 'true' || data.skipped === true) {
+        if (data.reason === 'already_target_language') {
+          translationSkipped.value = true;
+        }
+      } else {
+        // Reset skip flags on successful translation
+        translationSkipped.value = false;
+      }
+
       return {
         text: data.translated_text || '',
         html: data.html || '',
@@ -198,6 +232,13 @@ async function translateText(text: string): Promise<{ text: string; html: string
     window.showToast(t('errorTranslating'), 'error');
   }
   return { text: '', html: '' };
+}
+
+// Force translate content
+async function forceTranslateContent() {
+  if (!props.articleContent) return;
+
+  await translateContentParagraphs(props.articleContent);
 }
 
 // Fetch full article content from the original URL
@@ -233,10 +274,11 @@ async function fetchFullArticle() {
         if (translationEnabled.value) {
           // Reset translation tracking to allow re-translation with full content
           lastTranslatedArticleId.value = null;
+          translationSkipped.value = false; // Reset skip status
           translateTitle(props.article);
           // Wait for DOM to update with new content before translating
           await nextTick();
-          translateContentParagraphs(fullArticleContent.value);
+          await translateContentParagraphs(fullArticleContent.value);
         }
       }
     } else {
@@ -731,13 +773,19 @@ onBeforeUnmount(() => {
   >
     <div
       class="max-w-3xl mx-auto bg-bg-primary"
-      :class="{ 'hide-translations': !showTranslations }"
+      :class="{
+        'hide-translations': !showTranslations,
+        'translation-only-mode': translationSettings.translationOnlyMode,
+      }"
     >
       <ArticleTitle
         :article="article"
         :translated-title="translatedTitle"
         :is-translating-title="isTranslatingTitle"
         :translation-enabled="translationEnabled"
+        :translation-skipped="translationSkipped"
+        :is-translating-content="isTranslatingContent"
+        @force-translate="forceTranslateContent"
       />
 
       <!-- Audio Player (if article has audio) -->
@@ -779,12 +827,12 @@ onBeforeUnmount(() => {
       <div v-if="showFullTextButton" class="flex justify-center mt-4 mb-4">
         <button
           :disabled="isFetchingFullArticle"
-          class="btn-secondary-compact flex items-center gap-1.5"
+          class="btn-secondary-compact flex items-center gap-2"
           @click="fetchFullArticle"
         >
-          <PhSpinnerGap v-if="isFetchingFullArticle" :size="12" class="animate-spin" />
-          <PhArticleNyTimes v-else :size="12" />
-          <span class="text-xs">{{
+          <PhSpinnerGap v-if="isFetchingFullArticle" :size="14" class="animate-spin" />
+          <PhArticleNyTimes v-else :size="14" />
+          <span>{{
             isFetchingFullArticle ? t('fetchingFullArticle') : t('fetchFullArticle')
           }}</span>
         </button>
@@ -813,6 +861,14 @@ onBeforeUnmount(() => {
 }
 
 .btn-secondary-compact {
-  @apply bg-bg-tertiary border border-border text-text-primary px-2 py-1 rounded cursor-pointer flex items-center gap-1.5 text-xs hover:bg-bg-secondary transition-colors opacity-70 hover:opacity-100;
+  @apply border border-border px-3 py-1.5 rounded-md cursor-pointer flex items-center gap-2 text-sm font-normal transition-all duration-200;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.btn-secondary-compact:hover {
+  opacity: 1;
+  color: var(--text-primary);
 }
 </style>

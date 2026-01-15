@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"MrRSS/internal/feed"
 	"MrRSS/internal/handlers/core"
 )
 
@@ -129,6 +130,71 @@ func HandleFetchFullArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	json.NewEncoder(w).Encode(map[string]string{
 		"content":  fullContent,
+		"feed_url": feedURL,
+	})
+}
+
+// HandleExtractAllImages extracts all image URLs from article content
+// @Summary      Extract all images from article
+// @Description  Extract all image URLs from article content (including relative URLs resolved to absolute)
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Param        id   query     int64   true  "Article ID"
+// @Success      200  {object}  map[string]interface{}  "List of image URLs (images, feed_url)"
+// @Failure      400  {object}  map[string]string  "Bad request (invalid article ID)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /articles/extract-images [get]
+func HandleExtractAllImages(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	articleIDStr := r.URL.Query().Get("id")
+	articleID, err := strconv.ParseInt(articleIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get the article from database
+	article, err := h.DB.GetArticleByID(articleID)
+	if err != nil {
+		log.Printf("Error getting article: %v", err)
+		http.Error(w, "Failed to get article", http.StatusInternalServerError)
+		return
+	}
+
+	// Get feed URL to use as base for resolving relative URLs
+	feedObj, err := h.DB.GetFeedByID(article.FeedID)
+	var feedURL string
+	if err == nil && feedObj != nil {
+		feedURL = feedObj.URL
+	}
+
+	// Get article content
+	content, _, err := h.GetArticleContent(articleID)
+	if err != nil {
+		log.Printf("Error getting article content: %v", err)
+		http.Error(w, "Failed to get article content", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract all images from content
+	rawImageURLs := feed.ExtractAllImageURLsFromHTML(content)
+
+	// Resolve all relative URLs to absolute
+	var resolvedImageURLs []string
+	for _, imgURL := range rawImageURLs {
+		resolvedURL := feed.ResolveRelativeURL(imgURL, feedURL)
+		if resolvedURL != "" {
+			resolvedImageURLs = append(resolvedImageURLs, resolvedURL)
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"images":   resolvedImageURLs,
 		"feed_url": feedURL,
 	})
 }

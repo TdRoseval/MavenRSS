@@ -79,3 +79,4 @@ frontend/cypress/downloads/
 # Claude
 .claude/
 .plan/
+tmpclaude-*-cwd

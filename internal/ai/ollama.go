@@ -17,46 +17,67 @@ func NewOllamaHandler() *OllamaHandler {
 }
 
 // BuildRequest builds an Ollama API request
-// Note: Ollama uses a simple prompt format instead of messages
+// Supports both /api/generate (prompt-based) and /api/chat (messages-based)
 func (h *OllamaHandler) BuildRequest(config RequestConfig) (map[string]interface{}, error) {
-	// Combine system and user prompts for Ollama
-	var fullPrompt strings.Builder
-
-	if config.SystemPrompt != "" {
-		fullPrompt.WriteString(config.SystemPrompt)
-		fullPrompt.WriteString("\n\n")
-	}
-
-	if config.UserPrompt != "" {
-		fullPrompt.WriteString(config.UserPrompt)
-	} else if len(config.Messages) > 0 {
-		// If messages are provided, convert them to prompt format
-		for _, msg := range config.Messages {
-			role := msg["role"]
-			content := msg["content"]
-			if content == "" {
-				continue
-			}
-			fullPrompt.WriteString(role)
-			fullPrompt.WriteString(": ")
-			fullPrompt.WriteString(content)
-			fullPrompt.WriteString("\n")
-		}
-	}
-
 	request := map[string]interface{}{
 		"model":  config.Model,
-		"prompt": fullPrompt.String(),
 		"stream": false,
 	}
 
-	// Ollama doesn't typically use temperature/max_tokens in basic requests,
-	// but we can include them if provided
+	// Check if we should use chat endpoint (when messages are provided)
+	useChat := len(config.Messages) > 0
+
+	if useChat {
+		// Use /api/chat format (OpenAI-compatible messages)
+		request["messages"] = config.Messages
+	} else {
+		// Use /api/generate format (simple prompt)
+		var fullPrompt strings.Builder
+
+		if config.SystemPrompt != "" {
+			fullPrompt.WriteString(config.SystemPrompt)
+			fullPrompt.WriteString("\n\n")
+		}
+
+		if config.UserPrompt != "" {
+			fullPrompt.WriteString(config.UserPrompt)
+		}
+
+		request["prompt"] = fullPrompt.String()
+	}
+
+	// Options for advanced parameters
+	options := make(map[string]interface{})
+
 	if config.Temperature > 0 {
-		request["temperature"] = config.Temperature
+		options["temperature"] = config.Temperature
 	}
 	if config.MaxTokens > 0 {
-		request["num_predict"] = config.MaxTokens
+		options["num_predict"] = config.MaxTokens
+	}
+	if config.TopP > 0 {
+		options["top_p"] = config.TopP
+	}
+	if config.TopK > 0 {
+		options["top_k"] = config.TopK
+	}
+	if config.Seed > 0 {
+		options["seed"] = config.Seed
+	}
+	if config.PresencePenalty != 0 {
+		options["presence_penalty"] = config.PresencePenalty
+	}
+	if config.FrequencyPenalty != 0 {
+		options["frequency_penalty"] = config.FrequencyPenalty
+	}
+
+	if len(options) > 0 {
+		request["options"] = options
+	}
+
+	// Add format for structured outputs (JSON schema)
+	if config.ResponseFormat != nil {
+		request["format"] = config.ResponseFormat
 	}
 
 	return request, nil
@@ -64,27 +85,60 @@ func (h *OllamaHandler) BuildRequest(config RequestConfig) (map[string]interface
 
 // ParseResponse parses an Ollama API response
 func (h *OllamaHandler) ParseResponse(body []byte) (ResponseResult, error) {
-	var response struct {
+	// Try parsing as chat response first (new format)
+	var chatResponse struct {
+		Message struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"message"`
+		Done  bool   `json:"done"`
+		Error string `json:"error,omitempty"`
+	}
+
+	if err := json.Unmarshal(body, &chatResponse); err == nil && chatResponse.Message.Content != "" {
+		// Check for Ollama error
+		if chatResponse.Error != "" {
+			return ResponseResult{}, fmt.Errorf("Ollama API error: %s", chatResponse.Error)
+		}
+
+		// Check if response is complete
+		if !chatResponse.Done {
+			return ResponseResult{}, fmt.Errorf("Ollama response incomplete (done=false)")
+		}
+
+		content := strings.TrimSpace(chatResponse.Message.Content)
+		if content == "" {
+			return ResponseResult{}, fmt.Errorf("empty response from Ollama")
+		}
+
+		return ResponseResult{
+			Content:    content,
+			FormatUsed: FormatTypeOllama,
+		}, nil
+	}
+
+	// Fallback to generate response format (old format)
+	var generateResponse struct {
 		Response string `json:"response"`
 		Done     bool   `json:"done"`
 		Error    string `json:"error,omitempty"`
 	}
 
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := json.Unmarshal(body, &generateResponse); err != nil {
 		return ResponseResult{}, fmt.Errorf("failed to decode Ollama response: %w", err)
 	}
 
 	// Check for Ollama error
-	if response.Error != "" {
-		return ResponseResult{}, fmt.Errorf("Ollama API error: %s", response.Error)
+	if generateResponse.Error != "" {
+		return ResponseResult{}, fmt.Errorf("Ollama API error: %s", generateResponse.Error)
 	}
 
 	// Check if response is complete
-	if !response.Done {
+	if !generateResponse.Done {
 		return ResponseResult{}, fmt.Errorf("Ollama response incomplete (done=false)")
 	}
 
-	content := strings.TrimSpace(response.Response)
+	content := strings.TrimSpace(generateResponse.Response)
 	if content == "" {
 		return ResponseResult{}, fmt.Errorf("empty response from Ollama")
 	}
@@ -109,9 +163,18 @@ func (h *OllamaHandler) ValidateResponse(statusCode int, body []byte) error {
 	}
 }
 
-// FormatEndpoint returns the endpoint as-is for Ollama format
+// FormatEndpoint returns the appropriate endpoint based on request type
 func (h *OllamaHandler) FormatEndpoint(endpoint, model string) string {
-	return strings.TrimSuffix(endpoint, "/")
+	endpoint = strings.TrimSuffix(endpoint, "/")
+
+	// Default to /api/generate if no specific endpoint is set
+	// Client will set the correct endpoint based on request type
+	if !strings.HasSuffix(endpoint, "/api/generate") && !strings.HasSuffix(endpoint, "/api/chat") {
+		// Default to generate, client will override for chat if needed
+		endpoint = endpoint + "/api/generate"
+	}
+
+	return endpoint
 }
 
 // IsOllamaError checks if an error message indicates an Ollama API format

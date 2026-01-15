@@ -233,3 +233,34 @@ Important: The database uses SQLite with WAL mode for better concurrency.
 2. **Build Requirements**: Ensure platform-specific dependencies are installed
 3. **Frontend Hot Reload**: Use `wails3 dev` for development with hot reload
 4. **Database Migrations**: Handle schema changes carefully with proper versioning
+
+## Quick Reference
+
+### Build Commands
+- Development: `wails3 dev`
+- Production Build: `wails3 build`
+- Important: MrRSS uses HTTP API, not Wails bindings
+
+### Store Access
+- `const store = useAppStore()`
+- `const { t } = useI18n()`
+- Theme: `store.theme` returns `'light'` or `'dark'`
+- Language: `store.i18n.locale.value` returns `'en'` or `'zh'`
+
+### UI Helpers
+- Toast: `window.showToast(message, type)`
+- Confirm: `await window.showConfirm(title, message, isDanger)`
+
+### API Endpoints
+- Settings: `GET/POST /api/settings`
+- Articles: `GET /api/articles` with query params
+- Progress: `GET /api/progress` for async operations
+
+## Related Documentation
+
+- [AGENTS.md](AGENTS.md) - Comprehensive AI agent guidelines
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
+- [docs/CODE_PATTERNS.md](docs/CODE_PATTERNS.md) - Coding patterns
+- [docs/SETTINGS.md](docs/SETTINGS.md) - Settings system
+- [docs/TESTING.md](docs/TESTING.md) - Testing guide
+- [docs/BUILD_REQUIREMENTS.md](docs/BUILD_REQUIREMENTS.md) - Build dependencies

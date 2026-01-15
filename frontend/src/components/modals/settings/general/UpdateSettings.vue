@@ -64,6 +64,7 @@ function formatLastUpdate(timestamp: string): string {
       >
         <option value="fixed">{{ t('fixedInterval') }}</option>
         <option value="intelligent">{{ t('intelligentInterval') }}</option>
+        <option value="never">{{ t('neverRefresh') }}</option>
       </select>
     </div>
 

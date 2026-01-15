@@ -1,11 +1,11 @@
 <div align="center">
   <img src="imgs/logo.svg" alt="MrRSS Logo" width="120" height="120">
   <h1>MrRSS</h1>
-  <p><strong>一个现代化的跨平台桌面 RSS 阅读器</strong></p>
+  <p><strong>一个现代化、跨平台且免费的 AI RSS 阅读器.</strong></p>
 
-   [![Version](https://img.shields.io/badge/version-1.3.15-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+  [![Version](https://img.shields.io/badge/version-1.3.16-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
-   [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
+  [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
   [![Vue.js](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js)](https://vuejs.org/)
 
@@ -21,13 +21,11 @@
 
 ## ✨ 功能特性
 
-- 🖥️ **跨平台支持**: 适用于 Windows、macOS 和 Linux 的原生桌面应用，体验流畅一致
 - 🌐 **自动翻译与摘要**: 自动翻译文章标题与正文，并生成简洁的内容摘要，助你快速获取信息
-- 🔍 **智能订阅源发现**: 能够从相关来源自动发现并推荐新的 RSS 订阅源，持续丰富你的阅读库
 - 🤖 **AI 增强功能**: 集成先进 AI 技术，赋能翻译、摘要、推荐等多种功能，让阅读更智能
-- 🎨 **现代交互界面**: 采用简洁、美观的响应式设计，支持深色模式，提供舒适沉浸的视觉感受
-- 📦 **OPML 导入/导出**: 支持一键导入或导出 OPML 文件，轻松从其他 RSS 阅读器迁移订阅
-- 🏭 **自定义脚本与自动化**: 内置过滤器、脚本与 XPath 系统，支持高度自定义的自动化流程
+- 🔌 **丰富的插件生态**: 支持 Obsidian、FreshRSS、RSSHub 等主流工具集成，轻松扩展功能
+- 📡 **多样化订阅方式**: 支持 URL、XPath、脚本、Newsletter 等多种订阅源类型，满足不同需求
+- 🏭 **自定义脚本与自动化**: 内置过滤器与脚本系统，支持高度自定义的自动化流程
 
 ## 📸 截图
 
@@ -184,30 +182,6 @@ make clean
 make setup
 ```
 
-#### 使用脚本
-
-`scripts/` 目录中提供了跨平台的自动化脚本：
-
-**Linux/macOS:**
-
-```bash
-# 运行所有质量检查
-./scripts/check.sh
-
-# 发布前检查
-./scripts/pre-release.sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-# 运行所有质量检查
-.\scripts\check.ps1
-
-# 发布前检查
-.\scripts\pre-release.ps1
-```
-
 ### Pre-commit Hooks
 
 本项目使用 pre-commit hooks 来确保代码质量：
@@ -223,12 +197,7 @@ pre-commit run --all-files
 ### 运行测试
 
 ```bash
-# 后端测试
-go test ./...
-
-# 前端测试
-cd frontend
-npm test
+make test
 ```
 
 ### 服务器模式（仅限 API）
@@ -244,7 +213,7 @@ go build -tags server -o mrrss-server .
 ./mrrss-server
 ```
 
-当然，本项目也提供了基于 ghcr.io 的预构建服务器镜像：
+本项目也提供了基于 ghcr.io 的预构建服务器镜像：
 
 ```bash
 docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-amd64
@@ -259,11 +228,11 @@ docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
 
 ## 🤝 贡献
 
-我们欢迎贡献！详情请参阅我们的 [贡献指南](CONTRIBUTING.md)。
+我们欢迎贡献！详情请参阅我们的[贡献指南](CONTRIBUTING.md)。
 
 在贡献之前：
 
-1. 阅读 [行为准则](CODE_OF_CONDUCT.md)
+1. 阅读[行为准则](CODE_OF_CONDUCT.md)
 2. 检查现有 issue 或创建一个新 issue
 3. Fork 仓库并创建功能分支
 4. 进行更改并添加测试
@@ -271,7 +240,7 @@ docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
 
 ## 🔒 安全
 
-如果您发现安全漏洞，请遵循我们的 [安全策略](SECURITY.md)。
+如果您发现安全漏洞，请遵循我们的[安全策略](SECURITY.md)。
 
 ## 📝 许可证
 
@@ -279,16 +248,10 @@ docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
 
 本项目使用了来源于 [DIYgod/RSSHub](https://github.com/DIYgod/RSSHub) 项目和 [FreshRSS/FreshRSS](https://github.com/FreshRSS/FreshRSS) 项目的图标文件。该部分资源遵循 AGPL-3.0 协议。
 
-## 🙏 致谢
-
-- 基于 [Wails](https://wails.io/) 构建 - Go + Web 框架
-- UI 由 [Vue.js 3](https://vuejs.org/) 和 [Tailwind CSS](https://tailwindcss.com/) 驱动
-- 图标来自 [Phosphor Icons](https://phosphoricons.com/)
-- RSS 解析使用 [gofeed](https://github.com/mmcdole/gofeed)
-
 ## 📮 联系与支持
 
 - **Issues**: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
+- **讨论**: [GitHub Discussions](https://github.com/WCY-dt/MrRSS/discussions)
 - **仓库**: [github.com/WCY-dt/MrRSS](https://github.com/WCY-dt/MrRSS)
 
 ---

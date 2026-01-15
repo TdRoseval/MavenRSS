@@ -138,9 +138,10 @@ func extractImageURL(item *gofeed.Item, feedURL string) string {
 	return ""
 }
 
-// resolveRelativeURL converts a relative URL to an absolute URL based on the feed URL
+// ResolveRelativeURL converts a relative URL to an absolute URL based on the feed URL
 // If the URL is already absolute, it returns it as-is
-func resolveRelativeURL(imageURL string, feedURL string) string {
+// It's exported so it can be used by other packages
+func ResolveRelativeURL(imageURL string, feedURL string) string {
 	if imageURL == "" {
 		return ""
 	}
@@ -173,6 +174,12 @@ func resolveRelativeURL(imageURL string, feedURL string) string {
 	return baseURL.ResolveReference(ref).String()
 }
 
+// resolveRelativeURL is an internal wrapper for ResolveRelativeURL
+// This maintains backward compatibility with internal code
+func resolveRelativeURL(imageURL string, feedURL string) string {
+	return ResolveRelativeURL(imageURL, feedURL)
+}
+
 // ExtractFirstImageURLFromHTML extracts the first image URL from HTML content
 // This is used as a fallback when no image metadata is available in RSS/Atom feeds
 // It's exported so it can be used by FreshRSS sync and other modules
@@ -188,6 +195,27 @@ func ExtractFirstImageURLFromHTML(htmlContent string) string {
 	}
 
 	return ""
+}
+
+// ExtractAllImageURLsFromHTML extracts all image URLs from HTML content
+// This returns all images found in the content, not just the first one
+// It's exported for use by the frontend to build image galleries
+func ExtractAllImageURLsFromHTML(htmlContent string) []string {
+	if htmlContent == "" {
+		return nil
+	}
+
+	var urls []string
+	re := regexp.MustCompile(`<img[^>]+src="([^">]+)"`)
+	matches := re.FindAllStringSubmatch(htmlContent, -1)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			urls = append(urls, match[1])
+		}
+	}
+
+	return urls
 }
 
 // extractAudioURL extracts the audio URL from a feed item (for podcasts)

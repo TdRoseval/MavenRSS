@@ -48,6 +48,7 @@ export function useArticleDetail() {
       const prevArticle = store.articles[currentArticleIndex.value - 1];
       store.currentArticleId = prevArticle.id;
       markAsReadIfNeeded(prevArticle);
+      scrollArticleIntoView(prevArticle.id);
     }
   }
 
@@ -57,7 +58,18 @@ export function useArticleDetail() {
       const nextArticle = store.articles[currentArticleIndex.value + 1];
       store.currentArticleId = nextArticle.id;
       markAsReadIfNeeded(nextArticle);
+      scrollArticleIntoView(nextArticle.id);
     }
+  }
+
+  // Scroll article into view in the article list
+  function scrollArticleIntoView(articleId: number) {
+    setTimeout(() => {
+      const articleEl = document.querySelector(`[data-article-id="${articleId}"]`);
+      if (articleEl) {
+        articleEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 50);
   }
 
   // Mark article as read if it's not already read
@@ -99,9 +111,10 @@ export function useArticleDetail() {
   const currentArticleId = ref<number | null>(null);
   const defaultViewMode = ref<ViewMode>('original');
   const pendingRenderAction = ref<RenderAction>(null);
-  const userPreferredMode = ref<ViewMode | null>(null); // Remember user's manual choice
   const imageViewerSrc = ref<string | null>(null);
   const imageViewerAlt = ref('');
+  const imageViewerImages = ref<string[]>([]);
+  const imageViewerInitialIndex = ref(0);
 
   // Watch for article changes and apply view mode
   watch(
@@ -111,6 +124,8 @@ export function useArticleDetail() {
         // Close image viewer when switching articles
         imageViewerSrc.value = null;
         imageViewerAlt.value = '';
+        imageViewerImages.value = [];
+        imageViewerInitialIndex.value = 0;
 
         // Reset content when switching articles
         articleContent.value = '';
@@ -122,7 +137,7 @@ export function useArticleDetail() {
         // Check if there's a pending render action from context menu
         if (pendingRenderAction.value) {
           // Apply the explicit action instead of default
-          // Don't set userPreferredMode for context menu actions - they're one-time actions
+          // Don't save user preference for context menu actions - they're one-time actions
           if (pendingRenderAction.value === 'showContent') {
             showContent.value = true;
           } else if (pendingRenderAction.value === 'showOriginal') {
@@ -130,9 +145,24 @@ export function useArticleDetail() {
           }
           pendingRenderAction.value = null; // Clear the pending action
         } else {
-          // Apply user's preferred mode or determine from feed/global settings
-          const preferredMode = userPreferredMode.value || getEffectiveViewMode();
+          // Apply user's preferred mode for this article from store, or determine from feed/global settings
+          const storedPreference = store.articleViewModePreferences.get(newId);
+          const effectiveMode = getEffectiveViewMode();
+          const preferredMode = storedPreference || effectiveMode;
           showContent.value = preferredMode === 'rendered';
+
+          // Save to localStorage if this is the first time viewing this article
+          // and there's no stored preference (we're using the default mode)
+          if (!storedPreference) {
+            const mode = showContent.value ? 'rendered' : 'original';
+            store.articleViewModePreferences.set(newId, mode);
+            try {
+              const preferences = Object.fromEntries(store.articleViewModePreferences.entries());
+              localStorage.setItem('articleViewModePreferences', JSON.stringify(preferences));
+            } catch (e) {
+              console.error('Failed to save article view mode to localStorage:', e);
+            }
+          }
         }
       }
     }
@@ -145,6 +175,8 @@ export function useArticleDetail() {
       // Close image viewer when switching feeds, filters, or categories
       imageViewerSrc.value = null;
       imageViewerAlt.value = '';
+      imageViewerImages.value = [];
+      imageViewerInitialIndex.value = 0;
     }
   );
 
@@ -152,8 +184,8 @@ export function useArticleDetail() {
   window.addEventListener('default-view-mode-changed', (e: Event) => {
     const event = e as ViewModeChangeEvent;
     defaultViewMode.value = event.detail.mode;
-    // Reset user preference when default changes
-    userPreferredMode.value = null;
+    // Clear all user preferences when default changes
+    store.articleViewModePreferences.clear();
   });
 
   function close() {
@@ -211,8 +243,21 @@ export function useArticleDetail() {
       }
     }
     showContent.value = !showContent.value;
-    // Remember user's preference
-    userPreferredMode.value = showContent.value ? 'rendered' : 'original';
+    // Remember user's preference for this specific article
+    if (article.value) {
+      const mode = showContent.value ? 'rendered' : 'original';
+
+      // Save to both store and localStorage for persistence
+      store.articleViewModePreferences.set(article.value.id, mode);
+
+      // Also save to localStorage as backup
+      try {
+        const preferences = Object.fromEntries(store.articleViewModePreferences.entries());
+        localStorage.setItem('articleViewModePreferences', JSON.stringify(preferences));
+      } catch (e) {
+        console.error('Failed to save article view mode to localStorage:', e);
+      }
+    }
   }
 
   async function fetchArticleContent() {
@@ -343,7 +388,7 @@ export function useArticleDetail() {
           newImg.style.cursor = 'pointer';
           newImg.style.pointerEvents = 'auto';
 
-          // Left click - open image viewer
+          // Left click - open image viewer with all images from article
           newImg.addEventListener(
             'click',
             (e: Event) => {
@@ -355,8 +400,24 @@ export function useArticleDetail() {
                 return;
               }
 
+              // Collect all images from the article content
+              const allImages = Array.from(
+                document.querySelectorAll<HTMLImageElement>('.prose-content img, .prose img')
+              )
+                .filter((img) => {
+                  // Filter out small icons
+                  return !(img.height <= 24 && img.height > 0);
+                })
+                .map((img) => img.src);
+
+              // Find the index of the clicked image
+              const clickedIndex = allImages.findIndex((src) => src === newImg.src);
+
+              // Set up image viewer with all images
               imageViewerSrc.value = newImg.src;
               imageViewerAlt.value = newImg.alt || '';
+              imageViewerImages.value = allImages;
+              imageViewerInitialIndex.value = clickedIndex >= 0 ? clickedIndex : 0;
             },
             { capture: true }
           ); // Use capture phase to ensure we get the event first
@@ -498,6 +559,8 @@ export function useArticleDetail() {
   function closeImageViewer() {
     imageViewerSrc.value = null;
     imageViewerAlt.value = '';
+    imageViewerImages.value = [];
+    imageViewerInitialIndex.value = 0;
   }
 
   // Download image from URL
@@ -617,16 +680,39 @@ export function useArticleDetail() {
     }
   }
 
-  // Handle reset user preference from normal article selection
-  function handleResetUserPreference() {
-    userPreferredMode.value = null;
-  }
-
   onMounted(async () => {
+    // Restore preferences from localStorage if store is empty
+    if (store.articleViewModePreferences.size === 0) {
+      try {
+        const saved = localStorage.getItem('articleViewModePreferences');
+        if (saved) {
+          const preferences = JSON.parse(saved) as Record<number, 'original' | 'rendered'>;
+          Object.entries(preferences).forEach(([articleId, mode]) => {
+            store.articleViewModePreferences.set(Number(articleId), mode);
+          });
+        }
+      } catch (e) {
+        console.error('Failed to restore article view mode preferences from localStorage:', e);
+      }
+    }
+
+    // If there's already a current article selected (e.g., after switching back from image gallery),
+    // apply the saved preference and fetch content if needed
+    if (store.currentArticleId) {
+      const storedPreference = store.articleViewModePreferences.get(store.currentArticleId);
+      if (storedPreference) {
+        showContent.value = storedPreference === 'rendered';
+      }
+
+      // Fetch article content if not already loaded
+      if (currentArticleId.value !== store.currentArticleId || !articleContent.value) {
+        await fetchArticleContent();
+      }
+    }
+
     window.addEventListener('render-article-content', handleRenderContent);
     window.addEventListener('explicit-render-action', handleExplicitRenderAction);
     window.addEventListener('toggle-content-view', handleToggleContentView);
-    window.addEventListener('reset-user-view-preference', handleResetUserPreference);
 
     // Load default view mode from settings
     try {
@@ -642,7 +728,6 @@ export function useArticleDetail() {
     window.removeEventListener('render-article-content', handleRenderContent);
     window.removeEventListener('explicit-render-action', handleExplicitRenderAction);
     window.removeEventListener('toggle-content-view', handleToggleContentView);
-    window.removeEventListener('reset-user-view-preference', handleResetUserPreference);
   });
 
   return {
@@ -653,6 +738,8 @@ export function useArticleDetail() {
     isLoadingContent,
     imageViewerSrc,
     imageViewerAlt,
+    imageViewerImages,
+    imageViewerInitialIndex,
     locale,
     hasPreviousArticle,
     hasNextArticle,

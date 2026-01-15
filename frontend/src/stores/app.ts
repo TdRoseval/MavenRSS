@@ -7,6 +7,12 @@ export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGaller
 export type ThemePreference = 'light' | 'dark' | 'auto';
 export type Theme = 'light' | 'dark';
 
+// Temporary selection state for feed drawer selections
+export interface TempSelection {
+  feedId: number | null;
+  category: string | null;
+}
+
 export interface AppState {
   articles: Ref<Article[]>;
   feeds: Ref<Feed[]>;
@@ -15,6 +21,7 @@ export interface AppState {
   currentFeedId: Ref<number | null>;
   currentCategory: Ref<string | null>;
   currentArticleId: Ref<number | null>;
+  tempSelection: Ref<TempSelection>;
   isLoading: Ref<boolean>;
   page: Ref<number>;
   hasMore: Ref<boolean>;
@@ -67,6 +74,7 @@ export const useAppStore = defineStore('app', () => {
   const currentFeedId = ref<number | null>(null);
   const currentCategory = ref<string | null>(null);
   const currentArticleId = ref<number | null>(null);
+  const tempSelection = ref<TempSelection>({ feedId: null, category: null });
   const isLoading = ref<boolean>(false);
   const page = ref<number>(1);
   const hasMore = ref<boolean>(true);
@@ -77,15 +85,21 @@ export const useAppStore = defineStore('app', () => {
   const theme = ref<Theme>('light');
   const showOnlyUnread = ref<boolean>(localStorage.getItem('showOnlyUnread') === 'true');
 
+  // Article view mode preferences (persisted across component mounts)
+  const articleViewModePreferences = ref<Map<number, 'original' | 'rendered'>>(new Map());
+
   // Refresh progress
   const refreshProgress = ref<RefreshProgress>({ isRunning: false });
   let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   // Actions - Article Management
-  function setFilter(filter: Filter): void {
+  async function setFilter(filter: Filter): Promise<void> {
     currentFilter.value = filter;
     currentFeedId.value = null;
     currentCategory.value = null;
+    tempSelection.value = { feedId: null, category: null };
+    // Refresh filter counts to ensure sidebar shows correct feeds
+    await fetchFilterCounts();
     // Clear and reset will be handled by fetchArticles
     fetchArticles();
   }
@@ -94,23 +108,26 @@ export const useAppStore = defineStore('app', () => {
     // Check if this feed is an image mode feed
     const feed = feeds.value.find((f) => f.id === feedId);
     if (feed?.is_image_mode) {
-      // Switch to image gallery mode for image mode feeds
+      // For image mode feeds, switch filter to image gallery
       currentFilter.value = 'imageGallery';
       currentFeedId.value = feedId;
       currentCategory.value = null;
+      tempSelection.value = { feedId, category: null };
       // Clear and reset will be handled by fetchArticles
     } else {
-      currentFilter.value = '';
+      // For regular feeds, keep currentFilter and set tempSelection
       currentFeedId.value = feedId;
       currentCategory.value = null;
+      tempSelection.value = { feedId, category: null };
       fetchArticles();
     }
   }
 
   function setCategory(category: string): void {
-    currentFilter.value = '';
+    // Keep currentFilter and set tempSelection
     currentFeedId.value = null;
     currentCategory.value = category;
+    tempSelection.value = { feedId: null, category };
     fetchArticles();
   }
 
@@ -176,8 +193,9 @@ export const useAppStore = defineStore('app', () => {
 
       feeds.value = data;
 
-      // Fetch unread counts after fetching feeds
+      // Fetch unread counts and filter counts after fetching feeds
       await fetchUnreadCounts();
+      await fetchFilterCounts();
     } catch (e) {
       console.error('[App Store] Fetch feeds error:', e);
       feeds.value = [];
@@ -194,6 +212,35 @@ export const useAppStore = defineStore('app', () => {
       };
     } catch {
       unreadCounts.value = { total: 0, feedCounts: {} };
+    }
+  }
+
+  // Filter-specific counts for sidebar filtering
+  const filterCounts = ref<Record<string, Record<number | string, number>>>({
+    unread: {},
+    favorites: {},
+    read_later: {},
+    images: {},
+  });
+
+  async function fetchFilterCounts(): Promise<void> {
+    try {
+      const res = await fetch('/api/articles/filter-counts');
+      const data = await res.json();
+      filterCounts.value = {
+        unread: data.unread || {},
+        favorites: data.favorites || {},
+        read_later: data.read_later || {},
+        images: data.images || {},
+      };
+    } catch (e) {
+      console.error('[App Store] Fetch filter counts error:', e);
+      filterCounts.value = {
+        unread: {},
+        favorites: {},
+        read_later: {},
+        images: {},
+      };
     }
   }
 
@@ -617,10 +664,12 @@ export const useAppStore = defineStore('app', () => {
     feeds,
     feedMap,
     unreadCounts,
+    filterCounts,
     currentFilter,
     currentFeedId,
     currentCategory,
     currentArticleId,
+    tempSelection,
     isLoading,
     page,
     hasMore,
@@ -629,6 +678,7 @@ export const useAppStore = defineStore('app', () => {
     theme,
     refreshProgress,
     showOnlyUnread,
+    articleViewModePreferences,
 
     // Actions
     setFilter,
@@ -638,6 +688,7 @@ export const useAppStore = defineStore('app', () => {
     loadMore,
     fetchFeeds,
     fetchUnreadCounts,
+    fetchFilterCounts,
     markAllAsRead,
     updateArticleSummary,
     toggleTheme,

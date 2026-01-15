@@ -68,6 +68,16 @@ func HandleUploadCSSDialog(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		CanChooseFiles:       true,
 		AllowsOtherFileTypes: true,
 	}).PromptForSingleSelection()
+
+	// Treat empty filePath as user cancellation (no error should be shown)
+	if filePath == "" {
+		log.Printf("CSS upload dialog cancelled by user")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+		return
+	}
+
+	// Only show error for actual failures, not cancellations
 	if err != nil {
 		log.Printf("Error opening file dialog: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -75,13 +85,6 @@ func HandleUploadCSSDialog(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "Failed to open file dialog",
 		})
-		return
-	}
-
-	if filePath == "" {
-		// User cancelled the dialog
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
 		return
 	}
 

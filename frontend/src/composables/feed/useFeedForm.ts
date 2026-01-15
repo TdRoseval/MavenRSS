@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/app';
 
 export type FeedType = 'url' | 'script' | 'xpath' | 'email';
 export type ProxyMode = 'global' | 'custom' | 'none';
-export type RefreshMode = 'global' | 'fixed' | 'intelligent' | 'custom';
+export type RefreshMode = 'global' | 'fixed' | 'intelligent' | 'custom' | 'never';
 
 export function useFeedForm(feed?: Feed) {
   const { t } = useI18n();
@@ -189,12 +189,14 @@ export function useFeedForm(feed?: Feed) {
   }
 
   function getRefreshInterval(): number {
-    // Return 0 for global, -1 for intelligent, or the custom interval
+    // Return 0 for global, -1 for intelligent, -2 for never, or the custom interval
     switch (refreshMode.value) {
       case 'global':
         return 0;
       case 'intelligent':
         return -1;
+      case 'never':
+        return -2;
       case 'custom':
         return refreshInterval.value;
       default:
@@ -280,6 +282,8 @@ export function useFeedForm(feed?: Feed) {
       refreshMode.value = 'global';
     } else if (interval === -1) {
       refreshMode.value = 'intelligent';
+    } else if (interval === -2) {
+      refreshMode.value = 'never';
     } else {
       refreshMode.value = 'custom';
       refreshInterval.value = interval;

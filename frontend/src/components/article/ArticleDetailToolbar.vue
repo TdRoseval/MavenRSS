@@ -47,7 +47,7 @@ const emit = defineEmits<{
 <template>
   <div
     v-if="article"
-    class="header-bar bg-bg-primary border-b border-border p-3 sm:p-4 flex items-center justify-between gap-2 sm:gap-4"
+    class="header-bar bg-bg-primary border-b border-border p-2 sm:p-4 flex items-center justify-between gap-2 sm:gap-4"
   >
     <!-- Left: Back button -->
     <button class="btn-icon" :title="t('back')" @click="emit('close')">

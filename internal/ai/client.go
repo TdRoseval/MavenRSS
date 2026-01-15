@@ -86,25 +86,56 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error) {
 	provider := DetectAPIProvider(c.config.Endpoint)
 
-	// Try Gemini format first if endpoint appears to be Gemini
-	if provider == "gemini" || IsGeminiEndpoint(c.config.Endpoint) {
+	// Try provider-specific format first based on endpoint detection
+	switch provider {
+	case "gemini":
 		result, err := c.tryFormat(NewGeminiHandler(), config)
+		if err == nil {
+			return result, nil
+		}
+		// Fall through to other formats
+
+	case "anthropic":
+		result, err := c.tryFormat(&AnthropicHandler{}, config)
+		if err == nil {
+			return result, nil
+		}
+		// Fall through to other formats
+
+	case "deepseek":
+		result, err := c.tryFormat(&DeepSeekHandler{}, config)
+		if err == nil {
+			return result, nil
+		}
+		// Fall through to other formats
+
+	case "ollama":
+		result, err := c.tryFormat(NewOllamaHandler(), config)
 		if err == nil {
 			return result, nil
 		}
 		// Fall through to other formats
 	}
 
-	// Try OpenAI format (most common)
+	// Try OpenAI format (most common, good fallback)
 	result, err := c.tryFormat(NewOpenAIHandler(), config)
 	if err == nil {
 		return result, nil
 	}
 
-	// Try Ollama format
-	result, err = c.tryFormat(NewOllamaHandler(), config)
-	if err == nil {
-		return result, nil
+	// Try other formats as fallback
+	if provider != "gemini" {
+		result, err = c.tryFormat(NewGeminiHandler(), config)
+		if err == nil {
+			return result, nil
+		}
+	}
+
+	if provider != "ollama" {
+		result, err = c.tryFormat(NewOllamaHandler(), config)
+		if err == nil {
+			return result, nil
+		}
 	}
 
 	// All formats failed
@@ -127,15 +158,24 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 	// Format endpoint
 	formattedEndpoint := handler.FormatEndpoint(c.config.Endpoint, c.config.Model)
 
-	// Send request with formatted endpoint
-	resp, err := c.sendRequestToEndpoint(jsonBody, formattedEndpoint)
+	// Special handling for Ollama: use /api/chat if messages are provided
+	if _, ok := handler.(*OllamaHandler); ok && len(config.Messages) > 0 {
+		// Replace /api/generate with /api/chat for message-based requests
+		formattedEndpoint = strings.Replace(formattedEndpoint, "/api/generate", "/api/chat", 1)
+	}
+
+	// Send request with formatted endpoint and handler
+	resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
 	if err != nil {
 		return ResponseResult{}, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Validate response
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ResponseResult{}, fmt.Errorf("failed to read response body: %w", err)
+	}
 	if err := handler.ValidateResponse(resp.StatusCode, bodyBytes); err != nil {
 		return ResponseResult{}, err
 	}
@@ -156,6 +196,11 @@ func (c *Client) sendRequest(jsonBody []byte) (*http.Response, error) {
 
 // sendRequestToEndpoint sends the HTTP request to a specific endpoint
 func (c *Client) sendRequestToEndpoint(jsonBody []byte, apiURL string) (*http.Response, error) {
+	return c.sendRequestToEndpointWithHandler(jsonBody, apiURL, nil)
+}
+
+// sendRequestToEndpointWithHandler sends the HTTP request to a specific endpoint with handler-specific headers
+func (c *Client) sendRequestToEndpointWithHandler(jsonBody []byte, apiURL string, handler FormatHandler) (*http.Response, error) {
 	// Validate endpoint URL to prevent SSRF attacks
 	parsedURL, err := url.Parse(apiURL)
 	if err != nil {
@@ -167,15 +212,56 @@ func (c *Client) sendRequestToEndpoint(jsonBody []byte, apiURL string) (*http.Re
 		return nil, fmt.Errorf("API endpoint must use HTTP or HTTPS")
 	}
 
+	// Check if this is a Gemini endpoint that needs API key in URL
+	isGeminiEndpoint := IsGeminiEndpoint(apiURL)
+
+	// For Gemini API, add API key as URL query parameter instead of Authorization header
+	if isGeminiEndpoint && c.config.APIKey != "" {
+		// Add or update the 'key' query parameter
+		query := parsedURL.Query()
+		query.Set("key", c.config.APIKey)
+		parsedURL.RawQuery = query.Encode()
+		apiURL = parsedURL.String()
+	}
+
 	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	// Only add Authorization header if API key is provided
-	if c.config.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	// Check if handler provides custom headers
+	type HeaderProvider interface {
+		GetRequiredHeaders(apiKey string) map[string]string
+	}
+
+	if handler != nil {
+		if hp, ok := handler.(HeaderProvider); ok {
+			// Use handler-specific headers
+			requiredHeaders := hp.GetRequiredHeaders(c.config.APIKey)
+			for key, value := range requiredHeaders {
+				req.Header.Set(key, value)
+			}
+		} else {
+			// Use default headers
+			req.Header.Set("Content-Type", "application/json")
+			// For non-Gemini endpoints, use Authorization header
+			if !isGeminiEndpoint {
+				// Only add Authorization header if API key is provided
+				if c.config.APIKey != "" {
+					req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+				}
+			}
+		}
+	} else {
+		// No handler provided, use default headers
+		req.Header.Set("Content-Type", "application/json")
+		// For non-Gemini endpoints, use Authorization header
+		if !isGeminiEndpoint {
+			// Only add Authorization header if API key is provided
+			if c.config.APIKey != "" {
+				req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+			}
+		}
 	}
 
 	// Parse and add custom headers if provided

@@ -15,10 +15,12 @@ import {
   PhTrash,
   PhCheck,
   PhBookOpen,
+  PhListDashes,
 } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
+import { openInBrowser } from '@/utils/browser';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { fetchSettings } = useSettings();
 
 interface Props {
@@ -36,6 +38,13 @@ const deleteLoading = ref(false);
 
 // Use props settings for real-time updates (passed from parent)
 const hasCustomCSS = computed(() => !!props.settings.custom_css_file);
+
+function openDocumentation() {
+  const docUrl = locale.value.startsWith('zh')
+    ? 'https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_CSS.zh.md'
+    : 'https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_CSS.md';
+  openInBrowser(docUrl);
+}
 
 const handleFileUpload = async () => {
   uploading.value = true;
@@ -194,6 +203,32 @@ const handleDeleteCSS = async () => {
 
     <div class="setting-item mt-2 sm:mt-3">
       <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+        <PhListDashes :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+        <div class="flex-1 min-w-0">
+          <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
+            {{ t('compactMode') }}
+          </div>
+          <div class="text-xs text-text-secondary hidden sm:block">
+            {{ t('compactModeDesc') }}
+          </div>
+        </div>
+      </div>
+      <input
+        :checked="settings.compact_mode"
+        type="checkbox"
+        class="toggle"
+        @change="
+          (e) =>
+            emit('update:settings', {
+              ...settings,
+              compact_mode: (e.target as HTMLInputElement).checked,
+            })
+        "
+      />
+    </div>
+
+    <div class="setting-item mt-2 sm:mt-3">
+      <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
         <PhArticleNyTimes :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
         <div class="flex-1 min-w-0">
           <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
@@ -344,15 +379,14 @@ const handleDeleteCSS = async () => {
             <span class="text-xs text-text-secondary">{{ t('customCSSApplied') }}</span>
           </div>
           <!-- Documentation Link -->
-          <a
-            href="https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_CSS.md"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
             class="text-xs text-accent hover:underline flex items-center gap-1 mt-1"
+            @click="openDocumentation"
           >
             <PhBookOpen :size="12" />
             {{ t('customCSSGuide') }}
-          </a>
+          </button>
         </div>
       </div>
       <div class="flex items-center gap-2">

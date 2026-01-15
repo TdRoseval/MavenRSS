@@ -205,20 +205,30 @@ func (f *Fetcher) FetchAll(ctx context.Context) {
 		return
 	}
 
-	// Filter out FreshRSS feeds - they are refreshed via sync, not standard refresh
+	// Filter out FreshRSS feeds and never-refresh feeds
 	filteredFeeds := make([]models.Feed, 0, len(feeds))
 	freshRSSCount := 0
+	neverRefreshCount := 0
 	for _, feed := range feeds {
 		if feed.IsFreshRSSSource {
 			freshRSSCount++
+		} else if feed.RefreshInterval == -2 {
+			// Skip feeds with never refresh mode
+			neverRefreshCount++
 		} else {
 			filteredFeeds = append(filteredFeeds, feed)
 		}
 	}
 
-	// If all feeds are FreshRSS feeds, no standard refresh needed
+	// If all feeds are FreshRSS feeds or never-refresh feeds, no standard refresh needed
 	if len(filteredFeeds) == 0 {
-		log.Printf("All %d feeds are FreshRSS sources (refreshed via sync only), skipping standard refresh", freshRSSCount)
+		if freshRSSCount > 0 && neverRefreshCount > 0 {
+			log.Printf("All feeds are either FreshRSS sources (%d) or never-refresh feeds (%d), skipping standard refresh", freshRSSCount, neverRefreshCount)
+		} else if freshRSSCount > 0 {
+			log.Printf("All %d feeds are FreshRSS sources (refreshed via sync only), skipping standard refresh", freshRSSCount)
+		} else {
+			log.Printf("All %d feeds are never-refresh feeds, skipping standard refresh", neverRefreshCount)
+		}
 
 		// Update last global refresh time even if no standard feeds
 		newUpdateTime := time.Now().Format(time.RFC3339)
@@ -237,7 +247,11 @@ func (f *Fetcher) FetchAll(ctx context.Context) {
 		return
 	}
 
-	log.Printf("Standard refresh: %d feeds (skipped %d FreshRSS feeds)", len(filteredFeeds), freshRSSCount)
+	if neverRefreshCount > 0 {
+		log.Printf("Standard refresh: %d feeds (skipped %d FreshRSS feeds, %d never-refresh feeds)", len(filteredFeeds), freshRSSCount, neverRefreshCount)
+	} else {
+		log.Printf("Standard refresh: %d feeds (skipped %d FreshRSS feeds)", len(filteredFeeds), freshRSSCount)
+	}
 
 	// Update task manager capacity based on network
 	concurrency := f.getConcurrencyLimit()

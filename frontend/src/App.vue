@@ -43,8 +43,13 @@ const { confirmDialog, inputDialog, toasts, removeToast, installGlobalHandlers }
 
 const { contextMenu, openContextMenu, handleContextMenuAction } = useContextMenu();
 
-const { sidebarWidth, articleListWidth, startResizeSidebar, startResizeArticleList } =
-  useResizablePanels();
+const {
+  sidebarWidth,
+  articleListWidth,
+  startResizeArticleList,
+  setArticleListWidth,
+  setCompactMode,
+} = useResizablePanels();
 
 // Use app updates composable
 const { updateInfo, checkForUpdates, downloadAndInstallUpdate } = useAppUpdates();
@@ -80,11 +85,19 @@ onMounted(async () => {
   // Load remaining settings (theme and other settings are already loaded in main.ts)
   let updateInterval = 10;
   let lastGlobalRefresh = '';
-  let autoUpdate = false;
 
   try {
     const res = await fetch('/api/settings');
     const data = await res.json();
+
+    // Set initial article list width based on compact mode setting
+    const isCompactMode = data.compact_mode === true || data.compact_mode === 'true';
+    // First set the compact mode, then set the width (order matters)
+    setCompactMode(isCompactMode);
+    setArticleListWidth(isCompactMode ? 600 : 400);
+
+    // Notify all components that settings have been loaded
+    window.dispatchEvent(new CustomEvent('settings-loaded'));
 
     // Apply saved theme preference (already applied in main.ts, but ensure it's set)
     if (data.theme) {
@@ -101,11 +114,6 @@ onMounted(async () => {
       lastGlobalRefresh = data.last_global_refresh;
     }
 
-    // Get auto_update setting
-    if (data.auto_update !== undefined) {
-      autoUpdate = data.auto_update === 'true'; // 这里后端默认返回 'false' 的话都是 true，我这里如果不修改的话每次都会自动下载
-    }
-
     // Load saved shortcuts
     if (data.shortcuts) {
       try {
@@ -119,17 +127,14 @@ onMounted(async () => {
     console.error('Error loading initial settings:', e);
   }
 
-  // Check for updates on startup
+  // Check for updates on startup (silent mode - don't show toast if up to date)
   setTimeout(async () => {
     try {
-      await checkForUpdates();
+      await checkForUpdates(true);
 
-      // If update is available and auto-update is disabled, show dialog
-      if (updateInfo.value && updateInfo.value.has_update && !autoUpdate) {
+      // If update is available, show dialog for user to manually confirm
+      if (updateInfo.value && updateInfo.value.has_update) {
         showUpdateDialog.value = true;
-      } else if (updateInfo.value && updateInfo.value.has_update && autoUpdate) {
-        // If auto-update is enabled, automatically download and install
-        await downloadAndInstallUpdate();
       }
     } catch (e) {
       console.error('Error checking for updates:', e);
@@ -151,8 +156,8 @@ onMounted(async () => {
 
         if (progressData.is_running) {
           // Backend is already refreshing, start polling
-          store.refreshProgress.value = {
-            ...store.refreshProgress.value,
+          store.refreshProgress = {
+            ...store.refreshProgress,
             isRunning: true,
             pool_task_count: progressData.pool_task_count,
             article_click_count: progressData.article_click_count,
@@ -187,25 +192,37 @@ onMounted(async () => {
       }
     }, 500);
   }, 100);
+});
 
-  // Listen for events from Sidebar
-  window.addEventListener('show-add-feed', () => (showAddFeed.value = true));
-  window.addEventListener('show-edit-feed', (e: Event) => {
-    const customEvent = e as CustomEvent;
-    feedToEdit.value = customEvent.detail;
-    showEditFeed.value = true;
-  });
-  window.addEventListener('show-settings', () => (showSettings.value = true));
-  window.addEventListener('show-discover-blogs', (e: Event) => {
-    const customEvent = e as CustomEvent;
-    feedToDiscover.value = customEvent.detail;
-    showDiscoverBlogs.value = true;
-  });
+// Listen for events from Sidebar (moved outside onMounted to ensure proper capture)
+window.addEventListener('show-add-feed', () => {
+  showAddFeed.value = true;
+});
+window.addEventListener('show-edit-feed', (e) => {
+  const customEvent = e as CustomEvent<any>;
+  feedToEdit.value = customEvent.detail;
+  showEditFeed.value = true;
+});
+window.addEventListener('show-settings', () => {
+  showSettings.value = true;
+});
+window.addEventListener('show-discover-blogs', (e) => {
+  const customEvent = e as CustomEvent<any>;
+  feedToDiscover.value = customEvent.detail;
+  showDiscoverBlogs.value = true;
+});
 
-  // Global Context Menu Event Listener
-  window.addEventListener('open-context-menu', (e: Event) => {
-    openContextMenu(e as CustomEvent);
-  });
+// Listen for compact mode changes to update article list width
+window.addEventListener('compact-mode-changed', (e) => {
+  const customEvent = e as CustomEvent<{ enabled: boolean }>;
+  const enabled = customEvent.detail.enabled;
+  setCompactMode(enabled);
+  setArticleListWidth(enabled ? 600 : 400); // Always update width when user changes setting
+});
+
+// Global Context Menu Event Listener
+window.addEventListener('open-context-menu', (e) => {
+  openContextMenu(e as CustomEvent<any>);
 });
 
 // Check if we should trigger refresh based on last update time and interval
@@ -252,8 +269,6 @@ function onFeedUpdated(): void {
     }"
   >
     <Sidebar :is-open="isSidebarOpen" @toggle="toggleSidebar" />
-
-    <div class="resizer hidden md:block" @mousedown="startResizeSidebar"></div>
 
     <!-- Show ImageGalleryView when in image gallery mode -->
     <template v-if="isImageGalleryMode">

@@ -5,6 +5,42 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.16] - 2026-01-15
+
+### Added
+
+- Added compact mode for article list to reduce visual clutter. (#403)
+- Enhanced image gallery with multi‑image support and improved navigation. (#457)
+- Added support for Anthropic and DeepSeek AI services.
+- Added option to hide text overlay in image gallery view. (#486)
+- Added indication for feeds using image gallery mode in feed list. (#485)
+- Added ability to customize translation service endpoint. (#383)
+- Added option to disable automatic feed refresh. (#448)
+- Added option to display translated text only (hide original). (#464)
+
+### Changed
+
+- Documents now open in the default browser with added multi‑language support. (#458)
+- Import/export no longer shows error messages when no file is selected. (#483)
+- Articles with >60% target language content are no longer translated to reduce API usage.
+
+### Fixed
+
+- Fixed conflict between left/right arrow shortcuts and input fields. (#454)
+- Fixed article list not scrolling automatically when switching articles. (#451)
+- Fixed minor styling issues. (#452, #456, #453, #484)
+- Fixed display of future publish times for some articles.
+- Fixed summary generation not respecting language settings. (#480)
+- Fixed Gemini API integration. (#459)
+- Fixed automatic application updates occurring without user confirmation. (#479)
+- Fixed intermittent FreshRSS synchronization failures. (#460)
+- Fixed view mode reset when switching between articles and images. (#432)
+- Fixed XPath feed parsing in certain cases. (#479)
+
+### Refactored
+
+- Refactored sidebar, settings, and summary components for improved maintainability and performance. (#461, #466)
+
 ## [1.3.15] - 2026-01-11
 
 ### Changed

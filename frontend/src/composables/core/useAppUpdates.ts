@@ -16,8 +16,9 @@ export function useAppUpdates() {
 
   /**
    * Check for available updates
+   * @param silent - If true, don't show toast when up to date (for startup checks)
    */
-  async function checkForUpdates() {
+  async function checkForUpdates(silent = false) {
     checkingUpdates.value = true;
     updateInfo.value = null;
 
@@ -31,7 +32,8 @@ export function useAppUpdates() {
           window.showToast(t('errorCheckingUpdates'), 'error');
         } else if (data.has_update) {
           window.showToast(t('updateAvailable'), 'info');
-        } else {
+        } else if (!silent) {
+          // Only show "up to date" toast if not in silent mode
           window.showToast(t('upToDate'), 'success');
         }
       } else {

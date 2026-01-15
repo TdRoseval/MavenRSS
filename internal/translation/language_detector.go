@@ -95,6 +95,102 @@ func (ld *LanguageDetector) ShouldTranslate(text, targetLang string) bool {
 	return detectedLang != targetLang
 }
 
+// ShouldTranslateFullText analyzes the full text to determine if translation is needed
+// It samples multiple paragraphs and calculates the language ratio
+// Returns false if the target language accounts for more than 60% of the content
+// This is useful for articles that are mixed-language or already mostly in target language
+func (ld *LanguageDetector) ShouldTranslateFullText(text, targetLang string) bool {
+	if text == "" {
+		return true
+	}
+
+	// Clean text and split into paragraphs
+	cleanText := removeHTMLTags(text)
+	cleanText = strings.TrimSpace(cleanText)
+
+	// Split by common paragraph delimiters
+	paragraphs := splitIntoParagraphs(cleanText)
+
+	// If too few paragraphs, fall back to simple detection
+	if len(paragraphs) < 3 {
+		return ld.ShouldTranslate(text, targetLang)
+	}
+
+	// Sample paragraphs (up to 10 for efficiency)
+	sampleSize := len(paragraphs)
+	if sampleSize > 10 {
+		sampleSize = 10
+	}
+
+	targetLang = normalizeLangCode(targetLang)
+	targetCount := 0
+	totalAnalyzed := 0
+
+	// Analyze each sampled paragraph
+	for i := 0; i < sampleSize; i++ {
+		paragraph := strings.TrimSpace(paragraphs[i])
+		if len(paragraph) < 10 {
+			continue // Skip very short paragraphs
+		}
+
+		detectedLang := ld.DetectLanguage(paragraph)
+		if detectedLang == "" {
+			continue // Skip if detection failed
+		}
+
+		detectedLang = normalizeLangCode(detectedLang)
+		totalAnalyzed++
+
+		if detectedLang == targetLang {
+			targetCount++
+		}
+	}
+
+	// If we couldn't analyze enough paragraphs, fall back to simple detection
+	if totalAnalyzed < 3 {
+		return ld.ShouldTranslate(text, targetLang)
+	}
+
+	// Calculate ratio of target language content
+	ratio := float64(targetCount) / float64(totalAnalyzed)
+
+	// Skip translation if more than 60% is already in target language
+	if ratio > 0.6 {
+		return false
+	}
+
+	return true
+}
+
+// splitIntoParagraphs splits text into paragraphs using common delimiters
+func splitIntoParagraphs(text string) []string {
+	// Replace multiple newlines with single delimiter
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+
+	// Split by double newlines or single newlines
+	var paragraphs []string
+	current := strings.Builder{}
+
+	for _, r := range text {
+		if r == '\n' {
+			if current.Len() > 0 {
+				paragraphs = append(paragraphs, strings.TrimSpace(current.String()))
+				current.Reset()
+			}
+		} else {
+			current.WriteRune(r)
+		}
+	}
+
+	// Add last paragraph
+	if current.Len() > 0 {
+		paragraphs = append(paragraphs, strings.TrimSpace(current.String()))
+	}
+
+	return paragraphs
+}
+
 // supportedLanguages returns the list of languages we want to detect
 func supportedLanguages() []whatlanggo.Lang {
 	return []whatlanggo.Lang{

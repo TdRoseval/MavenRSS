@@ -1,9 +1,9 @@
 <div align="center">
   <img src="imgs/logo.svg" alt="MrRSS Logo" width="120" height="120">
   <h1>MrRSS</h1>
-  <p><strong>A Modern, Cross-Platform Desktop RSS Reader</strong></p>
+  <p><strong>A modern, cross-platform and free AI RSS reader.</strong></p>
 
-   [![Version](https://img.shields.io/badge/version-1.3.15-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+  [![Version](https://img.shields.io/badge/version-1.3.16-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
    [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -21,13 +21,11 @@
 
 ## ✨ Features
 
-- 🖥️ **Cross-platform Support**: Native desktop apps for Windows, macOS, and Linux, providing a smooth and consistent experience
-- 🌐 **Automatic Translation and Summary**: Automatically translates article titles and content, and generates concise summaries to help you quickly grasp information
-- 🔍 **Smart Feed Discovery**: Automatically discovers and recommends new RSS feeds from relevant sources, continuously enriching your reading library
-- 🤖 **AI-enhanced Features**: Integrates advanced AI technology to empower various functions like translation, summarization, and recommendation, making reading smarter
-- 🎨 **Modern User Interface**: Features a clean, beautiful, and responsive design, supports dark mode, providing a comfortable and immersive visual experience
-- 📦 **OPML Import/Export**: Supports one-click import or export of OPML files, making it easy to migrate subscriptions from other RSS readers
-- 🏭 **Custom Scripts and Automation**: Built-in filters, scripts, and XPath system, supporting highly customizable automation workflows
+- 🌐 **Auto-Translation & Summarization**: Automatically translate article titles and content, and generate concise summaries to help you get information quickly
+- 🤖 **AI-Enhanced Features**: Integrated advanced AI technology for translation, summarization, recommendations, and more, making reading smarter
+- 🔌 **Rich Plugin Ecosystem**: Supports integration with mainstream tools like Obsidian, FreshRSS, and RSSHub for easy feature extension
+- 📡 **Diverse Subscription Methods**: Supports URL, XPath, scripts, newsletters, and other feed types to meet different needs
+- 🏭 **Custom Scripts & Automation**: Built-in filters and scripting system supporting highly customizable automation workflows
 
 ## 📸 Screenshots
 
@@ -144,7 +142,7 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 This ensures your data persists across application updates and reinstalls.
 
-## 🛠️ Development
+## 🛠️ Development Guide
 
 <details>
 
@@ -168,7 +166,7 @@ task dev
 
 #### Using Make
 
-We provide a `Makefile` with common development tasks (works on Linux/macOS/Windows with Make installed):
+We provide a `Makefile` for handling common development tasks (available on Linux/macOS/Windows):
 
 ```bash
 # Show all available commands
@@ -182,30 +180,6 @@ make clean
 
 # Setup development environment
 make setup
-```
-
-#### Using Scripts
-
-Cross-platform scripts are available in the `scripts/` directory:
-
-**Linux/macOS:**
-
-```bash
-# Run all checks
-./scripts/check.sh
-
-# Pre-release checks
-./scripts/pre-release.sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-# Run all checks
-.\scripts\check.ps1
-
-# Pre-release checks
-.\scripts\pre-release.ps1
 ```
 
 ### Pre-commit Hooks
@@ -223,12 +197,7 @@ pre-commit run --all-files
 ### Running Tests
 
 ```bash
-# Backend tests
-go test ./...
-
-# Frontend tests
-cd frontend
-npm test
+make test
 ```
 
 ### Server Mode (API-only)
@@ -244,7 +213,7 @@ go build -tags server -o mrrss-server .
 ./mrrss-server
 ```
 
-Of course, pre-built server images based on ghcr.io are also provided:
+Pre-built server images based on ghcr.io are also available:
 
 ```bash
 docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-amd64
@@ -279,16 +248,10 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 This project uses icon files sourced from [DIYgod/RSSHub](https://github.com/DIYgod/RSSHub) and [FreshRSS/FreshRSS](https://github.com/FreshRSS/FreshRSS). These resources are licensed under the AGPL-3.0 License.
 
-## 🙏 Acknowledgments
-
-- Built with [Wails](https://wails.io/) - Go + Web framework
-- UI powered by [Vue.js 3](https://vuejs.org/) and [Tailwind CSS](https://tailwindcss.com/)
-- Icons from [Phosphor Icons](https://phosphoricons.com/)
-- RSS parsing with [gofeed](https://github.com/mmcdole/gofeed)
-
 ## 📮 Contact & Support
 
 - **Issues**: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/WCY-dt/MrRSS/discussions)
 - **Repository**: [github.com/WCY-dt/MrRSS](https://github.com/WCY-dt/MrRSS)
 
 ---

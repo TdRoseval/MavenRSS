@@ -20,6 +20,19 @@ export function formatDate(
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+
+    // Handle future dates - always show absolute date
+    if (diffMs < 0) {
+      if (locale === 'zh-CN') {
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        return `${year}年${month}月${day}日`;
+      } else {
+        return date.toLocaleDateString(locale);
+      }
+    }
+
     const diffSeconds = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);

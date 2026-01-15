@@ -35,6 +35,10 @@ type DynamicTranslator struct {
 	cachedModel         string
 	cachedPrompt        string
 	cachedCustomHeaders string
+	cachedBodyTemplate  string
+	cachedResponsePath  string
+	cachedLangMapping   string
+	cachedTimeout       int
 }
 
 // NewDynamicTranslator creates a new dynamic translator that uses the given settings provider.
@@ -82,6 +86,8 @@ func (t *DynamicTranslator) getTranslatorWithProvider() (Translator, string, err
 
 	// Get provider-specific settings (use encrypted methods for sensitive credentials)
 	var apiKey, appID, secretKey, endpoint, model, systemPrompt, customHeaders string
+	var customName, customMethod, customBodyTemplate, customResponsePath, customLangMapping string
+	var customTimeout int
 	switch provider {
 	case "deepl":
 		apiKey, _ = t.settings.GetEncryptedSetting("deepl_api_key")
@@ -95,6 +101,18 @@ func (t *DynamicTranslator) getTranslatorWithProvider() (Translator, string, err
 		model, _ = t.settings.GetSetting("ai_model")
 		systemPrompt, _ = t.settings.GetSetting("ai_translation_prompt")
 		customHeaders, _ = t.settings.GetSetting("ai_custom_headers")
+	case "custom":
+		customName, _ = t.settings.GetSetting("custom_translation_name")
+		endpoint, _ = t.settings.GetSetting("custom_translation_endpoint")
+		customMethod, _ = t.settings.GetSetting("custom_translation_method")
+		customHeaders, _ = t.settings.GetSetting("custom_translation_headers")
+		customBodyTemplate, _ = t.settings.GetSetting("custom_translation_body_template")
+		customResponsePath, _ = t.settings.GetSetting("custom_translation_response_path")
+		customLangMapping, _ = t.settings.GetSetting("custom_translation_lang_mapping")
+		timeoutStr, _ := t.settings.GetSetting("custom_translation_timeout")
+		if timeoutStr != "" {
+			fmt.Sscanf(timeoutStr, "%d", &customTimeout)
+		}
 	}
 
 	// Check if we can reuse the cached translator
@@ -107,7 +125,11 @@ func (t *DynamicTranslator) getTranslatorWithProvider() (Translator, string, err
 		t.cachedEndpoint == endpoint &&
 		t.cachedModel == model &&
 		t.cachedPrompt == systemPrompt &&
-		t.cachedCustomHeaders == customHeaders {
+		t.cachedCustomHeaders == customHeaders &&
+		t.cachedBodyTemplate == customBodyTemplate &&
+		t.cachedResponsePath == customResponsePath &&
+		t.cachedLangMapping == customLangMapping &&
+		t.cachedTimeout == customTimeout {
 		translator := t.cachedTranslator
 		t.mu.RUnlock()
 		return translator, provider, nil
@@ -150,6 +172,23 @@ func (t *DynamicTranslator) getTranslatorWithProvider() (Translator, string, err
 			aiTranslator.SetCustomHeaders(customHeaders)
 		}
 		translator = aiTranslator
+	case "custom":
+		// Custom translator with user-defined configuration
+		if endpoint == "" {
+			return nil, "", fmt.Errorf("Custom translation endpoint is required")
+		}
+		if customTimeout == 0 {
+			customTimeout = 10 // Default timeout
+		}
+		customConfig, err := ParseConfigFromSettings(
+			customName, endpoint, customMethod, customHeaders,
+			customBodyTemplate, customResponsePath, customLangMapping,
+			customTimeout,
+		)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to parse custom translator config: %w", err)
+		}
+		translator = NewCustomTranslatorWithDB(customConfig, t.settings)
 	default:
 		translator = NewGoogleFreeTranslator()
 	}
@@ -164,6 +203,10 @@ func (t *DynamicTranslator) getTranslatorWithProvider() (Translator, string, err
 	t.cachedModel = model
 	t.cachedPrompt = systemPrompt
 	t.cachedCustomHeaders = customHeaders
+	t.cachedBodyTemplate = customBodyTemplate
+	t.cachedResponsePath = customResponsePath
+	t.cachedLangMapping = customLangMapping
+	t.cachedTimeout = customTimeout
 
 	return translator, provider, nil
 }

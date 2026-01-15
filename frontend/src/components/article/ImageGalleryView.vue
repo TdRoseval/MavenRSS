@@ -3,7 +3,16 @@ import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
-import { PhImage, PhHeart, PhList, PhFloppyDisk, PhGlobe } from '@phosphor-icons/vue';
+import {
+  PhImage,
+  PhHeart,
+  PhList,
+  PhFloppyDisk,
+  PhGlobe,
+  PhX,
+  PhTextT,
+  PhTextTSlash,
+} from '@phosphor-icons/vue';
 import { openInBrowser } from '@/utils/browser';
 
 const store = useAppStore();
@@ -29,6 +38,9 @@ const page = ref(1);
 const hasMore = ref(true);
 const selectedArticle = ref<Article | null>(null);
 const showImageViewer = ref(false);
+const allImages = ref<string[]>([]);
+const currentImageIndex = ref(0);
+const currentImageLoading = ref(false);
 const columns = ref<Article[][]>([]);
 const columnCount = ref(4);
 const containerRef = ref<HTMLElement | null>(null);
@@ -39,6 +51,19 @@ const contextMenu = ref<{ show: boolean; x: number; y: number; article: Article 
   x: 0,
   y: 0,
   article: null,
+});
+const imageCountCache = ref<Map<number, number>>(new Map());
+const showTextOverlay = ref(true);
+
+// Load showTextOverlay preference from localStorage
+const savedShowTextOverlay = localStorage.getItem('imageGalleryShowTextOverlay');
+if (savedShowTextOverlay !== null) {
+  showTextOverlay.value = savedShowTextOverlay === 'true';
+}
+
+// Watch for changes and save to localStorage
+watch(showTextOverlay, (newValue) => {
+  localStorage.setItem('imageGalleryShowTextOverlay', String(newValue));
 });
 
 // Compute which feed ID to fetch (if viewing a specific feed)
@@ -74,12 +99,39 @@ async function fetchImages(loadMore = false) {
       }
 
       hasMore.value = newArticles.length >= ITEMS_PER_PAGE;
+
+      // Preload image counts for new articles
+      newArticles.forEach((article: Article) => {
+        if (!imageCountCache.value.has(article.id)) {
+          fetchImageCount(article.id);
+        }
+      });
     }
   } catch (e) {
     console.error('Failed to load images:', e);
   } finally {
     isLoading.value = false;
   }
+}
+
+// Fetch image count for an article
+async function fetchImageCount(articleId: number) {
+  try {
+    const res = await fetch(`/api/articles/extract-images?id=${articleId}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.images && Array.isArray(data.images)) {
+        imageCountCache.value.set(articleId, data.images.length);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch image count:', e);
+  }
+}
+
+// Get image count for an article
+function getImageCount(article: Article): number {
+  return imageCountCache.value.get(article.id) || 1;
 }
 
 // Calculate number of columns based on container width dynamically
@@ -162,14 +214,83 @@ async function toggleFavorite(article: Article, event: Event) {
 }
 
 // Open image viewer
-function openImage(article: Article) {
+async function openImage(article: Article) {
   selectedArticle.value = article;
   showImageViewer.value = true;
+  currentImageLoading.value = true;
+
+  // Fetch all images from the article
+  await fetchArticleImages(article);
 
   // Mark as read
   if (!article.is_read) {
     markAsRead(article);
   }
+}
+
+// Fetch all images from article content
+async function fetchArticleImages(article: Article) {
+  try {
+    const res = await fetch(`/api/articles/extract-images?id=${article.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+        allImages.value = data.images;
+        // Find the index of the article's main image
+        currentImageIndex.value = data.images.findIndex((img: string) => img === article.image_url);
+        if (currentImageIndex.value < 0) {
+          currentImageIndex.value = 0;
+        }
+      } else {
+        // Fallback to just the article's main image
+        allImages.value = [article.image_url || ''];
+        currentImageIndex.value = 0;
+      }
+    } else {
+      // Fallback on error
+      allImages.value = [article.image_url || ''];
+      currentImageIndex.value = 0;
+    }
+  } catch (e) {
+    console.error('Failed to fetch article images:', e);
+    // Fallback on error
+    allImages.value = [article.image_url || ''];
+    currentImageIndex.value = 0;
+  }
+}
+
+// Navigate to previous image
+function previousImage() {
+  if (currentImageIndex.value > 0) {
+    currentImageIndex.value--;
+  } else {
+    // Wrap to last image
+    currentImageIndex.value = allImages.value.length - 1;
+  }
+  // Reset loading state
+  currentImageLoading.value = true;
+}
+
+// Navigate to next image
+function nextImage() {
+  if (currentImageIndex.value < allImages.value.length - 1) {
+    currentImageIndex.value++;
+  } else {
+    // Wrap to first image
+    currentImageIndex.value = 0;
+  }
+  // Reset loading state
+  currentImageLoading.value = true;
+}
+
+// Handle image load
+function handleImageLoad() {
+  currentImageLoading.value = false;
+}
+
+// Handle image error
+function handleImageError() {
+  currentImageLoading.value = false;
 }
 
 // Mark article as read
@@ -190,6 +311,8 @@ async function markAsRead(article: Article) {
 function closeImageViewer() {
   showImageViewer.value = false;
   selectedArticle.value = null;
+  allImages.value = [];
+  currentImageIndex.value = 0;
 }
 
 // Format date
@@ -255,6 +378,22 @@ function openOriginal(article: Article) {
   closeContextMenu();
 }
 
+// Handle keyboard shortcuts
+function handleKeyDown(e: KeyboardEvent) {
+  // Only handle keyboard when image viewer is open
+  if (!showImageViewer.value) return;
+
+  if (e.key === 'Escape') {
+    closeImageViewer();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    previousImage();
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    nextImage();
+  }
+}
+
 // Watch for articles changes and rearrange
 watch(articles, () => {
   nextTick(() => {
@@ -267,6 +406,8 @@ watch(feedId, async () => {
   // Close image viewer when switching feeds
   showImageViewer.value = false;
   selectedArticle.value = null;
+  allImages.value = [];
+  currentImageIndex.value = 0;
 
   page.value = 1;
   articles.value = [];
@@ -283,6 +424,7 @@ onMounted(() => {
     containerRef.value.addEventListener('scroll', handleScroll);
   }
   window.addEventListener('click', closeContextMenu);
+  window.addEventListener('keydown', handleKeyDown);
 
   // Set up ResizeObserver to watch for container size changes
   if (containerRef.value) {
@@ -304,41 +446,75 @@ onUnmounted(() => {
     resizeObserver = null;
   }
   window.removeEventListener('click', closeContextMenu);
+  window.removeEventListener('keydown', handleKeyDown);
 });
 </script>
 
 <template>
-  <div ref="containerRef" class="image-gallery-container">
+  <div
+    ref="containerRef"
+    class="flex flex-col flex-1 h-full overflow-y-auto bg-bg-primary scroll-smooth"
+  >
     <!-- Header -->
-    <div class="gallery-header">
-      <button class="menu-btn md:hidden" :title="t('toggleSidebar')" @click="emit('toggleSidebar')">
+    <div
+      class="sticky top-0 z-10 bg-bg-primary border-b border-border p-2 sm:p-4 flex items-center gap-3"
+    >
+      <button
+        class="p-2 rounded-lg hover:bg-bg-tertiary text-text-primary transition-colors md:hidden"
+        :title="t('toggleSidebar')"
+        @click="emit('toggleSidebar')"
+      >
         <PhList :size="24" />
       </button>
-      <div class="flex items-center gap-2">
-        <PhImage :size="24" class="text-accent" />
-        <h1 class="text-xl font-bold text-text-primary">{{ t('imageGallery') }}</h1>
+      <div class="flex items-center gap-2 sm:gap-2 flex-1">
+        <h1 class="text-base sm:text-lg font-bold text-text-primary line-height-fixed-32">
+          {{ t('imageGallery') }}
+        </h1>
       </div>
+      <button
+        class="p-2 rounded hover:bg-bg-tertiary text-text-primary transition-colors"
+        :title="showTextOverlay ? t('hideText') : t('showText')"
+        @click="showTextOverlay = !showTextOverlay"
+      >
+        <PhTextTSlash v-if="showTextOverlay" :size="20" />
+        <PhTextT v-else :size="20" />
+      </button>
     </div>
 
     <!-- Masonry Grid -->
-    <div v-if="articles.length > 0" class="masonry-container">
-      <div v-for="(column, colIndex) in columns" :key="colIndex" class="masonry-column">
+    <div v-if="articles.length > 0" class="p-4 flex gap-4">
+      <div v-for="(column, colIndex) in columns" :key="colIndex" class="flex-1 flex flex-col gap-4">
         <div
           v-for="article in column"
           :key="article.id"
-          class="masonry-item"
+          class="cursor-pointer group"
           @click="openImage(article)"
           @contextmenu="handleContextMenu($event, article)"
         >
-          <div class="image-container">
+          <div
+            class="relative overflow-hidden rounded-lg bg-bg-secondary transition-transform duration-200 hover:scale-[1.02]"
+          >
             <img
               :src="article.image_url"
               :alt="article.title"
-              class="gallery-image"
+              class="w-full h-auto block"
               loading="lazy"
             />
-            <div class="image-overlay">
-              <button class="favorite-btn" @click="toggleFavorite(article, $event)">
+            <!-- Image count indicator -->
+            <div
+              v-if="getImageCount(article) > 1"
+              class="absolute bottom-2 left-2 px-2 py-1 rounded-full bg-black/60 text-white text-xs font-semibold backdrop-blur-sm z-10 flex items-center gap-1"
+            >
+              <PhImage :size="14" />
+              <span class="ml-1">{{ getImageCount(article) }}</span>
+            </div>
+            <div
+              class="absolute inset-0 bg-black/0 hover:bg-black/30 transition-all duration-200 flex items-start justify-end p-2"
+            >
+              <button
+                class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/50 rounded-full p-1.5 hover:bg-black/70"
+                @click="toggleFavorite(article, $event)"
+              >
                 <PhHeart
                   :size="20"
                   :weight="article.is_favorite ? 'fill' : 'regular'"
@@ -346,12 +522,27 @@ onUnmounted(() => {
                 />
               </button>
             </div>
+            <!-- Hover overlay when text is hidden -->
+            <div
+              v-if="!showTextOverlay"
+              class="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            >
+              <p class="text-sm font-medium text-white line-clamp-2 mb-1">
+                {{ article.title }}
+              </p>
+              <div class="flex items-center justify-between text-xs text-white/80">
+                <span class="truncate flex-1">{{ article.feed_title }}</span>
+                <span class="ml-2 shrink-0">{{ formatDate(article.published_at) }}</span>
+              </div>
+            </div>
           </div>
-          <div class="image-info">
-            <p class="image-title">{{ article.title }}</p>
-            <div class="image-meta">
-              <span class="feed-name">{{ article.feed_title }}</span>
-              <span class="image-date">{{ formatDate(article.published_at) }}</span>
+          <div v-if="showTextOverlay" class="p-2">
+            <p class="text-sm font-medium text-text-primary line-clamp-2 mb-1">
+              {{ article.title }}
+            </p>
+            <div class="flex items-center justify-between text-xs text-text-secondary">
+              <span class="truncate flex-1">{{ article.feed_title }}</span>
+              <span class="ml-2 shrink-0">{{ formatDate(article.published_at) }}</span>
             </div>
           </div>
         </div>
@@ -359,39 +550,113 @@ onUnmounted(() => {
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="!isLoading" class="empty-state">
+    <div
+      v-else-if="!isLoading"
+      class="flex flex-col items-center justify-center h-full w-full gap-4"
+    >
       <PhImage :size="64" class="text-text-secondary opacity-50" />
       <p class="text-text-secondary">{{ t('noArticles') }}</p>
     </div>
 
     <!-- Loading Indicator -->
-    <div v-if="isLoading" class="loading-indicator">
-      <div class="spinner"></div>
+    <div v-if="isLoading" class="flex justify-center py-8">
+      <div
+        class="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin"
+      ></div>
     </div>
 
     <!-- Image Viewer Modal -->
     <div
       v-if="showImageViewer && selectedArticle"
-      class="image-viewer-modal"
+      class="fixed inset-0 z-50 bg-black/90 flex flex-col p-4"
+      data-image-viewer="true"
       @click="closeImageViewer"
     >
-      <div class="image-viewer-content" @click.stop>
-        <button class="close-btn" @click="closeImageViewer">×</button>
-        <img :src="selectedArticle.image_url" :alt="selectedArticle.title" class="viewer-image" />
-        <div class="viewer-info">
-          <h2 class="viewer-title">{{ selectedArticle.title }}</h2>
-          <div class="viewer-meta">
-            <span class="feed-name">{{ selectedArticle.feed_title }}</span>
-            <span class="image-date">{{ formatDate(selectedArticle.published_at) }}</span>
-          </div>
+      <button
+        class="absolute top-4 right-4 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full text-white flex items-center justify-center transition-colors duration-200 z-10 shrink-0"
+        @click="closeImageViewer"
+      >
+        <PhX :size="20" />
+      </button>
+
+      <!-- Image counter (when multiple images) -->
+      <div
+        v-if="allImages.length > 1"
+        class="absolute top-4 left-4 px-2 py-1 rounded text-white text-sm font-medium min-w-[60px] text-center"
+        style="
+          z-index: 11;
+          text-shadow:
+            0 1px 3px rgba(0, 0, 0, 0.8),
+            0 1px 2px rgba(0, 0, 0, 0.6);
+        "
+      >
+        {{ currentImageIndex + 1 }} / {{ allImages.length }}
+      </div>
+
+      <!-- Navigation buttons (when multiple images) -->
+      <template v-if="allImages.length > 1">
+        <button
+          class="absolute top-1/2 left-4 -translate-y-1/2 w-12 h-12 rounded text-white text-4xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 z-10"
+          style="
+            text-shadow:
+              0 1px 3px rgba(0, 0, 0, 0.8),
+              0 1px 2px rgba(0, 0, 0, 0.6);
+          "
+          @click.stop="previousImage"
+        >
+          ‹
+        </button>
+        <button
+          class="absolute top-1/2 right-4 -translate-y-1/2 w-12 h-12 rounded text-white text-4xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 z-10"
+          style="
+            text-shadow:
+              0 1px 3px rgba(0, 0, 0, 0.8),
+              0 1px 2px rgba(0, 0, 0, 0.6);
+          "
+          @click.stop="nextImage"
+        >
+          ›
+        </button>
+      </template>
+
+      <div class="flex-1 flex items-center justify-center min-h-0 relative" @click.stop>
+        <!-- Loading placeholder -->
+        <div
+          v-if="currentImageLoading"
+          class="absolute inset-0 flex items-center justify-center z-10"
+        >
+          <div
+            class="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin"
+          ></div>
+        </div>
+
+        <img
+          :src="allImages[currentImageIndex] || selectedArticle.image_url"
+          :alt="selectedArticle.title"
+          class="h-full w-full object-contain"
+          :class="{ 'opacity-0': currentImageLoading, 'transition-opacity duration-200': true }"
+          @load="handleImageLoad"
+          @error="handleImageError"
+        />
+      </div>
+
+      <div class="bg-bg-primary px-3 py-3 rounded-md shrink-0" @click.stop>
+        <div class="flex items-center justify-between gap-4 mb-2">
+          <h2 class="text-base font-bold text-text-primary flex-1 line-clamp-2">
+            {{ selectedArticle.title }}
+          </h2>
           <a
             :href="selectedArticle.url"
             target="_blank"
             rel="noopener noreferrer"
-            class="view-original-btn"
+            class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-md text-sm whitespace-nowrap transition-colors duration-200"
           >
             {{ t('viewOriginal') }}
           </a>
+        </div>
+        <div class="flex items-center gap-4 text-sm text-text-secondary">
+          <span class="truncate flex-1">{{ selectedArticle.feed_title }}</span>
+          <span class="shrink-0">{{ formatDate(selectedArticle.published_at) }}</span>
         </div>
       </div>
     </div>
@@ -399,15 +664,21 @@ onUnmounted(() => {
     <!-- Context Menu -->
     <div
       v-if="contextMenu.show && contextMenu.article"
-      class="context-menu"
+      class="fixed z-50 bg-bg-primary border border-border rounded-lg shadow-lg py-1 min-w-[180px]"
       :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
       @click.stop
     >
-      <button class="context-menu-item" @click="downloadImage(contextMenu.article)">
+      <button
+        class="w-full px-4 py-2 flex items-center gap-3 text-sm text-text-primary hover:bg-bg-tertiary active:bg-bg-secondary transition-colors cursor-pointer"
+        @click="downloadImage(contextMenu.article)"
+      >
         <PhFloppyDisk :size="16" />
         <span>{{ t('downloadImage') }}</span>
       </button>
-      <button class="context-menu-item" @click="openOriginal(contextMenu.article)">
+      <button
+        class="w-full px-4 py-2 flex items-center gap-3 text-sm text-text-primary hover:bg-bg-tertiary active:bg-bg-secondary transition-colors cursor-pointer"
+        @click="openOriginal(contextMenu.article)"
+      >
         <PhGlobe :size="16" />
         <span>{{ t('openInBrowser') }}</span>
       </button>
@@ -416,132 +687,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.image-gallery-container {
-  @apply flex flex-col flex-1 h-full overflow-y-auto bg-bg-primary scroll-smooth;
-}
-
-.gallery-header {
-  @apply sticky top-0 z-10 bg-bg-primary border-b border-border px-4 py-3 flex items-center gap-3;
-}
-
-.menu-btn {
-  @apply p-2 rounded-lg hover:bg-bg-tertiary text-text-primary transition-colors;
-}
-
-.masonry-container {
-  @apply p-4 flex gap-4;
-}
-
-.masonry-column {
-  @apply flex-1 flex flex-col gap-4;
-}
-
-.masonry-item {
-  @apply cursor-pointer;
-}
-
-.image-container {
-  @apply relative overflow-hidden rounded-lg bg-bg-secondary;
-  @apply transition-transform duration-200 hover:scale-[1.02];
-}
-
-.gallery-image {
-  @apply w-full h-auto block;
-}
-
-.image-overlay {
-  @apply absolute inset-0 bg-black/0 hover:bg-black/30 transition-all duration-200;
-  @apply flex items-start justify-end p-2;
-}
-
-.favorite-btn {
-  @apply opacity-0 hover:opacity-100 transition-opacity duration-200;
-  @apply bg-black/50 rounded-full p-1.5;
-}
-
-.image-container:hover .favorite-btn {
-  @apply opacity-100;
-}
-
-.image-info {
-  @apply p-2;
-}
-
-.image-title {
-  @apply text-sm font-medium text-text-primary line-clamp-2 mb-1;
-}
-
-.image-meta {
-  @apply flex items-center justify-between text-xs text-text-secondary;
-}
-
-.feed-name {
-  @apply truncate flex-1;
-}
-
-.image-date {
-  @apply ml-2 shrink-0;
-}
-
-.empty-state {
-  @apply flex flex-col items-center justify-center h-full w-full gap-4;
-}
-
-.loading-indicator {
-  @apply flex justify-center py-8;
-}
-
-.spinner {
-  @apply w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin;
-}
-
-/* Image Viewer Modal */
-.image-viewer-modal {
-  @apply fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4;
-}
-
-.image-viewer-content {
-  @apply relative max-w-6xl max-h-full overflow-auto;
-}
-
-.close-btn {
-  @apply absolute top-4 right-4 w-10 h-10 bg-black/50 hover:bg-black/70;
-  @apply rounded-full text-white text-3xl flex items-center justify-center;
-  @apply transition-colors duration-200 z-10;
-}
-
-.viewer-image {
-  @apply max-w-full max-h-[80vh] object-contain;
-}
-
-.viewer-info {
-  @apply bg-bg-primary p-4 mt-4 rounded-lg;
-}
-
-.viewer-title {
-  @apply text-lg font-bold text-text-primary mb-2;
-}
-
-.viewer-meta {
-  @apply flex items-center gap-4 text-sm text-text-secondary mb-4;
-}
-
-.view-original-btn {
-  @apply inline-block px-4 py-2 bg-accent text-white rounded-lg;
-  @apply hover:bg-accent-hover transition-colors duration-200;
-}
-
-/* Context Menu */
-.context-menu {
-  @apply fixed z-50 bg-bg-primary border border-border rounded-lg shadow-lg py-1 min-w-[180px];
-}
-
-.context-menu-item {
-  @apply w-full px-4 py-2 flex items-center gap-3 text-sm text-text-primary;
-  @apply hover:bg-bg-tertiary transition-colors cursor-pointer;
-}
-
-.context-menu-item:active {
-  @apply bg-bg-secondary;
+/* Define keyframes for spinner animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

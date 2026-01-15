@@ -38,7 +38,11 @@ func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
 	// Start the scheduler based on refresh mode
 	refreshMode, _ := h.DB.GetSetting("refresh_mode")
 
-	if refreshMode == "intelligent" {
+	if refreshMode == "never" {
+		// Never auto-refresh - only allow manual refresh
+		log.Println("Auto-refresh disabled (never mode)")
+		return
+	} else if refreshMode == "intelligent" {
 		// Use intelligent refresh mode
 		h.startScheduler(ctx, true)
 	} else {
@@ -131,6 +135,7 @@ func (h *Handler) triggerGlobalRefresh(ctx context.Context, intelligentMode bool
 	}
 
 	// Filter feeds that use global setting (RefreshInterval == 0)
+	// Skip feeds with RefreshInterval == -2 (never refresh)
 	globalFeeds := make([]models.Feed, 0)
 	for _, feed := range feeds {
 		if feed.RefreshInterval == 0 {
@@ -210,6 +215,11 @@ func (h *Handler) scheduleIndividualFeeds(ctx context.Context, intelligentMode b
 	for _, feed := range feeds {
 		// Skip feeds using global setting (RefreshInterval == 0)
 		if feed.RefreshInterval == 0 {
+			continue
+		}
+
+		// Skip feeds with never refresh mode (RefreshInterval == -2)
+		if feed.RefreshInterval == -2 {
 			continue
 		}
 

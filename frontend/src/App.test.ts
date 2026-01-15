@@ -19,6 +19,9 @@ describe('App', () => {
         plugins: [pinia, i18n],
       },
     });
-    expect(wrapper.text()).toContain('MrRSS');
+    // Check that the app container is rendered
+    expect(wrapper.find('.app-container').exists()).toBe(true);
+    // Check that key UI elements are present
+    expect(wrapper.text()).toContain('All Articles');
   });
 });

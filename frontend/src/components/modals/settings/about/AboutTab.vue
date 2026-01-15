@@ -8,7 +8,9 @@ import {
   PhCircleNotch,
   PhGear,
   PhGithubLogo,
+  PhDownloadSimple,
 } from '@phosphor-icons/vue';
+import { openInBrowser } from '@/utils/browser';
 
 const { t } = useI18n();
 
@@ -41,7 +43,7 @@ const emit = defineEmits<{
   'download-install-update': [];
 }>();
 
-const appVersion: Ref<string> = ref('1.3.15');
+const appVersion: Ref<string> = ref('1.3.16');
 
 onMounted(async () => {
   // Fetch current version from API
@@ -62,6 +64,14 @@ function handleCheckUpdates() {
 
 function handleDownloadInstall() {
   emit('download-install-update');
+}
+
+function openGitHubRepo() {
+  openInBrowser('https://github.com/WCY-dt/MrRSS');
+}
+
+function openGitHubRelease() {
+  openInBrowser('https://github.com/WCY-dt/MrRSS/releases/latest');
 }
 </script>
 
@@ -145,27 +155,27 @@ function handleDownloadInstall() {
             class="mt-2 sm:mt-3 text-xs text-text-secondary"
           >
             <p class="mb-2">No installer available for your platform. Please download manually:</p>
-            <a
-              href="https://github.com/WCY-dt/MrRSS/releases/latest"
-              target="_blank"
+            <button
+              type="button"
               class="text-accent hover:underline break-all"
+              @click="openGitHubRelease"
             >
               View on GitHub
-            </a>
+            </button>
           </div>
         </div>
       </div>
     </div>
 
     <div class="mt-4 sm:mt-6">
-      <a
-        href="https://github.com/WCY-dt/MrRSS"
-        target="_blank"
+      <button
+        type="button"
         class="inline-flex items-center gap-1.5 sm:gap-2 text-accent hover:text-accent-hover transition-colors text-xs sm:text-sm font-medium"
+        @click="openGitHubRepo"
       >
         <PhGithubLogo :size="20" class="sm:w-6 sm:h-6" />
         {{ t('viewOnGitHub') }}
-      </a>
+      </button>
     </div>
 
     <!-- Copyright information at the bottom -->

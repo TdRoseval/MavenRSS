@@ -46,9 +46,9 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   toggle: [];
-  selectCategory: [];
+  selectCategory: [path: string];
   selectFeed: [feedId: number];
-  categoryContextMenu: [event: MouseEvent];
+  categoryContextMenu: [event: MouseEvent, path: string];
   feedContextMenu: [event: MouseEvent, feed: Feed];
   feedDragOver: [feedId: number | null, event: Event];
   drop: [];
@@ -175,8 +175,8 @@ const isFreshRSSCategory = computed(() => {
   >
     <div
       :class="['category-header', isActive ? 'active' : '']"
-      @click="emit('selectCategory')"
-      @contextmenu="(e) => emit('categoryContextMenu', e)"
+      @click="emit('selectCategory', fullPath)"
+      @contextmenu="(e) => emit('categoryContextMenu', e, fullPath)"
       @dragover="handleCategoryDragOver"
     >
       <span class="flex-1 flex items-center gap-2">
@@ -196,7 +196,7 @@ const isFreshRSSCategory = computed(() => {
       <span v-if="unreadCount > 0" class="unread-badge mr-1">{{ unreadCount }}</span>
       <PhCaretDown
         :size="20"
-        class="p-1 cursor-pointer transition-transform"
+        class="p-1 cursor-pointer transition-transform text-text-secondary"
         :class="{ 'rotate-180': isOpen }"
         @click.stop="emit('toggle')"
       />
@@ -389,16 +389,16 @@ const isFreshRSSCategory = computed(() => {
 }
 
 .unread-badge {
-  @apply text-[9px] sm:text-[10px] font-semibold rounded-full min-w-[14px] sm:min-w-[16px] h-[14px] sm:h-[16px] px-0.5 sm:px-1 flex items-center justify-center;
-  background-color: rgba(120, 120, 120, 0.25);
-  color: #444444;
+  @apply text-[9px] sm:text-[10px] font-medium rounded-full min-w-[14px] sm:min-w-[16px] h-[14px] sm:h-[16px] px-0.5 sm:px-1 flex items-center justify-center;
+  background-color: rgba(120, 120, 120, 0.15);
+  color: #666666;
 }
 </style>
 
 <style>
 .dark-mode .unread-badge {
   /* This style will be applied to child components, so it can not use scoped */
-  background-color: rgba(100, 100, 100, 0.6) !important;
-  color: #f0f0f0 !important;
+  background-color: rgba(100, 100, 100, 0.4) !important;
+  color: #d0d0d0 !important;
 }
 </style>

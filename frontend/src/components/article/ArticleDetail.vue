@@ -15,6 +15,8 @@ const {
   isLoadingContent,
   imageViewerSrc,
   imageViewerAlt,
+  imageViewerImages,
+  imageViewerInitialIndex,
   hasPreviousArticle,
   hasNextArticle,
   close,
@@ -56,25 +58,13 @@ function handleKeydown(e: KeyboardEvent) {
       openFindInPage();
     }
   }
-  // Close with Escape
+  // Close find in page with Escape
   if (e.key === 'Escape' && showFindInPage.value) {
     closeFindInPage();
   }
 
-  // Navigate with ArrowLeft/ArrowRight or Alt+Left/Alt+Right
-  if (article.value && !showFindInPage.value) {
-    if (e.key === 'ArrowLeft' || (e.altKey && e.key === 'ArrowLeft')) {
-      if (hasPreviousArticle.value) {
-        e.preventDefault();
-        goToPreviousArticle();
-      }
-    } else if (e.key === 'ArrowRight' || (e.altKey && e.key === 'ArrowRight')) {
-      if (hasNextArticle.value) {
-        e.preventDefault();
-        goToNextArticle();
-      }
-    }
-  }
+  // Note: Arrow key navigation is now handled by the global keyboard shortcuts system
+  // See useKeyboardShortcuts.ts which properly checks for editable elements
 }
 
 onMounted(() => {
@@ -181,6 +171,8 @@ onBeforeUnmount(() => {
       v-if="imageViewerSrc"
       :src="imageViewerSrc"
       :alt="imageViewerAlt"
+      :images="imageViewerImages"
+      :initial-index="imageViewerInitialIndex"
       @close="closeImageViewer"
     />
   </main>

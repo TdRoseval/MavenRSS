@@ -252,6 +252,7 @@ const { t } = useI18n();
           <option value="global">{{ t('useGlobalRefresh') }}</option>
           <option value="intelligent">{{ t('useIntelligentInterval') }}</option>
           <option value="custom">{{ t('useCustomInterval') }}</option>
+          <option value="never">{{ t('neverRefresh') }}</option>
         </select>
       </div>
 

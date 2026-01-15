@@ -158,6 +158,15 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           },
         })
       );
+
+      // Notify about compact_mode change
+      window.dispatchEvent(
+        new CustomEvent('compact-mode-changed', {
+          detail: {
+            enabled: settingsRef.value.compact_mode,
+          },
+        })
+      );
     } catch (e) {
       console.error('Error auto-saving settings:', e);
     }

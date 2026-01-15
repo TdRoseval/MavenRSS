@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { PhCode, PhBookOpen } from '@phosphor-icons/vue';
+import { openInBrowser } from '@/utils/browser';
 
 interface Props {
   modelValue: string;
@@ -19,10 +20,17 @@ const emit = defineEmits<{
   'open-scripts-folder': [];
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 function openScriptsFolder() {
   emit('open-scripts-folder');
+}
+
+function openDocumentation() {
+  const docUrl = locale.value.startsWith('zh')
+    ? 'https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_SCRIPT_MODE.zh.md'
+    : 'https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_SCRIPT_MODE.md';
+  openInBrowser(docUrl);
 }
 </script>
 
@@ -51,15 +59,14 @@ function openScriptsFolder() {
       <p class="mb-2">{{ t('noScriptsFound') }}</p>
     </div>
     <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-3">
-      <a
-        href="https://github.com/WCY-dt/MrRSS/blob/main/docs/CUSTOM_SCRIPT_MODE.md"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
         class="text-xs sm:text-sm text-accent hover:underline flex items-center gap-1"
+        @click="openDocumentation"
       >
         <PhBookOpen :size="14" />
         {{ t('scriptDocumentation') }}
-      </a>
+      </button>
       <button
         type="button"
         class="text-xs sm:text-sm text-accent hover:underline flex items-center gap-1"

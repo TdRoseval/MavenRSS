@@ -7,6 +7,7 @@ import { formatDate as formatDateUtil } from '@/utils/date';
 import { getProxiedMediaUrl, isMediaCacheEnabled } from '@/utils/mediaProxy';
 import { useShowPreviewImages } from '@/composables/ui/useShowPreviewImages';
 import { useAppStore } from '@/stores/app';
+import { useSettings } from '@/composables/core/useSettings';
 import { imageCache } from '@/utils/imageCache';
 
 interface Props {
@@ -25,7 +26,47 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const { showPreviewImages } = useShowPreviewImages();
+const { settings } = useSettings();
 const store = useAppStore();
+
+// Compact mode setting
+const compactMode = computed(() => {
+  return settings.value.compact_mode === true;
+});
+
+// Listen for compact mode changes and initial settings load
+let handleCompactModeChange: (() => void) | null = null;
+
+// Function to load compact mode settings
+function loadCompactModeSettings() {
+  fetch('/api/settings')
+    .then((res) => res.json())
+    .then((data) => {
+      settings.value = {
+        ...settings.value,
+        compact_mode: data.compact_mode === true || data.compact_mode === 'true',
+      };
+    })
+    .catch((err) => console.error('Error loading settings in ArticleItem:', err));
+}
+
+onMounted(() => {
+  // Load settings immediately when component mounts
+  loadCompactModeSettings();
+
+  // Listen for compact mode changes
+  handleCompactModeChange = () => {
+    loadCompactModeSettings();
+  };
+
+  window.addEventListener('compact-mode-changed', handleCompactModeChange);
+});
+
+onUnmounted(() => {
+  if (handleCompactModeChange) {
+    window.removeEventListener('compact-mode-changed', handleCompactModeChange);
+  }
+});
 
 // Check if article is from RSSHub feed - O(1) lookup using feedMap
 const isRSSHubArticle = computed(() => {
@@ -183,7 +224,8 @@ async function markAsRead() {
     });
     // Emit event to parent to update article state
     emit('hoverMarkAsRead', props.article.id);
-    store.fetchUnreadCounts();
+    await store.fetchUnreadCounts();
+    await store.fetchFilterCounts();
   } catch (e) {
     console.error('Error marking as read on hover:', e);
   }
@@ -222,15 +264,16 @@ onUnmounted(() => {
       article.is_hidden ? 'hidden' : '',
       article.is_read_later ? 'read-later' : '',
       isActive ? 'active' : '',
+      compactMode ? 'compact' : '',
     ]"
     @click="emit('click')"
     @contextmenu="emit('contextmenu', $event)"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
   >
-    <!-- Image placeholder with lazy loading - hidden completely on error -->
+    <!-- Image placeholder with lazy loading - hidden completely on error and in compact mode -->
     <div
-      v-if="shouldShowImage && !imageFailed"
+      v-if="shouldShowImage && !imageFailed && !compactMode"
       ref="imageContainerRef"
       class="article-thumbnail-placeholder"
     >
@@ -253,12 +296,34 @@ onUnmounted(() => {
 
     <div class="flex-1 min-w-0">
       <div class="flex items-start gap-1.5 sm:gap-2">
+        <!-- Normal mode or no translation: single line title -->
         <h4
-          v-if="!article.translated_title || article.translated_title === article.title"
+          v-if="
+            !article.translated_title || article.translated_title === article.title || compactMode
+          "
           class="flex-1 m-0 mb-1 sm:mb-1.5 text-sm sm:text-base font-semibold leading-snug text-text-primary article-title"
+          :class="{
+            'compact-title': compactMode,
+            'read-title': article.is_read && compactMode,
+          }"
         >
-          {{ article.title }}
+          <span
+            v-if="article.translated_title && article.translated_title !== article.title"
+            :class="{ 'read-translated-title': article.is_read && compactMode }"
+          >
+            {{ article.translated_title }}
+          </span>
+          <span v-else>{{ article.title }}</span>
+          <span
+            v-if="
+              compactMode && article.translated_title && article.translated_title !== article.title
+            "
+            class="original-title-inline"
+          >
+            {{ article.title }}
+          </span>
         </h4>
+        <!-- Non-compact mode with translation: separate lines -->
         <div v-else class="flex-1">
           <h4
             class="m-0 mb-0.5 sm:mb-1 text-sm sm:text-base font-semibold leading-snug text-text-primary article-title"
@@ -277,9 +342,39 @@ onUnmounted(() => {
           class="text-text-secondary flex-shrink-0 sm:w-5 sm:h-5"
           :title="t('hideArticle')"
         />
+        <!-- Compact mode icons on the right -->
+        <div
+          v-if="compactMode"
+          class="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-1 self-center"
+        >
+          <PhClockCountdown
+            v-if="article.is_read_later"
+            :size="16"
+            class="text-blue-500"
+            weight="fill"
+          />
+          <PhStar v-if="article.is_favorite" :size="16" class="text-yellow-500" weight="fill" />
+          <!-- FreshRSS indicator -->
+          <img
+            v-if="article.freshrss_item_id"
+            src="/assets/plugin_icons/freshrss.svg"
+            class="w-4 h-4 shrink-0"
+            :title="t('freshRSSSyncedFeed')"
+            alt="FreshRSS"
+          />
+          <!-- RSSHub indicator -->
+          <img
+            v-if="isRSSHubArticle"
+            src="/assets/plugin_icons/rsshub.svg"
+            class="w-4 h-4 shrink-0"
+            :title="t('rsshubFeed')"
+            alt="RSSHub"
+          />
+        </div>
       </div>
 
       <div
+        v-if="!compactMode"
         class="flex justify-between items-center text-[10px] sm:text-xs text-text-secondary mt-1.5 sm:mt-2"
       >
         <span class="font-medium text-accent truncate flex-1 min-w-0 mr-2">
@@ -328,6 +423,11 @@ onUnmounted(() => {
   @apply p-2 sm:p-3 border-b border-border cursor-pointer transition-colors flex gap-2 sm:gap-3 relative border-l-2 sm:border-l-[3px] border-l-transparent;
 }
 
+/* Compact mode: reduce padding */
+.article-card.compact {
+  @apply py-1 px-2;
+}
+
 .article-card:hover {
   @apply bg-bg-tertiary;
 }
@@ -367,6 +467,31 @@ onUnmounted(() => {
   -webkit-box-orient: vertical;
   display: -webkit-box;
   overflow: hidden;
+}
+
+.article-title.compact-title {
+  -webkit-line-clamp: 1;
+  font-size: 0.875rem; /* 14px, smaller than normal */
+}
+
+/* Compact mode: read article title styling */
+.article-card.read .read-title {
+  @apply text-text-secondary opacity-70;
+}
+
+/* Compact mode: translated title when article is read */
+.article-card.read .read-translated-title {
+  @apply text-text-secondary opacity-75 font-normal;
+}
+
+/* Compact mode: original title displayed inline */
+.original-title-inline {
+  @apply text-text-secondary text-xs font-normal opacity-50 italic ml-2;
+}
+
+/* Compact mode: original title when article is read */
+.article-card.read .original-title-inline {
+  @apply opacity-40;
 }
 
 .article-thumbnail {

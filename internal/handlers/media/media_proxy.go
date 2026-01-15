@@ -1062,9 +1062,10 @@ func rewriteAttribute(content, tag, attr, baseURL string) string {
 			replacement := fmt.Sprintf(`%s=%s%s%s`, attr, quote, proxiedURL, quote)
 			return attrPattern.ReplaceAllString(match, replacement)
 		} else {
-			// Unquoted value
-			attrPattern := regexp.MustCompile(`(` + attr + `)\s*=\s*` + regexp.QuoteMeta(urlValue) + `(?=[\s>])`)
-			replacement := fmt.Sprintf(`%s="%s"`, attr, proxiedURL)
+			// Unquoted value - match until whitespace or > character
+			// We need to capture the delimiter (space or >) to preserve it
+			attrPattern := regexp.MustCompile(`(` + attr + `)\s*=\s*` + regexp.QuoteMeta(urlValue) + `([\s>])`)
+			replacement := fmt.Sprintf(`%s="%s"$2`, attr, proxiedURL)
 			return attrPattern.ReplaceAllString(match, replacement)
 		}
 	})

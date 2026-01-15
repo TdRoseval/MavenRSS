@@ -25,9 +25,16 @@ export function useSidebar() {
   const openCategories: Ref<Set<string>> = ref(
     savedCategories ? new Set(JSON.parse(savedCategories)) : new Set()
   );
+
+  // Load saved pinned categories from localStorage
+  const savedPinnedCategories = localStorage.getItem('pinnedCategories');
+  const pinnedCategories: Ref<Set<string>> = ref(
+    savedPinnedCategories ? new Set(JSON.parse(savedPinnedCategories)) : new Set()
+  );
+
   const searchQuery: Ref<string> = ref('');
 
-  // Build category tree with search filtering
+  // Build category tree with search filtering and filter-specific filtering
   const tree = computed<TreeData>(() => {
     const t: Record<string, TreeNode> = {};
     const uncategorized: Feed[] = [];
@@ -37,6 +44,16 @@ export function useSidebar() {
 
     const query = searchQuery.value.toLowerCase().trim();
 
+    // Determine which filter counts to use based on currentFilter
+    const currentFilterType = store.currentFilter;
+    const filterTypeMap: Record<string, string> = {
+      unread: 'unread',
+      favorites: 'favorites',
+      readLater: 'read_later',
+      imageGallery: 'images',
+    };
+    const filterKey = filterTypeMap[currentFilterType] || '';
+
     store.feeds.forEach((feed: Feed) => {
       const matchesSearch =
         query === '' ||
@@ -44,6 +61,12 @@ export function useSidebar() {
         feed.url.toLowerCase().includes(query);
 
       if (!matchesSearch) return;
+
+      // Filter by currentFilter if applicable
+      if (currentFilterType && filterKey) {
+        const feedCount = store.filterCounts[filterKey]?.[feed.id] || 0;
+        if (feedCount === 0) return;
+      }
 
       if (feed.category) {
         const parts = feed.category.split('/');
@@ -143,6 +166,20 @@ export function useSidebar() {
 
   function isCategoryOpen(path: string): boolean {
     return openCategories.value.has(path);
+  }
+
+  function togglePinCategory(path: string): void {
+    if (pinnedCategories.value.has(path)) {
+      pinnedCategories.value.delete(path);
+    } else {
+      pinnedCategories.value.add(path);
+    }
+    // Save to localStorage
+    localStorage.setItem('pinnedCategories', JSON.stringify([...pinnedCategories.value]));
+  }
+
+  function isCategoryPinned(path: string): boolean {
+    return pinnedCategories.value.has(path);
   }
 
   // Feed actions
@@ -294,6 +331,12 @@ export function useSidebar() {
       });
       store.fetchUnreadCounts();
       window.showToast(t('markedAllAsRead'), 'success');
+    } else if (action === 'togglePin') {
+      togglePinCategory(categoryName);
+      window.showToast(
+        isCategoryPinned(categoryName) ? t('categoryPinned') : t('categoryUnpinned'),
+        'success'
+      );
     } else if (action === 'rename') {
       const newName = await window.showInput({
         title: t('renameCategory'),
@@ -337,11 +380,19 @@ export function useSidebar() {
     e.preventDefault();
     e.stopPropagation();
 
+    const isPinned = isCategoryPinned(categoryName);
+
     const items: Array<{ label?: string; action?: string; icon?: string; separator?: boolean }> = [
       { label: t('markAllAsReadFeed'), action: 'markAllRead', icon: 'ph-check-circle' },
     ];
 
     if (categoryName !== 'uncategorized') {
+      items.push({ separator: true });
+      items.push({
+        label: isPinned ? t('unpinCategory') : t('pinCategory'),
+        action: 'togglePin',
+        icon: isPinned ? 'ph-push-pin-slash' : 'ph-push-pin',
+      });
       items.push({ separator: true });
       items.push({ label: t('renameCategory'), action: 'rename', icon: 'ph-pencil' });
     }
@@ -363,9 +414,12 @@ export function useSidebar() {
     tree,
     categoryUnreadCounts,
     openCategories,
+    pinnedCategories,
     searchQuery,
     toggleCategory,
     isCategoryOpen,
+    togglePinCategory,
+    isCategoryPinned,
     onFeedContextMenu,
     onCategoryContextMenu,
   };

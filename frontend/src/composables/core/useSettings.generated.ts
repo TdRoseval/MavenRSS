@@ -24,14 +24,25 @@ export function generateInitialSettings(): SettingsData {
     ai_usage_tokens: settingsDefaults.ai_usage_tokens,
     auto_cleanup_enabled: settingsDefaults.auto_cleanup_enabled,
     auto_show_all_content: settingsDefaults.auto_show_all_content,
-    auto_update: settingsDefaults.auto_update,
     baidu_app_id: settingsDefaults.baidu_app_id,
     baidu_secret_key: settingsDefaults.baidu_secret_key,
     close_to_tray: settingsDefaults.close_to_tray,
+    compact_mode: settingsDefaults.compact_mode,
     custom_css_file: settingsDefaults.custom_css_file,
+    custom_translation_body_template: settingsDefaults.custom_translation_body_template,
+    custom_translation_enabled: settingsDefaults.custom_translation_enabled,
+    custom_translation_endpoint: settingsDefaults.custom_translation_endpoint,
+    custom_translation_headers: settingsDefaults.custom_translation_headers,
+    custom_translation_lang_mapping: settingsDefaults.custom_translation_lang_mapping,
+    custom_translation_method: settingsDefaults.custom_translation_method,
+    custom_translation_name: settingsDefaults.custom_translation_name,
+    custom_translation_response_path: settingsDefaults.custom_translation_response_path,
+    custom_translation_timeout: settingsDefaults.custom_translation_timeout,
     deepl_api_key: settingsDefaults.deepl_api_key,
     deepl_endpoint: settingsDefaults.deepl_endpoint,
     default_view_mode: settingsDefaults.default_view_mode,
+    feed_drawer_expanded: settingsDefaults.feed_drawer_expanded,
+    feed_drawer_pinned: settingsDefaults.feed_drawer_pinned,
     freshrss_api_password: settingsDefaults.freshrss_api_password,
     freshrss_auto_sync_interval: settingsDefaults.freshrss_auto_sync_interval,
     freshrss_enabled: settingsDefaults.freshrss_enabled,
@@ -83,6 +94,7 @@ export function generateInitialSettings(): SettingsData {
     target_language: settingsDefaults.target_language,
     theme: settingsDefaults.theme,
     translation_enabled: settingsDefaults.translation_enabled,
+    translation_only_mode: settingsDefaults.translation_only_mode,
     translation_provider: settingsDefaults.translation_provider,
     update_interval: settingsDefaults.update_interval,
     window_height: settingsDefaults.window_height,
@@ -110,14 +122,33 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     ai_usage_tokens: data.ai_usage_tokens || settingsDefaults.ai_usage_tokens,
     auto_cleanup_enabled: data.auto_cleanup_enabled === 'true',
     auto_show_all_content: data.auto_show_all_content === 'true',
-    auto_update: data.auto_update === 'true',
     baidu_app_id: data.baidu_app_id || settingsDefaults.baidu_app_id,
     baidu_secret_key: data.baidu_secret_key || settingsDefaults.baidu_secret_key,
     close_to_tray: data.close_to_tray === 'true',
+    compact_mode: data.compact_mode === 'true',
     custom_css_file: data.custom_css_file || settingsDefaults.custom_css_file,
+    custom_translation_body_template:
+      data.custom_translation_body_template || settingsDefaults.custom_translation_body_template,
+    custom_translation_enabled: data.custom_translation_enabled === 'true',
+    custom_translation_endpoint:
+      data.custom_translation_endpoint || settingsDefaults.custom_translation_endpoint,
+    custom_translation_headers:
+      data.custom_translation_headers || settingsDefaults.custom_translation_headers,
+    custom_translation_lang_mapping:
+      data.custom_translation_lang_mapping || settingsDefaults.custom_translation_lang_mapping,
+    custom_translation_method:
+      data.custom_translation_method || settingsDefaults.custom_translation_method,
+    custom_translation_name:
+      data.custom_translation_name || settingsDefaults.custom_translation_name,
+    custom_translation_response_path:
+      data.custom_translation_response_path || settingsDefaults.custom_translation_response_path,
+    custom_translation_timeout:
+      parseInt(data.custom_translation_timeout) || settingsDefaults.custom_translation_timeout,
     deepl_api_key: data.deepl_api_key || settingsDefaults.deepl_api_key,
     deepl_endpoint: data.deepl_endpoint || settingsDefaults.deepl_endpoint,
     default_view_mode: data.default_view_mode || settingsDefaults.default_view_mode,
+    feed_drawer_expanded: data.feed_drawer_expanded === 'true',
+    feed_drawer_pinned: data.feed_drawer_pinned === 'true',
     freshrss_api_password: data.freshrss_api_password || settingsDefaults.freshrss_api_password,
     freshrss_auto_sync_interval:
       parseInt(data.freshrss_auto_sync_interval) || settingsDefaults.freshrss_auto_sync_interval,
@@ -177,6 +208,7 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     target_language: data.target_language || settingsDefaults.target_language,
     theme: data.theme || settingsDefaults.theme,
     translation_enabled: data.translation_enabled === 'true',
+    translation_only_mode: data.translation_only_mode === 'true',
     translation_provider: data.translation_provider || settingsDefaults.translation_provider,
     update_interval: parseInt(data.update_interval) || settingsDefaults.update_interval,
     window_height: data.window_height || settingsDefaults.window_height,
@@ -211,11 +243,34 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     auto_show_all_content: (
       settingsRef.value.auto_show_all_content ?? settingsDefaults.auto_show_all_content
     ).toString(),
-    auto_update: (settingsRef.value.auto_update ?? settingsDefaults.auto_update).toString(),
     baidu_app_id: settingsRef.value.baidu_app_id ?? settingsDefaults.baidu_app_id,
     baidu_secret_key: settingsRef.value.baidu_secret_key ?? settingsDefaults.baidu_secret_key,
     close_to_tray: (settingsRef.value.close_to_tray ?? settingsDefaults.close_to_tray).toString(),
+    compact_mode: (settingsRef.value.compact_mode ?? settingsDefaults.compact_mode).toString(),
     custom_css_file: settingsRef.value.custom_css_file ?? settingsDefaults.custom_css_file,
+    custom_translation_body_template:
+      settingsRef.value.custom_translation_body_template ??
+      settingsDefaults.custom_translation_body_template,
+    custom_translation_enabled: (
+      settingsRef.value.custom_translation_enabled ?? settingsDefaults.custom_translation_enabled
+    ).toString(),
+    custom_translation_endpoint:
+      settingsRef.value.custom_translation_endpoint ?? settingsDefaults.custom_translation_endpoint,
+    custom_translation_headers:
+      settingsRef.value.custom_translation_headers ?? settingsDefaults.custom_translation_headers,
+    custom_translation_lang_mapping:
+      settingsRef.value.custom_translation_lang_mapping ??
+      settingsDefaults.custom_translation_lang_mapping,
+    custom_translation_method:
+      settingsRef.value.custom_translation_method ?? settingsDefaults.custom_translation_method,
+    custom_translation_name:
+      settingsRef.value.custom_translation_name ?? settingsDefaults.custom_translation_name,
+    custom_translation_response_path:
+      settingsRef.value.custom_translation_response_path ??
+      settingsDefaults.custom_translation_response_path,
+    custom_translation_timeout: (
+      settingsRef.value.custom_translation_timeout ?? settingsDefaults.custom_translation_timeout
+    ).toString(),
     deepl_api_key: settingsRef.value.deepl_api_key ?? settingsDefaults.deepl_api_key,
     deepl_endpoint: settingsRef.value.deepl_endpoint ?? settingsDefaults.deepl_endpoint,
     default_view_mode: settingsRef.value.default_view_mode ?? settingsDefaults.default_view_mode,
@@ -318,6 +373,9 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     theme: settingsRef.value.theme ?? settingsDefaults.theme,
     translation_enabled: (
       settingsRef.value.translation_enabled ?? settingsDefaults.translation_enabled
+    ).toString(),
+    translation_only_mode: (
+      settingsRef.value.translation_only_mode ?? settingsDefaults.translation_only_mode
     ).toString(),
     translation_provider:
       settingsRef.value.translation_provider ?? settingsDefaults.translation_provider,

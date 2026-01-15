@@ -211,6 +211,16 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		CanChooseFiles:       true,
 		AllowsOtherFileTypes: true,
 	}).PromptForSingleSelection()
+
+	// Treat empty filePath as user cancellation (no error should be shown)
+	if filePath == "" {
+		log.Printf("Import dialog cancelled by user")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+		return
+	}
+
+	// Only show error for actual failures, not cancellations
 	if err != nil {
 		log.Printf("Error opening file dialog: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -218,13 +228,6 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "Failed to open file dialog",
 		})
-		return
-	}
-
-	if filePath == "" {
-		// User cancelled the dialog
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
 		return
 	}
 
@@ -383,6 +386,16 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		},
 		AllowOtherFileTypes: true,
 	}).PromptForSingleSelection()
+
+	// Treat empty filePath as user cancellation (no error should be shown)
+	if filePath == "" {
+		log.Printf("Export dialog cancelled by user")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+		return
+	}
+
+	// Only show error for actual failures, not cancellations
 	if err != nil {
 		log.Printf("Error opening save dialog: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -390,13 +403,6 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "Failed to open save dialog",
 		})
-		return
-	}
-
-	if filePath == "" {
-		// User cancelled the dialog
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
 		return
 	}
 

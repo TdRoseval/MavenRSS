@@ -9,8 +9,9 @@ import {
   PhBookOpen,
 } from '@phosphor-icons/vue';
 import type { AITestInfo } from '@/types/settings';
+import { openInBrowser } from '@/utils/browser';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const testInfo = ref<AITestInfo>({
   config_valid: false,
@@ -70,6 +71,13 @@ function formatTime(timeStr: string): string {
   } else {
     return t('justNow');
   }
+}
+
+function openDocumentation() {
+  const docUrl = locale.value.startsWith('zh')
+    ? 'https://github.com/WCY-dt/MrRSS/blob/main/docs/AI_CONFIGURATION.zh.md'
+    : 'https://github.com/WCY-dt/MrRSS/blob/main/docs/AI_CONFIGURATION.md';
+  openInBrowser(docUrl);
 }
 </script>
 
@@ -197,15 +205,14 @@ function formatTime(timeStr: string): string {
 
     <!-- Documentation Link -->
     <div class="mt-3">
-      <a
-        href="https://github.com/WCY-dt/MrRSS/blob/main/docs/AI_CONFIGURATION.md"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
         class="text-xs sm:text-sm text-accent hover:underline flex items-center gap-1"
+        @click="openDocumentation"
       >
         <PhBookOpen :size="14" />
         {{ t('aiConfigurationGuide') }}
-      </a>
+      </button>
     </div>
   </div>
 </template>
