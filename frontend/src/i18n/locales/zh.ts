@@ -172,6 +172,8 @@ const zh: TranslationMessages = {
   checkingRssFeed: '正在检查 RSS 订阅',
   checkingSite: '正在检查站点',
   chinese: '简体中文',
+  simplifiedChinese: '简体中文',
+  traditionalChinese: '繁體中文',
   clean: '清理',
   cleanDatabase: '清理数据库',
   cleanDatabaseMessage: '这将删除除已读和已收藏外的所有文章。是否继续？',

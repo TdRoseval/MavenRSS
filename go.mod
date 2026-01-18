@@ -15,6 +15,7 @@ require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/go-ego/gse v1.0.0
 	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a
+	github.com/longbridgeapp/opencc v0.3.13
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.48
@@ -70,6 +71,8 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/leaanthony/go-ansi-parser v1.6.1 // indirect
 	github.com/leaanthony/u v1.1.1 // indirect
+	github.com/liuzl/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
+	github.com/liuzl/da v0.0.0-20180704015230-14771aad5b1d // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

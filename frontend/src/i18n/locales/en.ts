@@ -176,6 +176,8 @@ const en: TranslationMessages = {
   checkingRssFeed: 'Checking RSS feed',
   checkingSite: 'Checking site',
   chinese: '简体中文',
+  simplifiedChinese: 'Simplified Chinese',
+  traditionalChinese: 'Traditional Chinese',
   clean: 'Clean',
   cleanDatabase: 'Clean Database',
   cleanDatabaseMessage: 'This will delete all articles except read and favorited ones. Continue?',

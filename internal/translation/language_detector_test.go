@@ -191,7 +191,8 @@ func TestNormalizeLangCode(t *testing.T) {
 		{"zh", "zh"},
 		{"zh-CN", "zh"},
 		{"zh-cn", "zh"},
-		{"zh-TW", "zh"},
+		{"zh-TW", "zh-tw"},
+		{"zh-tw", "zh-tw"},
 		{"ja", "ja"},
 		{"JA", "ja"},
 		{"  en  ", "en"},
@@ -245,6 +246,104 @@ func TestRemoveHTMLTags(t *testing.T) {
 			got := removeHTMLTags(tt.text)
 			if got != tt.want {
 				t.Errorf("removeHTMLTags() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectChineseVariant(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "Simplified Chinese",
+			text: "这是一个简体中文的测试文章。人工智能是计算机科学的一个分支，它企图了解智能的实质，并生产出一种新的能以人类智能相似的方式做出反应的智能机器。",
+			want: "zh",
+		},
+		{
+			name: "Traditional Chinese",
+			text: "這是一個繁體中文的測試文章。人工智能是計算機科學的一個分支，它企圖了解智能的實質，並生產出一種新的能以人類智能相似的方式做出反應的智能機器。",
+			want: "zh-TW",
+		},
+		{
+			name: "Mixed with HTML - Simplified",
+			text: "<p>这是简体中文</p><div>测试内容</div>",
+			want: "zh",
+		},
+		{
+			name: "Mixed with HTML - Traditional",
+			text: "<p>這是繁體中文</p><div>測試內容</div>",
+			want: "zh-TW",
+		},
+		{
+			name: "Short Simplified text",
+			text: "简体字测试",
+			want: "zh",
+		},
+		{
+			name: "Short Traditional text",
+			text: "繁體中文測試文章內容",
+			want: "zh-TW",
+		},
+		{
+			name: "Too short - defaults to Simplified",
+			text: "简短",
+			want: "zh",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectChineseVariant(tt.text)
+			if got != tt.want {
+				t.Errorf("detectChineseVariant() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldTranslate_TraditionalToSimplified(t *testing.T) {
+	detector := GetLanguageDetector()
+
+	tests := []struct {
+		name       string
+		text       string
+		targetLang string
+		want       bool
+	}{
+		{
+			name:       "Traditional Chinese to Simplified - should translate",
+			text:       "這是一個繁體中文的測試文章",
+			targetLang: "zh",
+			want:       true,
+		},
+		{
+			name:       "Simplified Chinese to Simplified - should not translate",
+			text:       "这是一个简体中文的测试文章",
+			targetLang: "zh",
+			want:       false,
+		},
+		{
+			name:       "Traditional Chinese to zh-TW - should not translate",
+			text:       "這是一個繁體中文的測試文章",
+			targetLang: "zh-TW",
+			want:       false,
+		},
+		{
+			name:       "Simplified Chinese to zh-TW - should translate",
+			text:       "这是一个简体中文的测试文章",
+			targetLang: "zh-TW",
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detector.ShouldTranslate(tt.text, tt.targetLang)
+			if got != tt.want {
+				t.Errorf("ShouldTranslate() = %v, want %v", got, tt.want)
 			}
 		})
 	}

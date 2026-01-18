@@ -914,7 +914,8 @@ async function clearTranslationCache() {
           <option value="es">{{ t('spanish') }}</option>
           <option value="fr">{{ t('french') }}</option>
           <option value="de">{{ t('german') }}</option>
-          <option value="zh">{{ t('chinese') }}</option>
+          <option value="zh">{{ t('simplifiedChinese') }}</option>
+          <option value="zh-TW">{{ t('traditionalChinese') }}</option>
           <option value="ja">{{ t('japanese') }}</option>
         </select>
       </div>

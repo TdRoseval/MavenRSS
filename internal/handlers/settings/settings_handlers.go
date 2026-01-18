@@ -460,24 +460,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.FreshRSSEnabled != "" {
-			// Check if FreshRSS is being disabled
-			currentEnabled, _ := h.DB.GetSetting("freshrss_enabled")
-			wasEnabled := currentEnabled == "true"
-			isEnabled := req.FreshRSSEnabled == "true"
-
-			// Save the new setting first
 			h.DB.SetSetting("freshrss_enabled", req.FreshRSSEnabled)
-
-			// If FreshRSS is being disabled, cleanup all related data
-			if wasEnabled && !isEnabled {
-				log.Printf("[Settings] FreshRSS is being disabled, cleaning up all FreshRSS data...")
-				if err := h.DB.CleanupFreshRSSData(); err != nil {
-					log.Printf("[Settings] Error cleaning up FreshRSS data: %v", err)
-					// Continue anyway - the setting has been saved
-				} else {
-					log.Printf("[Settings] Successfully cleaned up FreshRSS data")
-				}
-			}
 		}
 
 		if req.FreshRSSLastSyncTime != "" {

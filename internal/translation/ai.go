@@ -145,17 +145,18 @@ func (t *AITranslator) Translate(text, targetLang string) (string, error) {
 // getLanguageName converts a language code to a human-readable name.
 func getLanguageName(code string) string {
 	langNames := map[string]string{
-		"en": "English",
-		"zh": "Chinese",
-		"es": "Spanish",
-		"fr": "French",
-		"de": "German",
-		"ja": "Japanese",
-		"ko": "Korean",
-		"pt": "Portuguese",
-		"ru": "Russian",
-		"it": "Italian",
-		"ar": "Arabic",
+		"en":    "English",
+		"zh":    "Simplified Chinese",
+		"zh-TW": "Traditional Chinese",
+		"es":    "Spanish",
+		"fr":    "French",
+		"de":    "German",
+		"ja":    "Japanese",
+		"ko":    "Korean",
+		"pt":    "Portuguese",
+		"ru":    "Russian",
+		"it":    "Italian",
+		"ar":    "Arabic",
 	}
 	if name, ok := langNames[code]; ok {
 		return name
