@@ -208,6 +208,23 @@ input[type='checkbox']:not(.toggle):focus {
   border-color: var(--accent-color);
 }
 
+/* Remove focus outline from all interactive elements */
+button,
+a,
+input,
+textarea,
+select {
+  outline: none !important;
+}
+
+button:focus,
+a:focus,
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none !important;
+}
+
 /* Fixed line height utility */
 .line-height-fixed-32 {
   line-height: 32px !important;

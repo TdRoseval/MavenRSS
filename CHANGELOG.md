@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed minor styling issues. (#492, #493, #503, #506, #510)
+- Fixed minor styling issues. (#492, #493, #503, #505, #506, #510)
 - Fixed the issue where pure text can not be translated correctly. (#511, #514)
 
 ## [1.3.16] - 2026-01-15
