@@ -124,6 +124,28 @@ async function copySummary() {
     }, 500);
   }
 }
+
+// Handle link clicks in summary to open in default browser
+async function handleSummaryLinkClick(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  const anchor = target.closest('a');
+
+  if (anchor && anchor.href) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      await fetch('/api/browser/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: anchor.href }),
+      });
+    } catch (error) {
+      console.error('Failed to open link:', error);
+      window.showToast(t('failedToOpenLink'), 'error');
+    }
+  }
+}
 </script>
 
 <template>
@@ -233,6 +255,7 @@ async function copySummary() {
           <!-- Summary Content -->
           <div
             class="text-xs text-text-primary leading-snug select-text prose prose-xs max-w-none"
+            @click="handleSummaryLinkClick"
             v-html="summaryResult.html || summaryResult.summary"
           ></div>
         </div>
@@ -329,6 +352,7 @@ async function copySummary() {
 .prose a {
   color: var(--accent-color);
   text-decoration: none;
+  cursor: pointer;
 }
 
 .prose a:hover {

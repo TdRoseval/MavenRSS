@@ -342,6 +342,7 @@ const en: TranslationMessages = {
   exportOPML: 'Export Feeds',
   exportToObsidian: 'Export to Obsidian',
   failedToCopy: 'Failed to copy',
+  failedToOpenLink: 'Failed to open link',
   favorites: 'Favorites',
   favoriteStatus: 'Favorite Status',
   feedAddedSuccess: 'Feed added successfully',

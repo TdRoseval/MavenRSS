@@ -335,6 +335,7 @@ const zh: TranslationMessages = {
   exportOPML: '导出订阅源',
   exportToObsidian: '导出到 Obsidian',
   failedToCopy: '复制失败',
+  failedToOpenLink: '打开链接失败',
   favorites: '收藏',
   favoriteStatus: '收藏状态',
   feedAddedSuccess: '订阅添加成功',
