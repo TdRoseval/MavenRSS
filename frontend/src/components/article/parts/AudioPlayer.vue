@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import {
   PhMusicNotes,
   PhSpeakerHigh,
@@ -32,6 +32,14 @@ const hasLoadedMetadata = ref(false); // Metadata loaded state
 // Local audio controls (not global settings)
 const playbackSpeed = ref(1.0);
 const volume = ref(1.0);
+
+// Load metadata on mount to display duration immediately
+onMounted(() => {
+  if (audioRef.value) {
+    // Load metadata to get duration without starting playback
+    audioRef.value.load();
+  }
+});
 
 // Speed options
 const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -331,7 +339,7 @@ const downloadFilename = computed(() => {
     <audio
       ref="audioRef"
       :src="audioUrl"
-      preload="none"
+      preload="metadata"
       @play="onPlay"
       @pause="onPause"
       @playing="onPlaying"
