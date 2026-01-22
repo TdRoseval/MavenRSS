@@ -6,17 +6,19 @@ interface Props {
   title: string;
   description?: string;
   required?: boolean;
+  customClass?: string;
 }
 
 withDefaults(defineProps<Props>(), {
   icon: undefined,
   description: '',
   required: false,
+  customClass: '',
 });
 </script>
 
 <template>
-  <div class="sub-setting-item">
+  <div class="sub-setting-item" :class="customClass">
     <div class="flex items-center sm:items-start justify-between gap-2 sm:gap-4 w-full">
       <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
         <component

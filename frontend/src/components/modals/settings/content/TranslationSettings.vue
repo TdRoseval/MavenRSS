@@ -6,6 +6,7 @@ import {
   PhTranslate,
   PhList,
   PhLink,
+  PhPackage,
   PhSliders,
   PhCode,
   PhInfo,
@@ -16,6 +17,16 @@ import {
   PhRobot,
   PhKey,
 } from '@phosphor-icons/vue';
+import {
+  SettingGroup,
+  SettingWithToggle,
+  NestedSettingsContainer,
+  SubSettingItem,
+  TextAreaControl,
+  InfoBox,
+  ToggleControl,
+} from '@/components/settings';
+import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 
 const { t } = useI18n();
@@ -29,6 +40,13 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
+
+function updateSetting(key: keyof SettingsData, value: any) {
+  emit('update:settings', {
+    ...props.settings,
+    [key]: value,
+  });
+}
 
 const isClearingCache = ref(false);
 const showCustomTemplates = ref(false);
@@ -85,10 +103,7 @@ function saveCustomHeaders() {
         obj[name] = value;
       }
     });
-    emit('update:settings', {
-      ...props.settings,
-      custom_translation_headers: JSON.stringify(obj),
-    });
+    updateSetting('custom_translation_headers', JSON.stringify(obj));
     saveTimeout = null;
   }, 500);
 }
@@ -145,10 +160,7 @@ function saveCustomLangMapping() {
         obj[key] = value;
       }
     });
-    emit('update:settings', {
-      ...props.settings,
-      custom_translation_lang_mapping: JSON.stringify(obj),
-    });
+    updateSetting('custom_translation_lang_mapping', JSON.stringify(obj));
     saveLangTimeout = null;
   }, 500);
 }
@@ -261,97 +273,43 @@ async function clearTranslationCache() {
     isClearingCache.value = false;
   }
 }
+
+// Helper for validation error styling
+const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : '');
 </script>
 
 <template>
-  <div class="setting-group">
-    <label
-      class="font-semibold mb-2 sm:mb-3 text-text-secondary uppercase text-xs tracking-wider flex items-center gap-2"
-    >
-      <PhGlobe :size="14" class="sm:w-4 sm:h-4" />
-      {{ t('setting.content.translation') }}
-    </label>
-    <div class="setting-item mb-2 sm:mb-4">
-      <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-        <PhTranslate :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-        <div class="flex-1 min-w-0">
-          <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
-            {{ t('setting.content.enableTranslation') }}
-          </div>
-          <div class="text-xs text-text-secondary hidden sm:block">
-            {{ t('setting.content.enableTranslationDesc') }}
-          </div>
-        </div>
-      </div>
-      <input
-        :checked="props.settings.translation_enabled"
-        type="checkbox"
-        class="toggle"
-        @change="
-          (e) =>
-            emit('update:settings', {
-              ...props.settings,
-              translation_enabled: (e.target as HTMLInputElement).checked,
-            })
-        "
-      />
-    </div>
+  <SettingGroup :icon="PhGlobe" :title="t('setting.content.translation')">
+    <SettingWithToggle
+      :icon="PhTranslate"
+      :title="t('setting.content.enableTranslation')"
+      :description="t('setting.content.enableTranslationDesc')"
+      :model-value="settings.translation_enabled"
+      @update:model-value="updateSetting('translation_enabled', $event)"
+    />
 
-    <div
-      v-if="props.settings.translation_enabled"
-      class="ml-2 sm:ml-4 space-y-2 sm:space-y-3 border-l-2 border-border pl-2 sm:pl-4"
-    >
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhTranslate :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.translationOnlyMode') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.translationOnlyModeDesc') }}
-            </div>
-          </div>
-        </div>
-        <input
-          :checked="props.settings.translation_only_mode"
-          type="checkbox"
-          class="toggle"
-          @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                translation_only_mode: (e.target as HTMLInputElement).checked,
-              })
-          "
+    <NestedSettingsContainer v-if="settings.translation_enabled">
+      <SubSettingItem
+        :icon="PhTranslate"
+        :title="t('setting.content.translationOnlyMode')"
+        :description="t('setting.content.translationOnlyModeDesc')"
+      >
+        <ToggleControl
+          :model-value="settings.translation_only_mode"
+          @update:model-value="updateSetting('translation_only_mode', $event)"
         />
-      </div>
+      </SubSettingItem>
 
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhPackage :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.translationProvider') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{
-                t('setting.content.translationProviderDesc') ||
-                'Choose the translation service to use'
-              }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        :icon="PhPackage"
+        :title="t('setting.content.translationProvider')"
+        :description="t('setting.content.translationProviderDesc')"
+      >
         <select
-          :value="props.settings.translation_provider"
+          :value="settings.translation_provider"
           class="input-field w-32 sm:w-48 text-xs sm:text-sm"
           @change="
-            (e) => {
-              emit('update:settings', {
-                ...props.settings,
-                translation_provider: (e.target as HTMLSelectElement).value,
-              });
-            }
+            updateSetting('translation_provider', ($event.target as HTMLSelectElement).value)
           "
         >
           <option value="google">{{ t('setting.content.googleTranslate') }}</option>
@@ -360,30 +318,20 @@ async function clearTranslationCache() {
           <option value="ai">{{ t('setting.content.aiTranslation') }}</option>
           <option value="custom">{{ t('setting.translation.custom.title') }}</option>
         </select>
-      </div>
+      </SubSettingItem>
 
       <!-- Google Translate Endpoint -->
-      <div v-if="props.settings.translation_provider === 'google'" class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhLink :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.googleTranslateEndpoint') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.googleTranslateEndpointDesc') }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        v-if="settings.translation_provider === 'google'"
+        :icon="PhLink"
+        :title="t('setting.content.googleTranslateEndpoint')"
+        :description="t('setting.content.googleTranslateEndpointDesc')"
+      >
         <select
-          :value="props.settings.google_translate_endpoint"
+          :value="settings.google_translate_endpoint"
           class="input-field w-32 sm:w-48 text-xs sm:text-sm"
           @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                google_translate_endpoint: (e.target as HTMLSelectElement).value,
-              })
+            updateSetting('google_translate_endpoint', ($event.target as HTMLSelectElement).value)
           "
         >
           <option value="translate.googleapis.com">
@@ -393,285 +341,205 @@ async function clearTranslationCache() {
             {{ t('setting.content.googleTranslateEndpointAlternate') }}
           </option>
         </select>
-      </div>
+      </SubSettingItem>
 
       <!-- DeepL API Key -->
-      <div v-if="props.settings.translation_provider === 'deepl'" class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.deeplApiKey') }}
-              <span v-if="!props.settings.deepl_endpoint?.trim()" class="text-red-500">*</span>
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.deeplApiKeyDesc') || 'Enter your DeepL API key' }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        v-if="settings.translation_provider === 'deepl'"
+        :icon="PhKey"
+        :title="t('setting.content.deeplApiKey')"
+        :description="t('setting.content.deeplApiKeyDesc')"
+        :required="!settings.deepl_endpoint?.trim()"
+      >
         <input
-          :value="props.settings.deepl_api_key"
+          :value="settings.deepl_api_key"
           type="password"
           :placeholder="t('setting.content.deeplApiKeyPlaceholder')"
           :class="[
             'input-field w-32 sm:w-48 text-xs sm:text-sm',
-            props.settings.translation_enabled &&
-            props.settings.translation_provider === 'deepl' &&
-            !props.settings.deepl_api_key?.trim() &&
-            !props.settings.deepl_endpoint?.trim()
-              ? 'border-red-500'
-              : '',
+            getErrorClass(
+              settings.translation_provider === 'deepl' &&
+                !settings.deepl_api_key?.trim() &&
+                !settings.deepl_endpoint?.trim()
+            ),
           ]"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                deepl_api_key: (e.target as HTMLInputElement).value,
-              })
-          "
+          @input="updateSetting('deepl_api_key', ($event.target as HTMLInputElement).value)"
         />
-      </div>
+      </SubSettingItem>
 
       <!-- DeepL Custom Endpoint (deeplx) -->
-      <div v-if="props.settings.translation_provider === 'deepl'" class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhLink :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.deeplEndpoint') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.deeplEndpointDesc') }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        v-if="settings.translation_provider === 'deepl'"
+        :icon="PhLink"
+        :title="t('setting.content.deeplEndpoint')"
+        :description="t('setting.content.deeplEndpointDesc')"
+      >
         <input
-          :value="props.settings.deepl_endpoint"
+          :value="settings.deepl_endpoint"
           type="text"
           :placeholder="t('setting.content.deeplEndpointPlaceholder')"
           class="input-field w-32 sm:w-48 text-xs sm:text-sm"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                deepl_endpoint: (e.target as HTMLInputElement).value,
-              })
-          "
+          @input="updateSetting('deepl_endpoint', ($event.target as HTMLInputElement).value)"
         />
-      </div>
+      </SubSettingItem>
 
       <!-- Baidu Translate Settings -->
-      <template v-if="props.settings.translation_provider === 'baidu'">
-        <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.content.baiduAppId') }} <span class="text-red-500">*</span>
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.content.baiduAppIdDesc') }}
-              </div>
-            </div>
-          </div>
+      <template v-if="settings.translation_provider === 'baidu'">
+        <SubSettingItem
+          :icon="PhKey"
+          :title="t('setting.content.baiduAppId')"
+          :description="t('setting.content.baiduAppIdDesc')"
+          required
+        >
           <input
-            :value="props.settings.baidu_app_id"
+            :value="settings.baidu_app_id"
             type="text"
             :placeholder="t('setting.content.baiduAppIdPlaceholder')"
             :class="[
               'input-field w-32 sm:w-48 text-xs sm:text-sm',
-              props.settings.translation_enabled &&
-              props.settings.translation_provider === 'baidu' &&
-              !props.settings.baidu_app_id?.trim()
-                ? 'border-red-500'
-                : '',
+              getErrorClass(
+                settings.translation_provider === 'baidu' && !settings.baidu_app_id?.trim()
+              ),
             ]"
-            @input="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  baidu_app_id: (e.target as HTMLInputElement).value,
-                })
-            "
+            @input="updateSetting('baidu_app_id', ($event.target as HTMLInputElement).value)"
           />
-        </div>
-        <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.content.baiduSecretKey') }} <span class="text-red-500">*</span>
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.content.baiduSecretKeyDesc') }}
-              </div>
-            </div>
-          </div>
+        </SubSettingItem>
+
+        <SubSettingItem
+          :icon="PhKey"
+          :title="t('setting.content.baiduSecretKey')"
+          :description="t('setting.content.baiduSecretKeyDesc')"
+          required
+        >
           <input
-            :value="props.settings.baidu_secret_key"
+            :value="settings.baidu_secret_key"
             type="password"
             :placeholder="t('setting.content.baiduSecretKeyPlaceholder')"
             :class="[
               'input-field w-32 sm:w-48 text-xs sm:text-sm',
-              props.settings.translation_enabled &&
-              props.settings.translation_provider === 'baidu' &&
-              !props.settings.baidu_secret_key?.trim()
-                ? 'border-red-500'
-                : '',
+              getErrorClass(
+                settings.translation_provider === 'baidu' && !settings.baidu_secret_key?.trim()
+              ),
             ]"
-            @input="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  baidu_secret_key: (e.target as HTMLInputElement).value,
-                })
-            "
+            @input="updateSetting('baidu_secret_key', ($event.target as HTMLInputElement).value)"
+          />
+        </SubSettingItem>
+      </template>
+
+      <!-- AI Translation Prompt -->
+      <template v-if="settings.translation_provider === 'ai'">
+        <InfoBox :icon="PhInfo" :content="t('common.aiSettingsConfiguredInAITab')" />
+
+        <div class="sub-setting-item-col">
+          <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhRobot :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
+                {{ t('setting.content.aiTranslationPrompt') }}
+              </div>
+              <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
+                {{ t('setting.content.aiTranslationPromptDesc') }}
+              </div>
+            </div>
+          </div>
+          <TextAreaControl
+            :model-value="settings.ai_translation_prompt"
+            :placeholder="t('setting.content.aiTranslationPromptPlaceholder')"
+            :rows="3"
+            @update:model-value="updateSetting('ai_translation_prompt', $event)"
           />
         </div>
       </template>
 
-      <!-- AI Translation Prompt -->
-      <div v-if="props.settings.translation_provider === 'ai'" class="tip-box">
-        <PhInfo :size="16" class="text-accent shrink-0 sm:w-5 sm:h-5" />
-        <span class="text-xs sm:text-sm">{{ t('common.aiSettingsConfiguredInAITab') }}</span>
-      </div>
-      <div
-        v-if="props.settings.translation_provider === 'ai'"
-        class="sub-setting-item flex-col items-stretch gap-2"
-      >
-        <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhRobot :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.aiTranslationPrompt') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.aiTranslationPromptDesc') }}
-            </div>
-          </div>
-        </div>
-        <textarea
-          :value="props.settings.ai_translation_prompt"
-          class="input-field w-full text-xs sm:text-sm resize-none"
-          rows="3"
-          :placeholder="t('setting.content.aiTranslationPromptPlaceholder')"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                ai_translation_prompt: (e.target as HTMLTextAreaElement).value,
-              })
-          "
-        />
-      </div>
-
       <!-- Custom Translation Provider -->
-      <template v-if="props.settings.translation_provider === 'custom'">
+      <template v-if="settings.translation_provider === 'custom'">
         <!-- Template Selection -->
         <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhList :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.translation.custom.template') }}
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.translation.custom.templateDesc') }}
+          <div class="flex items-center sm:items-start justify-between gap-2 sm:gap-4 w-full">
+            <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+              <PhList :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+              <div class="flex-1 min-w-0">
+                <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
+                  {{ t('setting.translation.custom.template') }}
+                </div>
+                <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
+                  {{ t('setting.translation.custom.templateDesc') }}
+                </div>
               </div>
             </div>
-          </div>
-          <div class="relative">
-            <button
-              type="button"
-              class="btn-secondary"
-              @click="showCustomTemplates = !showCustomTemplates"
-            >
-              {{ t('setting.content.custom.selectTemplate') || 'Select Template' }}
-            </button>
-            <div
-              v-if="showCustomTemplates"
-              class="absolute top-full right-0 mt-1 z-50 bg-bg-secondary border border-border rounded-lg shadow-lg overflow-hidden"
-            >
+            <div class="relative shrink-0">
               <button
-                v-for="tmpl in customTemplates"
-                :key="tmpl.name"
                 type="button"
-                class="w-full px-4 py-2 text-left hover:bg-bg-tertiary text-sm"
-                @click="applyTemplate(tmpl)"
+                class="btn-secondary"
+                @click="showCustomTemplates = !showCustomTemplates"
               >
-                {{ tmpl.name }}
+                {{ t('setting.content.custom.selectTemplate') || 'Select Template' }}
               </button>
+              <div
+                v-if="showCustomTemplates"
+                class="absolute top-full right-0 mt-1 z-50 bg-bg-secondary border border-border rounded-lg shadow-lg overflow-hidden"
+              >
+                <button
+                  v-for="tmpl in customTemplates"
+                  :key="tmpl.name"
+                  type="button"
+                  class="w-full px-4 py-2 text-left hover:bg-bg-tertiary text-sm"
+                  @click="applyTemplate(tmpl)"
+                >
+                  {{ tmpl.name }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Custom Translation Endpoint -->
-        <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhLink :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.translation.custom.endpoint') }}
-                <span class="text-red-500">*</span>
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.translation.custom.endpointDesc') }}
-              </div>
-            </div>
-          </div>
+        <SubSettingItem
+          :icon="PhLink"
+          :title="t('setting.translation.custom.endpoint')"
+          :description="t('setting.translation.custom.endpointDesc')"
+          required
+        >
           <input
-            :value="props.settings.custom_translation_endpoint"
+            :value="settings.custom_translation_endpoint"
             type="text"
             :placeholder="t('setting.translation.custom.endpointPlaceholder')"
             :class="[
               'input-field w-32 sm:w-48 text-xs sm:text-sm',
-              props.settings.translation_enabled &&
-              props.settings.translation_provider === 'custom' &&
-              !props.settings.custom_translation_endpoint?.trim()
-                ? 'border-red-500'
-                : '',
+              getErrorClass(
+                settings.translation_provider === 'custom' &&
+                  !settings.custom_translation_endpoint?.trim()
+              ),
             ]"
             @input="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  custom_translation_endpoint: (e.target as HTMLInputElement).value,
-                })
+              updateSetting(
+                'custom_translation_endpoint',
+                ($event.target as HTMLInputElement).value
+              )
             "
           />
-        </div>
+        </SubSettingItem>
 
         <!-- Custom Translation Method -->
-        <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhCode :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.translation.custom.method') }}
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.translation.custom.methodDesc') }}
-              </div>
-            </div>
-          </div>
+        <SubSettingItem
+          :icon="PhCode"
+          :title="t('setting.translation.custom.method')"
+          :description="t('setting.translation.custom.methodDesc')"
+        >
           <select
-            :value="props.settings.custom_translation_method || 'POST'"
+            :value="settings.custom_translation_method || 'POST'"
             class="input-field w-24 sm:w-32 text-xs sm:text-sm"
             @change="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  custom_translation_method: (e.target as HTMLSelectElement).value,
-                })
+              updateSetting('custom_translation_method', ($event.target as HTMLSelectElement).value)
             "
           >
             <option value="GET">GET</option>
             <option value="POST">POST</option>
           </select>
-        </div>
+        </SubSettingItem>
 
         <!-- Custom Translation Headers -->
-        <div class="sub-setting-item flex-col items-stretch gap-2">
+        <div class="sub-setting-item-col">
           <div class="flex items-center gap-2 sm:gap-3">
             <PhSliders :size="20" class="text-text-secondary shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
@@ -729,7 +597,7 @@ async function clearTranslationCache() {
 
         <!-- Custom Translation Body Template -->
         <div
-          v-if="(props.settings.custom_translation_method || 'POST') === 'POST'"
+          v-if="(settings.custom_translation_method || 'POST') === 'POST'"
           class="sub-setting-item flex-col items-stretch gap-2"
         >
           <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
@@ -745,58 +613,48 @@ async function clearTranslationCache() {
             </div>
           </div>
           <textarea
-            :value="props.settings.custom_translation_body_template"
+            :value="settings.custom_translation_body_template"
             class="input-field w-full text-xs sm:text-sm font-mono resize-none"
             rows="4"
             placeholder="Enter request body template"
             @input="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  custom_translation_body_template: (e.target as HTMLTextAreaElement).value,
-                })
+              updateSetting(
+                'custom_translation_body_template',
+                ($event.target as HTMLTextAreaElement).value
+              )
             "
           />
         </div>
 
         <!-- Custom Translation Response Path -->
-        <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhCode :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.translation.custom.responsePath') }}
-                <span class="text-red-500">*</span>
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.translation.custom.responsePathDesc') }}
-              </div>
-            </div>
-          </div>
+        <SubSettingItem
+          :icon="PhCode"
+          :title="t('setting.translation.custom.responsePath')"
+          :description="t('setting.translation.custom.responsePathDesc')"
+          required
+        >
           <input
-            :value="props.settings.custom_translation_response_path"
+            :value="settings.custom_translation_response_path"
             type="text"
             :placeholder="t('setting.translation.custom.responsePathPlaceholder')"
             :class="[
               'input-field w-32 sm:w-48 text-xs sm:text-sm font-mono',
-              props.settings.translation_enabled &&
-              props.settings.translation_provider === 'custom' &&
-              !props.settings.custom_translation_response_path?.trim()
-                ? 'border-red-500'
-                : '',
+              getErrorClass(
+                settings.translation_provider === 'custom' &&
+                  !settings.custom_translation_response_path?.trim()
+              ),
             ]"
             @input="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  custom_translation_response_path: (e.target as HTMLInputElement).value,
-                })
+              updateSetting(
+                'custom_translation_response_path',
+                ($event.target as HTMLInputElement).value
+              )
             "
           />
-        </div>
+        </SubSettingItem>
 
         <!-- Custom Translation Language Mapping -->
-        <div class="sub-setting-item flex-col items-stretch gap-2">
+        <div class="sub-setting-item-col">
           <div class="flex items-center gap-2 sm:gap-3">
             <PhGlobe :size="20" class="text-text-secondary shrink-0 sm:w-6 sm:h-6" />
             <div class="flex-1 min-w-0">
@@ -855,65 +713,41 @@ async function clearTranslationCache() {
         </div>
 
         <!-- Custom Translation Timeout -->
-        <div class="sub-setting-item">
-          <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-            <PhTimer :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-            <div class="flex-1 min-w-0">
-              <div class="font-medium mb-0 sm:mb-1 text-sm">
-                {{ t('setting.translation.custom.timeout') }}
-              </div>
-              <div class="text-xs text-text-secondary hidden sm:block">
-                {{ t('setting.translation.custom.timeoutDesc') }}
-              </div>
-            </div>
-          </div>
+        <SubSettingItem
+          :icon="PhTimer"
+          :title="t('setting.translation.custom.timeout')"
+          :description="t('setting.translation.custom.timeoutDesc')"
+        >
           <div class="flex items-center gap-1 sm:gap-2 shrink-0">
             <input
-              :value="props.settings.custom_translation_timeout || 10"
+              :value="settings.custom_translation_timeout || 10"
               type="number"
               min="1"
               max="60"
               class="input-field w-14 sm:w-20 text-center text-xs sm:text-sm"
               @input="
-                (e) =>
-                  emit('update:settings', {
-                    ...props.settings,
-                    custom_translation_timeout:
-                      parseInt((e.target as HTMLInputElement).value) || 10,
-                  })
+                updateSetting(
+                  'custom_translation_timeout',
+                  parseInt(($event.target as HTMLInputElement).value) || 10
+                )
               "
             />
             <span class="text-xs sm:text-sm text-text-secondary">{{
               t('common.time.seconds')
             }}</span>
           </div>
-        </div>
+        </SubSettingItem>
       </template>
 
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhGlobe :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.targetLanguage') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{
-                t('setting.content.targetLanguageDesc') || 'Language to translate article titles to'
-              }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        :icon="PhGlobe"
+        :title="t('setting.content.targetLanguage')"
+        :description="t('setting.content.targetLanguageDesc')"
+      >
         <select
-          :value="props.settings.target_language"
+          :value="settings.target_language"
           class="input-field w-24 sm:w-48 text-xs sm:text-sm"
-          @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                target_language: (e.target as HTMLSelectElement).value,
-              })
-          "
+          @change="updateSetting('target_language', ($event.target as HTMLSelectElement).value)"
         >
           <option value="en">{{ t('common.language.english') }}</option>
           <option value="es">{{ t('common.language.spanish') }}</option>
@@ -923,21 +757,14 @@ async function clearTranslationCache() {
           <option value="zh-TW">{{ t('common.language.traditionalChinese') }}</option>
           <option value="ja">{{ t('common.language.japanese') }}</option>
         </select>
-      </div>
+      </SubSettingItem>
 
       <!-- Cache Management -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhTrash :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.clearTranslationCache') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.clearTranslationCacheDesc') }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        :icon="PhTrash"
+        :title="t('setting.content.clearTranslationCache')"
+        :description="t('setting.content.clearTranslationCacheDesc')"
+      >
         <button
           type="button"
           :disabled="isClearingCache"
@@ -951,9 +778,9 @@ async function clearTranslationCache() {
               : t('setting.content.clearTranslationCacheButton')
           }}
         </button>
-      </div>
-    </div>
-  </div>
+      </SubSettingItem>
+    </NestedSettingsContainer>
+  </SettingGroup>
 </template>
 
 <style scoped>
@@ -961,29 +788,5 @@ async function clearTranslationCache() {
 
 .input-field {
   @apply p-1.5 sm:p-2.5 border border-border rounded-md bg-bg-secondary text-text-primary focus:border-accent focus:outline-none transition-colors;
-}
-.toggle {
-  @apply w-10 h-5 appearance-none bg-bg-tertiary rounded-full relative cursor-pointer border border-border transition-colors checked:bg-accent checked:border-accent shrink-0;
-}
-.toggle::after {
-  content: '';
-  @apply absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform;
-}
-.toggle:checked::after {
-  transform: translateX(20px);
-}
-.setting-item {
-  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
-}
-.sub-setting-item {
-  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
-}
-.tip-box {
-  @apply flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 px-2.5 sm:px-3 rounded-lg w-full;
-  background-color: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-}
-.btn-secondary {
-  @apply bg-bg-tertiary border border-border text-text-primary px-3 sm:px-4 py-1.5 sm:py-2 rounded-md cursor-pointer flex items-center gap-1.5 sm:gap-2 font-medium hover:bg-bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
 }
 </style>

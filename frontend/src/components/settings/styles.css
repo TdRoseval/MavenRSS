@@ -13,3 +13,13 @@
 .btn-secondary:disabled {
   @apply opacity-50 cursor-not-allowed;
 }
+
+/* Sub setting item - nested settings with left border */
+.sub-setting-item {
+  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
+}
+
+/* Sub setting item with column layout (for textarea) */
+.sub-setting-item-col {
+  @apply flex flex-col items-stretch gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
+}

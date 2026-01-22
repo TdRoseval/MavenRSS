@@ -1,6 +1,10 @@
 export default {
   plugins: {
     tailwindcss: {},
-    autoprefixer: {},
+    autoprefixer: {
+      // Ensure proper vendor prefix ordering
+      cascade: true,
+      grid: 'autoplace',
+    },
   },
 };

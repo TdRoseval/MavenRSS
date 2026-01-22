@@ -10,6 +10,15 @@ import {
   PhTrash,
   PhBroom,
 } from '@phosphor-icons/vue';
+import {
+  SettingGroup,
+  SettingWithToggle,
+  NestedSettingsContainer,
+  SubSettingItem,
+  TextAreaControl,
+  InfoBox,
+} from '@/components/settings';
+import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 
 const { t } = useI18n();
@@ -24,7 +33,12 @@ const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
 
-const isClearingCache = ref(false);
+function updateSetting(key: keyof SettingsData, value: any) {
+  emit('update:settings', {
+    ...props.settings,
+    [key]: value,
+  });
+}
 
 async function clearSummaryCache() {
   const confirmed = await window.showConfirm({
@@ -55,180 +69,100 @@ async function clearSummaryCache() {
     isClearingCache.value = false;
   }
 }
+
+const isClearingCache = ref(false);
 </script>
 
 <template>
-  <div class="setting-group">
-    <label
-      class="font-semibold mb-2 sm:mb-3 text-text-secondary uppercase text-xs tracking-wider flex items-center gap-2"
-    >
-      <PhTextAlignLeft :size="14" class="sm:w-4 sm:h-4" />
-      {{ t('setting.content.summary') }}
-    </label>
-    <div class="setting-item mb-2 sm:mb-4">
-      <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-        <PhTextT :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-        <div class="flex-1 min-w-0">
-          <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
-            {{ t('setting.content.enableSummary') }}
-          </div>
-          <div class="text-xs text-text-secondary hidden sm:block">
-            {{ t('setting.content.enableSummaryDesc') }}
-          </div>
-        </div>
-      </div>
-      <input
-        :checked="props.settings.summary_enabled"
-        type="checkbox"
-        class="toggle"
-        @change="
-          (e) =>
-            emit('update:settings', {
-              ...props.settings,
-              summary_enabled: (e.target as HTMLInputElement).checked,
-            })
-        "
-      />
-    </div>
+  <SettingGroup :icon="PhTextAlignLeft" :title="t('setting.content.summary')">
+    <SettingWithToggle
+      :icon="PhTextT"
+      :title="t('setting.content.enableSummary')"
+      :description="t('setting.content.enableSummaryDesc')"
+      :model-value="settings.summary_enabled"
+      @update:model-value="updateSetting('summary_enabled', $event)"
+    />
 
-    <div
-      v-if="props.settings.summary_enabled"
-      class="ml-2 sm:ml-4 space-y-2 sm:space-y-3 border-l-2 border-border pl-2 sm:pl-4"
-    >
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhPackage :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.summaryProvider') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.summaryProviderDesc') }}
-            </div>
-          </div>
-        </div>
+    <NestedSettingsContainer v-if="settings.summary_enabled">
+      <SubSettingItem
+        :icon="PhPackage"
+        :title="t('setting.content.summaryProvider')"
+        :description="t('setting.content.summaryProviderDesc')"
+      >
         <select
-          :value="props.settings.summary_provider"
+          :value="settings.summary_provider"
           class="input-field w-32 sm:w-48 text-xs sm:text-sm"
-          @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                summary_provider: (e.target as HTMLSelectElement).value,
-              })
-          "
+          @change="updateSetting('summary_provider', ($event.target as HTMLSelectElement).value)"
         >
           <option value="local">{{ t('setting.content.localAlgorithm') }}</option>
           <option value="ai">{{ t('setting.content.aiSummary') }}</option>
         </select>
-      </div>
+      </SubSettingItem>
 
       <!-- AI Summary Prompt -->
-      <div v-if="props.settings.summary_provider === 'ai'" class="tip-box">
-        <PhInfo :size="16" class="text-accent shrink-0 sm:w-5 sm:h-5" />
-        <span class="text-xs sm:text-sm">{{ t('common.aiSettingsConfiguredInAITab') }}</span>
-      </div>
-      <div
-        v-if="props.settings.summary_provider === 'ai'"
-        class="sub-setting-item flex-col items-stretch gap-2"
-      >
-        <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhRobot :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.aiSummaryPrompt') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.aiSummaryPromptDesc') }}
-            </div>
-          </div>
-        </div>
-        <textarea
-          :value="props.settings.ai_summary_prompt"
-          class="input-field w-full text-xs sm:text-sm resize-none"
-          rows="3"
-          :placeholder="t('setting.content.aiSummaryPromptPlaceholder')"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                ai_summary_prompt: (e.target as HTMLTextAreaElement).value,
-              })
-          "
-        />
-      </div>
+      <template v-if="settings.summary_provider === 'ai'">
+        <InfoBox :icon="PhInfo" :content="t('common.aiSettingsConfiguredInAITab')" />
 
-      <!-- AI Trigger Mode (only show for AI provider) -->
-      <div v-if="props.settings.summary_provider === 'ai'" class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhRobot :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.summaryTriggerMode') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.summaryTriggerModeDesc') }}
+        <div class="sub-setting-item-col">
+          <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
+            <PhRobot :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
+            <div class="flex-1 min-w-0">
+              <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
+                {{ t('setting.content.aiSummaryPrompt') }}
+              </div>
+              <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
+                {{ t('setting.content.aiSummaryPromptDesc') }}
+              </div>
             </div>
           </div>
+          <TextAreaControl
+            :model-value="settings.ai_summary_prompt"
+            :placeholder="t('setting.content.aiSummaryPromptPlaceholder')"
+            rows="3"
+            @update:model-value="updateSetting('ai_summary_prompt', $event)"
+          />
         </div>
-        <select
-          :value="props.settings.summary_trigger_mode"
-          class="input-field w-32 sm:w-48 text-xs sm:text-sm"
-          @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                summary_trigger_mode: (e.target as HTMLSelectElement).value,
-              })
-          "
+
+        <SubSettingItem
+          :icon="PhRobot"
+          :title="t('setting.content.summaryTriggerMode')"
+          :description="t('setting.content.summaryTriggerModeDesc')"
         >
-          <option value="auto">{{ t('setting.content.summaryTriggerModeAuto') }}</option>
-          <option value="manual">{{ t('setting.content.summaryTriggerModeManual') }}</option>
-        </select>
-      </div>
+          <select
+            :value="settings.summary_trigger_mode"
+            class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+            @change="
+              updateSetting('summary_trigger_mode', ($event.target as HTMLSelectElement).value)
+            "
+          >
+            <option value="auto">{{ t('setting.content.summaryTriggerModeAuto') }}</option>
+            <option value="manual">{{ t('setting.content.summaryTriggerModeManual') }}</option>
+          </select>
+        </SubSettingItem>
+      </template>
 
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhTextAlignLeft :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.summaryLength') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.summaryLengthDesc') }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        :icon="PhTextAlignLeft"
+        :title="t('setting.content.summaryLength')"
+        :description="t('setting.content.summaryLengthDesc')"
+      >
         <select
-          :value="props.settings.summary_length"
+          :value="settings.summary_length"
           class="input-field w-32 sm:w-48 text-xs sm:text-sm"
-          @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                summary_length: (e.target as HTMLSelectElement).value,
-              })
-          "
+          @change="updateSetting('summary_length', ($event.target as HTMLSelectElement).value)"
         >
           <option value="short">{{ t('setting.content.summaryLengthShort') }}</option>
           <option value="medium">{{ t('setting.content.summaryLengthMedium') }}</option>
           <option value="long">{{ t('setting.content.summaryLengthLong') }}</option>
         </select>
-      </div>
+      </SubSettingItem>
 
       <!-- Cache Management -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhTrash :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm">
-              {{ t('setting.content.clearSummaryCache') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.content.clearSummaryCacheDesc') }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        :icon="PhTrash"
+        :title="t('setting.content.clearSummaryCache')"
+        :description="t('setting.content.clearSummaryCacheDesc')"
+      >
         <button
           type="button"
           :disabled="isClearingCache"
@@ -242,9 +176,9 @@ async function clearSummaryCache() {
               : t('setting.content.clearSummaryCacheButton')
           }}
         </button>
-      </div>
-    </div>
-  </div>
+      </SubSettingItem>
+    </NestedSettingsContainer>
+  </SettingGroup>
 </template>
 
 <style scoped>
@@ -252,29 +186,5 @@ async function clearSummaryCache() {
 
 .input-field {
   @apply p-1.5 sm:p-2.5 border border-border rounded-md bg-bg-secondary text-text-primary focus:border-accent focus:outline-none transition-colors;
-}
-.toggle {
-  @apply w-10 h-5 appearance-none bg-bg-tertiary rounded-full relative cursor-pointer border border-border transition-colors checked:bg-accent checked:border-accent shrink-0;
-}
-.toggle::after {
-  content: '';
-  @apply absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform;
-}
-.toggle:checked::after {
-  transform: translateX(20px);
-}
-.setting-item {
-  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
-}
-.sub-setting-item {
-  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
-}
-.tip-box {
-  @apply flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 px-2.5 sm:px-3 rounded-lg w-full;
-  background-color: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-}
-.btn-secondary {
-  @apply bg-bg-tertiary border border-border text-text-primary px-3 sm:px-4 py-1.5 sm:py-2 rounded-md cursor-pointer flex items-center gap-1.5 sm:gap-2 font-medium hover:bg-bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
 }
 </style>
