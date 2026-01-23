@@ -4,6 +4,8 @@ export { default as SubSettingItem } from './base/SubSettingItem.vue';
 export { default as SettingGroup } from './base/SettingGroup.vue';
 export { default as NestedSettingsContainer } from './base/NestedSettingsContainer.vue';
 export { default as InfoBox } from './base/InfoBox.vue';
+export { default as StatusBox } from './base/StatusBox.vue';
+export { default as StatusBoxGroup } from './base/StatusBoxGroup.vue';
 
 // Setting Controls
 export { default as ToggleControl } from './base/SettingControl/ToggleControl.vue';
@@ -26,3 +28,4 @@ export { default as DynamicListControl } from './advanced/DynamicListControl.vue
 export { default as ConfirmActionButton } from './advanced/ConfirmActionButton.vue';
 export { default as TemplateSelector } from './advanced/TemplateSelector.vue';
 export { default as NestedSettings } from './advanced/NestedSettings.vue';
+export { default as KeyValueList } from './advanced/KeyValueList.vue';

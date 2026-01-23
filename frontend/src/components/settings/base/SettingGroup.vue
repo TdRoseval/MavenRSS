@@ -42,8 +42,8 @@ function toggleCollapse() {
         class="ml-auto"
       />
     </label>
-    <div v-if="description" class="text-xs text-text-secondary mb-2 sm:mb-3 pl-6">
-      {{ description }}
+    <div class="text-xs text-text-secondary mb-2 sm:mb-3 pl-6">
+      <slot name="description">{{ description }}</slot>
     </div>
     <div v-show="!isCollapsed" class="setting-group-children">
       <slot />

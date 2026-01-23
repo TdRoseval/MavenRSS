@@ -23,3 +23,17 @@
 .sub-setting-item-col {
   @apply flex flex-col items-stretch gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
 }
+
+/* Setting item with column layout (for complex content like custom headers) */
+.setting-item-col {
+  @apply flex flex-col items-stretch gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
+}
+
+/* Status box group container */
+.status-box-group {
+  @apply flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-3 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
+}
+
+.status-box-group .status-box {
+  @apply w-full sm:min-w-[120px];
+}

@@ -1,13 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import {
-  PhTestTube,
-  PhCheckCircle,
-  PhArrowClockwise,
-  PhWarningCircle,
-  PhBookOpen,
-} from '@phosphor-icons/vue';
+import { PhTestTube, PhArrowClockwise, PhBookOpen } from '@phosphor-icons/vue';
+import { SettingGroup, StatusBoxGroup } from '@/components/settings';
+import '@/components/settings/styles.css';
 import type { AITestInfo } from '@/types/settings';
 import { openInBrowser } from '@/utils/browser';
 
@@ -79,126 +75,62 @@ function openDocumentation() {
     : 'https://github.com/WCY-dt/MrRSS/blob/main/docs/AI_CONFIGURATION.md';
   openInBrowser(docUrl);
 }
+
+const statuses = computed(() => [
+  {
+    label: t('setting.ai.configValid'),
+    value: testInfo.value.test_time
+      ? testInfo.value.config_valid
+        ? t('common.action.yes')
+        : t('common.action.no')
+      : '-',
+    type: testInfo.value.test_time
+      ? testInfo.value.config_valid
+        ? 'success'
+        : 'error'
+      : 'neutral',
+  },
+  {
+    label: t('setting.ai.connectionSuccess'),
+    value: testInfo.value.test_time
+      ? testInfo.value.connection_success
+        ? t('common.action.yes')
+        : t('common.action.no')
+      : '-',
+    type: testInfo.value.test_time
+      ? testInfo.value.connection_success
+        ? 'success'
+        : 'error'
+      : 'neutral',
+  },
+  {
+    label: t('setting.ai.responseTime'),
+    value: testInfo.value.response_time_ms > 0 ? testInfo.value.response_time_ms : '-',
+    unit: testInfo.value.response_time_ms > 0 ? t('common.time.ms') : '',
+  },
+]);
 </script>
 
 <template>
-  <div class="setting-group">
-    <label
-      class="font-semibold mb-2 sm:mb-3 text-text-secondary uppercase text-xs tracking-wider flex items-center gap-2"
-    >
-      <PhTestTube :size="14" class="sm:w-4 sm:h-4" />
-      {{ t('setting.ai.aiConfigTest') }}
-    </label>
-
+  <SettingGroup :icon="PhTestTube" :title="t('setting.ai.aiConfigTest')">
     <!-- AI Test Status Display -->
-    <div
-      class="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-3 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border"
-    >
-      <!-- Status Indicators -->
-      <div class="flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
-        <!-- Config Valid Box -->
-        <div
-          class="flex flex-col gap-2 p-3 rounded-lg bg-bg-primary border border-border w-full sm:min-w-[120px]"
-          :class="{
-            'border-green-500/30': testInfo.config_valid,
-            'border-red-500/30': testInfo.test_time && !testInfo.config_valid,
-          }"
-        >
-          <span class="text-sm text-text-secondary text-left">{{
-            t('setting.ai.configValid')
-          }}</span>
-          <div class="flex items-center gap-2">
-            <PhCheckCircle v-if="testInfo.config_valid" :size="20" class="text-green-500" />
-            <PhWarningCircle v-else-if="testInfo.test_time" :size="20" class="text-red-500" />
-            <span
-              class="text-xl sm:text-2xl font-bold"
-              :class="{
-                'text-green-500': testInfo.config_valid,
-                'text-red-500': testInfo.test_time && !testInfo.config_valid,
-                'text-text-primary': !testInfo.test_time,
-              }"
-            >
-              {{
-                testInfo.test_time
-                  ? testInfo.config_valid
-                    ? t('common.action.yes')
-                    : t('common.action.no')
-                  : '-'
-              }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Connection Success Box -->
-        <div
-          class="flex flex-col gap-2 p-3 rounded-lg bg-bg-primary border border-border w-full sm:min-w-[120px]"
-          :class="{
-            'border-green-500/30': testInfo.connection_success,
-            'border-red-500/30': testInfo.test_time && !testInfo.connection_success,
-          }"
-        >
-          <span class="text-sm text-text-secondary text-left">{{
-            t('setting.ai.connectionSuccess')
-          }}</span>
-          <div class="flex items-center gap-2">
-            <PhCheckCircle v-if="testInfo.connection_success" :size="20" class="text-green-500" />
-            <PhWarningCircle v-else-if="testInfo.test_time" :size="20" class="text-red-500" />
-            <span
-              class="text-xl sm:text-2xl font-bold"
-              :class="{
-                'text-green-500': testInfo.connection_success,
-                'text-red-500': testInfo.test_time && !testInfo.connection_success,
-                'text-text-primary': !testInfo.test_time,
-              }"
-            >
-              {{
-                testInfo.test_time
-                  ? testInfo.connection_success
-                    ? t('common.action.yes')
-                    : t('common.action.no')
-                  : '-'
-              }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Response Time Box -->
-        <div
-          class="flex flex-col gap-2 p-3 rounded-lg bg-bg-primary border border-border w-full sm:min-w-[120px]"
-        >
-          <span class="text-sm text-text-secondary text-left">{{
-            t('setting.ai.responseTime')
-          }}</span>
-          <div class="flex items-baseline gap-1">
-            <span class="text-xl sm:text-2xl font-bold text-text-primary">{{
-              testInfo.response_time_ms > 0 ? testInfo.response_time_ms : '-'
-            }}</span>
-            <span class="text-sm text-text-secondary">{{ t('common.time.ms') }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right: Test Button and Test Time -->
-      <div class="flex flex-col sm:justify-between flex-1 gap-2 sm:gap-0">
-        <div class="flex justify-center sm:justify-end">
-          <button class="btn-secondary" :disabled="isTesting" @click="testAIConfig">
-            <PhArrowClockwise
-              :size="16"
-              :class="{ 'animate-spin': isTesting, 'sm:w-5 sm:h-5': true }"
-            />
-            <span>{{ isTesting ? t('setting.ai.testing') : t('setting.ai.testAIConfig') }}</span>
-          </button>
-        </div>
-
-        <div
-          v-if="testInfo.test_time"
-          class="flex items-center justify-center sm:justify-end gap-2"
-        >
-          <span class="text-xs text-text-secondary">{{ t('setting.ai.lastTest') }}:</span>
-          <span class="text-xs text-accent font-medium">{{ formatTime(testInfo.test_time) }}</span>
-        </div>
-      </div>
-    </div>
+    <StatusBoxGroup
+      :statuses="statuses"
+      :action-button="{
+        label: isTesting ? t('setting.ai.testing') : t('setting.ai.testAIConfig'),
+        icon: PhArrowClockwise,
+        loading: isTesting,
+        onClick: testAIConfig,
+      }"
+      :status-info="
+        testInfo.test_time
+          ? {
+              label: t('setting.ai.lastTest'),
+              time: formatTime(testInfo.test_time),
+            }
+          : undefined
+      "
+    />
 
     <!-- Error Message -->
     <div
@@ -232,34 +164,9 @@ function openDocumentation() {
         {{ t('setting.ai.aiConfigurationGuide') }}
       </button>
     </div>
-  </div>
+  </SettingGroup>
 </template>
 
 <style scoped>
 @reference "../../../../style.css";
-
-.btn-secondary {
-  @apply bg-bg-tertiary border border-border text-text-primary px-3 sm:px-4 py-1.5 sm:py-2 rounded-md cursor-pointer flex items-center gap-1.5 sm:gap-2 font-medium hover:bg-bg-secondary transition-colors;
-}
-
-.btn-secondary:disabled {
-  @apply cursor-not-allowed opacity-50;
-}
-
-.setting-group {
-  @apply mb-4 sm:mb-6;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
 </style>

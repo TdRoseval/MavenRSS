@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhGlobe,
@@ -12,7 +12,6 @@ import {
   PhInfo,
   PhTrash,
   PhBroom,
-  PhPlus,
   PhTimer,
   PhRobot,
   PhKey,
@@ -25,6 +24,7 @@ import {
   TextAreaControl,
   InfoBox,
   ToggleControl,
+  KeyValueList,
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
@@ -50,153 +50,6 @@ function updateSetting(key: keyof SettingsData, value: any) {
 
 const isClearingCache = ref(false);
 const showCustomTemplates = ref(false);
-
-// Custom headers state (similar to AI settings)
-interface Header {
-  id: string;
-  name: string;
-  value: string;
-}
-
-const customHeaders = ref<Header[]>([]);
-let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function loadCustomHeaders() {
-  const jsonString = props.settings.custom_translation_headers || '';
-  customHeaders.value = parseCustomHeaders(jsonString);
-}
-
-function parseCustomHeaders(jsonString: string): Header[] {
-  if (!jsonString || jsonString.trim() === '') return [];
-  try {
-    const parsed = JSON.parse(jsonString) as Record<string, string>;
-    return Object.entries(parsed).map(([name, value], index) => ({
-      id: `${Date.now()}-${index}`,
-      name,
-      value,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function addCustomHeader() {
-  customHeaders.value.push({
-    id: `${Date.now()}`,
-    name: '',
-    value: '',
-  });
-  saveCustomHeaders();
-}
-
-function removeCustomHeader(id: string) {
-  customHeaders.value = customHeaders.value.filter((h) => h.id !== id);
-  saveCustomHeaders();
-}
-
-function saveCustomHeaders() {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    const obj: Record<string, string> = {};
-    customHeaders.value.forEach(({ name, value }) => {
-      if (name && value) {
-        obj[name] = value;
-      }
-    });
-    updateSetting('custom_translation_headers', JSON.stringify(obj));
-    saveTimeout = null;
-  }, 500);
-}
-
-// Language mapping state (similar pattern)
-interface LangMapping {
-  id: string;
-  key: string;
-  value: string;
-}
-
-const customLangMapping = ref<LangMapping[]>([]);
-let saveLangTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function loadCustomLangMapping() {
-  const jsonString = props.settings.custom_translation_lang_mapping || '';
-  customLangMapping.value = parseCustomLangMapping(jsonString);
-}
-
-function parseCustomLangMapping(jsonString: string): LangMapping[] {
-  if (!jsonString || jsonString.trim() === '') return [];
-  try {
-    const parsed = JSON.parse(jsonString) as Record<string, string>;
-    return Object.entries(parsed).map(([key, value], index) => ({
-      id: `${Date.now()}-${index}`,
-      key,
-      value,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function addCustomLangMapping() {
-  customLangMapping.value.push({
-    id: `${Date.now()}`,
-    key: '',
-    value: '',
-  });
-  saveCustomLangMapping();
-}
-
-function removeCustomLangMapping(id: string) {
-  customLangMapping.value = customLangMapping.value.filter((m) => m.id !== id);
-  saveCustomLangMapping();
-}
-
-function saveCustomLangMapping() {
-  if (saveLangTimeout) clearTimeout(saveLangTimeout);
-  saveLangTimeout = setTimeout(() => {
-    const obj: Record<string, string> = {};
-    customLangMapping.value.forEach(({ key, value }) => {
-      if (key && value) {
-        obj[key] = value;
-      }
-    });
-    updateSetting('custom_translation_lang_mapping', JSON.stringify(obj));
-    saveLangTimeout = null;
-  }, 500);
-}
-
-// Watch for external changes
-watch(
-  () => props.settings.custom_translation_headers,
-  (newValue, oldValue) => {
-    if (newValue !== oldValue) {
-      const parsed = parseCustomHeaders(newValue || '');
-      const currentIds = new Set(customHeaders.value.map((h) => h.id));
-      const hasNewEntries = parsed.some((p) => !currentIds.has(p.id));
-      if (hasNewEntries || parsed.length !== customHeaders.value.length) {
-        customHeaders.value = parsed;
-      }
-    }
-  }
-);
-
-watch(
-  () => props.settings.custom_translation_lang_mapping,
-  (newValue, oldValue) => {
-    if (newValue !== oldValue) {
-      const parsed = parseCustomLangMapping(newValue || '');
-      const currentIds = new Set(customLangMapping.value.map((m) => m.id));
-      const hasNewEntries = parsed.some((p) => !currentIds.has(p.id));
-      if (hasNewEntries || parsed.length !== customLangMapping.value.length) {
-        customLangMapping.value = parsed;
-      }
-    }
-  }
-);
-
-// Load initial data
-loadCustomHeaders();
-loadCustomLangMapping();
 
 // Preset templates for common translation services
 const customTemplates = [
@@ -552,47 +405,14 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
             </div>
           </div>
 
-          <!-- Headers List -->
-          <div class="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2 w-full">
-            <div
-              v-for="header in customHeaders"
-              :key="header.id"
-              class="flex items-center gap-1.5 sm:gap-2"
-            >
-              <input
-                v-model="header.name"
-                type="text"
-                :placeholder="t('setting.content.custom.headerName') || 'Header name'"
-                class="input-field text-xs sm:text-sm flex-1"
-                @input="saveCustomHeaders()"
-              />
-              <input
-                v-model="header.value"
-                type="text"
-                :placeholder="t('setting.content.custom.headerValue') || 'Value'"
-                class="input-field text-xs sm:text-sm flex-1"
-                @input="saveCustomHeaders()"
-              />
-              <button
-                type="button"
-                class="p-1.5 sm:p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-text-secondary hover:text-red-500 transition-all shrink-0"
-                :title="t('common.action.remove') || 'Remove'"
-                @click="removeCustomHeader(header.id)"
-              >
-                <PhTrash :size="14" class="sm:w-4 sm:h-4" />
-              </button>
-            </div>
-
-            <!-- Add Header Button -->
-            <button
-              type="button"
-              class="w-full p-1.5 sm:p-2 rounded border border-dashed border-border text-text-secondary hover:border-accent hover:text-accent hover:bg-accent/5 transition-all text-xs font-medium flex items-center justify-center gap-1.5 sm:gap-2"
-              @click="addCustomHeader"
-            >
-              <PhPlus :size="14" class="sm:w-4 sm:h-4" />
-              <span>{{ t('setting.content.addHeader') }}</span>
-            </button>
-          </div>
+          <KeyValueList
+            :model-value="settings.custom_translation_headers"
+            :key-placeholder="t('setting.content.custom.headerName') || 'Header name'"
+            :value-placeholder="t('setting.content.custom.headerValue') || 'Value'"
+            :add-button-text="t('setting.content.addHeader')"
+            :remove-button-title="t('common.action.remove') || 'Remove'"
+            @update:model-value="updateSetting('custom_translation_headers', $event)"
+          />
         </div>
 
         <!-- Custom Translation Body Template -->
@@ -667,49 +487,16 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
             </div>
           </div>
 
-          <!-- Language Mapping List -->
-          <div class="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2 w-full">
-            <div
-              v-for="mapping in customLangMapping"
-              :key="mapping.id"
-              class="flex items-center gap-1.5 sm:gap-2"
-            >
-              <input
-                v-model="mapping.key"
-                type="text"
-                :placeholder="
-                  t('setting.content.custom.mrssLangCode') || 'MrRSS code (en, zh, ...)'
-                "
-                class="input-field text-xs sm:text-sm flex-1"
-                @input="saveCustomLangMapping()"
-              />
-              <input
-                v-model="mapping.value"
-                type="text"
-                :placeholder="t('setting.content.apiLangCode') || 'API code'"
-                class="input-field text-xs sm:text-sm flex-1"
-                @input="saveCustomLangMapping()"
-              />
-              <button
-                type="button"
-                class="p-1.5 sm:p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-text-secondary hover:text-red-500 transition-all shrink-0"
-                :title="t('common.action.remove') || 'Remove'"
-                @click="removeCustomLangMapping(mapping.id)"
-              >
-                <PhTrash :size="14" class="sm:w-4 sm:h-4" />
-              </button>
-            </div>
-
-            <!-- Add Mapping Button -->
-            <button
-              type="button"
-              class="w-full p-1.5 sm:p-2 rounded border border-dashed border-border text-text-secondary hover:border-accent hover:text-accent hover:bg-accent/5 transition-all text-xs font-medium flex items-center justify-center gap-1.5 sm:gap-2"
-              @click="addCustomLangMapping"
-            >
-              <PhPlus :size="14" class="sm:w-4 sm:h-4" />
-              <span>{{ t('setting.content.addLangMapping') }}</span>
-            </button>
-          </div>
+          <KeyValueList
+            :model-value="settings.custom_translation_lang_mapping"
+            :key-placeholder="
+              t('setting.content.custom.mrssLangCode') || 'MrRSS code (en, zh, ...)'
+            "
+            :value-placeholder="t('setting.content.apiLangCode') || 'API code'"
+            :add-button-text="t('setting.content.addLangMapping')"
+            :remove-button-title="t('common.action.remove') || 'Remove'"
+            @update:model-value="updateSetting('custom_translation_lang_mapping', $event)"
+          />
         </div>
 
         <!-- Custom Translation Timeout -->

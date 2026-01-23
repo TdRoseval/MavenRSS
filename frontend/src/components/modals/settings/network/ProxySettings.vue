@@ -8,10 +8,20 @@ import {
   PhUser,
   PhKey,
   PhLink,
-  PhInfo,
   PhArrowClockwise,
   PhTimer,
 } from '@phosphor-icons/vue';
+import {
+  SettingGroup,
+  SettingWithToggle,
+  SettingItem,
+  SubSettingItem,
+  NestedSettingsContainer,
+  InfoBox,
+  InputControl,
+  NumberControl,
+} from '@/components/settings';
+import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 
 const { t } = useI18n();
@@ -25,248 +35,131 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
+
+function updateSetting(key: keyof SettingsData, value: any) {
+  emit('update:settings', {
+    ...props.settings,
+    [key]: value,
+  });
+}
 </script>
 
 <template>
-  <div class="setting-group">
-    <label
-      class="font-semibold mb-2 sm:mb-3 text-text-secondary uppercase text-xs tracking-wider flex items-center gap-2"
-    >
-      <PhWall :size="14" class="sm:w-4 sm:h-4" />
-      {{ t('setting.network.proxySettings') }}
-    </label>
-    <div class="tip-box">
-      <PhInfo :size="16" class="text-accent shrink-0 sm:w-5 sm:h-5" />
-      <span class="text-xs sm:text-sm">{{ t('setting.network.systemProxyInfo') }}</span>
-    </div>
+  <!-- Proxy Settings -->
+  <SettingGroup :icon="PhWall" :title="t('setting.network.proxySettings')">
+    <InfoBox :icon="PhInfo" :content="t('setting.network.systemProxyInfo')" />
 
     <!-- Enable Proxy Toggle -->
-    <div class="setting-item mt-2 sm:mt-3">
-      <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-        <PhGlobe :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-        <div class="flex-1 min-w-0">
-          <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
-            {{ t('setting.network.enableProxy') }}
-          </div>
-          <div class="text-xs text-text-secondary hidden sm:block">
-            {{ t('setting.network.enableProxyDesc') }}
-          </div>
-        </div>
-      </div>
-      <input
-        :checked="props.settings.proxy_enabled"
-        type="checkbox"
-        class="toggle"
-        @change="
-          (e) =>
-            emit('update:settings', {
-              ...props.settings,
-              proxy_enabled: (e.target as HTMLInputElement).checked,
-            })
-        "
-      />
-    </div>
+    <SettingWithToggle
+      :icon="PhGlobe"
+      :title="t('setting.network.enableProxy')"
+      :description="t('setting.network.enableProxyDesc')"
+      :model-value="props.settings.proxy_enabled"
+      @update:model-value="updateSetting('proxy_enabled', $event)"
+    />
 
     <!-- Proxy Settings (shown when proxy is enabled) -->
-    <div
-      v-if="props.settings.proxy_enabled"
-      class="mt-2 sm:mt-3 ml-4 sm:ml-6 space-y-2 sm:space-y-3 pl-3 sm:pl-4 border-l-2 border-border"
-    >
+    <NestedSettingsContainer v-if="props.settings.proxy_enabled">
       <!-- Proxy Type -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhPlug :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
-              {{ t('setting.network.proxyType') }}
-            </div>
-            <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.network.proxyTypeDesc') }}
-            </div>
-          </div>
-        </div>
+      <SubSettingItem
+        :icon="PhPlug"
+        :title="t('setting.network.proxyType')"
+        :description="t('setting.network.proxyTypeDesc')"
+      >
         <select
           :value="props.settings.proxy_type"
           class="input-field w-28 sm:w-32 text-xs sm:text-sm"
-          @change="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                proxy_type: (e.target as HTMLSelectElement).value,
-              })
-          "
+          @change="updateSetting('proxy_type', ($event.target as HTMLSelectElement).value)"
         >
           <option value="http">{{ t('setting.network.httpProxy') }}</option>
           <option value="https">{{ t('setting.network.httpsProxy') }}</option>
           <option value="socks5">{{ t('setting.network.socks5Proxy') }}</option>
         </select>
-      </div>
+      </SubSettingItem>
 
       <!-- Proxy Host -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhLink :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
-              {{ t('setting.network.proxyHost') }} <span class="text-red-500">*</span>
-            </div>
-            <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.network.proxyHostDesc') }}
-            </div>
-          </div>
-        </div>
-        <input
-          :value="props.settings.proxy_host"
-          type="text"
+      <SubSettingItem
+        :icon="PhLink"
+        :title="t('setting.network.proxyHost')"
+        :description="t('setting.network.proxyHostDesc')"
+        required
+      >
+        <InputControl
+          :model-value="props.settings.proxy_host"
           :placeholder="t('setting.network.proxyHostPlaceholder')"
-          :class="[
-            'input-field w-36 sm:w-48 text-xs sm:text-sm',
-            props.settings.proxy_enabled && !props.settings.proxy_host?.trim()
-              ? 'border-red-500'
-              : '',
-          ]"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                proxy_host: (e.target as HTMLInputElement).value,
-              })
-          "
+          :error="props.settings.proxy_enabled && !props.settings.proxy_host?.trim()"
+          width="lg"
+          @update:model-value="updateSetting('proxy_host', $event)"
         />
-      </div>
+      </SubSettingItem>
 
       <!-- Proxy Port -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhUsb :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
-              {{ t('setting.network.proxyPort') }} <span class="text-red-500">*</span>
-            </div>
-            <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.network.proxyPortDesc') }}
-            </div>
-          </div>
-        </div>
-        <input
-          :value="props.settings.proxy_port"
-          type="text"
+      <SubSettingItem
+        :icon="PhUsb"
+        :title="t('setting.network.proxyPort')"
+        :description="t('setting.network.proxyPortDesc')"
+        required
+      >
+        <InputControl
+          :model-value="props.settings.proxy_port"
           :placeholder="t('setting.network.proxyPortPlaceholder')"
-          :class="[
-            'input-field w-20 sm:w-24 text-center text-xs sm:text-sm',
-            props.settings.proxy_enabled && !props.settings.proxy_port?.trim()
-              ? 'border-red-500'
-              : '',
-          ]"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                proxy_port: (e.target as HTMLInputElement).value,
-              })
-          "
+          :error="props.settings.proxy_enabled && !props.settings.proxy_port?.trim()"
+          width="sm"
+          class="text-center"
+          @update:model-value="updateSetting('proxy_port', $event)"
         />
-      </div>
+      </SubSettingItem>
 
       <!-- Proxy Username -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhUser :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
-              {{ t('setting.network.proxyUsername') }}
-            </div>
-            <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.network.proxyUsernameDesc') }}
-            </div>
-          </div>
-        </div>
-        <input
-          :value="props.settings.proxy_username"
-          type="text"
+      <SubSettingItem
+        :icon="PhUser"
+        :title="t('setting.network.proxyUsername')"
+        :description="t('setting.network.proxyUsernameDesc')"
+      >
+        <InputControl
+          :model-value="props.settings.proxy_username"
           :placeholder="t('setting.network.proxyUsernamePlaceholder')"
-          class="input-field w-28 sm:w-36 text-xs sm:text-sm"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                proxy_username: (e.target as HTMLInputElement).value,
-              })
-          "
+          width="md"
+          @update:model-value="updateSetting('proxy_username', $event)"
         />
-      </div>
+      </SubSettingItem>
 
       <!-- Proxy Password -->
-      <div class="sub-setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhKey :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-xs sm:text-sm">
-              {{ t('setting.network.proxyPassword') }}
-            </div>
-            <div class="text-[10px] sm:text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.network.proxyPasswordDesc') }}
-            </div>
-          </div>
-        </div>
-        <input
-          :value="props.settings.proxy_password"
+      <SubSettingItem
+        :icon="PhKey"
+        :title="t('setting.network.proxyPassword')"
+        :description="t('setting.network.proxyPasswordDesc')"
+      >
+        <InputControl
+          :model-value="props.settings.proxy_password"
           type="password"
           :placeholder="t('setting.network.proxyPasswordPlaceholder')"
-          class="input-field w-28 sm:w-36 text-xs sm:text-sm"
-          @input="
-            (e) =>
-              emit('update:settings', {
-                ...props.settings,
-                proxy_password: (e.target as HTMLInputElement).value,
-              })
-          "
+          width="md"
+          @update:model-value="updateSetting('proxy_password', $event)"
         />
-      </div>
-    </div>
+      </SubSettingItem>
+    </NestedSettingsContainer>
+  </SettingGroup>
 
-    <!-- Retry Timeout Setting -->
-    <div class="setting-group mt-4 sm:mt-6">
-      <label
-        class="font-semibold mb-2 sm:mb-3 text-text-secondary uppercase text-xs tracking-wider flex items-center gap-2"
-      >
-        <PhArrowClockwise :size="14" class="sm:w-4 sm:h-4" />
-        {{ t('modal.feed.refreshSettings') }}
-      </label>
-
-      <div class="setting-item">
-        <div class="flex-1 flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
-          <PhTimer :size="20" class="text-text-secondary mt-0.5 shrink-0 sm:w-6 sm:h-6" />
-          <div class="flex-1 min-w-0">
-            <div class="font-medium mb-0 sm:mb-1 text-sm sm:text-base">
-              {{ t('setting.feed.retryTimeout') }}
-            </div>
-            <div class="text-xs text-text-secondary hidden sm:block">
-              {{ t('setting.feed.retryTimeoutDesc') }}
-            </div>
-          </div>
-        </div>
-        <div class="flex items-center gap-1 sm:gap-2 shrink-0">
-          <input
-            :value="props.settings.retry_timeout_seconds"
-            type="number"
-            min="10"
-            max="600"
-            step="10"
-            class="input-field w-20 sm:w-24 text-center text-xs sm:text-sm"
-            @input="
-              (e) =>
-                emit('update:settings', {
-                  ...props.settings,
-                  retry_timeout_seconds: parseInt((e.target as HTMLInputElement).value) || 60,
-                })
-            "
-          />
-          <span class="text-xs sm:text-sm text-text-secondary">{{ t('common.time.seconds') }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Retry Timeout Setting -->
+  <SettingGroup :icon="PhArrowClockwise" :title="t('modal.feed.refreshSettings')">
+    <SettingItem
+      :icon="PhTimer"
+      :title="t('setting.feed.retryTimeout')"
+      :description="t('setting.feed.retryTimeoutDesc')"
+    >
+      <NumberControl
+        :model-value="props.settings.retry_timeout_seconds"
+        :min="10"
+        :max="600"
+        :step="10"
+        :suffix="t('common.time.seconds')"
+        width="xs"
+        class="text-center"
+        @update:model-value="updateSetting('retry_timeout_seconds', $event)"
+      />
+    </SettingItem>
+  </SettingGroup>
 </template>
 
 <style scoped>
@@ -274,36 +167,5 @@ const emit = defineEmits<{
 
 .input-field {
   @apply p-1.5 sm:p-2.5 border border-border rounded-md bg-bg-secondary text-text-primary focus:border-accent focus:outline-none transition-colors;
-}
-
-.toggle {
-  @apply w-10 h-5 appearance-none bg-bg-tertiary rounded-full relative cursor-pointer border border-border transition-colors checked:bg-accent checked:border-accent shrink-0;
-}
-
-.toggle::after {
-  content: '';
-  @apply absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform;
-}
-
-.toggle:checked::after {
-  transform: translateX(20px);
-}
-
-.setting-item {
-  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
-}
-
-.sub-setting-item {
-  @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-2.5 rounded-md bg-bg-tertiary;
-}
-
-.setting-group {
-  @apply mb-4 sm:mb-6;
-}
-
-.tip-box {
-  @apply flex items-center gap-2 sm:gap-3 py-2 sm:py-2.5 px-2.5 sm:px-3 rounded-lg;
-  background-color: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.3);
 }
 </style>
