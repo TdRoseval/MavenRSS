@@ -35,6 +35,7 @@ function updateSetting(key: keyof SettingsData, value: any) {
       :options="[
         { value: 'original', label: t('article.action.viewModeOriginal') },
         { value: 'rendered', label: t('article.action.viewModeRendered') },
+        { value: 'external', label: t('article.action.viewModeExternal') },
       ]"
       width="md"
       @update:model-value="updateSetting('default_view_mode', $event)"

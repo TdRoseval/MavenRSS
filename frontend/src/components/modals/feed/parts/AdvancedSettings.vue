@@ -7,7 +7,7 @@ interface Props {
   imageGalleryEnabled: boolean;
   isImageMode: boolean;
   hideFromTimeline: boolean;
-  articleViewMode: 'global' | 'webpage' | 'rendered';
+  articleViewMode: 'global' | 'webpage' | 'rendered' | 'external';
   autoExpandContent: 'global' | 'enabled' | 'disabled';
   proxyMode: ProxyMode;
   proxyType: string;
@@ -24,7 +24,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   'update:isImageMode': [value: boolean];
   'update:hideFromTimeline': [value: boolean];
-  'update:articleViewMode': [value: 'global' | 'webpage' | 'rendered'];
+  'update:articleViewMode': [value: 'global' | 'webpage' | 'rendered' | 'external'];
   'update:autoExpandContent': [value: 'global' | 'enabled' | 'disabled'];
   'update:proxyMode': [value: ProxyMode];
   'update:proxyType': [value: string];
@@ -99,13 +99,18 @@ const { t } = useI18n();
         @change="
           emit(
             'update:articleViewMode',
-            ($event.target as HTMLSelectElement).value as 'global' | 'webpage' | 'rendered'
+            ($event.target as HTMLSelectElement).value as
+              | 'global'
+              | 'webpage'
+              | 'rendered'
+              | 'external'
           )
         "
       >
         <option value="global">{{ t('setting.feed.useGlobalSettings') }}</option>
         <option value="webpage">{{ t('setting.reading.viewAsWebpage') }}</option>
         <option value="rendered">{{ t('setting.reading.viewAsRendered') }}</option>
+        <option value="external">{{ t('article.action.viewModeExternal') }}</option>
       </select>
     </div>
 

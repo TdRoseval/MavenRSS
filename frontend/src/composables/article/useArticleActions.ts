@@ -4,97 +4,148 @@ import { useAppStore } from '@/stores/app';
 import type { Article } from '@/types/models';
 import type { Composer } from 'vue-i18n';
 
+type ViewMode = 'original' | 'rendered' | 'external';
+
 export function useArticleActions(
   t: Composer['t'],
-  defaultViewMode: { value: 'original' | 'rendered' },
+  defaultViewMode: { value: ViewMode },
   onReadStatusChange?: () => void
 ) {
   const store = useAppStore();
+
+  // Get effective view mode for an article based on feed settings and global settings
+  function getEffectiveViewMode(article: Article): ViewMode {
+    const feed = store.feeds.find((f) => f.id === article.feed_id);
+    if (!feed) return defaultViewMode.value;
+
+    if (feed.article_view_mode === 'webpage') {
+      return 'original';
+    } else if (feed.article_view_mode === 'rendered') {
+      return 'rendered';
+    } else if (feed.article_view_mode === 'external') {
+      return 'external';
+    } else {
+      // 'global' or undefined - use global setting
+      return defaultViewMode.value;
+    }
+  }
   // Show context menu for article
   function showArticleContextMenu(e: MouseEvent, article: Article): void {
     e.preventDefault();
     e.stopPropagation();
 
-    // Determine context menu text based on default view mode
-    const contentActionLabel =
-      defaultViewMode.value === 'rendered'
-        ? t('setting.reading.showOriginal')
-        : t('article.content.renderContent');
-    const contentActionIcon = defaultViewMode.value === 'rendered' ? 'ph-globe' : 'ph-article';
+    // Get effective view mode for this article
+    const effectiveMode = getEffectiveViewMode(article);
+
+    // Build menu items array
+    const menuItems = [
+      {
+        label: article.is_read ? t('article.action.markAsUnread') : t('article.action.markAsRead'),
+        action: 'toggleRead',
+        icon: article.is_read ? 'ph-envelope' : 'ph-envelope-open',
+      },
+      {
+        label: t('article.action.markAboveAsRead'),
+        action: 'markAboveAsRead',
+        icon: 'ph-arrow-bend-right-up',
+      },
+      {
+        label: t('article.action.markBelowAsRead'),
+        action: 'markBelowAsRead',
+        icon: 'ph-arrow-bend-left-down',
+      },
+      {
+        label: article.is_favorite
+          ? t('article.action.removeFromFavorites')
+          : t('article.action.addToFavorite'),
+        action: 'toggleFavorite',
+        icon: 'ph-star',
+        iconWeight: article.is_favorite ? 'fill' : 'regular',
+        iconColor: article.is_favorite ? 'text-yellow-500' : '',
+      },
+      {
+        label: article.is_read_later
+          ? t('article.action.removeFromReadLater')
+          : t('article.action.addToReadLater'),
+        action: 'toggleReadLater',
+        icon: 'ph-clock-countdown',
+        iconWeight: article.is_read_later ? 'fill' : 'regular',
+        iconColor: article.is_read_later ? 'text-blue-500' : '',
+      },
+      { separator: true },
+    ];
+
+    // Add view mode specific menu items
+    if (effectiveMode === 'external') {
+      // When mode is external, show both "View Original" and "Render Content" options
+      menuItems.push({
+        label: t('article.action.viewModeOriginal'),
+        action: 'viewInAppOriginal',
+        icon: 'ph-globe',
+      });
+      menuItems.push({
+        label: t('article.action.viewModeRendered'),
+        action: 'viewInAppRendered',
+        icon: 'ph-article',
+      });
+    } else if (effectiveMode === 'rendered') {
+      // When mode is rendered, show "View Original" option
+      menuItems.push({
+        label: t('setting.reading.showOriginal'),
+        action: 'renderContent',
+        icon: 'ph-globe',
+      });
+    } else {
+      // When mode is original, show "Render Content" option
+      menuItems.push({
+        label: t('article.content.renderContent'),
+        action: 'renderContent',
+        icon: 'ph-article',
+      });
+    }
+
+    // Add remaining menu items
+    menuItems.push(
+      { separator: true },
+      {
+        label: article.is_hidden
+          ? t('article.action.unhideArticle')
+          : t('article.action.hideArticle'),
+        action: 'toggleHide',
+        icon: article.is_hidden ? 'ph-eye' : 'ph-eye-slash',
+        danger: !article.is_hidden,
+      },
+      { separator: true },
+      {
+        label: t('common.contextMenu.copyLink'),
+        action: 'copyLink',
+        icon: 'ph-link',
+      },
+      {
+        label: t('common.contextMenu.copyTitle'),
+        action: 'copyTitle',
+        icon: 'ph-text-t',
+      }
+    );
+
+    // Only add "Open in Browser" option if not in external mode
+    if (effectiveMode !== 'external') {
+      menuItems.push(
+        { separator: true },
+        {
+          label: t('article.action.openInBrowser'),
+          action: 'openBrowser',
+          icon: 'ph-arrow-square-out',
+        }
+      );
+    }
 
     window.dispatchEvent(
       new CustomEvent('open-context-menu', {
         detail: {
           x: e.clientX,
           y: e.clientY,
-          items: [
-            {
-              label: article.is_read
-                ? t('article.action.markAsUnread')
-                : t('article.action.markAsRead'),
-              action: 'toggleRead',
-              icon: article.is_read ? 'ph-envelope' : 'ph-envelope-open',
-            },
-            {
-              label: t('article.action.markAboveAsRead'),
-              action: 'markAboveAsRead',
-              icon: 'ph-arrow-bend-right-up',
-            },
-            {
-              label: t('article.action.markBelowAsRead'),
-              action: 'markBelowAsRead',
-              icon: 'ph-arrow-bend-left-down',
-            },
-            {
-              label: article.is_favorite
-                ? t('article.action.removeFromFavorites')
-                : t('article.action.addToFavorite'),
-              action: 'toggleFavorite',
-              icon: 'ph-star',
-              iconWeight: article.is_favorite ? 'fill' : 'regular',
-              iconColor: article.is_favorite ? 'text-yellow-500' : '',
-            },
-            {
-              label: article.is_read_later
-                ? t('article.action.removeFromReadLater')
-                : t('article.action.addToReadLater'),
-              action: 'toggleReadLater',
-              icon: 'ph-clock-countdown',
-              iconWeight: article.is_read_later ? 'fill' : 'regular',
-              iconColor: article.is_read_later ? 'text-blue-500' : '',
-            },
-            { separator: true },
-            {
-              label: contentActionLabel,
-              action: 'renderContent',
-              icon: contentActionIcon,
-            },
-            {
-              label: article.is_hidden
-                ? t('article.action.unhideArticle')
-                : t('article.action.hideArticle'),
-              action: 'toggleHide',
-              icon: article.is_hidden ? 'ph-eye' : 'ph-eye-slash',
-              danger: !article.is_hidden,
-            },
-            { separator: true },
-            {
-              label: t('common.contextMenu.copyLink'),
-              action: 'copyLink',
-              icon: 'ph-link',
-            },
-            {
-              label: t('common.contextMenu.copyTitle'),
-              action: 'copyTitle',
-              icon: 'ph-text-t',
-            },
-            { separator: true },
-            {
-              label: t('article.action.openInBrowser'),
-              action: 'openBrowser',
-              icon: 'ph-arrow-square-out',
-            },
-          ],
+          items: menuItems,
           data: article,
           callback: (action: string, article: Article) =>
             handleArticleAction(action, article, onReadStatusChange),
@@ -245,6 +296,70 @@ export function useArticleActions(
       window.dispatchEvent(
         new CustomEvent('render-article-content', {
           detail: { action: renderAction },
+        })
+      );
+    } else if (action === 'viewInAppOriginal') {
+      // View article in app as original (webpage) - override external mode
+      store.currentArticleId = article.id;
+
+      // Dispatch explicit action to show original
+      window.dispatchEvent(
+        new CustomEvent('explicit-render-action', {
+          detail: { action: 'showOriginal' },
+        })
+      );
+
+      // Mark as read
+      if (!article.is_read) {
+        article.is_read = true;
+        try {
+          await fetch(`/api/articles/read?id=${article.id}&read=true`, {
+            method: 'POST',
+          });
+          if (onReadStatusChange) {
+            onReadStatusChange();
+          }
+        } catch (e) {
+          console.error('Error marking as read:', e);
+        }
+      }
+
+      // Trigger the render action
+      window.dispatchEvent(
+        new CustomEvent('render-article-content', {
+          detail: { action: 'showOriginal' },
+        })
+      );
+    } else if (action === 'viewInAppRendered') {
+      // View article in app as rendered content - override external mode
+      store.currentArticleId = article.id;
+
+      // Dispatch explicit action to show rendered content
+      window.dispatchEvent(
+        new CustomEvent('explicit-render-action', {
+          detail: { action: 'showContent' },
+        })
+      );
+
+      // Mark as read
+      if (!article.is_read) {
+        article.is_read = true;
+        try {
+          await fetch(`/api/articles/read?id=${article.id}&read=true`, {
+            method: 'POST',
+          });
+          if (onReadStatusChange) {
+            onReadStatusChange();
+          }
+        } catch (e) {
+          console.error('Error marking as read:', e);
+        }
+      }
+
+      // Trigger the render action
+      window.dispatchEvent(
+        new CustomEvent('render-article-content', {
+          detail: { action: 'showContent' },
         })
       );
     } else if (action === 'copyLink') {

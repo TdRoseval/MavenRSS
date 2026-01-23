@@ -5,7 +5,7 @@ import { openInBrowser } from '@/utils/browser';
 import type { Article } from '@/types/models';
 import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
 
-type ViewMode = 'original' | 'rendered';
+type ViewMode = 'original' | 'rendered' | 'external';
 type RenderAction = 'showContent' | 'showOriginal' | null;
 
 interface ViewModeChangeEvent extends Event {
@@ -104,6 +104,8 @@ export function useArticleDetail() {
       return 'original';
     } else if (feed.article_view_mode === 'rendered') {
       return 'rendered';
+    } else if (feed.article_view_mode === 'external') {
+      return 'external';
     } else {
       // 'global' or undefined - use global setting
       return defaultViewMode.value;

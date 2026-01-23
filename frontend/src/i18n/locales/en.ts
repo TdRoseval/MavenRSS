@@ -42,6 +42,8 @@ const en: TranslationMessages = {
       viewImage: 'View Image',
       viewModeOriginal: 'View as Webpage',
       viewModeRendered: 'View as Rendered Content',
+      viewModeExternal: 'Open in Browser',
+      viewInApp: 'View in App',
       viewOriginal: 'View Original',
     },
     audioPlayer: {

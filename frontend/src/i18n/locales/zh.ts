@@ -42,6 +42,8 @@ const zh: TranslationMessages = {
       viewImage: '查看图片',
       viewModeOriginal: '以网页查看',
       viewModeRendered: '以渲染查看',
+      viewModeExternal: '在浏览器中打开',
+      viewInApp: '在软件内查看',
       viewOriginal: '查看原文',
     },
     audioPlayer: {

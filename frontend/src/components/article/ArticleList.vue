@@ -23,6 +23,7 @@ import { useArticleActions } from '@/composables/article/useArticleActions';
 import { useShowPreviewImages } from '@/composables/ui/useShowPreviewImages';
 import { useSettings } from '@/composables/core/useSettings';
 import { parseSettingsData } from '@/composables/core/useSettings.generated';
+import { openInBrowser } from '@/utils/browser';
 import type { Article } from '@/types/models';
 
 const store = useAppStore();
@@ -30,7 +31,7 @@ const { t } = useI18n();
 const { settings } = useSettings();
 
 const listRef: Ref<HTMLDivElement | null> = ref(null);
-const defaultViewMode = ref<'original' | 'rendered'>('original');
+const defaultViewMode = ref<'original' | 'rendered' | 'external'>('original');
 const showFilterModal = ref(false);
 const isRefreshing = ref(false);
 const savedScrollTop = ref(0);
@@ -350,6 +351,39 @@ function onRefreshTooltipHide(): void {
 
 // Article selection and interaction
 function selectArticle(article: Article): void {
+  // Check if we should open in browser based on feed or global settings
+  const feed = store.feeds.find((f) => f.id === article.feed_id);
+  let openInBrowserMode = false;
+
+  if (feed?.article_view_mode === 'external') {
+    openInBrowserMode = true;
+  } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
+    // Check global setting
+    if (defaultViewMode.value === 'external') {
+      openInBrowserMode = true;
+    }
+  }
+
+  // If external mode is selected, open in browser and mark as read
+  if (openInBrowserMode) {
+    // Mark as read if not already read
+    if (!article.is_read) {
+      article.is_read = true;
+      fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
+        .then(async () => {
+          await store.fetchUnreadCounts();
+          await store.fetchFilterCounts();
+        })
+        .catch((e) => {
+          console.error('Error marking as read:', e);
+        });
+    }
+    // Open article URL in browser
+    openInBrowser(article.url);
+    return;
+  }
+
+  // Normal article selection - show in app
   // If switching from one article to another, remove the previous one from temp list
   if (store.currentArticleId) {
     temporarilyKeepArticles.value.delete(store.currentArticleId);

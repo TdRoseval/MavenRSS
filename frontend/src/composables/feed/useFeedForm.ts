@@ -46,7 +46,7 @@ export function useFeedForm(feed?: Feed) {
   const emailFolder = ref('INBOX');
 
   // Article view mode
-  const articleViewMode = ref<'global' | 'webpage' | 'rendered'>('global');
+  const articleViewMode = ref<'global' | 'webpage' | 'rendered' | 'external'>('global');
 
   // Auto expand content mode
   const autoExpandContent = ref<'global' | 'enabled' | 'disabled'>('global');
@@ -230,7 +230,7 @@ export function useFeedForm(feed?: Feed) {
 
     // Initialize article view mode
     articleViewMode.value =
-      (feed.article_view_mode as 'global' | 'webpage' | 'rendered') || 'global';
+      (feed.article_view_mode as 'global' | 'webpage' | 'rendered' | 'external') || 'global';
 
     // Initialize auto expand content mode
     autoExpandContent.value =
