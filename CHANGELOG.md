@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Refactored
 
 - Refactored settings page and i18n system for better maintainability and extensibility.
+- Upgraded wails version and corresponding dependency of Golang versions.
 
 ### Added
 

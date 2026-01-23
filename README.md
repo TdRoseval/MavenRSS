@@ -5,7 +5,7 @@
 
   [![Version](https://img.shields.io/badge/version-1.3.17-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
-   [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
+   [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
   [![Vue.js](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js)](https://vuejs.org/)
 
@@ -63,7 +63,7 @@ Download the latest installer for your platform from the [Releases](https://gith
 
 Before you begin, ensure you have the following installed:
 
-- [Go](https://go.dev/) (1.24 or higher)
+- [Go](https://go.dev/) (1.25 or higher)
 - [Node.js](https://nodejs.org/) (20 LTS or higher with npm)
 - [Wails v3](https://v3alpha.wails.io/getting-started/installation/) CLI
 

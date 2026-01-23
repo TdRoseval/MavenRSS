@@ -5,7 +5,7 @@
 
   [![Version](https://img.shields.io/badge/version-1.3.17-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
-  [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
+  [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
   [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
   [![Vue.js](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js)](https://vuejs.org/)
 
@@ -63,7 +63,7 @@
 
 在开始之前，请确保已安装以下环境：
 
-- [Go](https://go.dev/) (1.24 或更高版本)
+- [Go](https://go.dev/) (1.25 或更高版本)
 - [Node.js](https://nodejs.org/) (20 LTS 或更高版本，带 npm)
 - [Wails v3](https://v3alpha.wails.io/getting-started/installation/) CLI
 
