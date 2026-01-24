@@ -459,6 +459,19 @@ async function refreshArticles(): Promise<void> {
 }
 
 async function markAllAsRead(): Promise<void> {
+  // Show confirmation dialog
+  const confirmed = await window.showConfirm({
+    title: t('article.action.markAllReadConfirmTitle'),
+    message: t('article.action.markAllReadConfirmMessage'),
+    confirmText: t('common.confirm'),
+    cancelText: t('common.cancel'),
+    isDanger: false,
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
   // If filters are active, mark only filtered articles as read
   if (activeFilters.value.length > 0) {
     try {

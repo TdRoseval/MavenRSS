@@ -5,6 +5,12 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Marking a lot of articles as read at once now shows a confirmation dialog to prevent accidental actions. (#560)
+
 ## [1.3.17] - 2026-01-24
 
 **Known Issues**: [wailsapp/wails/issues/4900](https://github.com/wailsapp/wails/issues/4900) reported that the UI on Windows may display unexpected borders due to a bug in Microsoft WebView2. This issue can only be resolved by Microsoft in future system updates.

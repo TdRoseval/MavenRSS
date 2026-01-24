@@ -16,6 +16,14 @@ const en: TranslationMessages = {
       markAllAsReadFeed: 'Mark All as Read',
       markAllRead: 'Mark All as Read',
       markAllReadShortcut: 'Mark All as Read',
+      markAllReadConfirmMessage: 'Are you sure you want to mark all articles as read?',
+      markAllReadConfirmTitle: 'Mark All as Read',
+      markAboveReadConfirmMessage:
+        'Are you sure you want to mark all articles above this one as read?',
+      markAboveReadConfirmTitle: 'Mark Above as Read',
+      markBelowReadConfirmMessage:
+        'Are you sure you want to mark all articles below this one as read?',
+      markBelowReadConfirmTitle: 'Mark Below as Read',
       markAsRead: 'Mark as Read',
       markAsUnread: 'Mark as Unread',
       markBelowAsRead: 'Mark Below as Read',
