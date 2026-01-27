@@ -30,6 +30,7 @@ import (
 	customcss "MrRSS/internal/handlers/custom_css"
 	discovery "MrRSS/internal/handlers/discovery"
 	feedhandlers "MrRSS/internal/handlers/feed"
+	filter_category "MrRSS/internal/handlers/filter_category"
 	freshrssHandler "MrRSS/internal/handlers/freshrss"
 	media "MrRSS/internal/handlers/media"
 	networkhandlers "MrRSS/internal/handlers/network"
@@ -40,6 +41,7 @@ import (
 	settings "MrRSS/internal/handlers/settings"
 	stathandlers "MrRSS/internal/handlers/statistics"
 	summary "MrRSS/internal/handlers/summary"
+	taghandlers "MrRSS/internal/handlers/tags"
 	translationhandlers "MrRSS/internal/handlers/translation"
 	update "MrRSS/internal/handlers/update"
 	window "MrRSS/internal/handlers/window"
@@ -193,6 +195,21 @@ func main() {
 	apiMux.HandleFunc("/api/feeds/discover-all/clear", func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearBatchDiscovery(h, w, r) })
 	apiMux.HandleFunc("/api/feeds/reorder", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleReorderFeed(h, w, r) })
 	apiMux.HandleFunc("/api/feeds/test-imap", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleTestIMAPConnection(h, w, r) })
+	// Tag routes
+	apiMux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTags(h, w, r) })
+	apiMux.HandleFunc("/api/tags/update", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagUpdate(h, w, r) })
+	apiMux.HandleFunc("/api/tags/delete", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagDelete(h, w, r) })
+	apiMux.HandleFunc("/api/tags/reorder", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagReorder(h, w, r) })
+	// Saved filters routes
+	apiMux.HandleFunc("/api/saved-filters", func(w http.ResponseWriter, r *http.Request) {
+		filter_category.HandleSavedFilters(h, w, r)
+	})
+	apiMux.HandleFunc("/api/saved-filters/reorder", func(w http.ResponseWriter, r *http.Request) {
+		filter_category.HandleReorderSavedFilters(h, w, r)
+	})
+	apiMux.HandleFunc("/api/saved-filters/filter", func(w http.ResponseWriter, r *http.Request) {
+		filter_category.HandleSavedFilter(h, w, r)
+	})
 	apiMux.HandleFunc("/api/articles", func(w http.ResponseWriter, r *http.Request) { article.HandleArticles(h, w, r) })
 	apiMux.HandleFunc("/api/articles/images", func(w http.ResponseWriter, r *http.Request) { article.HandleImageGalleryArticles(h, w, r) })
 	apiMux.HandleFunc("/api/articles/filter", func(w http.ResponseWriter, r *http.Request) { article.HandleFilteredArticles(h, w, r) })

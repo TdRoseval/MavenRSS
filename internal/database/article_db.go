@@ -641,11 +641,12 @@ func (db *DB) MarkArticlesRelativeToPublishedTime(referencePublishedAt time.Time
 
 	var operator string
 
-	if direction == "above" {
+	switch direction {
+	case "above":
 		operator = ">"
-	} else if direction == "below" {
+	case "below":
 		operator = "<"
-	} else {
+	default:
 		return 0, fmt.Errorf("invalid direction: %s", direction)
 	}
 

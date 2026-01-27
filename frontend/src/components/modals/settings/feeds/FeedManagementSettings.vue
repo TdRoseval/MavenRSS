@@ -16,6 +16,7 @@ import {
   PhImage,
   PhMagnifyingGlass,
   PhX,
+  PhTag,
 } from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
 import { formatRelativeTime } from '@/utils/date';
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   'batch-delete': [ids: number[]];
   'batch-move': [ids: number[]];
   'select-feed': [feedId: number];
+  'manage-tags': [];
 }>();
 
 const selectedFeeds: Ref<number[]> = ref([]);
@@ -207,33 +209,46 @@ async function handleFeedClick(feed: Feed, event: Event) {
   store.setFeed(feed.id);
   emit('select-feed', feed.id);
 }
+
+function handleManageTags() {
+  emit('manage-tags');
+}
 </script>
 
 <template>
   <SettingGroup :icon="PhRss" :title="t('modal.feed.manageFeeds')">
-    <div class="flex flex-wrap gap-1.5 sm:gap-2 mb-2">
+    <div class="flex flex-wrap justify-between gap-1.5 sm:gap-2 mb-2">
+      <div class="flex flex-wrap gap-1.5 sm:gap-2">
+        <ButtonControl
+          :label="t('setting.feed.addFeed')"
+          :icon="PhPlus"
+          type="secondary"
+          class="py-1.5 px-2.5 sm:px-3"
+          @click="handleAddFeed"
+        />
+        <ButtonControl
+          :label="t('common.action.deleteSelected')"
+          :icon="PhTrash"
+          :disabled="selectedFeeds.length === 0"
+          type="danger"
+          class="py-1.5 px-2.5 sm:px-3"
+          @click="handleBatchDelete"
+        />
+        <ButtonControl
+          :label="t('common.action.moveSelected')"
+          :icon="PhFolder"
+          :disabled="selectedFeeds.length === 0"
+          type="secondary"
+          class="py-1.5 px-2.5 sm:px-3"
+          @click="handleBatchMove"
+        />
+      </div>
       <ButtonControl
-        :label="t('setting.feed.addFeed')"
-        :icon="PhPlus"
+        :label="t('modal.tag.manageTags')"
+        :icon="PhTag"
         type="secondary"
         class="py-1.5 px-2.5 sm:px-3"
-        @click="handleAddFeed"
-      />
-      <ButtonControl
-        :label="t('common.action.deleteSelected')"
-        :icon="PhTrash"
-        :disabled="selectedFeeds.length === 0"
-        type="danger"
-        class="py-1.5 px-2.5 sm:px-3"
-        @click="handleBatchDelete"
-      />
-      <ButtonControl
-        :label="t('common.action.moveSelected')"
-        :icon="PhFolder"
-        :disabled="selectedFeeds.length === 0"
-        type="secondary"
-        class="py-1.5 px-2.5 sm:px-3"
-        @click="handleBatchMove"
+        @click="handleManageTags"
       />
     </div>
 
@@ -423,7 +438,7 @@ async function handleFeedClick(feed: Feed, event: Event) {
 
           <!-- Title Column -->
           <div class="min-w-0">
-            <div class="font-medium text-xs sm:text-sm flex items-center gap-1 sm:gap-2">
+            <div class="font-medium text-xs sm:text-sm flex items-center gap-1 sm:gap-2 flex-wrap">
               <span class="truncate">{{ feed.title }}</span>
               <!-- Feed Type Indicators -->
               <img
@@ -452,6 +467,18 @@ async function handleFeedClick(feed: Feed, event: Event) {
                 class="text-text-secondary shrink-0"
                 :title="t('setting.reading.hideFromTimeline')"
               />
+              <!-- Tags -->
+              <div v-if="feed.tags && feed.tags.length > 0" class="flex gap-0.5 flex-wrap">
+                <span
+                  v-for="tag in feed.tags"
+                  :key="tag.id"
+                  class="text-[9px] px-1.5 py-0.5 rounded text-white whitespace-nowrap leading-tight"
+                  :style="{ backgroundColor: tag.color }"
+                  :title="tag.name"
+                >
+                  {{ tag.name }}
+                </span>
+              </div>
             </div>
             <!-- Mobile-only URL display -->
             <div class="text-xs text-text-secondary truncate sm:hidden">

@@ -5,6 +5,27 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Refactored
+
+- Refactored all popup windows for better consistency and maintainability.
+
+### Added
+
+- Added support for saving filters. (#223)
+- Supported tagging feeds for better organization. (#545)
+
+### Changed
+
+- Marking a lot of articles as read at once now shows a confirmation dialog to prevent accidental actions. (#560)
+
+### Fixed
+
+- Fixed the issue where default title was not set fetched when not provided. (#566)
+- Fixed multiple minor styling issues. (#569, #584)
+- Fixed the style of image gallery view. (#571, #581)
+
 ## [1.3.17] - 2026-01-24
 
 **Known Issues**: [wailsapp/wails/issues/4900](https://github.com/wailsapp/wails/issues/4900) reported that the UI on Windows may display unexpected borders due to a bug in Microsoft WebView2. This issue can only be resolved by Microsoft in future system updates.

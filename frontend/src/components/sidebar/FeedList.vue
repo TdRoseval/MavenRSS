@@ -5,9 +5,23 @@ import { useI18n } from 'vue-i18n';
 import { useDragDrop } from '@/composables/ui/useDragDrop';
 import { useSidebar } from '@/composables/core/useSidebar';
 import { useSettings } from '@/composables/core/useSettings';
+import { useArticleFilter } from '@/composables/article/useArticleFilter';
+import { useSavedFilters } from '@/composables/article/useSavedFilters';
+import { useContextMenu } from '@/composables/ui/useContextMenu';
 import SidebarCategory from './SidebarCategory.vue';
-import { PhMagnifyingGlass, PhX, PhPencil, PhCheck, PhPushPin } from '@phosphor-icons/vue';
+import SavedFilterItem from './SavedFilterItem.vue';
+import SavedFilterModal from '@/components/modals/filter/SavedFilterModal.vue';
+import ContextMenu from '@/components/common/ContextMenu.vue';
+import {
+  PhMagnifyingGlass,
+  PhX,
+  PhPencil,
+  PhCheck,
+  PhPushPin,
+  PhFloppyDisk,
+} from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
+import type { FilterCondition, SavedFilter } from '@/types/filter';
 
 const props = defineProps<{
   isExpanded?: boolean;
@@ -24,6 +38,92 @@ const emit = defineEmits<{
 const store = useAppStore();
 const { t } = useI18n();
 const { settings, fetchSettings } = useSettings();
+const { closeContextMenu: closeGlobalContextMenu } = useContextMenu();
+
+// Saved filters
+const {
+  savedFilters,
+  fetchSavedFilters,
+  createSavedFilter,
+  updateSavedFilter,
+  deleteSavedFilter,
+  parseConditions,
+} = useSavedFilters();
+
+const { activeFilters, fetchFilteredArticles } = useArticleFilter();
+
+// Safe computed for active filters check
+const hasActiveFilters = computed(() => {
+  return activeFilters.value && activeFilters.value.length > 0;
+});
+
+// Deep compare two arrays of filter conditions
+function conditionsEqual(a: FilterCondition[], b: FilterCondition[]): boolean {
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i++) {
+    const condA = a[i];
+    const condB = b[i];
+
+    // Compare each field
+    if (
+      condA.field !== condB.field ||
+      condA.operator !== condB.operator ||
+      condA.value !== condB.value ||
+      condA.negate !== condB.negate
+    ) {
+      return false;
+    }
+
+    // Compare values array if exists
+    const valuesA = condA.values || [];
+    const valuesB = condB.values || [];
+    if (valuesA.length !== valuesB.length) return false;
+
+    for (let j = 0; j < valuesA.length; j++) {
+      if (valuesA[j] !== valuesB[j]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Safe current filters value for modal
+const currentFiltersValue = computed(() => {
+  return activeFilters.value || [];
+});
+
+// Create a computed Set of active filter IDs for efficient lookup
+const activeFilterIds = computed(() => {
+  if (!activeFilters.value || activeFilters.value.length === 0) {
+    return new Set<number>();
+  }
+  const ids = new Set<number>();
+  for (const filter of safeSavedFilters.value) {
+    const savedConditions = parseConditions(filter.conditions);
+    if (conditionsEqual(savedConditions, activeFilters.value)) {
+      ids.add(filter.id);
+    }
+  }
+  return ids;
+});
+
+const isFilterActive = (filter: SavedFilter) => {
+  return activeFilterIds.value.has(filter.id);
+};
+
+// Safe computed for saved filters
+const safeSavedFilters = computed(() => {
+  return Array.isArray(savedFilters.value) ? savedFilters.value : [];
+});
+
+// Saved filters UI state
+const showSaveFilterModal = ref(false);
+const showEditFilterModal = ref(false);
+const editingFilter = ref<SavedFilter | null>(null);
+const contextMenuFilter = ref<{ x: number; y: number; filter: SavedFilter } | null>(null);
+const draggingFilterId = ref<number | null>(null);
 
 // Compact mode setting
 const compactMode = computed(() => {
@@ -34,12 +134,16 @@ const compactMode = computed(() => {
 onMounted(async () => {
   try {
     await fetchSettings();
+    await fetchSavedFilters();
   } catch (e) {
     console.error('Error loading settings in FeedList:', e);
   }
 
   // Listen for compact mode changes
   window.addEventListener('compact-mode-changed', handleCompactModeChange);
+
+  // Listen for global context menu opening to close saved filter context menu
+  window.addEventListener('open-context-menu', handleGlobalContextMenuOpen);
 });
 
 // Handle compact mode changes
@@ -51,6 +155,7 @@ function handleCompactModeChange() {
 
 onUnmounted(() => {
   window.removeEventListener('compact-mode-changed', handleCompactModeChange);
+  window.removeEventListener('open-context-menu', handleGlobalContextMenuOpen);
 });
 
 // Edit mode for drag reordering
@@ -336,6 +441,130 @@ function handleTogglePin() {
     emit('pin');
   }
 }
+
+// Saved filters functions
+async function applySavedFilter(filter: SavedFilter) {
+  // Check if this filter is currently applied
+  const isCurrentlyActive = isFilterActive(filter);
+
+  if (isCurrentlyActive) {
+    // Cancel the filter if clicking the currently applied one
+    activeFilters.value = [];
+    await fetchFilteredArticles([]);
+  } else {
+    // Apply the filter
+    const conditions = parseConditions(filter.conditions);
+    activeFilters.value = conditions;
+    await fetchFilteredArticles(conditions);
+  }
+}
+
+async function handleSaveFilter(name: string, conditions: FilterCondition[]) {
+  try {
+    const result = await createSavedFilter(name, conditions);
+    if (result) {
+      window.showToast(t('sidebar.savedFilters.filterSaved'), 'success');
+      await fetchSavedFilters();
+    }
+  } catch (e) {
+    // Show the error message from server
+    const errorMessage = e instanceof Error ? e.message : t('sidebar.savedFilters.saveFailed');
+    window.showToast(errorMessage, 'error');
+  }
+}
+
+async function handleEditFilter(name: string, conditions: FilterCondition[]) {
+  if (!editingFilter.value) return;
+
+  const success = await updateSavedFilter(editingFilter.value.id, name, conditions);
+  if (success) {
+    window.showToast(t('sidebar.savedFilters.filterUpdated'), 'success');
+    await fetchSavedFilters();
+    closeEditModal();
+  } else {
+    window.showToast(t('sidebar.savedFilters.updateFailed'), 'error');
+  }
+}
+
+async function handleDeleteFilter(filter: SavedFilter) {
+  const confirmed = await window.showConfirm({
+    title: t('sidebar.savedFilters.deleteConfirmTitle'),
+    message: t('sidebar.savedFilters.deleteConfirmMessage', { name: filter.name }),
+    isDanger: true,
+  });
+
+  if (confirmed) {
+    const success = await deleteSavedFilter(filter.id);
+    if (success) {
+      window.showToast(t('sidebar.savedFilters.filterDeleted'), 'success');
+      await fetchSavedFilters();
+    } else {
+      window.showToast(t('sidebar.savedFilters.deleteFailed'), 'error');
+    }
+  }
+  closeContextMenu();
+}
+
+function onFilterContextMenu(event: MouseEvent, filter: SavedFilter) {
+  event.preventDefault();
+  // Close global context menu before opening saved filter context menu
+  closeGlobalContextMenu();
+  contextMenuFilter.value = { x: event.clientX, y: event.clientY, filter };
+}
+
+function closeContextMenu() {
+  contextMenuFilter.value = null;
+}
+
+// Handle global context menu opening - close saved filter context menu
+function handleGlobalContextMenuOpen() {
+  closeContextMenu();
+}
+
+async function handleContextMenuAction(action: string) {
+  if (!contextMenuFilter.value) return;
+
+  const { filter } = contextMenuFilter.value;
+
+  switch (action) {
+    case 'edit':
+      editingFilter.value = filter;
+      showEditFilterModal.value = true;
+      break;
+    case 'delete':
+      await handleDeleteFilter(filter);
+      break;
+  }
+
+  closeContextMenu();
+}
+
+function openSaveModal() {
+  showSaveFilterModal.value = true;
+}
+
+function closeSaveModal() {
+  showSaveFilterModal.value = false;
+}
+
+function openEditModal(filter: SavedFilter) {
+  editingFilter.value = filter;
+  showEditFilterModal.value = true;
+}
+
+function closeEditModal() {
+  showEditFilterModal.value = false;
+  editingFilter.value = null;
+}
+
+// Drag and drop for saved filters
+function handleFilterDragStart(filterId: number) {
+  draggingFilterId.value = filterId;
+}
+
+function handleFilterDragEnd() {
+  draggingFilterId.value = null;
+}
 </script>
 
 <template>
@@ -493,10 +722,106 @@ function handleTogglePin() {
               @drop="() => handleDrop('uncategorized', filteredTree.uncategorized)"
             />
           </div>
+
+          <!-- Saved Filters Section - positioned at bottom, only show when viewing All Articles -->
+          <div
+            v-if="
+              store.currentFilter === 'all' && (hasActiveFilters || safeSavedFilters.length > 0)
+            "
+            class="flex-shrink-0 max-h-[50%] flex flex-col border-t border-border"
+          >
+            <!-- Saved Filters Header -->
+            <div
+              :class="[
+                'flex-shrink-0 transition-colors duration-200 bg-bg-secondary cursor-default flex items-center justify-between',
+                compactMode ? 'px-1.5 sm:px-2 py-1 sm:py-1.5' : 'px-3 py-1.5 sm:px-3 sm:py-2',
+              ]"
+            >
+              <div class="flex items-center gap-1.5 sm:gap-2">
+                <span class="font-semibold text-xs sm:text-sm text-text-secondary">
+                  {{ t('sidebar.savedFilters.title') }}
+                </span>
+              </div>
+
+              <!-- Save Current Filter Button -->
+              <button
+                :class="[
+                  'bg-transparent border-0 cursor-pointer text-text-secondary rounded transition-all duration-200 flex items-center justify-center hover:not(:disabled):bg-bg-tertiary hover:not(:disabled):text-accent disabled:opacity-40 disabled:cursor-not-allowed',
+                  'w-8 h-8',
+                ]"
+                :disabled="!hasActiveFilters"
+                :title="
+                  !hasActiveFilters
+                    ? t('sidebar.savedFilters.conditionsRequired')
+                    : t('sidebar.savedFilters.saveCurrentFilter')
+                "
+                @click="openSaveModal"
+              >
+                <PhFloppyDisk :size="18" />
+              </button>
+            </div>
+
+            <!-- Saved Filters List -->
+            <div
+              :class="[
+                'flex-1 overflow-y-auto min-h-0',
+                compactMode ? 'py-0.5 sm:py-1' : 'pt-1 pb-1 sm:pt-1.5 sm:pb-1.5',
+              ]"
+            >
+              <SavedFilterItem
+                v-for="filter in safeSavedFilters"
+                :key="filter.id"
+                :filter="filter"
+                :is-active="isFilterActive(filter)"
+                :is-dragging="draggingFilterId === filter.id"
+                :is-edit-mode="isEditMode"
+                :compact-mode="compactMode"
+                @click="applySavedFilter(filter)"
+                @contextmenu="onFilterContextMenu($event, filter)"
+                @dragstart="handleFilterDragStart(filter.id)"
+                @dragend="handleFilterDragEnd"
+                @edit="openEditModal"
+                @delete="handleDeleteFilter"
+              />
+            </div>
+          </div>
         </template>
       </div>
     </div>
   </Transition>
+
+  <!-- Context Menu -->
+  <ContextMenu
+    v-if="contextMenuFilter"
+    :items="[
+      { label: t('common.edit'), action: 'edit', icon: 'PhPencil' },
+      { label: t('common.delete'), action: 'delete', icon: 'PhTrash', danger: true },
+    ]"
+    :x="contextMenuFilter.x"
+    :y="contextMenuFilter.y"
+    @close="closeContextMenu"
+    @action="handleContextMenuAction"
+  />
+
+  <!-- Save Filter Modal (Teleported to body) -->
+  <Teleport to="body">
+    <SavedFilterModal
+      :show="showSaveFilterModal"
+      :current-filters="currentFiltersValue"
+      @close="closeSaveModal"
+      @save="handleSaveFilter"
+    />
+  </Teleport>
+
+  <!-- Edit Filter Modal (Teleported to body) -->
+  <Teleport to="body">
+    <SavedFilterModal
+      :show="showEditFilterModal"
+      :edit-filter="editingFilter"
+      @close="closeEditModal"
+      @save="handleEditFilter"
+    />
+  </Teleport>
 </template>
 
 <style scoped>

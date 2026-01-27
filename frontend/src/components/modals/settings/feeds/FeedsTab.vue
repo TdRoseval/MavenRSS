@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import DataManagementSettings from './DataManagementSettings.vue';
 import FeedManagementSettings from './FeedManagementSettings.vue';
 import DiscoverySettings from './DiscoverySettings.vue';
+import TagManagementModal from '../tags/TagManagementModal.vue';
 import type { Feed } from '@/types/models';
 import type { SettingsData } from '@/types/settings';
 import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
@@ -33,6 +34,9 @@ const settingsRef = computed(() => props.settings);
 
 // Use composable for auto-save with reactivity
 useSettingsAutoSave(settingsRef);
+
+// Tag management modal state
+const showTagManagement = ref(false);
 
 // Event handlers that pass through to parent
 function handleImportOPML() {
@@ -74,6 +78,10 @@ function handleBatchMove(ids: number[]) {
 function handleSelectFeed(feedId: number) {
   emit('select-feed', feedId);
 }
+
+function handleManageTags() {
+  showTagManagement.value = true;
+}
 </script>
 
 <template>
@@ -91,8 +99,14 @@ function handleSelectFeed(feedId: number) {
       @batch-delete="handleBatchDelete"
       @batch-move="handleBatchMove"
       @select-feed="handleSelectFeed"
+      @manage-tags="handleManageTags"
     />
 
     <DiscoverySettings @discover-all="handleDiscoverAll" />
   </div>
+
+  <!-- Tag Management Modal (Teleported to body) -->
+  <Teleport to="body">
+    <TagManagementModal v-if="showTagManagement" @close="showTagManagement = false" />
+  </Teleport>
 </template>

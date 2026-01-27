@@ -61,14 +61,12 @@ const {
   cleanup: cleanupTranslation,
 } = useArticleTranslation();
 
-const {
-  activeFilters,
-  filteredArticlesFromServer,
-  isFilterLoading,
-  resetFilterState,
-  fetchFilteredArticles,
-  loadMoreFilteredArticles,
-} = useArticleFilter();
+const { activeFilters, resetFilterState, fetchFilteredArticles, loadMoreFilteredArticles } =
+  useArticleFilter();
+
+// Use store's filtered articles and loading state directly
+const filteredArticlesFromServer = computed(() => store.filteredArticlesFromServer);
+const isFilterLoading = computed(() => store.isFilterLoading);
 
 // Computed filtered articles - optimized to avoid excessive recomputation
 const filteredArticles = computed(() => {
@@ -459,6 +457,19 @@ async function refreshArticles(): Promise<void> {
 }
 
 async function markAllAsRead(): Promise<void> {
+  // Show confirmation dialog
+  const confirmed = await window.showConfirm({
+    title: t('article.action.markAllReadConfirmTitle'),
+    message: t('article.action.markAllReadConfirmMessage'),
+    confirmText: t('common.confirm'),
+    cancelText: t('common.cancel'),
+    isDanger: false,
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
   // If filters are active, mark only filtered articles as read
   if (activeFilters.value.length > 0) {
     try {
@@ -561,7 +572,7 @@ function handleHoverMarkAsRead(articleId: number): void {
             @click="store.toggleShowOnlyUnread()"
           >
             <component
-              :is="store.showOnlyUnread ? PhEye : PhEyeSlash"
+              :is="store.showOnlyUnread ? PhEyeSlash : PhEye"
               :size="18"
               class="sm:w-5 sm:h-5"
             />
