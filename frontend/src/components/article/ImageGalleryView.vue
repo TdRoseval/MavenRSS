@@ -750,12 +750,17 @@ function stopDrag() {
 
 // Handle keyboard shortcuts
 function handleKeyDown(e: KeyboardEvent) {
-  // Only handle keyboard when image viewer is open
+  // Handle Escape key - stop it immediately when image viewer is open
+  if (e.key === 'Escape' && showImageViewer.value) {
+    e.stopImmediatePropagation();
+    closeImageViewer();
+    return;
+  }
+
+  // Only handle other keyboard shortcuts when image viewer is open
   if (!showImageViewer.value) return;
 
-  if (e.key === 'Escape') {
-    closeImageViewer();
-  } else if (e.key === 'ArrowLeft') {
+  if (e.key === 'ArrowLeft') {
     e.preventDefault();
     previousImage();
   } else if (e.key === 'ArrowRight') {
@@ -863,7 +868,8 @@ onMounted(() => {
   if (containerRef.value) {
     containerRef.value.addEventListener('scroll', handleScroll);
   }
-  window.addEventListener('keydown', handleKeyDown);
+  // Use capture phase to handle Escape before other listeners
+  window.addEventListener('keydown', handleKeyDown, { capture: true } as any);
 
   // Set up ResizeObserver to watch for container size changes
   if (containerRef.value) {
@@ -884,7 +890,8 @@ onUnmounted(() => {
     resizeObserver.disconnect();
     resizeObserver = null;
   }
-  window.removeEventListener('keydown', handleKeyDown);
+  // Remove with capture option to match the addEventListener call
+  window.removeEventListener('keydown', handleKeyDown, { capture: true } as any);
 });
 </script>
 

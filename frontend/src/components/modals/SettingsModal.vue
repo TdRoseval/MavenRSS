@@ -33,10 +33,13 @@ import type { ThemePreference } from '@/stores/app';
 import { useSettings } from '@/composables/core/useSettings';
 import { useAppUpdates } from '@/composables/core/useAppUpdates';
 import { useFeedManagement } from '@/composables/feed/useFeedManagement';
-import { useModalClose } from '@/composables/ui/useModalClose';
+import { useModalClose, LARGE_MODAL_Z_INDEX } from '@/composables/ui/useModalClose';
 
 const store = useAppStore();
 const { t } = useI18n();
+
+// Modal close handling - use lower z-index for large modal so nested modals appear on top
+const { zIndex: modalZIndex } = useModalClose(() => emit('close'), LARGE_MODAL_Z_INDEX);
 
 // Use composables
 const { settings, fetchSettings, applySettings } = useSettings();
@@ -67,9 +70,6 @@ const emit = defineEmits<{
 const activeTab: Ref<TabName> = ref('general');
 const showDiscoverAllModal = ref(false);
 
-// Modal close handling
-useModalClose(() => emit('close'));
-
 onMounted(async () => {
   try {
     const data = await fetchSettings();
@@ -86,7 +86,8 @@ function handleDiscoverAll() {
 
 <template>
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    class="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    :style="{ zIndex: modalZIndex }"
     data-modal-open="true"
     data-settings-modal="true"
   >
