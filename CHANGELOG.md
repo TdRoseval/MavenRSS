@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Refactored
+
+- Refactored all popup windows for better consistency and maintainability.
+
 ### Added
 
 - Added support for saving filters. (#223)

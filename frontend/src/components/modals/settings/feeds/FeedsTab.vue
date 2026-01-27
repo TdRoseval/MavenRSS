@@ -103,8 +103,10 @@ function handleManageTags() {
     />
 
     <DiscoverySettings @discover-all="handleDiscoverAll" />
-
-    <!-- Tag Management Modal -->
-    <TagManagementModal v-if="showTagManagement" @close="showTagManagement = false" />
   </div>
+
+  <!-- Tag Management Modal (Teleported to body) -->
+  <Teleport to="body">
+    <TagManagementModal v-if="showTagManagement" @close="showTagManagement = false" />
+  </Teleport>
 </template>

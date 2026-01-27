@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n';
 import { useAppStore } from '@/stores/app';
 import type { Tag } from '@/types/models';
 import { PhPlus, PhPencil, PhTrash } from '@phosphor-icons/vue';
+import BaseModal from '@/components/common/BaseModal.vue';
+import ModalFooter from '@/components/common/ModalFooter.vue';
 import TagFormModal from './TagFormModal.vue';
 
 const { t } = useI18n();
@@ -113,111 +115,96 @@ function closeForm() {
   showAddForm.value = false;
   editingTag.value = null;
 }
+
+function close() {
+  emit('close');
+}
 </script>
 
 <template>
-  <Teleport to="body">
-    <!-- Tag Management Modal -->
-    <div
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4 animate-fade-in"
-      @click.self="emit('close')"
-    >
-      <div
-        class="bg-bg-primary rounded-none sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
-        @click.stop
-      >
-        <!-- Header -->
-        <div class="p-3 sm:p-5 border-b border-border flex justify-between items-center shrink-0">
-          <h3 class="text-base sm:text-lg font-semibold m-0">{{ t('modal.tag.manageTags') }}</h3>
-          <button
-            class="text-text-secondary hover:text-text-primary transition-colors text-2xl"
-            @click="emit('close')"
+  <!-- Tag Management Modal -->
+  <BaseModal :title="t('modal.tag.manageTags')" size="2xl" :z-index="100" @close="close">
+    <!-- Content -->
+    <div class="p-4 sm:p-6">
+      <!-- Tag List -->
+      <div v-if="tags.length > 0">
+        <!-- Tags displayed in a flex wrap layout -->
+        <div class="flex flex-wrap gap-2">
+          <div
+            v-for="tag in tags"
+            :key="tag.id"
+            class="inline-flex items-center rounded-l rounded-r border border-border hover:border-accent/50 transition-all overflow-hidden"
           >
-            &times;
-          </button>
-        </div>
+            <!-- Left part: Tag name and count with colored background -->
+            <div
+              class="flex items-center gap-1.5 px-2.5 py-1.5"
+              :style="{ backgroundColor: tag.color }"
+            >
+              <!-- Tag name -->
+              <span class="text-sm font-medium text-white">{{ tag.name }}</span>
 
-        <!-- Content -->
-        <div class="flex-1 overflow-y-auto p-4 sm:p-6">
-          <!-- Tag List -->
-          <div v-if="tags.length > 0">
-            <!-- Tags displayed in a flex wrap layout -->
-            <div class="flex flex-wrap gap-2">
-              <div
-                v-for="tag in tags"
-                :key="tag.id"
-                class="inline-flex items-center rounded-l rounded-r border border-border hover:border-accent/50 transition-all overflow-hidden"
+              <!-- Feed count badge -->
+              <span class="feed-count-badge">{{ getFeedCount(tag) }}</span>
+            </div>
+
+            <!-- Right part: Action buttons -->
+            <div
+              class="flex items-center justify-center px-2 h-full bg-bg-secondary gap-2 border-l border-border self-stretch"
+            >
+              <!-- Edit button -->
+              <button
+                class="text-text-secondary hover:text-accent transition-colors"
+                @click="handleEditTag(tag)"
               >
-                <!-- Left part: Tag name and count with colored background -->
-                <div
-                  class="flex items-center gap-1.5 px-2.5 py-1.5"
-                  :style="{ backgroundColor: tag.color }"
-                >
-                  <!-- Tag name -->
-                  <span class="text-sm font-medium text-white">{{ tag.name }}</span>
+                <PhPencil :size="18" />
+              </button>
 
-                  <!-- Feed count badge -->
-                  <span class="feed-count-badge">{{ getFeedCount(tag) }}</span>
-                </div>
-
-                <!-- Right part: Action buttons -->
-                <div
-                  class="flex items-center px-2 py-1.5 bg-bg-secondary gap-1 border-l border-border"
-                >
-                  <!-- Edit button -->
-                  <button
-                    class="text-text-secondary hover:text-accent transition-colors"
-                    @click="handleEditTag(tag)"
-                  >
-                    <PhPencil :size="16" />
-                  </button>
-
-                  <!-- Delete button -->
-                  <button
-                    class="text-text-secondary hover:text-red-500 transition-colors"
-                    @click="handleDeleteTag(tag)"
-                  >
-                    <PhTrash :size="16" />
-                  </button>
-                </div>
-              </div>
+              <!-- Delete button -->
+              <button
+                class="text-text-secondary hover:text-red-500 transition-colors"
+                @click="handleDeleteTag(tag)"
+              >
+                <PhTrash :size="18" />
+              </button>
             </div>
           </div>
-
-          <!-- Empty state -->
-          <div v-else class="text-center py-12 text-text-secondary">
-            <div class="text-4xl mb-4">🏷️</div>
-            <p>{{ t('modal.tag.noTags') }}</p>
-            <button
-              class="mt-4 px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 transition-colors"
-              @click="openAddForm"
-            >
-              <PhPlus :size="20" class="inline mr-1" />
-              {{ t('modal.tag.createTag') }}
-            </button>
-          </div>
         </div>
+      </div>
 
-        <!-- Bottom Action Bar -->
-        <div
-          class="p-3 sm:p-5 border-t border-border bg-bg-secondary text-right shrink-0 rounded-none sm:rounded-b-2xl"
+      <!-- Empty state -->
+      <div v-else class="text-center py-12 text-text-secondary">
+        <div class="text-4xl mb-4">🏷️</div>
+        <p>{{ t('modal.tag.noTags') }}</p>
+        <button
+          class="mt-4 px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 transition-colors"
+          @click="openAddForm"
         >
-          <button class="btn-primary text-sm sm:text-base" @click="openAddForm">
-            <PhPlus :size="20" class="inline mr-1" />
-            {{ t('modal.tag.addNew') }}
-          </button>
-        </div>
-
-        <!-- Tag Form Modal -->
-        <TagFormModal
-          v-if="showAddForm"
-          :editing-tag="editingTag"
-          @close="closeForm"
-          @save="handleSaveTag"
-        />
+          <PhPlus :size="20" class="inline mr-1" />
+          {{ t('modal.tag.createTag') }}
+        </button>
       </div>
     </div>
-  </Teleport>
+
+    <!-- Footer -->
+    <template #footer>
+      <ModalFooter
+        align="right"
+        :primary-button="{
+          label: t('modal.tag.addNew'),
+          onClick: openAddForm,
+        }"
+        @primary-click="openAddForm"
+      />
+    </template>
+
+    <!-- Tag Form Modal (Nested) -->
+    <TagFormModal
+      v-if="showAddForm"
+      :editing-tag="editingTag"
+      @close="closeForm"
+      @save="handleSaveTag"
+    />
+  </BaseModal>
 </template>
 
 <style scoped>
@@ -236,20 +223,5 @@ function closeForm() {
 .dark-mode .feed-count-badge {
   background-color: rgba(0, 0, 0, 0.25) !important;
   color: #ffffff !important;
-}
-
-.animate-fade-in {
-  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes modalFadeIn {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
 }
 </style>

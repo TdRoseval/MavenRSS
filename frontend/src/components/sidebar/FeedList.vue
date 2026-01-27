@@ -803,21 +803,25 @@ function handleFilterDragEnd() {
     @action="handleContextMenuAction"
   />
 
-  <!-- Save Filter Modal -->
-  <SavedFilterModal
-    :show="showSaveFilterModal"
-    :current-filters="currentFiltersValue"
-    @close="closeSaveModal"
-    @save="handleSaveFilter"
-  />
+  <!-- Save Filter Modal (Teleported to body) -->
+  <Teleport to="body">
+    <SavedFilterModal
+      :show="showSaveFilterModal"
+      :current-filters="currentFiltersValue"
+      @close="closeSaveModal"
+      @save="handleSaveFilter"
+    />
+  </Teleport>
 
-  <!-- Edit Filter Modal -->
-  <SavedFilterModal
-    :show="showEditFilterModal"
-    :edit-filter="editingFilter"
-    @close="closeEditModal"
-    @save="handleEditFilter"
-  />
+  <!-- Edit Filter Modal (Teleported to body) -->
+  <Teleport to="body">
+    <SavedFilterModal
+      :show="showEditFilterModal"
+      :edit-filter="editingFilter"
+      @close="closeEditModal"
+      @save="handleEditFilter"
+    />
+  </Teleport>
 </template>
 
 <style scoped>
