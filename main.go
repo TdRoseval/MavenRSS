@@ -45,6 +45,7 @@ import (
 	translationhandlers "MrRSS/internal/handlers/translation"
 	update "MrRSS/internal/handlers/update"
 	window "MrRSS/internal/handlers/window"
+	"MrRSS/internal/monitor"
 	"MrRSS/internal/network"
 	"MrRSS/internal/translation"
 	"MrRSS/internal/utils"
@@ -720,6 +721,13 @@ func main() {
 		time.Sleep(5 * time.Second)
 		log.Println("Starting background scheduler...")
 		h.StartBackgroundScheduler(bgCtx)
+	}()
+
+	// Report app startup to analytics (non-blocking)
+	go func() {
+		time.Sleep(2 * time.Second) // Small delay to ensure app starts smoothly
+		monitorClient := monitor.NewMonitorClient("https://cf-monitor-api.ch3nyang.workers.dev", "mrrss")
+		_ = monitorClient.ReportAppStart(context.Background())
 	}()
 
 	log.Println("Window initialized, running app...")
