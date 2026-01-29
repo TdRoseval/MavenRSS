@@ -10,6 +10,7 @@ export interface SettingsData {
   ai_custom_headers: string;
   ai_endpoint: string;
   ai_model: string;
+  ai_search_enabled: boolean;
   ai_summary_prompt: string;
   ai_translation_prompt: string;
   ai_usage_limit: string;

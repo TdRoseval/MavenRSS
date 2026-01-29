@@ -249,6 +249,13 @@
       "encrypted": false,
       "frontend_key": "aiChatEnabled"
     },
+    "ai_search_enabled": {
+      "type": "bool",
+      "default": false,
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiSearchEnabled"
+    },
     "summary_enabled": {
       "type": "bool",
       "default": true,

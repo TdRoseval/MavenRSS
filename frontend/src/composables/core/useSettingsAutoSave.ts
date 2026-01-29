@@ -221,6 +221,10 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           length: settingsRef.value.summary_length,
         };
       }
+
+      // Notify all components that settings have been updated
+      // This ensures components like ArticleList can re-fetch settings
+      window.dispatchEvent(new CustomEvent('settings-updated'));
     } catch (e) {
       console.error('Error auto-saving settings:', e);
     }

@@ -813,3 +813,111 @@ func (db *DB) GetArticleIDByUniqueID(title string, feedID int64, publishedAt tim
 	}
 	return id, nil
 }
+
+// SearchArticlesWithAI executes a search query with an AI-generated WHERE clause.
+// The whereClause should be pre-validated to prevent SQL injection.
+func (db *DB) SearchArticlesWithAI(whereClause string, limit int) ([]models.Article, error) {
+	db.WaitForReady()
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	// Build the complete query with the AI-generated WHERE clause
+	query := fmt.Sprintf(`
+		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url,
+			   a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later,
+			   a.translated_title, a.summary, a.freshrss_item_id, f.title, a.author
+		FROM articles a
+		JOIN feeds f ON a.feed_id = f.id
+		WHERE %s
+		ORDER BY a.published_at DESC
+		LIMIT %d
+	`, whereClause, limit)
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("query execution failed: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []models.Article
+	for rows.Next() {
+		var a models.Article
+		var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, author sql.NullString
+		var publishedAt sql.NullTime
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &a.FeedTitle, &author); err != nil {
+			log.Println("Error scanning article in AI search:", err)
+			continue
+		}
+		a.ImageURL = imageURL.String
+		a.AudioURL = audioURL.String
+		a.VideoURL = videoURL.String
+		if publishedAt.Valid {
+			a.PublishedAt = publishedAt.Time
+		} else {
+			a.PublishedAt = time.Time{}
+		}
+		a.TranslatedTitle = translatedTitle.String
+		a.Summary = summary.String
+		a.FreshRSSItemID = freshrssItemID.String
+		a.Author = author.String
+		articles = append(articles, a)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration failed: %w", err)
+	}
+
+	return articles, nil
+}
+
+// SearchArticlesWithSQL executes a complete SQL query for AI search with content and relevance scoring.
+// The query should include all necessary SELECT fields and be pre-validated.
+func (db *DB) SearchArticlesWithSQL(query string) ([]models.Article, error) {
+	db.WaitForReady()
+
+	if query == "" {
+		return nil, fmt.Errorf("empty query")
+	}
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("query execution failed: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []models.Article
+	for rows.Next() {
+		var a models.Article
+		var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, author sql.NullString
+		var publishedAt sql.NullTime
+		var relevanceScore float64
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &a.FeedTitle, &author, &relevanceScore); err != nil {
+			log.Println("Error scanning article in AI search with SQL:", err)
+			continue
+		}
+		a.ImageURL = imageURL.String
+		a.AudioURL = audioURL.String
+		a.VideoURL = videoURL.String
+		if publishedAt.Valid {
+			a.PublishedAt = publishedAt.Time
+		} else {
+			a.PublishedAt = time.Time{}
+		}
+		a.TranslatedTitle = translatedTitle.String
+		a.Summary = summary.String
+		a.FreshRSSItemID = freshrssItemID.String
+		a.Author = author.String
+		articles = append(articles, a)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration failed: %w", err)
+	}
+
+	return articles, nil
+}

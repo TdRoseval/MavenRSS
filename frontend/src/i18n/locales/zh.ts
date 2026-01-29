@@ -122,6 +122,16 @@ const zh: TranslationMessages = {
       youtubeVideo: 'YouTube 视频',
     },
   },
+  aiSearch: {
+    button: 'AI 搜索',
+    buttonTitle: '使用 AI 通过自然语言搜索文章',
+    clearResults: '清除',
+    foundResults: '找到 {count} 篇文章',
+    noResults: '没有找到符合搜索条件的文章',
+    placeholder: '描述你想要查找的内容...',
+    searchFailed: 'AI 搜索失败，请检查 AI 设置。',
+    showingResults: '正在显示 AI 搜索结果',
+  },
   common: {
     cancel: '取消',
     confirm: '确认',
@@ -507,6 +517,8 @@ const zh: TranslationMessages = {
       aiCustomHeadersRemove: '删除',
       aiCustomHeadersValue: '请求头内容',
       aiEndpoint: 'API 端点',
+      aiSearchEnabled: 'AI 搜索',
+      aiSearchEnabledDesc: '使用 AI 智能扩展关键词搜索文章',
       aiEndpointDesc: '完整的 API 端点 URL，包括路径',
       aiEndpointPlaceholder: 'https://api.openai.com/v1/chat/completions',
       aiFeatures: 'AI 功能',
@@ -531,6 +543,7 @@ const zh: TranslationMessages = {
       clearAllChatsSuccess: '对话记录已清空',
       configValid: '配置有效',
       connectionSuccess: '连接状态',
+      isBeta: '该功能仍处于测试阶段，可能存在问题或不稳定，请谨慎使用。',
       isDanger:
         '使用 AI 服务可能会产生费用，部分功能可能消耗 Token 较多，请确保您了解相关费用结构并实时监控使用情况。',
       lastTest: '上次测试',

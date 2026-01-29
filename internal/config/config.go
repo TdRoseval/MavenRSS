@@ -23,6 +23,7 @@ type Defaults struct {
 	AICustomHeaders               string `json:"ai_custom_headers"`
 	AIEndpoint                    string `json:"ai_endpoint"`
 	AIModel                       string `json:"ai_model"`
+	AISearchEnabled               bool   `json:"ai_search_enabled"`
 	AISummaryPrompt               string `json:"ai_summary_prompt"`
 	AITranslationPrompt           string `json:"ai_translation_prompt"`
 	AIUsageLimit                  string `json:"ai_usage_limit"`
@@ -138,6 +139,8 @@ func GetString(key string) string {
 		return defaults.AIEndpoint
 	case "ai_model":
 		return defaults.AIModel
+	case "ai_search_enabled":
+		return strconv.FormatBool(defaults.AISearchEnabled)
 	case "ai_summary_prompt":
 		return defaults.AISummaryPrompt
 	case "ai_translation_prompt":

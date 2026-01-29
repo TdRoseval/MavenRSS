@@ -125,6 +125,16 @@ const en: TranslationMessages = {
       youtubeVideo: 'YouTube Video',
     },
   },
+  aiSearch: {
+    button: 'AI Search',
+    buttonTitle: 'Use AI to search articles with natural language',
+    clearResults: 'Clear',
+    foundResults: 'Found {count} articles',
+    noResults: 'No articles found matching your search',
+    placeholder: 'Describe what you want to find...',
+    searchFailed: 'AI search failed. Please check your AI settings.',
+    showingResults: 'Showing AI search results',
+  },
   common: {
     cancel: 'Cancel',
     confirm: 'Confirm',
@@ -513,6 +523,8 @@ const en: TranslationMessages = {
       aiCustomHeadersRemove: 'Remove',
       aiCustomHeadersValue: 'Header Value',
       aiEndpoint: 'API Endpoint',
+      aiSearchEnabled: 'AI Search',
+      aiSearchEnabledDesc: 'Use AI to intelligently search articles with keyword expansion',
       aiEndpointDesc: 'Full API endpoint URL including path',
       aiEndpointPlaceholder: 'https://api.openai.com/v1/chat/completions',
       aiFeatures: 'AI Features',
@@ -538,6 +550,8 @@ const en: TranslationMessages = {
       clearAllChatsSuccess: 'Chat history cleared successfully',
       configValid: 'Config Valid',
       connectionSuccess: 'Connection',
+      isBeta:
+        'This feature is still in beta and may be unstable or have issues. Please use with caution.',
       isDanger:
         'Using AI services may incur costs, and some features may consume a significant number of tokens. Please ensure you understand the associated cost structure and monitor the usage accordingly.',
       lastTest: 'Last Test',

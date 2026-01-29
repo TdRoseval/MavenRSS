@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/vue';
 import ArticleFilterModal from '../modals/filter/ArticleFilterModal.vue';
 import ArticleItem from './ArticleItem.vue';
+import AISearchBar from './AISearchBar.vue';
 import { useArticleTranslation } from '@/composables/article/useArticleTranslation';
 import { useArticleFilter } from '@/composables/article/useArticleFilter';
 import { useArticleActions } from '@/composables/article/useArticleActions';
@@ -64,12 +65,24 @@ const {
 const { activeFilters, resetFilterState, fetchFilteredArticles, loadMoreFilteredArticles } =
   useArticleFilter();
 
+// AI Search state
+const aiSearchResults = ref<Article[]>([]);
+const isAISearchActive = ref(false);
+
+// AI Search enabled from settings
+const isAISearchEnabled = computed(() => settings.value.ai_search_enabled);
+
 // Use store's filtered articles and loading state directly
 const filteredArticlesFromServer = computed(() => store.filteredArticlesFromServer);
 const isFilterLoading = computed(() => store.isFilterLoading);
 
 // Computed filtered articles - optimized to avoid excessive recomputation
 const filteredArticles = computed(() => {
+  // If AI search is active, use AI search results
+  if (isAISearchActive.value && aiSearchResults.value.length > 0) {
+    return aiSearchResults.value;
+  }
+
   let articles = activeFilters.value.length > 0 ? filteredArticlesFromServer.value : store.articles;
 
   // Only apply filter if showOnlyUnread is enabled
@@ -85,6 +98,17 @@ const filteredArticles = computed(() => {
 
   return articles;
 });
+
+// AI Search handlers
+function handleAISearchResults(articles: Article[]) {
+  aiSearchResults.value = articles;
+  isAISearchActive.value = true;
+}
+
+function handleAISearchClear() {
+  aiSearchResults.value = [];
+  isAISearchActive.value = false;
+}
 
 const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, async () => {
   await store.fetchUnreadCounts();
@@ -731,12 +755,29 @@ function handleHoverMarkAsRead(articleId: number): void {
       </div>
     </div>
 
+    <!-- AI Search Bar -->
+    <AISearchBar
+      v-if="isAISearchEnabled"
+      @search="handleAISearchResults"
+      @clear="handleAISearchClear"
+    />
+
     <div ref="listRef" class="flex-1 overflow-y-scroll article-list-scroll" @scroll="handleScroll">
       <div
-        v-if="filteredArticles.length === 0 && !store.isLoading && !isFilterLoading"
+        v-if="
+          filteredArticles.length === 0 && !store.isLoading && !isFilterLoading && !isAISearchActive
+        "
         class="p-4 sm:p-5 text-center text-text-secondary text-sm sm:text-base"
       >
         {{ t('article.content.noArticles') }}
+      </div>
+
+      <!-- AI Search no results message -->
+      <div
+        v-if="isAISearchActive && filteredArticles.length === 0 && !store.isLoading"
+        class="p-4 sm:p-5 text-center text-text-secondary text-sm sm:text-base"
+      >
+        {{ t('aiSearch.noResults') }}
       </div>
 
       <!-- Article list with content-visibility for performance -->

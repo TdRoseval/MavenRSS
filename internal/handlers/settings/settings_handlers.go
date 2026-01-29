@@ -52,6 +52,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		aiCustomHeaders := safeGetSetting(h, "ai_custom_headers")
 		aiEndpoint := safeGetSetting(h, "ai_endpoint")
 		aiModel := safeGetSetting(h, "ai_model")
+		aiSearchEnabled := safeGetSetting(h, "ai_search_enabled")
 		aiSummaryPrompt := safeGetSetting(h, "ai_summary_prompt")
 		aiTranslationPrompt := safeGetSetting(h, "ai_translation_prompt")
 		aiUsageLimit := safeGetSetting(h, "ai_usage_limit")
@@ -145,6 +146,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"ai_custom_headers":                aiCustomHeaders,
 			"ai_endpoint":                      aiEndpoint,
 			"ai_model":                         aiModel,
+			"ai_search_enabled":                aiSearchEnabled,
 			"ai_summary_prompt":                aiSummaryPrompt,
 			"ai_translation_prompt":            aiTranslationPrompt,
 			"ai_usage_limit":                   aiUsageLimit,
@@ -240,6 +242,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			AICustomHeaders               string `json:"ai_custom_headers"`
 			AIEndpoint                    string `json:"ai_endpoint"`
 			AIModel                       string `json:"ai_model"`
+			AISearchEnabled               string `json:"ai_search_enabled"`
 			AISummaryPrompt               string `json:"ai_summary_prompt"`
 			AITranslationPrompt           string `json:"ai_translation_prompt"`
 			AIUsageLimit                  string `json:"ai_usage_limit"`
@@ -352,6 +355,10 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 		if req.AIModel != "" {
 			h.DB.SetSetting("ai_model", req.AIModel)
+		}
+
+		if req.AISearchEnabled != "" {
+			h.DB.SetSetting("ai_search_enabled", req.AISearchEnabled)
 		}
 
 		if req.AISummaryPrompt != "" {
@@ -719,6 +726,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		aiCustomHeaders := safeGetSetting(h, "ai_custom_headers")
 		aiEndpoint := safeGetSetting(h, "ai_endpoint")
 		aiModel := safeGetSetting(h, "ai_model")
+		aiSearchEnabled := safeGetSetting(h, "ai_search_enabled")
 		aiSummaryPrompt := safeGetSetting(h, "ai_summary_prompt")
 		aiTranslationPrompt := safeGetSetting(h, "ai_translation_prompt")
 		aiUsageLimit := safeGetSetting(h, "ai_usage_limit")
@@ -812,6 +820,7 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			"ai_custom_headers":                aiCustomHeaders,
 			"ai_endpoint":                      aiEndpoint,
 			"ai_model":                         aiModel,
+			"ai_search_enabled":                aiSearchEnabled,
 			"ai_summary_prompt":                aiSummaryPrompt,
 			"ai_translation_prompt":            aiTranslationPrompt,
 			"ai_usage_limit":                   aiUsageLimit,
