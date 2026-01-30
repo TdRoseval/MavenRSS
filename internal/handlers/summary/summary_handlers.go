@@ -8,7 +8,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/summary"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/textutil"
 )
 
 // HandleSummarizeArticle generates a summary for an article's content.
@@ -59,7 +59,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		article, err := h.DB.GetArticleByID(req.ArticleID)
 		if err == nil && article.Summary != "" && article.Summary != "<no content>" {
 			// Article has a cached summary, convert it to HTML and return
-			htmlSummary := utils.ConvertMarkdownToHTML(article.Summary)
+			htmlSummary := textutil.ConvertMarkdownToHTML(article.Summary)
 			response.JSON(w, map[string]interface{}{
 				"summary":        article.Summary,
 				"html":           htmlSummary,
@@ -165,7 +165,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	// Convert markdown summary to HTML (for all summaries, not just AI)
-	htmlSummary := utils.ConvertMarkdownToHTML(result.Summary)
+	htmlSummary := textutil.ConvertMarkdownToHTML(result.Summary)
 
 	resp := map[string]interface{}{
 		"summary":        result.Summary,

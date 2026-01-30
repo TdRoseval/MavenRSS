@@ -13,7 +13,7 @@ import (
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 )
 
 const customCSSFileName = "custom_article.css"
@@ -80,7 +80,7 @@ func HandleUploadCSS(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get data directory
-	dataDir, err := utils.GetDataDir()
+	dataDir, err := fileutil.GetDataDir()
 	if err != nil {
 		log.Printf("Error getting data directory: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -146,7 +146,7 @@ func HandleGetCSS(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get data directory
-	dataDir, err := utils.GetDataDir()
+	dataDir, err := fileutil.GetDataDir()
 	if err != nil {
 		log.Printf("Error getting data directory: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -195,7 +195,7 @@ func HandleDeleteCSS(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get data directory
-	dataDir, err := utils.GetDataDir()
+	dataDir, err := fileutil.GetDataDir()
 	if err != nil {
 		log.Printf("Error getting data directory: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)

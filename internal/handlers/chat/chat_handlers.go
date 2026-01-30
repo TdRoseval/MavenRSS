@@ -12,7 +12,7 @@ import (
 	"MrRSS/internal/ai"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/textutil"
 )
 
 // ChatMessage represents a message in the chat conversation
@@ -141,7 +141,7 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	respContent = ai.RemoveThinkingTags(respContent)
 
 	// Convert markdown response to HTML
-	htmlResponse := utils.ConvertMarkdownToHTML(respContent)
+	htmlResponse := textutil.ConvertMarkdownToHTML(respContent)
 
 	// Log thinking if present (for debugging)
 	if thinking != "" {

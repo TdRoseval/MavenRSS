@@ -19,7 +19,8 @@ import (
 	"MrRSS/internal/cache"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 )
 
 // validateMediaURL validates that the URL is HTTP/HTTPS and properly formatted
@@ -217,7 +218,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Try cache first if enabled
 	if mediaCacheEnabled == "true" {
 		// Get media cache directory
-		cacheDir, err := utils.GetMediaCacheDir()
+		cacheDir, err := fileutil.GetMediaCacheDir()
 		if err != nil {
 			log.Printf("Failed to get media cache directory: %v", err)
 			// Continue to fallback if enabled
@@ -274,7 +275,7 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 	}
 
 	// Get media cache directory
-	cacheDir, err := utils.GetMediaCacheDir()
+	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
 		log.Printf("Failed to get media cache directory: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -383,7 +384,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		proxyUsername, _ := h.DB.GetSetting("proxy_username")
 		proxyPassword, _ := h.DB.GetSetting("proxy_password")
 
-		proxyURLStr := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURLStr := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		if proxyURLStr != "" {
 			proxyURL, err := url.Parse(proxyURLStr)
 			if err != nil {
@@ -1603,7 +1604,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		proxyUsername, _ := h.DB.GetSetting("proxy_username")
 		proxyPassword, _ := h.DB.GetSetting("proxy_password")
 
-		proxyURLStr := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURLStr := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		if proxyURLStr != "" {
 			proxyURL, err := url.Parse(proxyURLStr)
 			if err != nil {
@@ -1817,7 +1818,7 @@ func proxyMediaDirectly(mediaURL, referer string, w http.ResponseWriter) error {
 func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Get media cache directory
-	cacheDir, err := utils.GetMediaCacheDir()
+	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
 		log.Printf("Failed to get media cache directory: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)

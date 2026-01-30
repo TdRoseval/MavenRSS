@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 	"MrRSS/internal/version"
 )
 
@@ -114,7 +114,7 @@ func getOrCreateDeviceID() string {
 
 // getDeviceIDPath returns the path to store the device ID
 func getDeviceIDPath() (string, error) {
-	configDir, err := utils.GetDataDir()
+	configDir, err := fileutil.GetDataDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get config path: %w", err)
 	}

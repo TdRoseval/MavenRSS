@@ -1385,21 +1385,156 @@ main
 | 阶段 | 状态 | 开始日期 | 完成日期 | 备注 |
 |------|------|----------|----------|------|
 | 1 | ✅ 已完成 | 2026-01-30 | 2026-01-30 | 路由统一完成 |
-| 2 | ✅ 已完成 | 2026-01-30 | 2026-01-30 | Handler架构重构完成 |
-| 3 | ✅ 已完成 | 2026-01-30 | 2026-01-30 | 数据库层重构完成 |
-| 4 | ✅ 已完成 | 2026-01-30 | 2026-01-30 | 统一错误处理完成 |
-| 5 | ✅ 已完成 | 2026-01-30 | 2026-01-30 | 翻译模块重构完成 |
-| 6 | ⬜ 未开始 | - | - | - |
-| 7 | ⬜ 未开始 | - | - | - |
-| 8 | ⬜ 未开始 | - | - | - |
-| 9 | ⬜ 未开始 | - | - | - |
-| 10 | ⬜ 未开始 | - | - | - |
+| 2 | ✅ 已完成 | 2026-01-30 | 2026-01-30 | Handler架构重构完成（混合模式） |
+| 3 | ✅ 已完成 | 2026-01-30 | 2026-01-31 | article_db.go 拆分为6个模块 |
+| 4 | ✅ 已完成 | 2026-01-30 | 2026-01-31 | response.go + errors.go 已完善 |
+| 5 | ✅ 已完成 | 2026-01-30 | 2026-01-31 | Provider接口 + Factory模式完成 |
+| 6 | ✅ 已完成 | 2026-01-31 | 2026-01-31 | Feed Source Interface (internal/feed/source/) |
+| 7 | ✅ 已完成 | 2026-01-31 | 2026-01-31 | AI模块整合 (aiusage合并到ai/usage.go) |
+| 8 | ✅ 已完成 | 2026-01-31 | 2026-01-31 | Utils子包重组 (textutil/httputil/urlutil/fileutil) |
+| 9 | ✅ 已完成 | 2026-01-31 | 2026-01-31 | 中间件系统 (internal/middleware/) |
+| 10 | ✅ 已完成 | 2026-01-31 | 2026-01-31 | Settings优化：基于定义的方式，947行→225行(减少76%) |
+| 11 | ✅ 已完成 | 2026-01-31 | 2026-01-31 | Utils目录重组完成：删除deprecated wrappers，更新所有调用者 |
 
 **状态说明**：
 - ⬜ 未开始
 - 🔄 进行中
 - ✅ 已完成
 - ⏸️ 暂停
+
+---
+
+### 已完成的重构内容
+
+#### Phase 6: Feed Source Interface
+新增 `internal/feed/source/` 目录：
+- `interface.go` - 统一的 Source 接口定义
+- `rss.go` - RSS/Atom 标准源实现
+- `script.go` - 自定义脚本源实现
+- `xpath.go` - XPath 抓取源实现
+- `email.go` - IMAP 邮件源实现
+- `manager.go` - 源管理器，支持自动检测
+
+#### Phase 7: AI Package Merge
+- 合并 `internal/aiusage/` 到 `internal/ai/usage.go`
+- 删除 `internal/aiusage/` 目录
+- 更新所有相关导入 (registry.go, translation_service.go 等)
+
+#### Phase 8: Utils Reorganization
+新增子包（保持向后兼容）：
+- `internal/utils/textutil/` - CleanHTML, RenderMarkdown, SanitizeHTML
+- `internal/utils/httputil/` - HTTP客户端，代理，Cloudflare绕过
+- `internal/utils/urlutil/` - URL规范化，文章去重
+- `internal/utils/fileutil/` - 路径工具，平台检测
+
+原始文件已简化为代理到新子包：
+- `utils/html.go` → `textutil.CleanHTML`
+- `utils/markdown.go` → `textutil.*`
+- `utils/proxy.go` → `httputil.*`
+- `utils/url.go` → `urlutil.*`
+- `utils/paths.go` → `fileutil.*`
+- `utils/scripts.go` → `fileutil.*`
+
+#### Phase 9: Middleware System
+新增 `internal/middleware/` 包：
+- `middleware.go` - Middleware类型定义，Chain和Apply函数
+- `logger.go` - 请求日志中间件
+- `cors.go` - CORS跨域中间件
+- `recovery.go` - Panic恢复中间件
+- `ratelimit.go` - 令牌桶限流中间件
+
+增强 `internal/routes/routes.go`：
+- `Config` - 路由配置结构
+- `DefaultConfig()` - 默认配置
+- `ServerConfig()` - 服务器模式配置
+- `WrapWithMiddleware()` - 中间件包装器
+
+---
+
+### 阶段11：文件夹结构整理（新增）
+
+**目标**：整理文件数量较多的目录，按功能分类到子文件夹
+
+**当前问题**：
+
+| 目录 | 文件数 | 问题 |
+|------|--------|------|
+| `internal/database/` | 22 | 文件过多，需要分类 |
+| `internal/translation/` | 13 | Provider文件可分组 |
+| `internal/feed/` | 12 | 已有source/但未使用 |
+| `internal/handlers/article/` | 8 | 可接受但需检查 |
+| `internal/utils/` | 8 | 功能混杂 |
+
+**解决方案**：
+
+#### 11.1 database/ 目录重组
+
+```plaintext
+internal/database/
+├── core/               # 核心基础设施
+│   ├── db.go           # 数据库连接
+│   ├── init.go         # 初始化
+│   ├── schema.go       # Schema定义
+│   └── migrations.go   # 迁移脚本
+├── article/            # 文章相关
+│   ├── crud.go         # article_db.go
+│   ├── status.go       # article_status_db.go
+│   ├── counts.go       # article_counts_db.go
+│   ├── batch.go        # article_batch_db.go
+│   ├── search.go       # article_search_db.go
+│   ├── update.go       # article_update_db.go
+│   ├── content.go      # article_content_db.go
+│   └── sync.go         # article_db_sync.go
+├── feed/               # 订阅源相关
+│   └── feed.go         # feed_db.go
+├── settings/           # 设置相关
+│   └── settings.go     # settings_db.go
+├── sync/               # 同步相关
+│   ├── freshrss_sync.go
+│   └── freshrss_cleanup.go
+└── cache/              # 缓存相关
+    └── cache.go        # cache_db.go
+```
+
+#### 11.2 translation/ 目录重组
+
+```plaintext
+internal/translation/
+├── provider/           # Provider实现
+│   ├── google.go
+│   ├── deepl.go
+│   ├── baidu.go
+│   ├── ai.go
+│   └── custom.go
+├── interface.go        # 接口定义
+├── factory.go          # Factory模式
+├── translator.go       # 主入口
+├── cached.go           # 缓存装饰器
+├── dynamic.go          # 动态选择
+├── language_detector.go
+└── markdown_preserver.go
+```
+
+#### 11.3 utils/ 目录重组
+
+```plaintext
+internal/utils/
+├── file/               # 文件操作
+│   ├── paths.go
+│   └── scripts.go
+├── http/               # HTTP工具
+│   ├── proxy.go
+│   └── url.go
+├── text/               # 文本处理
+│   ├── html.go
+│   └── markdown.go
+├── logger.go           # 日志
+└── startup.go          # 启动相关
+```
+
+**风险评估**：⭐⭐⭐ 中等风险 - 需要更新所有import路径
+
+**预计工时**：2-3天
 
 ---
 

@@ -3,18 +3,18 @@ package service
 import (
 	"context"
 
-	"MrRSS/internal/aiusage"
+	"MrRSS/internal/ai"
 	"MrRSS/internal/translation"
 )
 
 // translationService implements TranslationService interface
 type translationService struct {
 	translator translation.Translator
-	aiTracker  *aiusage.Tracker
+	aiTracker  *ai.UsageTracker
 }
 
 // NewTranslationService creates a new translation service
-func NewTranslationService(translator translation.Translator, aiTracker *aiusage.Tracker) TranslationService {
+func NewTranslationService(translator translation.Translator, aiTracker *ai.UsageTracker) TranslationService {
 	return &translationService{
 		translator: translator,
 		aiTracker:  aiTracker,

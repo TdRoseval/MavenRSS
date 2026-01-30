@@ -11,7 +11,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/network"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/httputil"
 )
 
 // HandleDetectNetwork detects network speed and updates settings
@@ -40,9 +40,9 @@ func HandleDetectNetwork(h *core.Handler, w http.ResponseWriter, r *http.Request
 	// Create HTTP client with proxy if enabled
 	var httpClient *http.Client
 	if proxyEnabled == "true" {
-		proxyURL := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURL := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		if proxyURL != "" {
-			client, err := utils.CreateHTTPClient(proxyURL, 10*time.Second)
+			client, err := httputil.CreateHTTPClient(proxyURL, 10*time.Second)
 			if err != nil {
 				log.Printf("Failed to create HTTP client with proxy: %v", err)
 				// Fall back to default client

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"MrRSS/internal/aiusage"
+	"MrRSS/internal/ai"
 	"MrRSS/internal/cache"
 	"MrRSS/internal/database"
 	"MrRSS/internal/discovery"
@@ -20,7 +20,8 @@ import (
 	svc "MrRSS/internal/service"
 	"MrRSS/internal/statistics"
 	"MrRSS/internal/translation"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/textutil"
+	"MrRSS/internal/utils/urlutil"
 
 	"codeberg.org/readeck/go-readability/v2"
 
@@ -54,7 +55,7 @@ type Handler struct {
 	DB               *database.DB
 	Fetcher          *feed.Fetcher
 	Translator       translation.Translator
-	AITracker        *aiusage.Tracker
+	AITracker        *ai.UsageTracker
 	DiscoveryService *discovery.Service
 	App              interface{}         // Wails app instance for browser integration (interface{} to avoid import in server mode)
 	ContentCache     *cache.ContentCache // Cache for article content
@@ -162,7 +163,7 @@ func (h *Handler) GetArticleContent(articleID int64) (string, bool, error) {
 	matchingItem := h.findMatchingFeedItem(article, parsedFeed.Items)
 	if matchingItem != nil {
 		content := feed.ExtractContent(matchingItem)
-		cleanContent := utils.CleanHTML(content)
+		cleanContent := textutil.CleanHTML(content)
 
 		// Cache the content in both memory and database
 		h.ContentCache.Set(articleID, cleanContent)
@@ -198,14 +199,14 @@ func (h *Handler) FetchFullArticleContent(url string) (string, error) {
 func (h *Handler) findMatchingFeedItem(article *models.Article, items []*gofeed.Item) *gofeed.Item {
 	// First pass: exact URL match
 	for _, item := range items {
-		if utils.URLsMatch(item.Link, article.URL) {
+		if urlutil.URLsMatch(item.Link, article.URL) {
 			return item
 		}
 	}
 
 	// Second pass: URL + title match (for script-based feeds that might have URL variations)
 	for _, item := range items {
-		if utils.URLsMatch(item.Link, article.URL) && h.titlesMatch(item.Title, article.Title) {
+		if urlutil.URLsMatch(item.Link, article.URL) && h.titlesMatch(item.Title, article.Title) {
 			return item
 		}
 	}

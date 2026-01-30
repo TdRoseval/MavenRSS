@@ -14,7 +14,7 @@ import (
 
 	handlers "MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 )
 
 // HandleOpenURL opens a URL in the user's default web browser using Wails v3 Browser API.
@@ -34,14 +34,15 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 	var targetURL string
 
 	// Handle both GET and POST requests
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		// Get URL from query parameter (for GET requests from proxied links)
 		targetURL = r.URL.Query().Get("url")
 		if targetURL == "" {
 			response.Error(w, fmt.Errorf("URL is required"), http.StatusBadRequest)
 			return
 		}
-	} else if r.Method == http.MethodPost {
+	case http.MethodPost:
 		// Parse request body (for POST requests)
 		var req struct {
 			URL string `json:"url"`
@@ -52,7 +53,7 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		targetURL = req.URL
-	} else {
+	default:
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
@@ -81,7 +82,7 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 	// Check if app instance is available
 	if h.App == nil {
 		// specific check for server mode to redirect to client side
-		if utils.IsServerMode() {
+		if fileutil.IsServerMode() {
 			log.Printf("Server mode detected, instructing client to open URL: %s", targetURL)
 			response.JSON(w, map[string]string{"redirect": targetURL})
 			return

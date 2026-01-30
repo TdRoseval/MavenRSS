@@ -24,7 +24,7 @@ import (
 	"MrRSS/internal/network"
 	"MrRSS/internal/routes"
 	"MrRSS/internal/translation"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -79,7 +79,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		utils.SetServerMode(v)
+		fileutil.SetServerMode(v)
 		return nil
 	})
 	host := flag.String("host", "0.0.0.0", "Host to listen on in server mode")
@@ -87,10 +87,10 @@ func main() {
 	flag.Parse()
 
 	// Force server mode for this build
-	utils.SetServerMode(true)
+	fileutil.SetServerMode(true)
 
 	// Get proper paths for data files
-	logPath, err := utils.GetLogPath()
+	logPath, err := fileutil.GetLogPath()
 	if err != nil {
 		log.Printf("Warning: Could not get log path: %v. Using current directory.", err)
 		logPath = "debug.log"
@@ -109,7 +109,7 @@ func main() {
 	log.Println("Starting application in server mode...")
 
 	// Log portable mode status
-	if utils.IsPortableMode() {
+	if fileutil.IsPortableMode() {
 		log.Println("Running in PORTABLE mode")
 	} else {
 		log.Println("Running in NORMAL mode")
@@ -118,7 +118,7 @@ func main() {
 	log.Printf("Log file: %s", logPath)
 
 	// Get database path
-	dbPath, err := utils.GetDBPath()
+	dbPath, err := fileutil.GetDBPath()
 	if err != nil {
 		log.Printf("Error getting database path: %v", err)
 		log.Fatal(err)

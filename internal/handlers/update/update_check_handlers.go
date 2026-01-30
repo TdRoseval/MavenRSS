@@ -13,7 +13,8 @@ import (
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 	"MrRSS/internal/version"
 )
 
@@ -98,10 +99,10 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		proxyPort, _ := h.DB.GetSetting("proxy_port")
 		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
 		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
-		proxyURL = utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
-	client, err := utils.CreateHTTPClient(proxyURL, 30*time.Second)
+	client, err := httputil.CreateHTTPClient(proxyURL, 30*time.Second)
 	if err != nil {
 		log.Printf("Error creating HTTP client: %v", err)
 		response.JSON(w, map[string]interface{}{
@@ -199,7 +200,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	var assetSize int64
 	platform := runtime.GOOS
 	arch := runtime.GOARCH
-	isPortable := utils.IsPortableMode()
+	isPortable := fileutil.IsPortableMode()
 
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)

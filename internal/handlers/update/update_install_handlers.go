@@ -18,7 +18,7 @@ import (
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 )
 
 // HandleInstallUpdate triggers the installation of the downloaded update.
@@ -74,7 +74,7 @@ func HandleInstallUpdate(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	platform := runtime.GOOS
-	isPortable := utils.IsPortableMode()
+	isPortable := fileutil.IsPortableMode()
 	log.Printf("Installing update from: %s on platform: %s, portable: %v", cleanPath, platform, isPortable)
 
 	// Helper function to schedule cleanup of installer file

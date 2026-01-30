@@ -5,11 +5,11 @@ import (
 	"log"
 	"net/http"
 
-	"MrRSS/internal/aiusage"
+	"MrRSS/internal/ai"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/translation"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/textutil"
 )
 
 // TestCustomTranslationRequest represents a request to test custom translation configuration
@@ -236,7 +236,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 
 	if !shouldTranslate {
 		// Text is already in target language, return original text
-		htmlText := utils.ConvertMarkdownToHTML(req.Text)
+		htmlText := textutil.ConvertMarkdownToHTML(req.Text)
 		response.JSON(w, map[string]interface{}{
 			"translated_text": req.Text,
 			"html":            htmlText,
@@ -294,7 +294,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	// Step 3: Post-translation check - if translation equals original, it was already in target language
 	// This provides a safety net in case pre-translation detection was inaccurate
 	if translatedText == req.Text {
-		htmlText := utils.ConvertMarkdownToHTML(translatedText)
+		htmlText := textutil.ConvertMarkdownToHTML(translatedText)
 		response.JSON(w, map[string]string{
 			"translated_text": translatedText,
 			"html":            htmlText,
@@ -304,7 +304,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	// Convert translated markdown to HTML
-	htmlText := utils.ConvertMarkdownToHTML(translatedText)
+	htmlText := textutil.ConvertMarkdownToHTML(translatedText)
 
 	response.JSON(w, map[string]string{
 		"translated_text": translatedText,
@@ -363,7 +363,7 @@ func HandleGetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 // EstimateTokens exposes the token estimation function for testing/display.
 func EstimateTokens(text string) int64 {
-	return aiusage.EstimateTokens(text)
+	return ai.EstimateTokens(text)
 }
 
 // HandleTestCustomTranslation tests a custom translation configuration.

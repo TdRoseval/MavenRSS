@@ -3,7 +3,7 @@ package service
 import (
 	"sync"
 
-	"MrRSS/internal/aiusage"
+	"MrRSS/internal/ai"
 	"MrRSS/internal/cache"
 	"MrRSS/internal/database"
 	"MrRSS/internal/discovery"
@@ -21,7 +21,7 @@ type Registry struct {
 	// Core dependencies
 	fetcher          *feed.Fetcher
 	translator       translation.Translator
-	aiTracker        *aiusage.Tracker
+	aiTracker        *ai.UsageTracker
 	discoveryService *discovery.Service
 	contentCache     *cache.ContentCache
 	stats            *statistics.Service
@@ -48,7 +48,7 @@ func NewRegistry(db *database.DB, fetcher *feed.Fetcher, translator translation.
 func (r *Registry) initialize() {
 	// Initialize core dependencies if not already set
 	if r.aiTracker == nil {
-		r.aiTracker = aiusage.NewTracker(r.db)
+		r.aiTracker = ai.NewUsageTracker(r.db)
 	}
 	if r.discoveryService == nil {
 		r.discoveryService = discovery.NewService()
@@ -128,7 +128,7 @@ func (r *Registry) Stats() *statistics.Service {
 }
 
 // AITracker returns the AI usage tracker (for backward compatibility)
-func (r *Registry) AITracker() *aiusage.Tracker {
+func (r *Registry) AITracker() *ai.UsageTracker {
 	r.once.Do(r.initialize)
 	return r.aiTracker
 }

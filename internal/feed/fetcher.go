@@ -1,11 +1,6 @@
 package feed
 
 import (
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/rules"
-	"MrRSS/internal/utils"
 	"context"
 	"fmt"
 	"log"
@@ -13,6 +8,14 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"MrRSS/internal/database"
+	"MrRSS/internal/models"
+	"MrRSS/internal/rsshub"
+	"MrRSS/internal/rules"
+	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 
 	"github.com/mmcdole/gofeed"
 )
@@ -38,7 +41,7 @@ type Fetcher struct {
 
 func NewFetcher(db *database.DB) *Fetcher {
 	// Initialize script executor with scripts directory
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	var executor *ScriptExecutor
 	if err == nil {
 		executor = NewScriptExecutor(scriptsDir)
@@ -46,7 +49,7 @@ func NewFetcher(db *database.DB) *Fetcher {
 
 	// Create HTTP client for feed parsing with proper User-Agent
 	// This is critical because many RSS servers block requests without a proper User-Agent
-	httpClient, err := utils.CreateHTTPClientWithUserAgent(
+	httpClient, err := httputil.CreateHTTPClientWithUserAgent(
 		"",
 		30*time.Second,
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -130,7 +133,7 @@ func (f *Fetcher) transformRSSHubURL(url string) (string, error) {
 
 // getDataDir returns the data directory path
 func (f *Fetcher) getDataDir() (string, error) {
-	return utils.GetDataDir()
+	return fileutil.GetDataDir()
 }
 
 // getConcurrencyLimit returns the maximum number of concurrent feed refreshes
@@ -183,7 +186,7 @@ func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 
 	// Create HTTP client with browser-like headers to bypass Cloudflare and anti-bot protections
 	// This is critical for RSSHub feeds and other services with anti-bot protection
-	return utils.CreateHTTPClientWithUserAgent(
+	return httputil.CreateHTTPClientWithUserAgent(
 		proxyURL,
 		30*time.Second,
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

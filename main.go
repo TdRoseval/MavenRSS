@@ -27,7 +27,8 @@ import (
 	"MrRSS/internal/network"
 	"MrRSS/internal/routes"
 	"MrRSS/internal/translation"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 )
 
 var debugLogging = os.Getenv("MRRSS_DEBUG") != ""
@@ -97,7 +98,7 @@ func APIMiddleware(combinedHandler *CombinedHandler) application.Middleware {
 
 func main() {
 	// Get proper paths for data files
-	logPath, err := utils.GetLogPath()
+	logPath, err := fileutil.GetLogPath()
 	if err != nil {
 		log.Printf("Warning: Could not get log path: %v. Using current directory.", err)
 		logPath = "debug.log"
@@ -118,7 +119,7 @@ func main() {
 	log.Println("Starting application...")
 
 	// Log portable mode status
-	if utils.IsPortableMode() {
+	if fileutil.IsPortableMode() {
 		log.Println("Running in PORTABLE mode")
 	} else {
 		log.Println("Running in NORMAL mode")
@@ -127,7 +128,7 @@ func main() {
 	log.Printf("Log file: %s", logPath)
 
 	// Get database path
-	dbPath, err := utils.GetDBPath()
+	dbPath, err := fileutil.GetDBPath()
 	if err != nil {
 		log.Printf("Error getting database path: %v", err)
 		log.Fatal(err)
@@ -537,9 +538,9 @@ func main() {
 		// Create HTTP client with proxy if enabled
 		var httpClient *http.Client
 		if proxyEnabled == "true" {
-			proxyURL := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			proxyURL := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 			if proxyURL != "" {
-				client, err := utils.CreateHTTPClient(proxyURL, 10*time.Second)
+				client, err := httputil.CreateHTTPClient(proxyURL, 10*time.Second)
 				if err != nil {
 					log.Printf("Failed to create HTTP client with proxy: %v", err)
 					// Fall back to default client

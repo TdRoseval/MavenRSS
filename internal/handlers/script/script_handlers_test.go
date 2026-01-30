@@ -11,7 +11,7 @@ import (
 
 	"MrRSS/internal/database"
 	corepkg "MrRSS/internal/handlers/core"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 )
 
 func setupHandler(t *testing.T) *corepkg.Handler {
@@ -51,7 +51,7 @@ func TestHandleListScripts_IncludesCreatedScript(t *testing.T) {
 	h := setupHandler(t)
 
 	// Ensure scripts dir exists
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
 		t.Fatalf("GetScriptsDir failed: %v", err)
 	}

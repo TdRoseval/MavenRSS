@@ -10,7 +10,7 @@ import (
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
 )
 
 // HandleGetScriptsDir returns the path to the scripts directory
@@ -28,7 +28,7 @@ func HandleGetScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -55,7 +55,7 @@ func HandleOpenScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -101,7 +101,7 @@ func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
