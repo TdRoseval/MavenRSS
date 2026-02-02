@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PhLink, PhKey, PhTestTube, PhInfo } from '@phosphor-icons/vue';
+import { PhLink, PhKey, PhTestTube } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
 import { useAppStore } from '@/stores/app';
 import {
   NestedSettingsContainer,
   SubSettingItem,
   InputControl,
-  InfoBox,
+  TipBox,
 } from '@/components/settings';
 
 const { t } = useI18n();
@@ -115,7 +115,7 @@ async function testConnection() {
   </div>
 
   <NestedSettingsContainer v-if="props.settings.rsshub_enabled">
-    <InfoBox :icon="PhInfo" :content="t('setting.rsshub.notSuggestOfficial')" />
+    <TipBox type="tip" :title="t('setting.rsshub.notSuggestOfficial')" />
 
     <!-- Endpoint -->
     <SubSettingItem

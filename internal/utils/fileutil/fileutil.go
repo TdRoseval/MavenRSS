@@ -1,9 +1,12 @@
-package utils
+// Package fileutil provides file system utilities including path management,
+// directory operations, and platform-specific path handling.
+package fileutil
 
 import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -13,18 +16,17 @@ var (
 	isServerMode     bool
 )
 
-// SetServerMode sets the server mode flag
+// SetServerMode sets the server mode flag.
 func SetServerMode(v bool) {
 	isServerMode = v
 }
 
-// IsServerMode returns true if running in server mode
+// IsServerMode returns true if running in server mode.
 func IsServerMode() bool {
 	return isServerMode
 }
 
-// IsPortableMode checks if the application is running in portable mode
-// Portable mode is enabled if a "portable.txt" file exists in the executable's directory
+// IsPortableMode checks if the application is running in portable mode.
 func IsPortableMode() bool {
 	portableModeOnce.Do(func() {
 		exePath, err := os.Executable()
@@ -42,22 +44,16 @@ func IsPortableMode() bool {
 	return isPortableMode
 }
 
-// GetDataDir returns the platform-specific user data directory for MrRSS
-// In portable mode, returns "data" directory next to the executable
-// In normal mode, returns system-specific user data directory
+// GetDataDir returns the platform-specific user data directory for MrRSS.
 func GetDataDir() (string, error) {
 	var dataDir string
 	var err error
 
-	// Check if server mode is enabled - this takes precedence
 	if IsServerMode() {
-		// In server mode, use ./data directory (relative to working directory)
 		return "./data", nil
 	}
 
-	// Check if portable mode is enabled
 	if IsPortableMode() {
-		// Portable mode: use "data" directory next to executable
 		exePath, err := os.Executable()
 		if err != nil {
 			return "", err
@@ -65,7 +61,6 @@ func GetDataDir() (string, error) {
 		exeDir := filepath.Dir(exePath)
 		dataDir = filepath.Join(exeDir, "data")
 	} else {
-		// Normal mode: use platform-specific user data directory
 		var baseDir string
 
 		switch runtime.GOOS {
@@ -83,7 +78,6 @@ func GetDataDir() (string, error) {
 				baseDir = filepath.Join(baseDir, "Library", "Application Support")
 			}
 		case "linux":
-			// Follow XDG Base Directory specification
 			baseDir = os.Getenv("XDG_DATA_HOME")
 			if baseDir == "" {
 				homeDir := os.Getenv("HOME")
@@ -92,7 +86,6 @@ func GetDataDir() (string, error) {
 				}
 			}
 		default:
-			// Fallback for other platforms
 			baseDir = os.Getenv("HOME")
 			if baseDir != "" {
 				baseDir = filepath.Join(baseDir, ".config")
@@ -100,18 +93,15 @@ func GetDataDir() (string, error) {
 		}
 
 		if baseDir == "" {
-			// Last resort: use current directory
 			baseDir, err = os.Getwd()
 			if err != nil {
 				return "", err
 			}
 		}
 
-		// Create MrRSS subdirectory
 		dataDir = filepath.Join(baseDir, "MrRSS")
 	}
 
-	// Create the data directory if it doesn't exist
 	err = os.MkdirAll(dataDir, 0755)
 	if err != nil {
 		return "", err
@@ -120,7 +110,7 @@ func GetDataDir() (string, error) {
 	return dataDir, nil
 }
 
-// GetDBPath returns the full path to the database file
+// GetDBPath returns the full path to the database file.
 func GetDBPath() (string, error) {
 	dataDir, err := GetDataDir()
 	if err != nil {
@@ -129,15 +119,13 @@ func GetDBPath() (string, error) {
 	return filepath.Join(dataDir, "rss.db"), nil
 }
 
-// GetLogPath returns the full path to the debug log file
-// The log file is placed in a "logs" subdirectory within the data directory
+// GetLogPath returns the full path to the debug log file.
 func GetLogPath() (string, error) {
 	dataDir, err := GetDataDir()
 	if err != nil {
 		return "", err
 	}
 
-	// Create logs directory
 	logsDir := filepath.Join(dataDir, "logs")
 	err = os.MkdirAll(logsDir, 0755)
 	if err != nil {
@@ -147,7 +135,7 @@ func GetLogPath() (string, error) {
 	return filepath.Join(logsDir, "debug.log"), nil
 }
 
-// GetMediaCacheDir returns the full path to the media cache directory
+// GetMediaCacheDir returns the full path to the media cache directory.
 func GetMediaCacheDir() (string, error) {
 	dataDir, err := GetDataDir()
 	if err != nil {
@@ -161,12 +149,55 @@ func GetMediaCacheDir() (string, error) {
 	return cacheDir, nil
 }
 
-// IsWindows returns true if the current platform is Windows
+// GetScriptsDir returns the path to the scripts directory.
+func GetScriptsDir() (string, error) {
+	dataDir, err := GetDataDir()
+	if err != nil {
+		return "", err
+	}
+	scriptsDir := filepath.Join(dataDir, "scripts")
+	err = os.MkdirAll(scriptsDir, 0755)
+	if err != nil {
+		return "", err
+	}
+	return scriptsDir, nil
+}
+
+// ValidateScriptPath validates that a script path is within the scripts directory.
+func ValidateScriptPath(scriptPath string) (string, error) {
+	scriptsDir, err := GetScriptsDir()
+	if err != nil {
+		return "", err
+	}
+
+	absScriptPath := filepath.Join(scriptsDir, scriptPath)
+	absScriptPath = filepath.Clean(absScriptPath)
+
+	cleanScriptsDir := filepath.Clean(scriptsDir) + string(filepath.Separator)
+
+	if !strings.HasPrefix(absScriptPath+string(filepath.Separator), cleanScriptsDir) &&
+		!strings.HasPrefix(absScriptPath, cleanScriptsDir) {
+		return "", os.ErrPermission
+	}
+
+	if _, err := os.Stat(absScriptPath); os.IsNotExist(err) {
+		return "", os.ErrNotExist
+	}
+
+	return absScriptPath, nil
+}
+
+// IsWindows returns true if the current platform is Windows.
 func IsWindows() bool {
 	return runtime.GOOS == "windows"
 }
 
-// IsMacOS returns true if the current platform is MacOS (Darwin)
+// IsMacOS returns true if the current platform is MacOS (Darwin).
 func IsMacOS() bool {
 	return runtime.GOOS == "darwin"
+}
+
+// IsLinux returns true if the current platform is Linux.
+func IsLinux() bool {
+	return runtime.GOOS == "linux"
 }

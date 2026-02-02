@@ -2,8 +2,6 @@ package article
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,6 +9,7 @@ import (
 	"MrRSS/internal/database"
 	"MrRSS/internal/freshrss"
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 )
 
 // HandleGetUnreadCounts returns unread counts for all feeds.
@@ -26,27 +25,23 @@ func HandleGetUnreadCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	// Get total unread count
 	totalCount, err := h.DB.GetTotalUnreadCount()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Get unread counts per feed
 	feedCounts, err := h.DB.GetUnreadCountsForAllFeeds()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	response := map[string]interface{}{
+	resp := map[string]interface{}{
 		"total":       totalCount,
 		"feed_counts": feedCounts,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("[HandleGetUnreadCounts] ERROR encoding response: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-	}
+	response.JSON(w, resp)
 }
 
 // HandleGetFilterCounts returns article counts for different filters (unread, favorites, read_later, images).
@@ -60,7 +55,7 @@ func HandleGetUnreadCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 // @Router       /articles/filter-counts [get]
 func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -68,7 +63,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	unreadCounts, err := h.DB.GetUnreadCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting unread counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -76,7 +71,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	favoriteCounts, err := h.DB.GetFavoriteCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting favorite counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -84,7 +79,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	favoriteUnreadCounts, err := h.DB.GetFavoriteUnreadCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting favorite unread counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -92,7 +87,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	readLaterCounts, err := h.DB.GetReadLaterCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting read_later counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -100,7 +95,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	readLaterUnreadCounts, err := h.DB.GetReadLaterUnreadCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting read_later unread counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -108,7 +103,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	imageCounts, err := h.DB.GetImageModeCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting image counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -116,11 +111,11 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	imageUnreadCounts, err := h.DB.GetImageUnreadCountsForAllFeeds()
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting image unread counts: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	response := map[string]interface{}{
+	resp := map[string]interface{}{
 		"unread":            unreadCounts,
 		"favorites":         favoriteCounts,
 		"favorites_unread":  favoriteUnreadCounts,
@@ -130,11 +125,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		"images_unread":     imageUnreadCounts,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("[HandleGetFilterCounts] ERROR encoding response: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-	}
+	response.JSON(w, resp)
 }
 
 // HandleMarkAllAsRead marks all articles as read.
@@ -160,7 +151,7 @@ func HandleMarkAllAsRead(h *core.Handler, w http.ResponseWriter, r *http.Request
 		// Mark all as read for a specific feed
 		feedID, parseErr := strconv.ParseInt(feedIDStr, 10, 64)
 		if parseErr != nil {
-			http.Error(w, "Invalid feed_id parameter", http.StatusBadRequest)
+			response.Error(w, parseErr, http.StatusBadRequest)
 			return
 		}
 		syncReqs, err = h.DB.MarkAllAsReadForFeedWithSync(feedID)
@@ -173,7 +164,7 @@ func HandleMarkAllAsRead(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -196,13 +187,13 @@ func HandleMarkAllAsRead(h *core.Handler, w http.ResponseWriter, r *http.Request
 // @Router       /articles/clear-read-later [post]
 func HandleClearReadLater(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	err := h.DB.ClearReadLater()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -226,9 +217,7 @@ func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	go h.Fetcher.FetchAll(context.Background())
 
 	// Return success response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "refreshing"})
+	response.JSON(w, map[string]string{"status": "refreshing"})
 }
 
 // HandleCleanupArticles triggers manual cleanup of articles.
@@ -243,7 +232,7 @@ func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /articles/cleanup [post]
 func HandleCleanupArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -252,7 +241,7 @@ func HandleCleanupArticles(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	contentCount, err := h.DB.CleanupAllArticleContents()
 	if err != nil {
 		log.Printf("Error cleaning up article contents: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -260,12 +249,12 @@ func HandleCleanupArticles(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	articleCount, err := h.DB.DeleteAllArticles()
 	if err != nil {
 		log.Printf("Error deleting all articles: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	log.Printf("Manual cleanup: cleared %d article contents and %d articles", contentCount, articleCount)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"deleted":  contentCount + articleCount,
 		"articles": articleCount,
 		"contents": contentCount,
@@ -284,20 +273,19 @@ func HandleCleanupArticles(h *core.Handler, w http.ResponseWriter, r *http.Reque
 // @Router       /articles/cleanup-content [post]
 func HandleCleanupArticleContent(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	count, err := h.DB.CleanupAllArticleContents()
 	if err != nil {
 		log.Printf("Error cleaning up article content cache: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	log.Printf("Cleaned up %d article content entries", count)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"success":         true,
 		"entries_cleaned": count,
 	})
@@ -314,19 +302,18 @@ func HandleCleanupArticleContent(h *core.Handler, w http.ResponseWriter, r *http
 // @Router       /articles/content-cache-info [get]
 func HandleGetArticleContentCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	count, err := h.DB.GetArticleContentCount()
 	if err != nil {
 		log.Printf("Error getting article content cache info: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"cached_articles": count,
 	})
 }
@@ -348,7 +335,7 @@ func HandleGetArticleContentCacheInfo(h *core.Handler, w http.ResponseWriter, r 
 // @Router       /articles/mark-relative [post]
 func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -356,14 +343,14 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || id <= 0 {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Get direction
 	direction := r.URL.Query().Get("direction")
 	if direction != "above" && direction != "below" {
-		http.Error(w, "Invalid direction. Must be 'above' or 'below'", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
@@ -372,7 +359,7 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 	if feedIDStr := r.URL.Query().Get("feed_id"); feedIDStr != "" {
 		feedID, err = strconv.ParseInt(feedIDStr, 10, 64)
 		if err != nil {
-			http.Error(w, "Invalid feed_id parameter", http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 	}
@@ -383,12 +370,12 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 	article, err := h.DB.GetArticleByID(id)
 	if err != nil {
 		log.Printf("[HandleMarkRelativeToArticle] Error getting article: %v", err)
-		http.Error(w, "Article not found", http.StatusNotFound)
+		response.Error(w, err, http.StatusNotFound)
 		return
 	}
 
 	if article == nil {
-		http.Error(w, "Article not found", http.StatusNotFound)
+		response.Error(w, err, http.StatusNotFound)
 		return
 	}
 
@@ -396,7 +383,7 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 	count, syncReqs, err := h.DB.MarkArticlesRelativeToPublishedTimeWithSync(article.PublishedAt, direction, feedID, category)
 	if err != nil {
 		log.Printf("[HandleMarkRelativeToArticle] Error marking articles: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -405,8 +392,7 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 		go performImmediateBulkSync(h, syncReqs)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"success": true,
 		"count":   count,
 	})

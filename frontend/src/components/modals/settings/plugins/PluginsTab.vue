@@ -3,9 +3,9 @@ import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
 import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
 import { useI18n } from 'vue-i18n';
-import { PhInfo } from '@phosphor-icons/vue';
-import { InfoBox } from '@/components/settings';
+import { TipBox } from '@/components/settings';
 import ObsidianSettings from './ObsidianSettings.vue';
+import NotionSettings from './NotionSettings.vue';
 import FreshRSSSettings from './FreshRSSSettings.vue';
 import RSSHubSettings from './RSSHubSettings.vue';
 
@@ -36,9 +36,11 @@ function handleUpdateSettings(updatedSettings: SettingsData) {
 
 <template>
   <div class="space-y-4 sm:space-y-6">
-    <InfoBox :icon="PhInfo" :content="t('common.warning.isInDevelopment')" />
+    <TipBox type="info" :title="t('common.warning.isInDevelopment')" />
 
     <ObsidianSettings :settings="settings" @update:settings="handleUpdateSettings" />
+
+    <NotionSettings :settings="settings" @update:settings="handleUpdateSettings" />
 
     <FreshRSSSettings :settings="settings" @update:settings="handleUpdateSettings" />
 

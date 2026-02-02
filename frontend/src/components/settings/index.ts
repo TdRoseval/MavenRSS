@@ -3,7 +3,7 @@ export { default as SettingItem } from './base/SettingItem.vue';
 export { default as SubSettingItem } from './base/SubSettingItem.vue';
 export { default as SettingGroup } from './base/SettingGroup.vue';
 export { default as NestedSettingsContainer } from './base/NestedSettingsContainer.vue';
-export { default as InfoBox } from './base/InfoBox.vue';
+export { default as TipBox } from './base/TipBox.vue';
 export { default as StatusBox } from './base/StatusBox.vue';
 export { default as StatusBoxGroup } from './base/StatusBoxGroup.vue';
 

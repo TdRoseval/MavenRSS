@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/rsshub"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/urlutil"
 )
 
 // HandleFeeds returns all feeds.
@@ -24,7 +25,7 @@ import (
 func HandleFeeds(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	feeds, err := h.DB.GetFeeds()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -36,7 +37,7 @@ func HandleFeeds(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		feeds[i].EmailPassword = ""
 	}
 
-	json.NewEncoder(w).Encode(feeds)
+	response.JSON(w, feeds)
 }
 
 // HandleAddFeed adds a new feed subscription and immediately fetches its articles.
@@ -87,12 +88,12 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		Tags []int64 `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Normalize the URL to ensure it has a protocol
-	req.URL = utils.NormalizeFeedURL(req.URL)
+	req.URL = urlutil.NormalizeFeedURL(req.URL)
 
 	// Determine the feed URL to check for duplicates
 	feedURL := req.URL
@@ -108,7 +109,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	err := h.DB.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE url = ?", feedURL).Scan(&existingID, &existingIsFreshRSS)
 	if err == nil && !existingIsFreshRSS {
 		// Feed exists and is not a FreshRSS feed - return conflict error
-		http.Error(w, "feed with this URL already exists", http.StatusConflict)
+		response.Error(w, err, http.StatusConflict)
 		return
 	}
 
@@ -128,7 +129,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -137,11 +138,11 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Log the error but don't fail the request - feed was created successfully
 		// The settings can be set later via edit
-		http.Error(w, "feed created but failed to update settings: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	if err := h.DB.UpdateFeed(feed.ID, feed.Title, feed.URL, feed.Category, feed.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, feed.Type, feed.XPathItem, feed.XPathItemTitle, feed.XPathItemContent, feed.XPathItemUri, feed.XPathItemAuthor, feed.XPathItemTimestamp, feed.XPathItemTimeFormat, feed.XPathItemThumbnail, feed.XPathItemCategories, feed.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, feed.EmailAddress, feed.EmailIMAPServer, feed.EmailUsername, feed.EmailPassword, feed.EmailFolder, feed.EmailIMAPPort); err != nil {
-		http.Error(w, "feed created but failed to update settings: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -180,7 +181,7 @@ func HandleDeleteFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
 	if err := h.DB.DeleteFeed(id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -235,19 +236,19 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		Tags []int64 `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Normalize the URL to ensure it has a protocol
-	req.URL = utils.NormalizeFeedURL(req.URL)
+	req.URL = urlutil.NormalizeFeedURL(req.URL)
 
 	// Validate RSSHub URL if provided
 	if req.URL != "" && rsshub.IsRSSHubURL(req.URL) {
 		// Check if RSSHub is enabled
 		enabledStr, _ := h.DB.GetSetting("rsshub_enabled")
 		if enabledStr != "true" {
-			http.Error(w, "RSSHub integration is disabled. Please enable it in settings", http.StatusBadRequest)
+			response.Error(w, nil, http.StatusBadRequest)
 			return
 		}
 
@@ -262,7 +263,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			route := rsshub.ExtractRoute(req.URL)
 			client := rsshub.NewClient(endpoint, apiKey)
 			if err := client.ValidateRoute(route); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				response.Error(w, err, http.StatusBadRequest)
 				return
 			}
 		}
@@ -282,7 +283,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	err := h.DB.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE url = ? AND id != ?", feedURL, req.ID).Scan(&existingID, &existingIsFreshRSS)
 	if err == nil && !existingIsFreshRSS {
 		// Another feed exists with this URL and is not a FreshRSS feed - return conflict error
-		http.Error(w, "feed with this URL already exists", http.StatusConflict)
+		response.Error(w, err, http.StatusConflict)
 		return
 	}
 
@@ -292,7 +293,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		// Get current feed to determine its type
 		currentFeed, err := h.DB.GetFeedByID(req.ID)
 		if err != nil {
-			http.Error(w, "failed to get feed info: "+err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -342,14 +343,14 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.EmailIMAPPort); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Update tags for the feed
 	if req.Tags != nil {
 		if err := h.DB.SetFeedTags(req.ID, req.Tags); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -370,20 +371,20 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /feeds/refresh [post]
 func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid feed ID", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	feed, err := h.DB.GetFeedByID(id)
 	if err != nil {
-		http.Error(w, "Feed not found", http.StatusNotFound)
+		response.Error(w, err, http.StatusNotFound)
 		return
 	}
 
@@ -391,9 +392,7 @@ func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	go h.Fetcher.FetchSingleFeed(context.Background(), *feed, true)
 
 	// Return success response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "refreshing"})
+	response.JSON(w, map[string]string{"status": "refreshing"})
 }
 
 // HandleReorderFeed reorders a feed within or across categories.
@@ -409,7 +408,7 @@ func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 // @Router       /feeds/reorder [post]
 func HandleReorderFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -419,15 +418,14 @@ func HandleReorderFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		Position int    `json:"position"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if err := h.DB.ReorderFeed(req.FeedID, req.Category, req.Position); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	response.JSON(w, map[string]string{"status": "ok"})
 }

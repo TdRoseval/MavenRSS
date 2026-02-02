@@ -1,12 +1,12 @@
 package article
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 )
 
 // HandleArticles returns articles with filtering and pagination.
@@ -64,10 +64,10 @@ func HandleArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	articles, err := h.DB.GetArticles(filter, feedID, category, showHidden, limit, offset)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(articles)
+	response.JSON(w, articles)
 }
 
 // HandleToggleHideArticle toggles the hidden status of an article.
@@ -83,25 +83,24 @@ func HandleArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /articles/toggle-hide [post]
 func HandleToggleHideArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if err := h.DB.ToggleArticleHidden(id); err != nil {
 		log.Printf("Error toggling article hidden status: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	response.JSON(w, map[string]bool{"success": true})
 }
 
 // HandleToggleReadLater toggles the read later status of an article.
@@ -117,25 +116,24 @@ func HandleToggleHideArticle(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Router       /articles/toggle-read-later [post]
 func HandleToggleReadLater(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if err := h.DB.ToggleReadLater(id); err != nil {
 		log.Printf("Error toggling article read later status: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	response.JSON(w, map[string]bool{"success": true})
 }
 
 // HandleImageGalleryArticles returns articles from image mode feeds with pagination.
@@ -191,8 +189,8 @@ func HandleImageGalleryArticles(h *core.Handler, w http.ResponseWriter, r *http.
 
 	articles, err := h.DB.GetImageGalleryArticles(feedID, category, showHidden, limit, offset)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(articles)
+	response.JSON(w, articles)
 }

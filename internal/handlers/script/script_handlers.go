@@ -1,7 +1,6 @@
 package script
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -10,7 +9,8 @@ import (
 	"strings"
 
 	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/fileutil"
 )
 
 // HandleGetScriptsDir returns the path to the scripts directory
@@ -24,17 +24,17 @@ import (
 // @Router       /scripts/dir [get]
 func HandleGetScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	response.JSON(w, map[string]string{
 		"scripts_dir": scriptsDir,
 	})
 }
@@ -51,13 +51,13 @@ func HandleGetScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Request
 // @Router       /scripts/dir/open [post]
 func HandleOpenScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -71,16 +71,16 @@ func HandleOpenScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	case "linux":
 		cmd = exec.Command("xdg-open", scriptsDir)
 	default:
-		http.Error(w, "Unsupported platform", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		http.Error(w, "Failed to open directory: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	response.JSON(w, map[string]string{
 		"status":      "opened",
 		"scripts_dir": scriptsDir,
 	})
@@ -97,13 +97,13 @@ func HandleOpenScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Reques
 // @Router       /scripts/list [get]
 func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
-	scriptsDir, err := utils.GetScriptsDir()
+	scriptsDir, err := fileutil.GetScriptsDir()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -162,7 +162,7 @@ func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	})
 
 	if err != nil {
-		http.Error(w, "Error listing scripts: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -170,7 +170,7 @@ func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		scripts = []map[string]string{}
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"scripts":     scripts,
 		"scripts_dir": scriptsDir,
 	})

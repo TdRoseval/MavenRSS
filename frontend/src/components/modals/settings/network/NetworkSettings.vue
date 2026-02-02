@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhNetwork, PhArrowClockwise } from '@phosphor-icons/vue';
-import { SettingGroup, StatusBoxGroup, InfoBox } from '@/components/settings';
+import { SettingGroup, StatusBoxGroup, TipBox } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { NetworkInfo } from '@/types/settings';
 
@@ -107,7 +107,9 @@ onMounted(() => {
       {{ t('setting.network.networkSettingsDescription') }}
     </div>
 
-    <InfoBox :icon="PhInfo" :content="t('setting.network.tunModeInfo')" />
+    <TipBox type="tip" :title="t('setting.network.tunModeInfoTitle')">
+      {{ t('setting.network.tunModeInfo') }}
+    </TipBox>
 
     <!-- Network Status Display -->
     <StatusBoxGroup

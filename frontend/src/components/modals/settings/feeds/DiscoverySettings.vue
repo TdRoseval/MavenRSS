@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { PhPlay, PhBinoculars, PhInfo } from '@phosphor-icons/vue';
-import { ButtonControl, InfoBox, SettingGroup, SettingItem } from '@/components/settings';
+import { PhPlay, PhBinoculars } from '@phosphor-icons/vue';
+import { ButtonControl, TipBox, SettingGroup, SettingItem } from '@/components/settings';
 
 const { t } = useI18n();
 
@@ -16,7 +16,7 @@ function handleDiscoverAll() {
 
 <template>
   <SettingGroup :icon="PhBinoculars" :title="t('modal.feed.feedDiscovery')">
-    <InfoBox :icon="PhInfo" :content="t('modal.discovery.discoveryLongRunningWarning')" />
+    <TipBox type="info" :title="t('modal.discovery.discoveryLongRunningWarning')" />
 
     <!-- Discover All Feeds -->
     <SettingItem

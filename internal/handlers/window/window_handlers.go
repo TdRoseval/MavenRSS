@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 )
 
 // WindowState represents the saved window state
@@ -27,15 +28,14 @@ type WindowState struct {
 // @Router       /window/state [get]
 func HandleGetWindowState(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	x, err := h.DB.GetSetting("window_x")
 	if err != nil {
 		// Return empty state if not found
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		response.JSON(w, map[string]string{
 			"x":         "",
 			"y":         "",
 			"width":     "",
@@ -49,8 +49,7 @@ func HandleGetWindowState(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	height, _ := h.DB.GetSetting("window_height")
 	maximized, _ := h.DB.GetSetting("window_maximized")
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response.JSON(w, map[string]string{
 		"x":         x,
 		"y":         y,
 		"width":     width,
@@ -72,39 +71,37 @@ func HandleGetWindowState(h *core.Handler, w http.ResponseWriter, r *http.Reques
 // @Router       /window/state [post]
 func HandleSaveWindowState(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var state WindowState
 	if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Convert to strings for database storage and check for errors
 	if err := h.DB.SetSetting("window_x", fmt.Sprintf("%d", state.X)); err != nil {
-		http.Error(w, "Failed to save window state", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	if err := h.DB.SetSetting("window_y", fmt.Sprintf("%d", state.Y)); err != nil {
-		http.Error(w, "Failed to save window state", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	if err := h.DB.SetSetting("window_width", fmt.Sprintf("%d", state.Width)); err != nil {
-		http.Error(w, "Failed to save window state", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	if err := h.DB.SetSetting("window_height", fmt.Sprintf("%d", state.Height)); err != nil {
-		http.Error(w, "Failed to save window state", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	if err := h.DB.SetSetting("window_maximized", fmt.Sprintf("%t", state.Maximized)); err != nil {
-		http.Error(w, "Failed to save window state", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	response.JSON(w, map[string]string{"status": "ok"})
 }

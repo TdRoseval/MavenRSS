@@ -1,5 +1,5 @@
-// Package aiusage provides AI usage tracking and rate limiting functionality.
-package aiusage
+// Package ai provides AI usage tracking and rate limiting functionality.
+package ai
 
 import (
 	"log"
@@ -15,24 +15,24 @@ type SettingsProvider interface {
 	SetSetting(key, value string) error
 }
 
-// Tracker tracks AI usage (tokens) and enforces rate limits.
-type Tracker struct {
+// UsageTracker tracks AI usage (tokens) and enforces rate limits.
+type UsageTracker struct {
 	settings    SettingsProvider
 	mu          sync.RWMutex
 	lastRequest time.Time
 	minInterval time.Duration // Minimum interval between AI requests
 }
 
-// NewTracker creates a new AI usage tracker.
-func NewTracker(settings SettingsProvider) *Tracker {
-	return &Tracker{
+// NewUsageTracker creates a new AI usage tracker.
+func NewUsageTracker(settings SettingsProvider) *UsageTracker {
+	return &UsageTracker{
 		settings:    settings,
 		minInterval: 500 * time.Millisecond, // Default: max 2 requests per second
 	}
 }
 
 // SetMinInterval sets the minimum interval between AI requests.
-func (t *Tracker) SetMinInterval(d time.Duration) {
+func (t *UsageTracker) SetMinInterval(d time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.minInterval = d
@@ -40,7 +40,7 @@ func (t *Tracker) SetMinInterval(d time.Duration) {
 
 // CanMakeRequest checks if a new AI request can be made (rate limiting).
 // Returns true if allowed, false if rate limited.
-func (t *Tracker) CanMakeRequest() bool {
+func (t *UsageTracker) CanMakeRequest() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -53,7 +53,7 @@ func (t *Tracker) CanMakeRequest() bool {
 }
 
 // WaitForRateLimit blocks until a request can be made.
-func (t *Tracker) WaitForRateLimit() {
+func (t *UsageTracker) WaitForRateLimit() {
 	t.mu.Lock()
 	elapsed := time.Since(t.lastRequest)
 	wait := t.minInterval - elapsed
@@ -69,7 +69,7 @@ func (t *Tracker) WaitForRateLimit() {
 }
 
 // GetCurrentUsage returns the current token usage.
-func (t *Tracker) GetCurrentUsage() (int64, error) {
+func (t *UsageTracker) GetCurrentUsage() (int64, error) {
 	usageStr, err := t.settings.GetSetting("ai_usage_tokens")
 	if err != nil {
 		return 0, err
@@ -81,7 +81,7 @@ func (t *Tracker) GetCurrentUsage() (int64, error) {
 }
 
 // GetUsageLimit returns the configured usage limit (0 = unlimited).
-func (t *Tracker) GetUsageLimit() (int64, error) {
+func (t *UsageTracker) GetUsageLimit() (int64, error) {
 	limitStr, err := t.settings.GetSetting("ai_usage_limit")
 	if err != nil {
 		return 0, err
@@ -93,7 +93,7 @@ func (t *Tracker) GetUsageLimit() (int64, error) {
 }
 
 // IsLimitReached checks if the usage limit has been reached.
-func (t *Tracker) IsLimitReached() bool {
+func (t *UsageTracker) IsLimitReached() bool {
 	usage, err := t.GetCurrentUsage()
 	if err != nil {
 		return false
@@ -113,7 +113,7 @@ func (t *Tracker) IsLimitReached() bool {
 }
 
 // AddUsage adds tokens to the usage counter.
-func (t *Tracker) AddUsage(tokens int64) error {
+func (t *UsageTracker) AddUsage(tokens int64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -129,10 +129,34 @@ func (t *Tracker) AddUsage(tokens int64) error {
 }
 
 // ResetUsage resets the usage counter to zero.
-func (t *Tracker) ResetUsage() error {
+func (t *UsageTracker) ResetUsage() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.settings.SetSetting("ai_usage_tokens", "0")
+}
+
+// TrackTranslation tracks token usage for a translation operation.
+func (t *UsageTracker) TrackTranslation(sourceText, translatedText string) {
+	// Estimate tokens for both input and output
+	inputTokens := EstimateTokens(sourceText)
+	outputTokens := EstimateTokens(translatedText)
+
+	totalTokens := inputTokens + outputTokens
+	if err := t.AddUsage(totalTokens); err != nil {
+		log.Printf("Warning: failed to track AI usage: %v", err)
+	}
+}
+
+// TrackSummary tracks token usage for a summarization operation.
+func (t *UsageTracker) TrackSummary(content, summary string) {
+	// Estimate tokens for both input and output
+	inputTokens := EstimateTokens(content)
+	outputTokens := EstimateTokens(summary)
+
+	totalTokens := inputTokens + outputTokens
+	if err := t.AddUsage(totalTokens); err != nil {
+		log.Printf("Warning: failed to track AI usage: %v", err)
+	}
 }
 
 // EstimateTokens estimates the number of tokens in a text.
@@ -247,28 +271,4 @@ func isCJK(r rune) bool {
 		return true
 	}
 	return false
-}
-
-// TrackTranslation tracks token usage for a translation operation.
-func (t *Tracker) TrackTranslation(sourceText, translatedText string) {
-	// Estimate tokens for both input and output
-	inputTokens := EstimateTokens(sourceText)
-	outputTokens := EstimateTokens(translatedText)
-
-	totalTokens := inputTokens + outputTokens
-	if err := t.AddUsage(totalTokens); err != nil {
-		log.Printf("Warning: failed to track AI usage: %v", err)
-	}
-}
-
-// TrackSummary tracks token usage for a summarization operation.
-func (t *Tracker) TrackSummary(content, summary string) {
-	// Estimate tokens for both input and output
-	inputTokens := EstimateTokens(content)
-	outputTokens := EstimateTokens(summary)
-
-	totalTokens := inputTokens + outputTokens
-	if err := t.AddUsage(totalTokens); err != nil {
-		log.Printf("Warning: failed to track AI usage: %v", err)
-	}
 }

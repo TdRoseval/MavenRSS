@@ -12,6 +12,7 @@ import (
 	"MrRSS/internal/ai"
 	"MrRSS/internal/config"
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 )
 
 // AISearchRequest represents the request for AI-powered search
@@ -230,15 +231,14 @@ func buildSearchSQL(terms *SearchTerms, limit int) string {
 // @Router       /ai/search [post]
 func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Parse request
 	var req AISearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success: false,
 			Error:   "Invalid request format",
 		})
@@ -246,8 +246,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.TrimSpace(req.Query) == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success: false,
 			Error:   "Search query is required",
 		})
@@ -272,8 +271,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Validate AI configuration
 	if endpoint == "" || model == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success: false,
 			Error:   "AI is not configured. Please configure AI settings first.",
 		})
@@ -283,8 +281,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Create AI client
 	httpClient, err := createHTTPClientWithProxy(h)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to create HTTP client: %v", err),
 		})
@@ -304,8 +301,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	systemPrompt := buildAISearchPrompt()
 	aiResponse, err := client.Request(systemPrompt, req.Query)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success: false,
 			Error:   fmt.Sprintf("AI request failed: %v", err),
 		})
@@ -317,8 +313,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Parse search terms from AI response
 	searchTerms, err := parseSearchTermsAdvanced(aiResponse)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to parse search terms: %v", err),
 		})
@@ -340,8 +335,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	articles, err := h.DB.SearchArticlesWithSQL(searchSQL)
 	if err != nil {
 		log.Printf("[AI Search] Query error: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AISearchResponse{
+		response.JSON(w, AISearchResponse{
 			Success:     false,
 			Error:       fmt.Sprintf("Search query failed: %v", err),
 			SearchTerms: strings.Join(allTerms, ", "),
@@ -374,8 +368,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AISearchResponse{
+	response.JSON(w, AISearchResponse{
 		Success:     true,
 		Articles:    articleMaps,
 		SearchTerms: strings.Join(allTerms, ", "),

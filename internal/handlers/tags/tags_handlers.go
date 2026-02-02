@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
 )
 
@@ -26,11 +27,11 @@ func HandleTags(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		// GET: Return all tags
 		tags, err := h.DB.GetTags()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		json.NewEncoder(w).Encode(tags)
+		response.JSON(w, tags)
 		return
 	}
 
@@ -41,13 +42,13 @@ func HandleTags(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			Color string `json:"color"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 
 		// Validate input
 		if req.Name == "" {
-			http.Error(w, "Tag name is required", http.StatusBadRequest)
+			response.Error(w, nil, http.StatusBadRequest)
 			return
 		}
 		if req.Color == "" {
@@ -61,17 +62,17 @@ func HandleTags(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 		id, err := h.DB.AddTag(tag)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		tag.ID = id
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(tag)
+		response.JSON(w, tag)
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	response.Error(w, nil, http.StatusMethodNotAllowed)
 }
 
 // HandleTagUpdate updates an existing tag.
@@ -87,7 +88,7 @@ func HandleTags(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /tags/update [post]
 func HandleTagUpdate(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -98,23 +99,23 @@ func HandleTagUpdate(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		Position int    `json:"position"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Validate input
 	if req.Name == "" {
-		http.Error(w, "Tag name is required", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 	if req.Color == "" {
-		http.Error(w, "Tag color is required", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
 	err := h.DB.UpdateTag(req.ID, req.Name, req.Color, req.Position)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -125,7 +126,7 @@ func HandleTagUpdate(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		Color:    req.Color,
 		Position: req.Position,
 	}
-	json.NewEncoder(w).Encode(tag)
+	response.JSON(w, tag)
 }
 
 // HandleTagDelete deletes a tag by ID.
@@ -141,7 +142,7 @@ func HandleTagUpdate(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /tags/delete [post]
 func HandleTagDelete(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -149,18 +150,17 @@ func HandleTagDelete(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		ID int64 `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	err := h.DB.DeleteTag(req.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+	response.JSON(w, map[string]string{"status": "deleted"})
 }
 
 // HandleTagReorder changes the position of a tag.
@@ -176,7 +176,7 @@ func HandleTagDelete(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /tags/reorder [post]
 func HandleTagReorder(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -185,24 +185,24 @@ func HandleTagReorder(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		NewPosition int   `json:"new_position"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	err := h.DB.ReorderTag(req.ID, req.NewPosition)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Return updated list of tags
 	tags, err := h.DB.GetTags()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(tags)
+	response.JSON(w, tags)
 }
 
 // RegisterTagRoutes registers all tag-related routes.

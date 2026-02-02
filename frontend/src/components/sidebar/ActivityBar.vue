@@ -8,8 +8,8 @@ import {
   PhImages,
   PhPlus,
   PhGear,
-  PhTextIndent,
   PhTextOutdent,
+  PhSidebar,
 } from '@phosphor-icons/vue';
 import { ref, onMounted } from 'vue';
 import { useAppStore } from '@/stores/app';
@@ -20,6 +20,21 @@ import LogoSvg from '../../../assets/logo.svg';
 const store = useAppStore();
 const { t } = useI18n();
 const { clearAllFilters } = useArticleFilter();
+
+interface Props {
+  isCollapsed?: boolean;
+}
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  'select-filter': [filterType: string];
+  'add-feed': [];
+  settings: [];
+  'toggle-feed-drawer': [];
+  ready: [{ expanded: boolean; pinned: boolean }];
+  'toggle-activity-bar': [];
+}>();
 
 interface NavItem {
   id: string;
@@ -77,14 +92,6 @@ async function loadImageGallerySetting() {
     console.error('Failed to load settings:', e);
   }
 }
-
-const emit = defineEmits<{
-  'select-filter': [filterType: string];
-  'add-feed': [];
-  settings: [];
-  'toggle-feed-drawer': [];
-  ready: [{ expanded: boolean; pinned: boolean }];
-}>();
 
 // Feed drawer state - use localStorage just like category open/pinned state
 const savedPinnedState = localStorage.getItem('FeedListPinned');
@@ -185,10 +192,11 @@ defineExpose({
 
 <template>
   <div
+    v-if="!props.isCollapsed"
     class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative"
   >
     <!-- Logo -->
-    <div class="mt-3 mb-6">
+    <div class="mb-6">
       <img :src="LogoSvg" alt="MrRSS" class="w-6 h-6" />
     </div>
 
@@ -253,8 +261,11 @@ defineExpose({
         "
         @click="toggleFeedList"
       >
-        <PhTextOutdent v-if="isFeedListExpanded" :size="24" />
-        <PhTextIndent v-else :size="24" />
+        <PhSidebar
+          v-if="isFeedListExpanded"
+          :size="24"
+          :weight="isFeedListExpanded ? 'fill' : 'regular'"
+        />
       </button>
 
       <button
@@ -264,6 +275,19 @@ defineExpose({
         @click="emit('settings')"
       >
         <PhGear :size="24" weight="regular" class="transition-all" />
+      </button>
+
+      <!-- Divider -->
+      <div class="w-8 h-px bg-border my-2"></div>
+
+      <!-- Collapse Button (at the bottom) -->
+      <button
+        class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+        style="width: 44px; height: 44px"
+        :title="t('sidebar.activity.collapseActivityBar')"
+        @click="emit('toggle-activity-bar')"
+      >
+        <PhTextOutdent :size="24" weight="regular" class="transition-all" />
       </button>
     </div>
   </div>

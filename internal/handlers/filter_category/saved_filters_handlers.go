@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
 )
 
@@ -32,10 +33,10 @@ func HandleSavedFilters(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		// GET: List all saved filters
 		filters, err := h.DB.GetSavedFilters()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(filters)
+		response.JSON(w, filters)
 		return
 	}
 
@@ -46,30 +47,31 @@ func HandleSavedFilters(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			Conditions string `json:"conditions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 
 		// Validate input
 		if req.Name == "" {
-			http.Error(w, "Filter name is required", http.StatusBadRequest)
+			response.Error(w, nil, http.StatusBadRequest)
 			return
 		}
 		if req.Conditions == "" {
-			http.Error(w, "Filter conditions are required", http.StatusBadRequest)
+			response.Error(w, nil, http.StatusBadRequest)
 			return
 		}
 
 		// Check if filter with same name already exists
 		existingFilters, err := h.DB.GetSavedFilters()
 		if err != nil {
-			http.Error(w, "Failed to check existing filters", http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		for _, existing := range existingFilters {
 			if existing.Name == req.Name {
-				http.Error(w, `{"error": "A filter with this name already exists. Please choose a different name or edit the existing filter."}`, http.StatusConflict)
+				w.WriteHeader(http.StatusConflict)
+				response.JSON(w, map[string]string{"error": "A filter with this name already exists. Please choose a different name or edit the existing filter."})
 				return
 			}
 		}
@@ -82,18 +84,17 @@ func HandleSavedFilters(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 		id, err := h.DB.AddSavedFilter(filter)
 		if err != nil {
-			http.Error(w, "Failed to save filter: "+err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		filter.ID = id
-		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(filter)
+		response.JSON(w, filter)
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	response.Error(w, nil, http.StatusMethodNotAllowed)
 }
 
 // HandleSavedFilter handles operations on a specific saved filter
@@ -120,7 +121,7 @@ func HandleSavedFilter(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid filter ID", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -131,7 +132,7 @@ func HandleSavedFilter(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 			Conditions string `json:"conditions"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 
@@ -142,27 +143,26 @@ func HandleSavedFilter(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		}
 
 		if err := h.DB.UpdateSavedFilter(filter); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		response.JSON(w, map[string]string{"status": "ok"})
 		return
 	}
 
 	if r.Method == http.MethodDelete {
 		// DELETE: Remove filter
 		if err := h.DB.DeleteSavedFilter(id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		response.JSON(w, map[string]string{"status": "ok"})
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	response.Error(w, nil, http.StatusMethodNotAllowed)
 }
 
 // HandleReorderSavedFilters handles bulk reordering of saved filters
@@ -178,21 +178,20 @@ func HandleSavedFilter(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 // @Router       /saved-filters/reorder [post]
 func HandleReorderSavedFilters(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var filters []models.SavedFilter
 	if err := json.NewDecoder(r.Body).Decode(&filters); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if err := h.DB.ReorderSavedFilters(filters); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	response.JSON(w, map[string]string{"status": "ok"})
 }

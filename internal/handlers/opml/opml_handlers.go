@@ -4,7 +4,6 @@ package opml
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"strings"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/jsonimport"
 	"MrRSS/internal/models"
 	"MrRSS/internal/opml"
@@ -91,7 +91,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		f, header, err := r.FormFile("file")
 		if err != nil {
 			log.Printf("Error getting form file: %v", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		defer f.Close()
@@ -99,7 +99,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		log.Printf("HandleOPMLImport: Received file %s, size: %d", filename, header.Size)
 
 		if header.Size == 0 {
-			http.Error(w, "Uploaded file is empty", http.StatusBadRequest)
+			response.Error(w, nil, http.StatusBadRequest)
 			return
 		}
 		file = f
@@ -126,7 +126,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Error parsing file: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -186,7 +186,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 func HandleOPMLExport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	feeds, err := h.DB.GetFeeds()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -203,7 +203,7 @@ func HandleOPMLExport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	data, err := opml.Generate(localFeeds)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -227,7 +227,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("File dialog not available")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "File dialog not available. Use /api/opml/import endpoint with file upload instead.",
 		})
 		return
@@ -239,7 +239,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("File dialog not available: app is not *application.App type")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "File dialog not available. Use /api/opml/import endpoint with file upload instead.",
 		})
 		return
@@ -273,7 +273,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if filePath == "" {
 		log.Printf("Import dialog cancelled by user")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+		response.JSON(w, map[string]string{"status": "cancelled"})
 		return
 	}
 
@@ -282,7 +282,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("Error opening file dialog: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "Failed to open file dialog",
 		})
 		return
@@ -294,7 +294,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("Error opening selected file: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "Failed to open selected file",
 		})
 		return
@@ -319,7 +319,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("Error parsing file: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
@@ -367,7 +367,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"status":    "success",
 		"feedCount": len(feeds),
 		"filePath":  filePath,
@@ -389,7 +389,7 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("File dialog not available")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "File dialog not available. Use the direct export endpoint instead.",
 		})
 		return
@@ -400,7 +400,7 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
@@ -423,7 +423,7 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("File dialog not available: app is not *application.App type")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "File dialog not available. Use /api/opml/export endpoint with direct download instead.",
 		})
 		return
@@ -457,7 +457,7 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if filePath == "" {
 		log.Printf("Export dialog cancelled by user")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "cancelled"})
+		response.JSON(w, map[string]string{"status": "cancelled"})
 		return
 	}
 
@@ -466,7 +466,7 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("Error opening save dialog: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "Failed to open save dialog",
 		})
 		return
@@ -489,7 +489,7 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("Error generating export data: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
@@ -501,14 +501,13 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		log.Printf("Error writing file: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"error": "Failed to write file",
 		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"status":   "success",
 		"filePath": filePath,
 	})

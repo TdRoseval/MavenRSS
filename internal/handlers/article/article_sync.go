@@ -9,6 +9,7 @@ import (
 	"MrRSS/internal/database"
 	"MrRSS/internal/freshrss"
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 )
 
 // HandleMarkReadWithImmediateSync marks an article as read/unread and immediately syncs to FreshRSS
@@ -35,7 +36,7 @@ func HandleMarkReadWithImmediateSync(h *core.Handler, w http.ResponseWriter, r *
 	// Mark as read and get sync request
 	syncReq, err := h.DB.MarkArticleReadWithSync(id, read)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -64,7 +65,7 @@ func HandleToggleFavoriteWithImmediateSync(h *core.Handler, w http.ResponseWrite
 	// Toggle favorite and get sync request
 	syncReq, err := h.DB.ToggleFavoriteWithSync(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 

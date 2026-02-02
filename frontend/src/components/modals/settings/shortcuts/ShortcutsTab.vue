@@ -21,13 +21,12 @@ import {
   PhCircle,
   PhHeart,
   PhArrowCounterClockwise,
-  PhInfo,
   PhFunnel,
 } from '@phosphor-icons/vue';
 import ShortcutItem from './ShortcutItem.vue';
 import type { SettingsData } from '@/types/settings';
 import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
-import { ButtonControl, SettingWithToggle, InfoBox } from '@/components/settings';
+import { ButtonControl, SettingWithToggle, TipBox } from '@/components/settings';
 
 const { t } = useI18n();
 
@@ -348,7 +347,7 @@ watch(
     />
 
     <!-- Tip moved to top with improved styling -->
-    <InfoBox :icon="PhInfo" :content="t('common.action.escToClear')" />
+    <TipBox type="tip" :title="t('common.action.escToClear')" />
 
     <div v-for="group in shortcutGroups" :key="group.label" class="setting-group">
       <label

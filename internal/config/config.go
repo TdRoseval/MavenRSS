@@ -76,6 +76,9 @@ type Defaults struct {
 	NetworkBandwidthMbps          string `json:"network_bandwidth_mbps"`
 	NetworkLatencyMs              string `json:"network_latency_ms"`
 	NetworkSpeed                  string `json:"network_speed"`
+	NotionAPIKey                  string `json:"notion_api_key"`
+	NotionEnabled                 bool   `json:"notion_enabled"`
+	NotionPageId                  string `json:"notion_page_id"`
 	ObsidianEnabled               bool   `json:"obsidian_enabled"`
 	ObsidianVault                 string `json:"obsidian_vault"`
 	ObsidianVaultPath             string `json:"obsidian_vault_path"`
@@ -245,6 +248,12 @@ func GetString(key string) string {
 		return defaults.NetworkLatencyMs
 	case "network_speed":
 		return defaults.NetworkSpeed
+	case "notion_api_key":
+		return defaults.NotionAPIKey
+	case "notion_enabled":
+		return strconv.FormatBool(defaults.NotionEnabled)
+	case "notion_page_id":
+		return defaults.NotionPageId
 	case "obsidian_enabled":
 		return strconv.FormatBool(defaults.ObsidianEnabled)
 	case "obsidian_vault":

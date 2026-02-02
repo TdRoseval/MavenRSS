@@ -1,35 +1,24 @@
-<div align="center">
-  <img src="imgs/logo.svg" alt="MrRSS Logo" width="120" height="120">
-  <h1>MrRSS</h1>
-  <p><strong>A modern, cross-platform and free AI RSS reader.</strong></p>
+# MrRSS
 
-  [![Version](https://img.shields.io/badge/version-1.3.18-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
-  [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
-   [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
-  [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
-  [![Vue.js](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js)](https://vuejs.org/)
+![Screenshot](imgs/og1.png)
 
-  <p>
-    <strong>English</strong> | <a href="README_zh.md">简体中文</a>
-  </p>
-</div>
+<p>
+   <strong>English</strong> | <a href="README_zh.md">简体中文</a>
+</p>
 
-> [!TIP]
-> If you encounter any issues while using the application, please first check the [Q&A page](https://github.com/WCY-dt/MrRSS/discussions/217). If you cannot find a solution, feel free to report the issue in [Issues](https://github.com/WCY-dt/MrRSS/issues).
-
----
+[![Version](https://img.shields.io/badge/version-1.3.19-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+[![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
+[![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
+[![Vue.js](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js)](https://vuejs.org/)
 
 ## ✨ Features
 
 - 🌐 **Auto-Translation & Summarization**: Automatically translate article titles and content, and generate concise summaries to help you get information quickly
 - 🤖 **AI-Enhanced Features**: Integrated advanced AI technology for translation, summarization, recommendations, and more, making reading smarter
-- 🔌 **Rich Plugin Ecosystem**: Supports integration with mainstream tools like Obsidian, FreshRSS, and RSSHub for easy feature extension
+- 🔌 **Rich Plugin Ecosystem**: Supports integration with mainstream tools like Obsidian, Notion, FreshRSS, and RSSHub for easy feature extension
 - 📡 **Diverse Subscription Methods**: Supports URL, XPath, scripts, newsletters, and other feed types to meet different needs
 - 🏭 **Custom Scripts & Automation**: Built-in filters and scripting system supporting highly customizable automation workflows
-
-## 📸 Screenshots
-
-![Screenshot](imgs/og.png)
 
 ## 🚀 Quick Start
 
@@ -37,7 +26,13 @@
 
 #### Option 1: Download Pre-built Installer (Recommended)
 
-Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page:
+Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page.
+
+<details>
+
+<summary>Click to view the list of available installers</summary>
+
+<div markdown="1">
 
 **Standard Installation:**
 
@@ -50,6 +45,10 @@ Download the latest installer for your platform from the [Releases](https://gith
 - **Windows:** `MrRSS-{version}-windows-{arch}-portable.zip`
 - **Linux:** `MrRSS-{version}-linux-{arch}-portable.tar.gz`
 - **macOS:** `MrRSS-{version}-darwin-{arch}-portable.zip`
+
+</div>
+
+</details>
 
 #### Option 2: Build from Source
 
@@ -130,6 +129,12 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 ### Data Storage
 
+<details>
+
+<summary>Click to expand data storage details</summary>
+
+<div markdown="1">
+
 **Normal Mode** (default):
 
 - **Windows:** `%APPDATA%\MrRSS\` (e.g., `C:\Users\YourName\AppData\Roaming\MrRSS\`)
@@ -141,6 +146,10 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 - All data stored in `data/` folder
 
 This ensures your data persists across application updates and reinstalls.
+
+</div>
+
+</details>
 
 ## 🛠️ Development Guide
 
@@ -230,6 +239,12 @@ Please refer to the [Server Mode API Documentation](docs/SERVER_MODE/swagger.jso
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
+<details>
+
+<summary>Click to expand the contributing guidelines</summary>
+
+<div markdown="1">
+
 Before contributing:
 
 1. Read the [Code of Conduct](CODE_OF_CONDUCT.md)
@@ -238,6 +253,10 @@ Before contributing:
 4. Make your changes and add tests
 5. Submit a pull request
 
+</div>
+
+</details>
+
 ## 🔒 Security
 
 If you discover a security vulnerability, please follow our [Security Policy](SECURITY.md).
@@ -245,8 +264,6 @@ If you discover a security vulnerability, please follow our [Security Policy](SE
 ## 📝 License
 
 This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
-
-This project uses icon files sourced from [DIYgod/RSSHub](https://github.com/DIYgod/RSSHub) and [FreshRSS/FreshRSS](https://github.com/FreshRSS/FreshRSS). These resources are licensed under the AGPL-3.0 License.
 
 ## 📮 Contact & Support
 

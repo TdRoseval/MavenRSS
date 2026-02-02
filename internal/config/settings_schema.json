@@ -431,6 +431,27 @@
       "encrypted": false,
       "frontend_key": "obsidianVaultPath"
     },
+    "notion_enabled": {
+      "type": "bool",
+      "default": false,
+      "category": "integrations",
+      "encrypted": false,
+      "frontend_key": "notionEnabled"
+    },
+    "notion_api_key": {
+      "type": "string",
+      "default": "",
+      "category": "integrations",
+      "encrypted": true,
+      "frontend_key": "notionApiKey"
+    },
+    "notion_page_id": {
+      "type": "string",
+      "default": "",
+      "category": "integrations",
+      "encrypted": false,
+      "frontend_key": "notionPageId"
+    },
     "window_x": {
       "type": "string",
       "default": "0",

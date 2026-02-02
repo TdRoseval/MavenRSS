@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/rules"
 )
 
@@ -21,34 +22,30 @@ import (
 // @Router       /rules/apply [post]
 func HandleApplyRule(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var rule rules.Rule
 	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if len(rule.Actions) == 0 {
-		http.Error(w, "No actions specified", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
 	engine := rules.NewEngine(h.DB)
 	affected, err := engine.ApplyRule(rule)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	response := struct {
-		Success  bool `json:"success"`
-		Affected int  `json:"affected"`
-	}{
-		Success:  true,
-		Affected: affected,
-	}
-	json.NewEncoder(w).Encode(response)
+	response.JSON(w, map[string]interface{}{
+		"success":  true,
+		"affected": affected,
+	})
 }

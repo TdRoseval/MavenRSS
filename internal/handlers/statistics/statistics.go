@@ -1,12 +1,13 @@
 package statistics
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/statistics"
 )
 
@@ -39,7 +40,7 @@ func HandleGetStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request
 	// Get the statistics service
 	statsService := h.Statistics()
 	if statsService == nil {
-		http.Error(w, "Statistics service not available", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("statistics service not available"), http.StatusInternalServerError)
 		return
 	}
 
@@ -52,20 +53,20 @@ func HandleGetStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request
 		endDate := r.URL.Query().Get("end_date")
 
 		if startDate == "" || endDate == "" {
-			http.Error(w, "start_date and end_date are required for custom period", http.StatusBadRequest)
+			response.Error(w, fmt.Errorf("start_date and end_date are required for custom period"), http.StatusBadRequest)
 			return
 		}
 
 		// Validate date format
 		_, err = time.Parse("2006-01-02", startDate)
 		if err != nil {
-			http.Error(w, "Invalid start_date format. Use YYYY-MM-DD", http.StatusBadRequest)
+			response.Error(w, fmt.Errorf("invalid start_date format. Use YYYY-MM-DD"), http.StatusBadRequest)
 			return
 		}
 
 		_, err = time.Parse("2006-01-02", endDate)
 		if err != nil {
-			http.Error(w, "Invalid end_date format. Use YYYY-MM-DD", http.StatusBadRequest)
+			response.Error(w, fmt.Errorf("invalid end_date format. Use YYYY-MM-DD"), http.StatusBadRequest)
 			return
 		}
 
@@ -79,7 +80,7 @@ func HandleGetStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request
 			"all":   true,
 		}
 		if !validPeriods[period] {
-			http.Error(w, "Invalid period. Must be one of: week, month, year, all, custom", http.StatusBadRequest)
+			response.Error(w, fmt.Errorf("invalid period. Must be one of: week, month, year, all, custom"), http.StatusBadRequest)
 			return
 		}
 
@@ -87,12 +88,11 @@ func HandleGetStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	if err != nil {
-		http.Error(w, "Failed to retrieve statistics: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(summary)
+	response.JSON(w, summary)
 }
 
 // HandleGetAllTimeStatistics retrieves all-time statistics
@@ -104,18 +104,17 @@ func HandleGetStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request
 func HandleGetAllTimeStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	statsService := h.Statistics()
 	if statsService == nil {
-		http.Error(w, "Statistics service not available", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("statistics service not available"), http.StatusInternalServerError)
 		return
 	}
 
 	stats, err := statsService.GetAllTimeStats()
 	if err != nil {
-		http.Error(w, "Failed to retrieve statistics: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	response.JSON(w, stats)
 }
 
 // HandleGetAvailableMonths retrieves list of months with available statistics
@@ -127,18 +126,17 @@ func HandleGetAllTimeStatistics(h *core.Handler, w http.ResponseWriter, r *http.
 func HandleGetAvailableMonths(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	statsService := h.Statistics()
 	if statsService == nil {
-		http.Error(w, "Statistics service not available", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("statistics service not available"), http.StatusInternalServerError)
 		return
 	}
 
 	months, err := statsService.GetAvailableMonths()
 	if err != nil {
-		http.Error(w, "Failed to retrieve available months: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(months)
+	response.JSON(w, months)
 }
 
 // HandleResetStatistics resets/deletes all statistics data
@@ -151,24 +149,23 @@ func HandleGetAvailableMonths(h *core.Handler, w http.ResponseWriter, r *http.Re
 func HandleResetStatistics(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Ensure it's a DELETE request
 	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	if h.DB == nil {
-		http.Error(w, "Database not available", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("database not available"), http.StatusInternalServerError)
 		return
 	}
 
 	// Delete all statistics
 	err := h.DB.ResetAllStatistics()
 	if err != nil {
-		http.Error(w, "Failed to reset statistics: "+err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"success": true,
 		"message": "All statistics have been reset successfully",
 	})

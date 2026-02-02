@@ -807,6 +807,7 @@ const zh: TranslationMessages = {
         '应用默认自动使用操作系统的代理设置。仅当您想使用与系统代理不同的代理时，才需要启用此选项。',
       tunModeInfo:
         '如果您使用代理工具（如 Clash、V2Ray 等），请确保启用 TUN 模式或增强模式，以便所有应用程序都能使用代理。',
+      tunModeInfoTitle: '无法连接到网络？',
       useCustomProxy: '使用自定义代理',
       useGlobalProxy: '使用全局代理',
       currentMode: '当前模式',
@@ -847,6 +848,25 @@ const zh: TranslationMessages = {
       usernamePlaceholder: '输入用户名',
     },
     plugins: {
+      notion: {
+        apiKey: 'API 密钥',
+        apiKeyDesc: '来自 Notion 的内部集成令牌',
+        apiKeyPlaceholder: 'xxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        exported: '文章已成功导出到 Notion',
+        exportFailed: '导出到 Notion 失败',
+        exporting: '正在导出到 Notion...',
+        exportTo: '导出到 Notion',
+        integration: 'Notion 集成',
+        integrationDescription: '直接将文章导出到 Notion',
+        pageId: '笔记页面 ID',
+        pageIdDesc: '文章将作为子页面创建在此 Notion 页面下',
+        pageIdPlaceholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        setupInstructions: '设置 Notion 集成的步骤：',
+        step1: '访问 notion.so/my-integrations 创建新的集成',
+        step2: '复制内部集成令牌作为 API 密钥',
+        step3: '在 Notion 中打开笔记页面，点击"..." → "连接" → 添加您的集成',
+        step4: '从 URL 中复制页面 ID（页面名称后的 32 位字符串）',
+      },
       obsidian: {
         exported: '文章已成功导出到 Obsidian',
         exportFailed: '导出到 Obsidian 失败',
@@ -995,7 +1015,9 @@ const zh: TranslationMessages = {
     activity: {
       addFeed: '添加订阅',
       allArticles: '所有文章',
+      collapseActivityBar: '折叠活动栏',
       collapseFeedList: '折叠订阅源列表',
+      expandActivityBar: '展开活动栏',
       expandFeedList: '展开订阅源列表',
       favorites: '收藏',
       imageGallery: '图片模式',

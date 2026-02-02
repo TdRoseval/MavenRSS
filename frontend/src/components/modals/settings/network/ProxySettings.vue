@@ -17,7 +17,7 @@ import {
   SettingItem,
   SubSettingItem,
   NestedSettingsContainer,
-  InfoBox,
+  TipBox,
   InputControl,
   NumberControl,
 } from '@/components/settings';
@@ -47,7 +47,7 @@ function updateSetting(key: keyof SettingsData, value: any) {
 <template>
   <!-- Proxy Settings -->
   <SettingGroup :icon="PhWall" :title="t('setting.network.proxySettings')">
-    <InfoBox :icon="PhInfo" :content="t('setting.network.systemProxyInfo')" />
+    <TipBox type="tip" :title="t('setting.network.systemProxyInfo')" />
 
     <!-- Enable Proxy Toggle -->
     <SettingWithToggle

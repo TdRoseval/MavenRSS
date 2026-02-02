@@ -5,10 +5,11 @@ import (
 	"log"
 	"net/http"
 
-	"MrRSS/internal/aiusage"
+	"MrRSS/internal/ai"
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/translation"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/textutil"
 )
 
 // TestCustomTranslationRequest represents a request to test custom translation configuration
@@ -38,7 +39,7 @@ type TestCustomTranslationResponse struct {
 // @Router       /translate/article [post]
 func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -49,12 +50,12 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.Title == "" || req.TargetLang == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
@@ -64,7 +65,7 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if err == nil && article != nil {
 		if article.TranslatedTitle != "" && article.TranslatedTitle != article.Title {
 			// Translation already exists and is different from original
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			response.JSON(w, map[string]interface{}{
 				"translated_title": article.TranslatedTitle,
 				"limit_reached":    false,
 				"skipped":          true, // Indicate translation was skipped (from cache)
@@ -81,10 +82,10 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if !shouldTranslate {
 		// Text is already in target language, return original title
 		if updateErr := h.DB.UpdateArticleTranslation(req.ArticleID, req.Title); updateErr != nil {
-			http.Error(w, updateErr.Error(), http.StatusInternalServerError)
+			response.Error(w, updateErr, http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"translated_title": req.Title,
 			"limit_reached":    false,
 			"skipped":          true, // Indicate translation was skipped
@@ -133,7 +134,7 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	if translateErr != nil {
-		http.Error(w, translateErr.Error(), http.StatusInternalServerError)
+		response.Error(w, translateErr, http.StatusInternalServerError)
 		return
 	}
 
@@ -142,10 +143,10 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if translatedTitle == req.Title {
 		// Still update DB with the "translated" text (which is the original)
 		if updateErr := h.DB.UpdateArticleTranslation(req.ArticleID, translatedTitle); updateErr != nil {
-			http.Error(w, updateErr.Error(), http.StatusInternalServerError)
+			response.Error(w, updateErr, http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"translated_title": translatedTitle,
 			"limit_reached":    limitReached,
 			"skipped":          true, // Indicate no actual translation was performed
@@ -156,11 +157,11 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	// Update the article with the translated title
 	if updateErr := h.DB.UpdateArticleTranslation(req.ArticleID, translatedTitle); updateErr != nil {
-		http.Error(w, updateErr.Error(), http.StatusInternalServerError)
+		response.Error(w, updateErr, http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"translated_title": translatedTitle,
 		"limit_reached":    limitReached,
 		"skipped":          false, // Translation was performed
@@ -178,18 +179,17 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 // @Router       /translations/clear [post]
 func HandleClearTranslations(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	if err := h.DB.ClearAllTranslations(); err != nil {
 		log.Printf("Error clearing translations: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	response.JSON(w, map[string]bool{"success": true})
 }
 
 // HandleTranslateText translates any text to the target language.
@@ -206,7 +206,7 @@ func HandleClearTranslations(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Router       /translate/text [post]
 func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -218,13 +218,13 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Error decoding translation request: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.Text == "" || req.TargetLang == "" {
 		log.Printf("Missing required fields in translation request")
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
@@ -236,8 +236,8 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 
 	if !shouldTranslate {
 		// Text is already in target language, return original text
-		htmlText := utils.ConvertMarkdownToHTML(req.Text)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		htmlText := textutil.ConvertMarkdownToHTML(req.Text)
+		response.JSON(w, map[string]interface{}{
 			"translated_text": req.Text,
 			"html":            htmlText,
 			"skipped":         "true", // Indicate translation was skipped
@@ -287,15 +287,15 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 
 	if err != nil {
 		log.Printf("Error translating text: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Step 3: Post-translation check - if translation equals original, it was already in target language
 	// This provides a safety net in case pre-translation detection was inaccurate
 	if translatedText == req.Text {
-		htmlText := utils.ConvertMarkdownToHTML(translatedText)
-		json.NewEncoder(w).Encode(map[string]string{
+		htmlText := textutil.ConvertMarkdownToHTML(translatedText)
+		response.JSON(w, map[string]string{
 			"translated_text": translatedText,
 			"html":            htmlText,
 			"skipped":         "true", // Indicate no actual translation was performed
@@ -304,9 +304,9 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	// Convert translated markdown to HTML
-	htmlText := utils.ConvertMarkdownToHTML(translatedText)
+	htmlText := textutil.ConvertMarkdownToHTML(translatedText)
 
-	json.NewEncoder(w).Encode(map[string]string{
+	response.JSON(w, map[string]string{
 		"translated_text": translatedText,
 		"html":            htmlText,
 		"skipped":         "false", // Translation was performed
@@ -324,18 +324,17 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 // @Router       /ai/usage/reset [post]
 func HandleResetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	if err := h.AITracker.ResetUsage(); err != nil {
 		log.Printf("Error resetting AI usage: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	response.JSON(w, map[string]bool{"success": true})
 }
 
 // HandleGetAIUsage returns the current AI usage statistics.
@@ -348,14 +347,14 @@ func HandleResetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request)
 // @Router       /ai/usage [get]
 func HandleGetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	usage, _ := h.AITracker.GetCurrentUsage()
 	limit, _ := h.AITracker.GetUsageLimit()
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"usage":         usage,
 		"limit":         limit,
 		"limit_reached": h.AITracker.IsLimitReached(),
@@ -364,7 +363,7 @@ func HandleGetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 // EstimateTokens exposes the token estimation function for testing/display.
 func EstimateTokens(text string) int64 {
-	return aiusage.EstimateTokens(text)
+	return ai.EstimateTokens(text)
 }
 
 // HandleTestCustomTranslation tests a custom translation configuration.
@@ -379,7 +378,7 @@ func EstimateTokens(text string) int64 {
 // @Router       /translation/test-custom [post]
 func HandleTestCustomTranslation(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -390,7 +389,7 @@ func HandleTestCustomTranslation(h *core.Handler, w http.ResponseWriter, r *http
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -408,17 +407,16 @@ func HandleTestCustomTranslation(h *core.Handler, w http.ResponseWriter, r *http
 	// Test translation
 	result, err := customTranslator.Translate(req.Text, req.Target)
 
-	response := map[string]interface{}{
+	resp := map[string]interface{}{
 		"success": err == nil,
 	}
 
 	if err != nil {
-		response["error"] = err.Error()
+		resp["error"] = err.Error()
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
-		response["translation"] = result
+		resp["translation"] = result
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	response.JSON(w, resp)
 }

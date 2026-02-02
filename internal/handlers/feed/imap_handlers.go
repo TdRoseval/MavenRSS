@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/version"
 
 	id "github.com/emersion/go-imap-id"
@@ -32,7 +33,7 @@ func HandleTestIMAPConnection(h *core.Handler, w http.ResponseWriter, r *http.Re
 
 	if r.Method != http.MethodPost {
 		log.Printf("[IMAP Test] Method not allowed: %s", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -46,7 +47,7 @@ func HandleTestIMAPConnection(h *core.Handler, w http.ResponseWriter, r *http.Re
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("[IMAP Test] JSON decode error: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -55,9 +56,8 @@ func HandleTestIMAPConnection(h *core.Handler, w http.ResponseWriter, r *http.Re
 
 	// Validate required fields
 	if req.IMAPServer == "" || req.Username == "" || req.Password == "" {
-		w.Header().Set("Content-Type", "application/json")
+		response.JSON(w, map[string]string{"error": "IMAP server, username, and password are required"})
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "IMAP server, username, and password are required"})
 		return
 	}
 
@@ -92,9 +92,8 @@ func HandleTestIMAPConnection(h *core.Handler, w http.ResponseWriter, r *http.Re
 		c, err = client.Dial(server)
 		if err != nil {
 			log.Printf("[IMAP Test] Connection failed: %v", err)
-			w.Header().Set("Content-Type", "application/json")
+			response.JSON(w, map[string]string{"error": "Failed to connect to IMAP server: " + err.Error()})
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to connect to IMAP server: " + err.Error()})
 			return
 		}
 	}
@@ -109,9 +108,8 @@ func HandleTestIMAPConnection(h *core.Handler, w http.ResponseWriter, r *http.Re
 	log.Printf("[IMAP Test] Attempting login for user: %s", req.Username)
 	if err := c.Login(req.Username, req.Password); err != nil {
 		log.Printf("[IMAP Test] Login failed: %v", err)
-		w.Header().Set("Content-Type", "application/json")
+		response.JSON(w, map[string]string{"error": "Authentication failed: " + err.Error()})
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Authentication failed: " + err.Error()})
 		return
 	}
 	log.Printf("[IMAP Test] Login successful")
@@ -121,18 +119,15 @@ func HandleTestIMAPConnection(h *core.Handler, w http.ResponseWriter, r *http.Re
 	_, err = c.Select(req.Folder, false)
 	if err != nil {
 		log.Printf("[IMAP Test] Folder selection failed: %v", err)
-		w.Header().Set("Content-Type", "application/json")
+		response.JSON(w, map[string]string{"error": "Failed to select folder '" + req.Folder + "': " + err.Error()})
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to select folder '" + req.Folder + "': " + err.Error()})
 		return
 	}
 	log.Printf("[IMAP Test] Folder selected successfully")
 
 	// Success!
 	log.Printf("[IMAP Test] All checks passed!")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Connection successful!"})
+	response.JSON(w, map[string]string{"message": "Connection successful!"})
 }
 
 // sendIMAPIDCommand sends the IMAP ID command to identify the client

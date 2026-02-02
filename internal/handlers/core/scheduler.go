@@ -1,14 +1,14 @@
 package core
 
 import (
-	"MrRSS/internal/models"
 	"context"
 	"log"
 	"strconv"
 	"time"
 
 	"MrRSS/internal/cache"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/models"
+	"MrRSS/internal/utils/fileutil"
 )
 
 // StartBackgroundScheduler starts the background scheduler for auto-updates and cleanup.
@@ -38,14 +38,15 @@ func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
 	// Start the scheduler based on refresh mode
 	refreshMode, _ := h.DB.GetSetting("refresh_mode")
 
-	if refreshMode == "never" {
+	switch refreshMode {
+	case "never":
 		// Never auto-refresh - only allow manual refresh
 		log.Println("Auto-refresh disabled (never mode)")
 		return
-	} else if refreshMode == "intelligent" {
+	case "intelligent":
 		// Use intelligent refresh mode
 		h.startScheduler(ctx, true)
-	} else {
+	default:
 		// Use fixed interval mode (default)
 		h.startScheduler(ctx, false)
 	}
@@ -269,7 +270,7 @@ func (h *Handler) scheduleIndividualFeeds(ctx context.Context, intelligentMode b
 
 // cleanupMediaCache performs media cache cleanup based on settings
 func (h *Handler) cleanupMediaCache() {
-	cacheDir, err := utils.GetMediaCacheDir()
+	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
 		log.Printf("Failed to get media cache directory: %v", err)
 		return

@@ -70,11 +70,11 @@ func main() {
 	}
 	fmt.Println("✓ Generated internal/config/settings_keys.go")
 
-	if err := generateSettingsHandlersGo(&schema); err != nil {
-		fmt.Printf("Error generating settings_handlers.go: %v\n", err)
+	if err := generateSettingsBaseGo(&schema); err != nil {
+		fmt.Printf("Error generating settings_base.go: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✓ Generated internal/handlers/settings/settings_handlers.go")
+	fmt.Println("✓ Generated internal/handlers/settings/settings_base.go")
 
 	if err := generateFrontendTypes(&schema); err != nil {
 		fmt.Printf("Error generating frontend types: %v\n", err)
@@ -278,11 +278,7 @@ func SettingsKeys() []string {
 	return os.WriteFile("internal/config/settings_keys.go", []byte(content), 0644)
 }
 
-func generateSettingsHandlersGo(schema *SettingsSchema) error {
-	// Generate GET variables
-	var getVars []string
-	var jsonFields []string
-
+func generateSettingsBaseGo(schema *SettingsSchema) error {
 	// Sort keys for consistent output
 	var keys []string
 	for key := range schema.Settings {
@@ -290,126 +286,92 @@ func generateSettingsHandlersGo(schema *SettingsSchema) error {
 	}
 	sort.Strings(keys)
 
+	// Generate setting definitions
+	var settingDefs []string
 	for _, key := range keys {
 		def := schema.Settings[key]
-		varName := toGoVarName(key)
-		if def.Encrypted {
-			getVars = append(getVars, fmt.Sprintf("\t\t%s := safeGetEncryptedSetting(h, \"%s\")", varName, key))
-		} else {
-			getVars = append(getVars, fmt.Sprintf("\t\t%s := safeGetSetting(h, \"%s\")", varName, key))
-		}
-		jsonFields = append(jsonFields, fmt.Sprintf("\t\t\t\"%s\": %s,", key, varName))
+		settingDefs = append(settingDefs, fmt.Sprintf("\t{Key: \"%s\", Encrypted: %v},", key, def.Encrypted))
 	}
 
-	// Generate POST struct fields and save logic
-	var structFields []string
-	var saveStatements []string
-
-	// Find maximum field name length for alignment
-	maxFieldNameLen := 0
-	for _, key := range keys {
-		goKey := toGoFieldName(key)
-		if len(goKey) > maxFieldNameLen {
-			maxFieldNameLen = len(goKey)
-		}
-	}
-
-	for _, key := range keys {
-		def := schema.Settings[key]
-		goKey := toGoFieldName(key)
-		// Align struct field tags
-		padding := maxFieldNameLen - len(goKey)
-		structFields = append(structFields, fmt.Sprintf("\t\t%s%s string `json:\"%s\"`", goKey, strings.Repeat(" ", padding), key))
-
-		if def.Encrypted {
-			saveStatements = append(saveStatements, fmt.Sprintf("\t\tif err := h.DB.SetEncryptedSetting(\"%s\", req.%s); err != nil {\n\t\t\tlog.Printf(\"Failed to save %s: %%v\", err)\n\t\t\thttp.Error(w, \"Failed to save %s\", http.StatusInternalServerError)\n\t\t\treturn\n\t\t}", key, goKey, key, key))
-		} else {
-			saveStatements = append(saveStatements, fmt.Sprintf("\t\tif req.%s != \"\" {\n\t\t\th.DB.SetSetting(\"%s\", req.%s)\n\t\t}", goKey, key, goKey))
-		}
-	}
-
-	tmpl := `package settings
+	tmpl := `// Package settings provides handlers for application settings management.
+// This file contains the base types and utilities for the definition-driven settings system.
+// CODE GENERATED - DO NOT EDIT MANUALLY
+// To add new settings, edit internal/config/settings_schema.json and run: go run tools/settings-generator/main.go
+package settings
 
 import (
-	"encoding/json"
-	"log"
-	"net/http"
-	"strings"
-
 	"MrRSS/internal/handlers/core"
 )
 
-// safeGetEncryptedSetting safely retrieves an encrypted setting, returning empty string on error.
-// This prevents JSON encoding errors when encrypted data is corrupted or cannot be decrypted.
-func safeGetEncryptedSetting(h *core.Handler, key string) string {
-	value, err := h.DB.GetEncryptedSetting(key)
-	if err != nil {
-		log.Printf("Warning: Failed to decrypt setting %%s: %%v. Returning empty string.", key, err)
-		return ""
-	}
-	return sanitizeValue(value)
+// SettingDef defines a single setting's metadata
+type SettingDef struct {
+	Key       string // Database key (snake_case)
+	Encrypted bool   // Whether the value should be encrypted in the database
 }
 
-// safeGetSetting safely retrieves a setting, returning empty string on error.
-func safeGetSetting(h *core.Handler, key string) string {
-	value, err := h.DB.GetSetting(key)
-	if err != nil {
-		log.Printf("Warning: Failed to retrieve setting %%s: %%v. Returning empty string.", key, err)
-		return ""
-	}
-	return sanitizeValue(value)
+// AllSettings returns all setting definitions in alphabetical order by key.
+// This is the single source of truth for all settings.
+var AllSettings = []SettingDef{
+%s
 }
 
-// sanitizeValue removes control characters that could break JSON encoding.
-func sanitizeValue(value string) string {
-	// Remove control characters that could break JSON
-	return strings.Map(func(r rune) rune {
-		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
-			return -1 // Remove control characters except tab, newline, carriage return
+// GetAllSettings reads all settings from the database and returns them as a map.
+// Encrypted settings are automatically decrypted.
+func GetAllSettings(h *core.Handler) map[string]string {
+	result := make(map[string]string, len(AllSettings))
+
+	for _, def := range AllSettings {
+		var value string
+		if def.Encrypted {
+			value = safeGetEncryptedSetting(h, def.Key)
+		} else {
+			value = safeGetSetting(h, def.Key)
 		}
-		return r
-	}, value)
+		result[def.Key] = value
+	}
+
+	return result
 }
 
-// HandleSettings handles GET and POST requests for application settings.
-// CODE GENERATED - DO NOT EDIT MANUALLY
-// To add new settings, edit internal/config/settings_schema.json and run: go run tools/settings-generator/main.go
-func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-%s
-		json.NewEncoder(w).Encode(map[string]string{
-%s
-		})
-	case http.MethodPost:
-		var req struct {
-%s
+// SaveSettings saves settings from a map to the database.
+// Empty string values are skipped (to allow partial updates).
+// Encrypted settings are automatically encrypted.
+func SaveSettings(h *core.Handler, settings map[string]string) error {
+	// Create a lookup for encrypted keys
+	encryptedKeys := make(map[string]bool, len(AllSettings))
+	for _, def := range AllSettings {
+		if def.Encrypted {
+			encryptedKeys[def.Key] = true
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-%s
-		// Re-fetch all settings after save to return updated values
-%s
-		json.NewEncoder(w).Encode(map[string]string{
-%s
-		})
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+
+	// Save each setting
+	for key, value := range settings {
+		if encryptedKeys[key] {
+			if err := h.DB.SetEncryptedSetting(key, value); err != nil {
+				return err
+			}
+		} else if value != "" {
+			h.DB.SetSetting(key, value)
+		}
+	}
+
+	return nil
+}
+
+// IsEncryptedSetting returns true if the given key is an encrypted setting.
+func IsEncryptedSetting(key string) bool {
+	for _, def := range AllSettings {
+		if def.Key == key {
+			return def.Encrypted
+		}
+	}
+	return false
 }
 `
 
-	content := fmt.Sprintf(tmpl,
-		strings.Join(getVars, "\n"),
-		strings.Join(jsonFields, "\n"),
-		strings.Join(structFields, "\n"),
-		strings.Join(saveStatements, "\n\n"),
-		strings.Join(getVars, "\n"),
-		strings.Join(jsonFields, "\n"))
-
-	return os.WriteFile("internal/handlers/settings/settings_handlers.go", []byte(content), 0644)
+	content := fmt.Sprintf(tmpl, strings.Join(settingDefs, "\n"))
+	return os.WriteFile("internal/handlers/settings/settings_base.go", []byte(content), 0644)
 }
 
 func generateFrontendTypes(schema *SettingsSchema) error {
@@ -553,28 +515,6 @@ func toGoFieldName(key string) string {
 				// Capitalize first letter
 				parts[i] = strings.ToUpper(string(parts[i][0])) + parts[i][1:]
 			}
-		}
-	}
-	return strings.Join(parts, "")
-}
-
-func toGoVarName(key string) string {
-	// Handle freshrss specially
-	if strings.HasPrefix(key, "freshrss") {
-		parts := strings.Split(key, "_")
-		for i := 1; i < len(parts); i++ {
-			if len(parts[i]) > 0 {
-				parts[i] = strings.ToUpper(string(parts[i][0])) + parts[i][1:]
-			}
-		}
-		return strings.Join(parts, "")
-	}
-
-	// Handle multi-word keys
-	parts := strings.Split(key, "_")
-	for i := 1; i < len(parts); i++ {
-		if len(parts[i]) > 0 {
-			parts[i] = strings.ToUpper(string(parts[i][0])) + parts[i][1:]
 		}
 	}
 	return strings.Join(parts, "")

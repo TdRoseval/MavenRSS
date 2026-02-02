@@ -7,10 +7,9 @@ import {
   PhTrash,
   PhBroom,
   PhMagnifyingGlass,
-  PhInfo,
 } from '@phosphor-icons/vue';
 import {
-  InfoBox,
+  TipBox,
   SettingGroup,
   SettingWithToggle,
   NestedSettingsContainer,
@@ -67,7 +66,7 @@ async function clearAllChatSessions() {
 <template>
   <SettingGroup :icon="PhRobot" :title="t('setting.ai.aiFeatures')">
     <!-- AI Search -->
-    <InfoBox :icon="PhInfo" :content="t('setting.ai.isBeta')" />
+    <TipBox type="info" :title="t('setting.ai.isBeta')" />
     <SettingWithToggle
       :icon="PhMagnifyingGlass"
       :title="t('setting.ai.aiSearchEnabled')"

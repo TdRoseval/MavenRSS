@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
+import { PhCaretRight } from '@phosphor-icons/vue';
+import { useI18n } from 'vue-i18n';
 import ActivityBar from './ActivityBar.vue';
 import FeedList from './FeedList.vue';
 
@@ -13,10 +15,21 @@ const emit = defineEmits<{
   toggle: [];
 }>();
 
+const { t } = useI18n();
+
 // Feed drawer state
 const isFeedListExpanded = ref(false);
 const isFeedListPinned = ref(false);
 const activityBarRef = ref<InstanceType<typeof ActivityBar> | null>(null);
+
+// Activity bar collapse state - use localStorage for persistence
+const savedActivityBarCollapsed = localStorage.getItem('ActivityBarCollapsed');
+const isActivityBarCollapsed = ref(savedActivityBarCollapsed === 'true');
+
+// Save activity bar state to localStorage
+function saveActivityBarState() {
+  localStorage.setItem('ActivityBarCollapsed', String(isActivityBarCollapsed.value));
+}
 
 // Handle ready event from ActivityBar
 function handleActivityBarReady(state: { expanded: boolean; pinned: boolean }) {
@@ -84,16 +97,35 @@ function updateActivityBarState() {
 
 const emitShowAddFeed = () => window.dispatchEvent(new CustomEvent('show-add-feed'));
 const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settings'));
+
+function toggleActivityBar() {
+  isActivityBarCollapsed.value = !isActivityBarCollapsed.value;
+  saveActivityBarState();
+}
 </script>
 
 <template>
   <div class="compact-sidebar-wrapper flex h-full relative">
+    <!-- Edge Toggle Button (visible when ActivityBar is collapsed) -->
+    <Transition name="edge-toggle-fade">
+      <button
+        v-if="isActivityBarCollapsed"
+        class="edge-toggle-button flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-secondary transition-all"
+        :title="t('sidebar.activity.expandActivityBar')"
+        @click="toggleActivityBar"
+      >
+        <PhCaretRight :size="20" weight="regular" />
+      </button>
+    </Transition>
+
     <!-- Smart Activity Bar (Left) -->
     <ActivityBar
       ref="activityBarRef"
+      :is-collapsed="isActivityBarCollapsed"
       @add-feed="emitShowAddFeed"
       @settings="emitShowSettings"
       @toggle-feed-drawer="handleToggleFeedList"
+      @toggle-activity-bar="toggleActivityBar"
       @ready="handleActivityBarReady"
     />
 
@@ -102,7 +134,10 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
       <div
         v-if="isFeedListExpanded"
         class="feed-drawer-wrapper"
-        :class="{ pinned: isFeedListPinned }"
+        :class="[
+          { pinned: isFeedListPinned },
+          { 'activity-bar-collapsed': isActivityBarCollapsed },
+        ]"
       >
         <FeedList
           :is-expanded="isFeedListExpanded"
@@ -136,6 +171,40 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
   align-items: stretch;
 }
 
+/* Edge toggle button - similar to Adobe Acrobat */
+.edge-toggle-button {
+  width: 16px;
+  min-width: 16px;
+  height: 100%;
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-bg-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 15;
+  transition: background-color 0.2s;
+}
+
+.edge-toggle-button:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Edge toggle fade transition */
+.edge-toggle-fade-enter-active,
+.edge-toggle-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.edge-toggle-fade-enter-from,
+.edge-toggle-fade-leave-to {
+  opacity: 0;
+}
+
+.edge-toggle-fade-enter-to,
+.edge-toggle-fade-leave-from {
+  opacity: 1;
+}
+
 .feed-drawer-wrapper {
   position: relative;
   height: 100%;
@@ -150,10 +219,19 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
   z-index: 10;
 }
 
+/* When activity bar is collapsed, feed drawer should start from edge toggle button */
+.feed-drawer-wrapper:not(.pinned).activity-bar-collapsed {
+  left: 16px;
+}
+
 /* Smaller screens (laptops, tablets) */
 @media (max-width: 1400px) {
   .feed-drawer-wrapper:not(.pinned) {
     left: 48px;
+  }
+
+  .feed-drawer-wrapper:not(.pinned).activity-bar-collapsed {
+    left: 16px;
   }
 }
 
@@ -161,6 +239,10 @@ const emitShowSettings = () => window.dispatchEvent(new CustomEvent('show-settin
 @media (max-width: 767px) {
   .feed-drawer-wrapper:not(.pinned) {
     left: 44px;
+  }
+
+  .feed-drawer-wrapper:not(.pinned).activity-bar-collapsed {
+    left: 16px;
   }
 }
 

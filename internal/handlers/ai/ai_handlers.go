@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,6 +10,7 @@ import (
 	"MrRSS/internal/ai"
 	"MrRSS/internal/config"
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 )
 
 // TestResult represents the result of AI configuration test
@@ -34,7 +34,7 @@ type TestResult struct {
 // @Router       /ai/test [post]
 func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -72,8 +72,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	if !result.ConfigValid {
 		result.ErrorMessage = "Configuration incomplete: " + strings.Join(validationErrors, ", ")
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		response.JSON(w, result)
 		return
 	}
 
@@ -82,8 +81,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		result.ConfigValid = false
 		result.ErrorMessage = "Invalid endpoint URL: " + err.Error()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		response.JSON(w, result)
 		return
 	}
 
@@ -91,8 +89,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		result.ConfigValid = false
 		result.ErrorMessage = "API endpoint must use HTTP or HTTPS"
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		response.JSON(w, result)
 		return
 	}
 
@@ -106,8 +103,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		result.ModelAvailable = false
 		result.ErrorMessage = fmt.Sprintf("Failed to create HTTP client: %v", err)
 		result.ResponseTimeMs = time.Since(startTime).Milliseconds()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		response.JSON(w, result)
 		return
 	}
 	httpClient.Timeout = 30 * time.Second
@@ -135,8 +131,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	result.ResponseTimeMs = time.Since(startTime).Milliseconds()
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	response.JSON(w, result)
 }
 
 // HandleGetAITestInfo handles GET /api/ai/test/info to get last test result
@@ -149,7 +144,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 // @Router       /ai/test/info [get]
 func HandleGetAITestInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -163,8 +158,7 @@ func HandleGetAITestInfo(h *core.Handler, w http.ResponseWriter, r *http.Request
 		TestTime:          "",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	response.JSON(w, result)
 }
 
 // createHTTPClientWithProxy creates an HTTP client with global proxy settings if enabled

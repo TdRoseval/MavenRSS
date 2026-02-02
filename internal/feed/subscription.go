@@ -1,9 +1,6 @@
 package feed
 
 import (
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/utils"
 	"context"
 	"fmt"
 	"io"
@@ -13,14 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/html"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
+	"MrRSS/internal/models"
+	"MrRSS/internal/rsshub"
+	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/httputil"
 
 	"github.com/antchfx/htmlquery"
 	"github.com/antchfx/xmlquery"
 	"github.com/chromedp/chromedp"
 	"github.com/mmcdole/gofeed"
+	"golang.org/x/net/html"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // generateTitleFromRoute creates a friendly title from an RSSHub route
@@ -353,7 +354,7 @@ func (f *Fetcher) AddXPathSubscription(url string, category string, customTitle 
 	}
 
 	// Test fetch the URL to ensure it's accessible before adding
-	httpClient, err := utils.CreateHTTPClient("", 30*time.Second)
+	httpClient, err := httputil.CreateHTTPClient("", 30*time.Second)
 	if err != nil {
 		return 0, &XPathError{
 			Operation: "fetch",
@@ -682,7 +683,7 @@ func (f *Fetcher) parseFeedWithXPath(_ context.Context, feed *models.Feed) (*gof
 	}
 
 	// Fetch the content
-	httpClient, err := utils.CreateHTTPClient("", 30*time.Second)
+	httpClient, err := httputil.CreateHTTPClient("", 30*time.Second)
 	if err != nil {
 		return nil, &XPathError{
 			Operation: "fetch",

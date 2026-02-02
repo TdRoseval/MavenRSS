@@ -28,6 +28,7 @@ const {
   closeImageViewer,
   attachImageEventListeners,
   exportToObsidian,
+  exportToNotion,
   handleRetryLoadContent,
   goToPreviousArticle,
   goToNextArticle,
@@ -104,6 +105,7 @@ onBeforeUnmount(() => {
         @open-original="openOriginal"
         @toggle-translations="toggleTranslations"
         @export-to-obsidian="exportToObsidian"
+        @export-to-notion="exportToNotion"
       />
 
       <!-- Original webpage view -->

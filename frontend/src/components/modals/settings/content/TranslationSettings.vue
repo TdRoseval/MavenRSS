@@ -9,7 +9,6 @@ import {
   PhPackage,
   PhSliders,
   PhCode,
-  PhInfo,
   PhTrash,
   PhBroom,
   PhTimer,
@@ -22,7 +21,7 @@ import {
   NestedSettingsContainer,
   SubSettingItem,
   TextAreaControl,
-  InfoBox,
+  TipBox,
   ToggleControl,
   KeyValueList,
 } from '@/components/settings';
@@ -281,7 +280,7 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
 
       <!-- AI Translation Prompt -->
       <template v-if="settings.translation_provider === 'ai'">
-        <InfoBox :icon="PhInfo" :content="t('common.aiSettingsConfiguredInAITab')" />
+        <TipBox type="info" :title="t('common.aiSettingsConfiguredInAITab')" />
 
         <div class="sub-setting-item-col">
           <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">

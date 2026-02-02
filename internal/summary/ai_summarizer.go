@@ -8,7 +8,7 @@ import (
 
 	"MrRSS/internal/ai"
 	"MrRSS/internal/config"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/httputil"
 )
 
 // AISummarizer implements summarization using OpenAI-compatible APIs (GPT, Claude, etc.).
@@ -41,11 +41,11 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 		proxyPort, _ := db.GetSetting("proxy_port")
 		proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
 		proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
-		proxyURL = utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
 	// Create HTTP client with or without proxy
-	return utils.CreateHTTPClient(proxyURL, timeout)
+	return httputil.CreateHTTPClient(proxyURL, timeout)
 }
 
 // NewAISummarizer creates a new AI summarizer with the given credentials.

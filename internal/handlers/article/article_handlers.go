@@ -2,13 +2,13 @@ package article
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"sort"
 	"time"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
 	"MrRSS/internal/rsshub"
 )
@@ -54,17 +54,13 @@ func GetFeedType(feed *models.Feed) string {
 // @Success      200  {object}  map[string]interface{}  "Progress information"
 // @Router       /progress [get]
 func HandleProgress(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	progress := h.Fetcher.GetProgressWithStats()
 
 	// Log for debugging
 	log.Printf("[HandleProgress] Returning progress: is_running=%v, pool=%d, queue=%d",
 		progress.IsRunning, progress.PoolTaskCount, progress.QueueTaskCount)
 
-	if err := json.NewEncoder(w).Encode(progress); err != nil {
-		log.Printf("[HandleProgress] ERROR encoding progress: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to encode progress: %v", err), http.StatusInternalServerError)
-	}
+	response.JSON(w, progress)
 }
 
 // TaskDetailsResponse contains detailed task information
@@ -127,15 +123,12 @@ func HandleTaskDetails(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	response := TaskDetailsResponse{
+	resp := TaskDetailsResponse{
 		PoolTasks:  poolTasks,
 		QueueTasks: queueTasks,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode task details: %v", err), http.StatusInternalServerError)
-	}
+	response.JSON(w, resp)
 }
 
 // HandleFilteredArticles returns articles filtered by advanced conditions from the database.
@@ -151,13 +144,13 @@ func HandleTaskDetails(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 // @Router       /articles/filter [post]
 func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var req FilterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -180,14 +173,14 @@ func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	// For very large datasets, consider implementing database-level filtering
 	articles, err := h.DB.GetArticles("", 0, "", showHidden, 50000, 0)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Get feeds for category lookup
 	feeds, err := h.DB.GetFeeds()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -241,7 +234,7 @@ func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	hasMore := end < total
 
-	response := FilterResponse{
+	resp := FilterResponse{
 		Articles: paginatedArticles,
 		Total:    total,
 		Page:     page,
@@ -249,5 +242,5 @@ func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		HasMore:  hasMore,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	response.JSON(w, resp)
 }

@@ -6,8 +6,9 @@ import (
 	"net/http"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/summary"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/textutil"
 )
 
 // HandleSummarizeArticle generates a summary for an article's content.
@@ -23,7 +24,7 @@ import (
 // @Router       /summarize [post]
 func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -34,7 +35,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -48,7 +49,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	case "medium", "":
 		summaryLength = summary.Medium
 	default:
-		http.Error(w, "Invalid length parameter. Use 'short', 'medium', or 'long'", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
@@ -58,8 +59,8 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		article, err := h.DB.GetArticleByID(req.ArticleID)
 		if err == nil && article.Summary != "" && article.Summary != "<no content>" {
 			// Article has a cached summary, convert it to HTML and return
-			htmlSummary := utils.ConvertMarkdownToHTML(article.Summary)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			htmlSummary := textutil.ConvertMarkdownToHTML(article.Summary)
+			response.JSON(w, map[string]interface{}{
 				"summary":        article.Summary,
 				"html":           htmlSummary,
 				"sentence_count": 0, // We don't store this in DB
@@ -74,12 +75,12 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	content, err := getArticleContent(h, req.ArticleID, req.Content)
 	if err != nil {
 		log.Printf("Error getting article content for summary: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	if content == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"summary":      "",
 			"is_too_short": true,
 			"error":        "No content available for this article",
@@ -164,9 +165,9 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	// Convert markdown summary to HTML (for all summaries, not just AI)
-	htmlSummary := utils.ConvertMarkdownToHTML(result.Summary)
+	htmlSummary := textutil.ConvertMarkdownToHTML(result.Summary)
 
-	response := map[string]interface{}{
+	resp := map[string]interface{}{
 		"summary":        result.Summary,
 		"html":           htmlSummary,
 		"sentence_count": result.SentenceCount,
@@ -175,10 +176,10 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		"thinking":       result.Thinking,
 	}
 	if usedFallback {
-		response["used_fallback"] = true
+		resp["used_fallback"] = true
 	}
 
-	json.NewEncoder(w).Encode(response)
+	response.JSON(w, resp)
 }
 
 // getArticleContent fetches the content of an article by ID, or uses provided content
@@ -204,16 +205,15 @@ func getArticleContent(h *core.Handler, articleID int64, providedContent string)
 // @Router       /summaries/clear [delete]
 func HandleClearSummaries(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	if err := h.DB.ClearAllSummaries(); err != nil {
 		log.Printf("Error clearing summaries: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	response.JSON(w, map[string]interface{}{"success": true})
 }

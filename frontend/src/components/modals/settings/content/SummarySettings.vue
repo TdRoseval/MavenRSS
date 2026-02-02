@@ -6,7 +6,6 @@ import {
   PhTextT,
   PhPackage,
   PhRobot,
-  PhInfo,
   PhTrash,
   PhBroom,
 } from '@phosphor-icons/vue';
@@ -16,7 +15,7 @@ import {
   NestedSettingsContainer,
   SubSettingItem,
   TextAreaControl,
-  InfoBox,
+  TipBox,
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
@@ -101,7 +100,7 @@ const isClearingCache = ref(false);
 
       <!-- AI Summary Prompt -->
       <template v-if="settings.summary_provider === 'ai'">
-        <InfoBox :icon="PhInfo" :content="t('common.aiSettingsConfiguredInAITab')" />
+        <TipBox type="info" :title="t('common.aiSettingsConfiguredInAITab')" />
 
         <div class="sub-setting-item-col">
           <div class="flex items-center sm:items-start gap-2 sm:gap-3 min-w-0">
@@ -118,7 +117,7 @@ const isClearingCache = ref(false);
           <TextAreaControl
             :model-value="settings.ai_summary_prompt"
             :placeholder="t('setting.content.aiSummaryPromptPlaceholder')"
-            rows="3"
+            :rows="3"
             @update:model-value="updateSetting('ai_summary_prompt', $event)"
           />
         </div>

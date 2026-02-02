@@ -63,6 +63,9 @@ export interface SettingsData {
   network_bandwidth_mbps: string;
   network_latency_ms: string;
   network_speed: string;
+  notion_api_key: string;
+  notion_enabled: boolean;
+  notion_page_id: string;
   obsidian_enabled: boolean;
   obsidian_vault: string;
   obsidian_vault_path: string;

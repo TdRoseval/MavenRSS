@@ -5,6 +5,7 @@ package browser
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,7 +13,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	handlers "MrRSS/internal/handlers/core"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/fileutil"
 )
 
 // HandleOpenURL opens a URL in the user's default web browser using Wails v3 Browser API.
@@ -32,32 +34,33 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 	var targetURL string
 
 	// Handle both GET and POST requests
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		// Get URL from query parameter (for GET requests from proxied links)
 		targetURL = r.URL.Query().Get("url")
 		if targetURL == "" {
-			http.Error(w, "URL is required", http.StatusBadRequest)
+			response.Error(w, fmt.Errorf("URL is required"), http.StatusBadRequest)
 			return
 		}
-	} else if r.Method == http.MethodPost {
+	case http.MethodPost:
 		// Parse request body (for POST requests)
 		var req struct {
 			URL string `json:"url"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		targetURL = req.URL
-	} else {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	default:
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Validate URL
 	if targetURL == "" {
-		http.Error(w, "URL is required", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("URL is required"), http.StatusBadRequest)
 		return
 	}
 
@@ -65,30 +68,28 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil {
 		log.Printf("Invalid URL format: %v", err)
-		http.Error(w, "Invalid URL format", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("invalid URL format"), http.StatusBadRequest)
 		return
 	}
 
 	// Only allow http and https schemes for security
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		log.Printf("Invalid URL scheme: %s", parsedURL.Scheme)
-		http.Error(w, "Only HTTP and HTTPS URLs are allowed", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("only HTTP and HTTPS URLs are allowed"), http.StatusBadRequest)
 		return
 	}
 
 	// Check if app instance is available
 	if h.App == nil {
 		// specific check for server mode to redirect to client side
-		if utils.IsServerMode() {
+		if fileutil.IsServerMode() {
 			log.Printf("Server mode detected, instructing client to open URL: %s", targetURL)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"redirect": targetURL})
+			response.JSON(w, map[string]string{"redirect": targetURL})
 			return
 		}
 
 		log.Printf("App instance not available for browser integration")
-		http.Error(w, "Browser integration not available", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("browser integration not available"), http.StatusInternalServerError)
 		return
 	}
 
@@ -97,21 +98,19 @@ func HandleOpenURL(h *handlers.Handler, w http.ResponseWriter, r *http.Request) 
 	wailsApp, ok := h.App.(*application.App)
 	if !ok {
 		log.Printf("Browser integration not available - invalid app type")
-		http.Error(w, "Browser integration not available", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("browser integration not available"), http.StatusInternalServerError)
 		return
 	}
 
 	err = wailsApp.Browser.OpenURL(targetURL)
 	if err != nil {
 		log.Printf("Failed to open URL in browser: %v", err)
-		http.Error(w, "Failed to open URL in browser", http.StatusInternalServerError)
+		response.Error(w, fmt.Errorf("failed to open URL in browser"), http.StatusInternalServerError)
 		return
 	}
 
 	log.Printf("Opened URL in browser: %s", targetURL)
 
 	// Return success
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	response.JSON(w, map[string]string{"status": "success"})
 }

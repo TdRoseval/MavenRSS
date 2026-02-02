@@ -822,6 +822,7 @@ const en: TranslationMessages = {
         "The app automatically uses the operating system's proxy settings by default. You only need to enable this option if you want to use a different proxy than the system proxy.",
       tunModeInfo:
         'If you are using a proxy tool (such as Clash, V2Ray, etc.), please ensure TUN mode or Enhanced mode is enabled to allow all applications to use the proxy.',
+      tunModeInfoTitle: 'Can not connect to the Internet?',
       useCustomProxy: 'Use Custom Proxy',
       useGlobalProxy: 'Use Global Proxy',
       currentMode: 'Current mode',
@@ -863,6 +864,26 @@ const en: TranslationMessages = {
       usernamePlaceholder: 'Enter your username',
     },
     plugins: {
+      notion: {
+        apiKey: 'API Key',
+        apiKeyDesc: 'Internal Integration Token from Notion',
+        apiKeyPlaceholder: 'xxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        exported: 'Article successfully exported to Notion',
+        exportFailed: 'Failed to export to Notion',
+        exporting: 'Exporting to Notion',
+        exportTo: 'Export to Notion',
+        integration: 'Notion Integration',
+        integrationDescription: 'Export articles directly to Notion',
+        pageId: 'Note Page ID',
+        pageIdDesc: 'The ID of the Notion page where articles will be created as sub-pages',
+        pageIdPlaceholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        setupInstructions: 'To set up Notion integration:',
+        step1: 'Go to notion.so/my-integrations and create a new integration',
+        step2: 'Copy the Internal Integration Token as your API Key',
+        step3:
+          'Open the note page in Notion and click "..." → "Connections" → Add your integration',
+        step4: 'Copy the page ID from the URL (the 32-character string after the page name)',
+      },
       obsidian: {
         exported: 'Article successfully exported to Obsidian',
         exportFailed: 'Failed to export to Obsidian',
@@ -1015,7 +1036,9 @@ const en: TranslationMessages = {
     activity: {
       addFeed: 'Add Feed',
       allArticles: 'All Articles',
+      collapseActivityBar: 'Collapse Activity Bar',
       collapseFeedList: 'Collapse Feed List',
+      expandActivityBar: 'Expand Activity Bar',
       expandFeedList: 'Expand Feed List',
       favorites: 'Favorites',
       imageGallery: 'Image Gallery',

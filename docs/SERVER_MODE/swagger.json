@@ -12,7 +12,7 @@
             "name": "GPL-3.0",
             "url": "https://www.gnu.org/licenses/gpl-3.0.en.html"
         },
-        "version": "1.3.18"
+        "version": "1.3.19"
     },
     "host": "localhost:1234",
     "basePath": "/api",
@@ -776,6 +776,70 @@
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/articles/export/notion": {
+            "post": {
+                "description": "Export an article to Notion as a page (requires notion_enabled, notion_api_key, and notion_page_id settings)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "articles"
+                ],
+                "summary": "Export article to Notion",
+                "parameters": [
+                    {
+                        "description": "Article export request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/article.ExportToNotionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Export result (success, page_url, message)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request (Notion not configured or invalid article ID)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Article not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -4814,6 +4878,14 @@
         }
     },
     "definitions": {
+        "article.ExportToNotionRequest": {
+            "type": "object",
+            "properties": {
+                "article_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "article.ExportToObsidianRequest": {
             "type": "object",
             "properties": {

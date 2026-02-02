@@ -78,6 +78,44 @@ async function exportToObsidian() {
   }
 }
 
+// Export to Notion
+async function exportToNotion() {
+  if (!props.article) return;
+
+  try {
+    window.showToast(t('setting.plugins.notion.exporting'), 'info');
+
+    const response = await fetch('/api/articles/export/notion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        article_id: props.article.id,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error);
+    }
+
+    const data = await response.json();
+
+    // Show success message
+    const message = data.message || t('setting.plugins.notion.exported');
+    window.showToast(message, 'success');
+
+    // Open the Notion page in external browser
+    if (data.page_url) {
+      openInBrowser(data.page_url);
+    }
+  } catch (error) {
+    console.error('Failed to export to Notion:', error);
+    const message =
+      error instanceof Error ? error.message : t('setting.plugins.notion.exportFailed');
+    window.showToast(message, 'error');
+  }
+}
+
 // Navigation
 const currentArticleIndex = computed(() => {
   if (!props.article) return -1;
@@ -239,6 +277,7 @@ function handleOverlayClick(e: MouseEvent) {
           @open-original="openOriginal"
           @toggle-translations="toggleTranslations"
           @export-to-obsidian="exportToObsidian"
+          @export-to-notion="exportToNotion"
         />
 
         <!-- Modal content -->

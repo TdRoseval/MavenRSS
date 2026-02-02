@@ -48,6 +48,7 @@ defineEmits<{
   openOriginal: [];
   toggleTranslations: [];
   exportToObsidian: [];
+  exportToNotion: [];
 }>();
 </script>
 
@@ -159,6 +160,18 @@ defineEmits<{
           src="/assets/plugin_icons/obsidian.svg"
           class="w-[18px] h-[18px] sm:w-5 sm:h-5"
           alt="Obsidian"
+        />
+      </button>
+      <button
+        v-if="settings.notion_enabled"
+        class="action-btn"
+        :title="t('setting.plugins.notion.exportTo')"
+        @click="$emit('exportToNotion')"
+      >
+        <img
+          src="/assets/plugin_icons/notion.svg"
+          class="w-[18px] h-[18px] sm:w-5 sm:h-5"
+          alt="Notion"
         />
       </button>
     </div>

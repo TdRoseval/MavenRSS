@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 	"MrRSS/internal/version"
 )
 
@@ -79,7 +81,7 @@ func isNetworkError(err error) bool {
 // @Router       /update/check [get]
 func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -97,13 +99,13 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		proxyPort, _ := h.DB.GetSetting("proxy_port")
 		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
 		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
-		proxyURL = utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
-	client, err := utils.CreateHTTPClient(proxyURL, 30*time.Second)
+	client, err := httputil.CreateHTTPClient(proxyURL, 30*time.Second)
 	if err != nil {
 		log.Printf("Error creating HTTP client: %v", err)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"current_version": currentVersion,
 			"error":           "Failed to create HTTP client",
 		})
@@ -117,7 +119,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		if isNetworkError(err) {
 			errorType = "network_error"
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"current_version": currentVersion,
 			"error":           errorType,
 		})
@@ -132,7 +134,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusProxyAuthRequired {
 			errorType = "network_error"
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"current_version": currentVersion,
 			"error":           errorType,
 		})
@@ -157,7 +159,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	var releases []Release
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		log.Printf("Error decoding releases info: %v", err)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"current_version": currentVersion,
 			"error":           "Failed to parse release information",
 		})
@@ -182,7 +184,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	if !found {
 		log.Printf("No stable releases found")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"current_version": currentVersion,
 			"error":           "No stable release available",
 		})
@@ -198,7 +200,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	var assetSize int64
 	platform := runtime.GOOS
 	arch := runtime.GOARCH
-	isPortable := utils.IsPortableMode()
+	isPortable := fileutil.IsPortableMode()
 
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
@@ -266,7 +268,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	response := map[string]interface{}{
+	result := map[string]interface{}{
 		"current_version": currentVersion,
 		"latest_version":  latestVersion,
 		"has_update":      hasUpdate,
@@ -276,10 +278,10 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	if downloadURL != "" {
-		response["download_url"] = downloadURL
-		response["asset_name"] = assetName
-		response["asset_size"] = assetSize
+		result["download_url"] = downloadURL
+		result["asset_name"] = assetName
+		result["asset_size"] = assetSize
 	}
 
-	json.NewEncoder(w).Encode(response)
+	response.JSON(w, result)
 }

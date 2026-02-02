@@ -22,33 +22,13 @@ import (
 
 	"MrRSS/internal/database"
 	"MrRSS/internal/feed"
-	aihandlers "MrRSS/internal/handlers/ai"
-	article "MrRSS/internal/handlers/article"
-	browser "MrRSS/internal/handlers/browser"
-	chat "MrRSS/internal/handlers/chat"
 	handlers "MrRSS/internal/handlers/core"
-	customcss "MrRSS/internal/handlers/custom_css"
-	discovery "MrRSS/internal/handlers/discovery"
-	feedhandlers "MrRSS/internal/handlers/feed"
-	filter_category "MrRSS/internal/handlers/filter_category"
-	freshrssHandler "MrRSS/internal/handlers/freshrss"
-	media "MrRSS/internal/handlers/media"
-	networkhandlers "MrRSS/internal/handlers/network"
-	opml "MrRSS/internal/handlers/opml"
-	rsshubHandler "MrRSS/internal/handlers/rsshub"
-	rules "MrRSS/internal/handlers/rules"
-	script "MrRSS/internal/handlers/script"
-	settings "MrRSS/internal/handlers/settings"
-	stathandlers "MrRSS/internal/handlers/statistics"
-	summary "MrRSS/internal/handlers/summary"
-	taghandlers "MrRSS/internal/handlers/tags"
-	translationhandlers "MrRSS/internal/handlers/translation"
-	update "MrRSS/internal/handlers/update"
-	window "MrRSS/internal/handlers/window"
 	"MrRSS/internal/monitor"
 	"MrRSS/internal/network"
+	"MrRSS/internal/routes"
 	"MrRSS/internal/translation"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 )
 
 var debugLogging = os.Getenv("MRRSS_DEBUG") != ""
@@ -118,7 +98,7 @@ func APIMiddleware(combinedHandler *CombinedHandler) application.Middleware {
 
 func main() {
 	// Get proper paths for data files
-	logPath, err := utils.GetLogPath()
+	logPath, err := fileutil.GetLogPath()
 	if err != nil {
 		log.Printf("Warning: Could not get log path: %v. Using current directory.", err)
 		logPath = "debug.log"
@@ -139,7 +119,7 @@ func main() {
 	log.Println("Starting application...")
 
 	// Log portable mode status
-	if utils.IsPortableMode() {
+	if fileutil.IsPortableMode() {
 		log.Println("Running in PORTABLE mode")
 	} else {
 		log.Println("Running in NORMAL mode")
@@ -148,7 +128,7 @@ func main() {
 	log.Printf("Log file: %s", logPath)
 
 	// Get database path
-	dbPath, err := utils.GetDBPath()
+	dbPath, err := fileutil.GetDBPath()
 	if err != nil {
 		log.Printf("Error getting database path: %v", err)
 		log.Fatal(err)
@@ -181,132 +161,7 @@ func main() {
 	// API Routes
 	log.Println("Setting up API routes...")
 	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("/api/feeds", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleFeeds(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/add", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleAddFeed(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/delete", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleDeleteFeed(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/update", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleUpdateFeed(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/refresh", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleRefreshFeed(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover", func(w http.ResponseWriter, r *http.Request) { discovery.HandleDiscoverBlogs(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover-all", func(w http.ResponseWriter, r *http.Request) { discovery.HandleDiscoverAllFeeds(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover/start", func(w http.ResponseWriter, r *http.Request) { discovery.HandleStartSingleDiscovery(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover/progress", func(w http.ResponseWriter, r *http.Request) { discovery.HandleGetSingleDiscoveryProgress(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover/clear", func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearSingleDiscovery(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover-all/start", func(w http.ResponseWriter, r *http.Request) { discovery.HandleStartBatchDiscovery(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover-all/progress", func(w http.ResponseWriter, r *http.Request) { discovery.HandleGetBatchDiscoveryProgress(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/discover-all/clear", func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearBatchDiscovery(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/reorder", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleReorderFeed(h, w, r) })
-	apiMux.HandleFunc("/api/feeds/test-imap", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleTestIMAPConnection(h, w, r) })
-	// Tag routes
-	apiMux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTags(h, w, r) })
-	apiMux.HandleFunc("/api/tags/update", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagUpdate(h, w, r) })
-	apiMux.HandleFunc("/api/tags/delete", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagDelete(h, w, r) })
-	apiMux.HandleFunc("/api/tags/reorder", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagReorder(h, w, r) })
-	// Saved filters routes
-	apiMux.HandleFunc("/api/saved-filters", func(w http.ResponseWriter, r *http.Request) {
-		filter_category.HandleSavedFilters(h, w, r)
-	})
-	apiMux.HandleFunc("/api/saved-filters/reorder", func(w http.ResponseWriter, r *http.Request) {
-		filter_category.HandleReorderSavedFilters(h, w, r)
-	})
-	apiMux.HandleFunc("/api/saved-filters/filter", func(w http.ResponseWriter, r *http.Request) {
-		filter_category.HandleSavedFilter(h, w, r)
-	})
-	apiMux.HandleFunc("/api/articles", func(w http.ResponseWriter, r *http.Request) { article.HandleArticles(h, w, r) })
-	apiMux.HandleFunc("/api/articles/images", func(w http.ResponseWriter, r *http.Request) { article.HandleImageGalleryArticles(h, w, r) })
-	apiMux.HandleFunc("/api/articles/filter", func(w http.ResponseWriter, r *http.Request) { article.HandleFilteredArticles(h, w, r) })
-	apiMux.HandleFunc("/api/articles/read", func(w http.ResponseWriter, r *http.Request) { article.HandleMarkReadWithImmediateSync(h, w, r) })
-	apiMux.HandleFunc("/api/articles/favorite", func(w http.ResponseWriter, r *http.Request) { article.HandleToggleFavoriteWithImmediateSync(h, w, r) })
-	apiMux.HandleFunc("/api/articles/mark-relative", func(w http.ResponseWriter, r *http.Request) { article.HandleMarkRelativeToArticle(h, w, r) })
-	apiMux.HandleFunc("/api/articles/cleanup", func(w http.ResponseWriter, r *http.Request) { article.HandleCleanupArticles(h, w, r) })
-	apiMux.HandleFunc("/api/articles/cleanup-content", func(w http.ResponseWriter, r *http.Request) { article.HandleCleanupArticleContent(h, w, r) })
-	apiMux.HandleFunc("/api/articles/content-cache-info", func(w http.ResponseWriter, r *http.Request) { article.HandleGetArticleContentCacheInfo(h, w, r) })
-	apiMux.HandleFunc("/api/articles/translate", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleTranslateArticle(h, w, r) })
-	apiMux.HandleFunc("/api/articles/translate-text", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleTranslateText(h, w, r) })
-	apiMux.HandleFunc("/api/articles/clear-translations", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleClearTranslations(h, w, r) })
-	apiMux.HandleFunc("/api/ai-usage", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleGetAIUsage(h, w, r) })
-	apiMux.HandleFunc("/api/ai-usage/reset", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleResetAIUsage(h, w, r) })
-	apiMux.HandleFunc("/api/translation/test-custom", func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleTestCustomTranslation(h, w, r) })
-	apiMux.HandleFunc("/api/ai-chat", func(w http.ResponseWriter, r *http.Request) { chat.HandleAIChat(h, w, r) })
-	apiMux.HandleFunc("/api/ai/chat/sessions/delete-all", func(w http.ResponseWriter, r *http.Request) { chat.HandleDeleteAllSessions(h, w, r) })
-	apiMux.HandleFunc("/api/ai/chat/sessions", func(w http.ResponseWriter, r *http.Request) { chat.HandleListSessions(h, w, r) })
-	apiMux.HandleFunc("/api/ai/chat/session/create", func(w http.ResponseWriter, r *http.Request) { chat.HandleCreateSession(h, w, r) })
-	apiMux.HandleFunc("/api/ai/chat/session", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			chat.HandleGetSession(h, w, r)
-		case http.MethodPut, http.MethodPatch:
-			chat.HandleUpdateSession(h, w, r)
-		case http.MethodDelete:
-			chat.HandleDeleteSession(h, w, r)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	apiMux.HandleFunc("/api/ai/chat/messages", func(w http.ResponseWriter, r *http.Request) { chat.HandleListMessages(h, w, r) })
-	apiMux.HandleFunc("/api/ai/chat/message/delete", func(w http.ResponseWriter, r *http.Request) { chat.HandleDeleteMessage(h, w, r) })
-	apiMux.HandleFunc("/api/ai/test", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAIConfig(h, w, r) })
-	apiMux.HandleFunc("/api/ai/test/info", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleGetAITestInfo(h, w, r) })
-	apiMux.HandleFunc("/api/ai/search", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleAISearch(h, w, r) })
-	apiMux.HandleFunc("/api/articles/toggle-hide", func(w http.ResponseWriter, r *http.Request) { article.HandleToggleHideArticle(h, w, r) })
-	apiMux.HandleFunc("/api/articles/toggle-read-later", func(w http.ResponseWriter, r *http.Request) { article.HandleToggleReadLater(h, w, r) })
-	apiMux.HandleFunc("/api/articles/content", func(w http.ResponseWriter, r *http.Request) { article.HandleGetArticleContent(h, w, r) })
-	apiMux.HandleFunc("/api/articles/fetch-full", func(w http.ResponseWriter, r *http.Request) { article.HandleFetchFullArticle(h, w, r) })
-	apiMux.HandleFunc("/api/articles/extract-images", func(w http.ResponseWriter, r *http.Request) { article.HandleExtractAllImages(h, w, r) })
-	apiMux.HandleFunc("/api/articles/unread-counts", func(w http.ResponseWriter, r *http.Request) { article.HandleGetUnreadCounts(h, w, r) })
-	apiMux.HandleFunc("/api/articles/filter-counts", func(w http.ResponseWriter, r *http.Request) { article.HandleGetFilterCounts(h, w, r) })
-	apiMux.HandleFunc("/api/articles/mark-all-read", func(w http.ResponseWriter, r *http.Request) { article.HandleMarkAllAsRead(h, w, r) })
-	apiMux.HandleFunc("/api/articles/clear-read-later", func(w http.ResponseWriter, r *http.Request) { article.HandleClearReadLater(h, w, r) })
-	apiMux.HandleFunc("/api/articles/summarize", func(w http.ResponseWriter, r *http.Request) { summary.HandleSummarizeArticle(h, w, r) })
-	apiMux.HandleFunc("/api/articles/clear-summaries", func(w http.ResponseWriter, r *http.Request) { summary.HandleClearSummaries(h, w, r) })
-	apiMux.HandleFunc("/api/articles/export/obsidian", func(w http.ResponseWriter, r *http.Request) { article.HandleExportToObsidian(h, w, r) })
-	apiMux.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) { settings.HandleSettings(h, w, r) })
-	apiMux.HandleFunc("/api/refresh", func(w http.ResponseWriter, r *http.Request) { article.HandleRefresh(h, w, r) })
-	apiMux.HandleFunc("/api/progress", func(w http.ResponseWriter, r *http.Request) { article.HandleProgress(h, w, r) })
-	apiMux.HandleFunc("/api/progress/task-details", func(w http.ResponseWriter, r *http.Request) { article.HandleTaskDetails(h, w, r) })
-	apiMux.HandleFunc("/api/opml/import", func(w http.ResponseWriter, r *http.Request) { opml.HandleOPMLImport(h, w, r) })
-	apiMux.HandleFunc("/api/opml/export", func(w http.ResponseWriter, r *http.Request) { opml.HandleOPMLExport(h, w, r) })
-	apiMux.HandleFunc("/api/opml/import-dialog", func(w http.ResponseWriter, r *http.Request) { opml.HandleOPMLImportDialog(h, w, r) })
-	apiMux.HandleFunc("/api/opml/export-dialog", func(w http.ResponseWriter, r *http.Request) { opml.HandleOPMLExportDialog(h, w, r) })
-	apiMux.HandleFunc("/api/check-updates", func(w http.ResponseWriter, r *http.Request) { update.HandleCheckUpdates(h, w, r) })
-	apiMux.HandleFunc("/api/download-update", func(w http.ResponseWriter, r *http.Request) { update.HandleDownloadUpdate(h, w, r) })
-	apiMux.HandleFunc("/api/install-update", func(w http.ResponseWriter, r *http.Request) { update.HandleInstallUpdate(h, w, r) })
-	apiMux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) { update.HandleVersion(h, w, r) })
-	apiMux.HandleFunc("/api/rules/apply", func(w http.ResponseWriter, r *http.Request) { rules.HandleApplyRule(h, w, r) })
-	apiMux.HandleFunc("/api/scripts/dir", func(w http.ResponseWriter, r *http.Request) { script.HandleGetScriptsDir(h, w, r) })
-	apiMux.HandleFunc("/api/scripts/open", func(w http.ResponseWriter, r *http.Request) { script.HandleOpenScriptsDir(h, w, r) })
-	apiMux.HandleFunc("/api/scripts/list", func(w http.ResponseWriter, r *http.Request) { script.HandleListScripts(h, w, r) })
-	apiMux.HandleFunc("/api/media/proxy", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaProxy(h, w, r) })
-	apiMux.HandleFunc("/api/media/cleanup", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheCleanup(h, w, r) })
-	apiMux.HandleFunc("/api/media/info", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheInfo(h, w, r) })
-	apiMux.HandleFunc("/api/webpage/proxy", func(w http.ResponseWriter, r *http.Request) { media.HandleWebpageProxy(h, w, r) })
-	apiMux.HandleFunc("/api/webpage/resource", func(w http.ResponseWriter, r *http.Request) { media.HandleWebpageResource(h, w, r) })
-	apiMux.HandleFunc("/api/window/state", func(w http.ResponseWriter, r *http.Request) { window.HandleGetWindowState(h, w, r) })
-	apiMux.HandleFunc("/api/window/save", func(w http.ResponseWriter, r *http.Request) { window.HandleSaveWindowState(h, w, r) })
-	apiMux.HandleFunc("/api/network/detect", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleDetectNetwork(h, w, r) })
-	apiMux.HandleFunc("/api/network/info", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleGetNetworkInfo(h, w, r) })
-	apiMux.HandleFunc("/api/browser/open", func(w http.ResponseWriter, r *http.Request) { browser.HandleOpenURL(h, w, r) })
-	apiMux.HandleFunc("/api/custom-css/upload-dialog", func(w http.ResponseWriter, r *http.Request) { customcss.HandleUploadCSSDialog(h, w, r) })
-	apiMux.HandleFunc("/api/custom-css/upload", func(w http.ResponseWriter, r *http.Request) { customcss.HandleUploadCSS(h, w, r) })
-	apiMux.HandleFunc("/api/custom-css", func(w http.ResponseWriter, r *http.Request) { customcss.HandleGetCSS(h, w, r) })
-	apiMux.HandleFunc("/api/custom-css/delete", func(w http.ResponseWriter, r *http.Request) { customcss.HandleDeleteCSS(h, w, r) })
-	apiMux.HandleFunc("/api/freshrss/sync", func(w http.ResponseWriter, r *http.Request) { freshrssHandler.HandleSync(h, w, r) })
-	apiMux.HandleFunc("/api/freshrss/sync-feed", func(w http.ResponseWriter, r *http.Request) { freshrssHandler.HandleSyncFeed(h, w, r) })
-	apiMux.HandleFunc("/api/freshrss/status", func(w http.ResponseWriter, r *http.Request) { freshrssHandler.HandleSyncStatus(h, w, r) })
-	// RSSHub routes
-	apiMux.HandleFunc("/api/rsshub/add", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleAddFeed(h, w, r) })
-	apiMux.HandleFunc("/api/rsshub/test-connection", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleTestConnection(h, w, r) })
-	apiMux.HandleFunc("/api/rsshub/validate-route", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleValidateRoute(h, w, r) })
-	apiMux.HandleFunc("/api/rsshub/transform-url", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleTransformURL(h, w, r) })
-	// Statistics routes
-	apiMux.HandleFunc("/api/statistics", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			stathandlers.HandleResetStatistics(h, w, r)
-		} else {
-			stathandlers.HandleGetStatistics(h, w, r)
-		}
-	})
-	apiMux.HandleFunc("/api/statistics/all-time", func(w http.ResponseWriter, r *http.Request) { stathandlers.HandleGetAllTimeStatistics(h, w, r) })
-	apiMux.HandleFunc("/api/statistics/available-months", func(w http.ResponseWriter, r *http.Request) { stathandlers.HandleGetAvailableMonths(h, w, r) })
+	routes.RegisterAPIRoutes(apiMux, h)
 
 	// Static Files
 	log.Println("Setting up static files...")
@@ -683,9 +538,9 @@ func main() {
 		// Create HTTP client with proxy if enabled
 		var httpClient *http.Client
 		if proxyEnabled == "true" {
-			proxyURL := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			proxyURL := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 			if proxyURL != "" {
-				client, err := utils.CreateHTTPClient(proxyURL, 10*time.Second)
+				client, err := httputil.CreateHTTPClient(proxyURL, 10*time.Second)
 				if err != nil {
 					log.Printf("Failed to create HTTP client with proxy: %v", err)
 					// Fall back to default client

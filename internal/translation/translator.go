@@ -1,11 +1,12 @@
 package translation
 
 import (
-	"MrRSS/internal/utils"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
 // Translator defines the interface for translation services
@@ -32,11 +33,11 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 		proxyPort, _ := db.GetSetting("proxy_port")
 		proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
 		proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
-		proxyURL = utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
 	// Create HTTP client with or without proxy
-	return utils.CreateHTTPClient(proxyURL, timeout)
+	return httputil.CreateHTTPClient(proxyURL, timeout)
 }
 
 // MockTranslator is a simple translator for demonstration

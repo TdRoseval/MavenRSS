@@ -3,7 +3,6 @@ package media
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -19,7 +18,9 @@ import (
 
 	"MrRSS/internal/cache"
 	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 )
 
 // validateMediaURL validates that the URL is HTTP/HTTPS and properly formatted
@@ -159,7 +160,7 @@ func getSmartReferer(imageURL, originalReferer string) string {
 // @Router       /media/proxy [get]
 func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -173,20 +174,20 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		decodedBytes, err := base64.StdEncoding.DecodeString(mediaURLBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 URL: %v", err)
-			http.Error(w, "Invalid base64 url parameter", http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		mediaURL = string(decodedBytes)
 	}
 
 	if mediaURL == "" {
-		http.Error(w, "Missing url parameter", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest)
 		return
 	}
 
 	// Validate mediaURL (must be HTTP/HTTPS and valid format)
 	if err := validateMediaURL(mediaURL); err != nil {
-		http.Error(w, "Invalid url parameter: "+err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -196,7 +197,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// If neither cache nor fallback is enabled, return error
 	if mediaCacheEnabled != "true" && mediaProxyFallback != "true" {
-		http.Error(w, "Media proxy is disabled", http.StatusForbidden)
+		response.Error(w, fmt.Errorf("media proxy is disabled"), http.StatusForbidden)
 		return
 	}
 
@@ -217,7 +218,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Try cache first if enabled
 	if mediaCacheEnabled == "true" {
 		// Get media cache directory
-		cacheDir, err := utils.GetMediaCacheDir()
+		cacheDir, err := fileutil.GetMediaCacheDir()
 		if err != nil {
 			log.Printf("Failed to get media cache directory: %v", err)
 			// Continue to fallback if enabled
@@ -254,7 +255,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// All methods failed
-	http.Error(w, "Failed to fetch media", http.StatusInternalServerError)
+	response.Error(w, fmt.Errorf("failed to fetch media"), http.StatusInternalServerError)
 }
 
 // HandleMediaCacheCleanup performs manual cleanup of media cache
@@ -269,15 +270,15 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Router       /media/cache/cleanup [post]
 func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Get media cache directory
-	cacheDir, err := utils.GetMediaCacheDir()
+	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
 		log.Printf("Failed to get media cache directory: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -285,7 +286,7 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 	mediaCache, err := cache.NewMediaCache(cacheDir)
 	if err != nil {
 		log.Printf("Failed to initialize media cache: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -333,12 +334,10 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 	totalCleaned := ageCount + sizeCount
 	log.Printf("Media cache cleanup: removed %d files (clean_all: %v)", totalCleaned, cleanAll)
 
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"success":       true,
 		"files_cleaned": totalCleaned,
-	}
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
 // HandleWebpageProxy proxies webpage content to bypass CORS restrictions in iframes
@@ -354,20 +353,20 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Router       /media/proxy-webpage [get]
 func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Get URL from query parameter
 	webpageURL := r.URL.Query().Get("url")
 	if webpageURL == "" {
-		http.Error(w, "Missing url parameter", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest)
 		return
 	}
 
 	// Validate webpageURL (must be HTTP/HTTPS and valid format)
 	if err := validateMediaURL(webpageURL); err != nil {
-		http.Error(w, "Invalid url parameter: "+err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -385,7 +384,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		proxyUsername, _ := h.DB.GetSetting("proxy_username")
 		proxyPassword, _ := h.DB.GetSetting("proxy_password")
 
-		proxyURLStr := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURLStr := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		if proxyURLStr != "" {
 			proxyURL, err := url.Parse(proxyURLStr)
 			if err != nil {
@@ -403,7 +402,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	req, err := http.NewRequest("GET", webpageURL, nil)
 	if err != nil {
 		log.Printf("Failed to create request: %v", err)
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -419,7 +418,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to fetch webpage %s: %v", webpageURL, err)
-		http.Error(w, "Failed to fetch webpage", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
@@ -427,7 +426,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Webpage returned status %d: %s", resp.StatusCode, webpageURL)
-		http.Error(w, "Webpage returned error", resp.StatusCode)
+		response.Error(w, fmt.Errorf("webpage returned error"), resp.StatusCode)
 		return
 	}
 
@@ -441,7 +440,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Failed to read response body: %v", err)
-		http.Error(w, "Failed to read webpage content", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -1533,7 +1532,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -1547,14 +1546,14 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		decodedBytes, err := base64.StdEncoding.DecodeString(resourceURLBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 URL: %v", err)
-			http.Error(w, "Invalid base64 url parameter", http.StatusBadRequest)
+			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		resourceURL = string(decodedBytes)
 	}
 
 	if resourceURL == "" {
-		http.Error(w, "Missing url parameter", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest)
 		return
 	}
 
@@ -1575,19 +1574,19 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	if referer == "" {
-		http.Error(w, "Missing referer parameter", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("missing referer parameter"), http.StatusBadRequest)
 		return
 	}
 
 	// Validate URLs
 	if err := validateMediaURL(resourceURL); err != nil {
 		log.Printf("Invalid URL validation failed for %s: %v", resourceURL, err)
-		http.Error(w, "Invalid url parameter: "+err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 	if err := validateMediaURL(referer); err != nil {
 		log.Printf("Invalid referer validation failed for %s: %v", referer, err)
-		http.Error(w, "Invalid referer parameter: "+err.Error(), http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -1605,7 +1604,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		proxyUsername, _ := h.DB.GetSetting("proxy_username")
 		proxyPassword, _ := h.DB.GetSetting("proxy_password")
 
-		proxyURLStr := utils.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURLStr := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		if proxyURLStr != "" {
 			proxyURL, err := url.Parse(proxyURLStr)
 			if err != nil {
@@ -1628,13 +1627,13 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Printf("Failed to read request body: %v", err)
-			http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 		req, err = http.NewRequest("POST", resourceURL, bytes.NewReader(body))
 		if err != nil {
 			log.Printf("Failed to create request: %v", err)
-			http.Error(w, "Failed to create request", http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 		// Forward content type
@@ -1645,7 +1644,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		req, err = http.NewRequest("GET", resourceURL, nil)
 		if err != nil {
 			log.Printf("Failed to create request: %v", err)
-			http.Error(w, "Failed to create request", http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -1659,7 +1658,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to fetch resource %s: %v", resourceURL, err)
-		http.Error(w, "Failed to fetch resource", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
@@ -1667,7 +1666,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	// Check response status - allow 200, 201, 202, 203, 204, 206
 	if resp.StatusCode < 200 || resp.StatusCode > 206 {
 		log.Printf("Resource returned status %d for %s (method: %s)", resp.StatusCode, resourceURL, r.Method)
-		http.Error(w, "Resource returned error", resp.StatusCode)
+		response.Error(w, fmt.Errorf("resource returned error"), resp.StatusCode)
 		return
 	}
 
@@ -1723,7 +1722,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Printf("Failed to read CSS content: %v", err)
-			http.Error(w, "Failed to read CSS content", http.StatusInternalServerError)
+			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -1819,10 +1818,10 @@ func proxyMediaDirectly(mediaURL, referer string, w http.ResponseWriter) error {
 func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Get media cache directory
-	cacheDir, err := utils.GetMediaCacheDir()
+	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
 		log.Printf("Failed to get media cache directory: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -1830,7 +1829,7 @@ func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	mediaCache, err := cache.NewMediaCache(cacheDir)
 	if err != nil {
 		log.Printf("Failed to initialize media cache: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -1838,7 +1837,7 @@ func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	cacheSize, err := mediaCache.GetCacheSize()
 	if err != nil {
 		log.Printf("Failed to get cache size: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -1846,10 +1845,10 @@ func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	cacheSizeMB := float64(cacheSize) / (1024 * 1024)
 
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
+	result := map[string]interface{}{
 		"cache_size_mb": cacheSizeMB,
 	}
-	json.NewEncoder(w).Encode(response)
+	response.JSON(w, result)
 }
 
 // getContentTypeFromPath determines content type from file extension

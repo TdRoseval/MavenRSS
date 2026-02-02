@@ -3,7 +3,7 @@ package feed
 import (
 	"MrRSS/internal/database"
 	"MrRSS/internal/models"
-	"MrRSS/internal/utils"
+	"MrRSS/internal/utils/httputil"
 	"context"
 	"net/http"
 	"net/url"
@@ -43,7 +43,7 @@ func TestGetHTTPClientProxyPrecedence(t *testing.T) {
 
 	// Helper function to get the underlying http.Transport
 	getTransport := func(client *http.Client) *http.Transport {
-		if uat, ok := client.Transport.(*utils.UserAgentTransport); ok {
+		if uat, ok := client.Transport.(*httputil.UserAgentTransport); ok {
 			return uat.Original.(*http.Transport)
 		}
 		return client.Transport.(*http.Transport)

@@ -2,9 +2,11 @@ package rsshub
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/rsshub"
 )
 
@@ -22,7 +24,7 @@ import (
 //	@Router			/api/rsshub/add [post]
 func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -33,25 +35,24 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Validate route
 	if req.Route == "" {
-		http.Error(w, "Route is required", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("route is required"), http.StatusBadRequest)
 		return
 	}
 
 	// Add RSSHub subscription using specialized handler
 	feedID, err := h.Fetcher.AddRSSHubSubscription(req.Route, req.Category, req.Title)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"success": true,
 		"feed_id": feedID,
 	})
@@ -70,7 +71,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 //	@Router			/api/rsshub/test-connection [post]
 func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -80,8 +81,7 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"success": false,
 			"error":   "Invalid request body",
 		})
@@ -93,16 +93,14 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	err := client.ValidateRoute("nytimes")
 
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"success": false,
 			"error":   err.Error(),
 		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"success": true,
 		"message": "Connection successful",
 	})
@@ -121,7 +119,7 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 //	@Router			/api/rsshub/validate-route [post]
 func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -130,12 +128,12 @@ func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.Route == "" {
-		http.Error(w, "Route is required", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("route is required"), http.StatusBadRequest)
 		return
 	}
 
@@ -150,16 +148,14 @@ func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request
 	err := client.ValidateRoute(req.Route)
 
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"valid": false,
 			"error": err.Error(),
 		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"valid":   true,
 		"message": "Route is valid",
 	})
@@ -178,7 +174,7 @@ func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request
 //	@Router			/api/rsshub/transform-url [post]
 func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -187,19 +183,18 @@ func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.URL == "" {
-		http.Error(w, "URL is required", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("url is required"), http.StatusBadRequest)
 		return
 	}
 
 	// Check if it's a RSSHub URL
 	if !rsshub.IsRSSHubURL(req.URL) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		response.JSON(w, map[string]interface{}{
 			"url": req.URL,
 		})
 		return
@@ -208,7 +203,7 @@ func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	// Check if RSSHub is enabled
 	enabledStr, _ := h.DB.GetSetting("rsshub_enabled")
 	if enabledStr != "true" {
-		http.Error(w, "RSSHub integration is disabled. Please enable it in settings", http.StatusBadRequest)
+		response.Error(w, fmt.Errorf("RSSHub integration is disabled"), http.StatusBadRequest)
 		return
 	}
 
@@ -224,8 +219,7 @@ func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	client := rsshub.NewClient(endpoint, apiKey)
 	transformedURL := client.BuildURL(route)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response.JSON(w, map[string]interface{}{
 		"url": transformedURL,
 	})
 }

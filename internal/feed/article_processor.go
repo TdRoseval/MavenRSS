@@ -1,13 +1,14 @@
 package feed
 
 import (
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils"
 	"html"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	"MrRSS/internal/models"
+	"MrRSS/internal/utils/textutil"
 
 	"github.com/mmcdole/gofeed"
 )
@@ -65,7 +66,7 @@ func (f *Fetcher) processArticles(feed models.Feed, items []*gofeed.Item) []*Art
 		content := ExtractContent(item)
 
 		// Clean HTML to fix malformed tags that can cause rendering issues
-		content = utils.CleanHTML(content)
+		content = textutil.CleanHTML(content)
 
 		// Determine title: prefer media:title if available, then item.Title, then generate from content
 		title := item.Title

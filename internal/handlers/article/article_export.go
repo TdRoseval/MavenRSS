@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"MrRSS/internal/handlers/core"
+	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
@@ -35,48 +36,48 @@ type ExportToObsidianRequest struct {
 // @Router       /articles/export/obsidian [post]
 func HandleExportToObsidian(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
 	var req ExportToObsidianRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.ArticleID <= 0 {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
 	// Get article from database
 	article, err := h.DB.GetArticleByID(int64(req.ArticleID))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Article not found: %v", err), http.StatusNotFound)
+		response.Error(w, err, http.StatusNotFound)
 		return
 	}
 
 	// Check if Obsidian integration is enabled
 	obsidianEnabled, _ := h.DB.GetSetting("obsidian_enabled")
 	if obsidianEnabled != "true" {
-		http.Error(w, "Obsidian integration is not enabled", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
 	// Get vault path (required for direct file access)
 	vaultPath, _ := h.DB.GetSetting("obsidian_vault_path")
 	if vaultPath == "" {
-		http.Error(w, "Obsidian vault path is not configured", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
 	// Validate vault path exists and is a directory
 	if info, err := os.Stat(vaultPath); os.IsNotExist(err) {
-		http.Error(w, "Obsidian vault path does not exist", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	} else if !info.IsDir() {
-		http.Error(w, "Obsidian vault path is not a directory", http.StatusBadRequest)
+		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
 
@@ -102,13 +103,12 @@ func HandleExportToObsidian(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	// Write file to Obsidian vault
 	if err := os.WriteFile(filePath, []byte(markdownContent), 0644); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to write file to Obsidian vault: %v", err), http.StatusInternalServerError)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Return success response
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response.JSON(w, map[string]string{
 		"success":   "true",
 		"file_path": filePath,
 		"message":   "Article exported to Obsidian successfully",
