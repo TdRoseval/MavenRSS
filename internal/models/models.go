@@ -92,3 +92,16 @@ type Tag struct {
 	Color    string `json:"color"`
 	Position int    `json:"position"`
 }
+
+// AIProfile represents an AI configuration profile
+type AIProfile struct {
+	ID            int64     `json:"id"`
+	Name          string    `json:"name"`
+	APIKey        string    `json:"api_key,omitempty"` // Hidden in responses, only sent when needed
+	Endpoint      string    `json:"endpoint"`
+	Model         string    `json:"model"`
+	CustomHeaders string    `json:"custom_headers"` // JSON string of key-value pairs
+	IsDefault     bool      `json:"is_default"`     // Default profile for new features
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}

@@ -121,6 +121,20 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_feed_tags_feed_id ON feed_tags(feed_id)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_feed_tags_tag_id ON feed_tags(tag_id)`)
 
+	// Migration: Add ai_profiles table for multiple AI configuration support
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ai_profiles (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		api_key TEXT DEFAULT '',
+		endpoint TEXT NOT NULL,
+		model TEXT NOT NULL,
+		custom_headers TEXT DEFAULT '',
+		is_default BOOLEAN DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_is_default ON ai_profiles(is_default)`)
+
 	return nil
 }
 

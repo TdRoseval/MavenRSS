@@ -7,11 +7,15 @@
 export interface SettingsData {
   ai_api_key: string;
   ai_chat_enabled: boolean;
+  ai_chat_profile_id: string;
   ai_custom_headers: string;
   ai_endpoint: string;
   ai_model: string;
   ai_search_enabled: boolean;
+  ai_search_profile_id: string;
+  ai_summary_profile_id: string;
   ai_summary_prompt: string;
+  ai_translation_profile_id: string;
   ai_translation_prompt: string;
   ai_usage_limit: string;
   ai_usage_tokens: string;

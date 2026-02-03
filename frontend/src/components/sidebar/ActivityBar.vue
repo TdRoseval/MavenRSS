@@ -15,7 +15,7 @@ import { ref, onMounted } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { useArticleFilter } from '@/composables/article/useArticleFilter';
-import LogoSvg from '../../../assets/logo.svg';
+import LogoSvg from '../../../public/assets/logo.svg';
 
 const store = useAppStore();
 const { t } = useI18n();

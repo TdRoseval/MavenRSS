@@ -675,6 +675,34 @@
       "category": "reading",
       "encrypted": false,
       "frontend_key": "contentLineHeight"
+    },
+    "ai_translation_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiTranslationProfileId"
+    },
+    "ai_summary_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiSummaryProfileId"
+    },
+    "ai_chat_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiChatProfileId"
+    },
+    "ai_search_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiSearchProfileId"
     }
   }
 }

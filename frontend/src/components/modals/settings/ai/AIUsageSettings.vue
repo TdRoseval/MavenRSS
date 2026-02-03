@@ -121,17 +121,6 @@ onMounted(() => {
       "
     />
 
-    <!-- Progress bar (only shown if limit is set) -->
-    <div v-if="aiUsage.limit > 0" class="mt-3">
-      <div class="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
-        <div
-          class="absolute top-0 left-0 h-full transition-all duration-300 rounded-full"
-          :class="aiUsage.limit_reached ? 'bg-red-500' : 'bg-accent'"
-          :style="{ width: getUsagePercentage() + '%' }"
-        />
-      </div>
-    </div>
-
     <!-- Set AI Usage Limit -->
     <SettingItem
       :icon="PhChartLine"

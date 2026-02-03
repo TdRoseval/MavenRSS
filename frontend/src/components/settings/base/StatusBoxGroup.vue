@@ -18,7 +18,7 @@ interface StatusInfo {
 
 interface Props {
   statuses: Status[];
-  actionButton: ActionButton;
+  actionButton?: ActionButton;
   statusInfo?: StatusInfo;
 }
 
@@ -40,7 +40,7 @@ defineOptions({
     </div>
 
     <!-- Action Area: Button and Status Info -->
-    <div class="flex flex-col sm:justify-between flex-1 gap-2">
+    <div v-if="actionButton" class="flex flex-col sm:justify-between flex-1 gap-2">
       <div class="flex justify-center sm:justify-end">
         <button
           class="btn-secondary"
@@ -65,6 +65,13 @@ defineOptions({
           statusInfo.time
         }}</span>
       </div>
+    </div>
+    <!-- Status Info only (no action button) -->
+    <div v-else-if="statusInfo" class="flex items-center justify-center sm:justify-end gap-2">
+      <span class="text-xs text-text-secondary">{{ statusInfo.label }}</span>
+      <span v-if="statusInfo.time" class="text-xs text-accent font-medium">{{
+        statusInfo.time
+      }}</span>
     </div>
   </div>
 </template>

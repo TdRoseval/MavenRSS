@@ -35,7 +35,7 @@ withDefaults(defineProps<Props>(), {
         </slot>
       </div>
     </div>
-    <div class="shrink-0">
+    <div class="setting-item-action">
       <slot name="action">
         <slot />
       </slot>
@@ -46,5 +46,9 @@ withDefaults(defineProps<Props>(), {
 <style scoped>
 .setting-item {
   @apply flex items-center sm:items-start justify-between gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg bg-bg-secondary border border-border;
+}
+
+.setting-item-action {
+  @apply shrink-0;
 }
 </style>

@@ -15,11 +15,15 @@ export function generateInitialSettings(): SettingsData {
   return {
     ai_api_key: settingsDefaults.ai_api_key,
     ai_chat_enabled: settingsDefaults.ai_chat_enabled,
+    ai_chat_profile_id: settingsDefaults.ai_chat_profile_id,
     ai_custom_headers: settingsDefaults.ai_custom_headers,
     ai_endpoint: settingsDefaults.ai_endpoint,
     ai_model: settingsDefaults.ai_model,
     ai_search_enabled: settingsDefaults.ai_search_enabled,
+    ai_search_profile_id: settingsDefaults.ai_search_profile_id,
+    ai_summary_profile_id: settingsDefaults.ai_summary_profile_id,
     ai_summary_prompt: settingsDefaults.ai_summary_prompt,
+    ai_translation_profile_id: settingsDefaults.ai_translation_profile_id,
     ai_translation_prompt: settingsDefaults.ai_translation_prompt,
     ai_usage_limit: settingsDefaults.ai_usage_limit,
     ai_usage_tokens: settingsDefaults.ai_usage_tokens,
@@ -120,11 +124,16 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
   return {
     ai_api_key: data.ai_api_key || settingsDefaults.ai_api_key,
     ai_chat_enabled: data.ai_chat_enabled === 'true',
+    ai_chat_profile_id: data.ai_chat_profile_id || settingsDefaults.ai_chat_profile_id,
     ai_custom_headers: data.ai_custom_headers || settingsDefaults.ai_custom_headers,
     ai_endpoint: data.ai_endpoint || settingsDefaults.ai_endpoint,
     ai_model: data.ai_model || settingsDefaults.ai_model,
     ai_search_enabled: data.ai_search_enabled === 'true',
+    ai_search_profile_id: data.ai_search_profile_id || settingsDefaults.ai_search_profile_id,
+    ai_summary_profile_id: data.ai_summary_profile_id || settingsDefaults.ai_summary_profile_id,
     ai_summary_prompt: data.ai_summary_prompt || settingsDefaults.ai_summary_prompt,
+    ai_translation_profile_id:
+      data.ai_translation_profile_id || settingsDefaults.ai_translation_profile_id,
     ai_translation_prompt: data.ai_translation_prompt || settingsDefaults.ai_translation_prompt,
     ai_usage_limit: data.ai_usage_limit || settingsDefaults.ai_usage_limit,
     ai_usage_tokens: data.ai_usage_tokens || settingsDefaults.ai_usage_tokens,
@@ -243,13 +252,20 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     ai_chat_enabled: (
       settingsRef.value.ai_chat_enabled ?? settingsDefaults.ai_chat_enabled
     ).toString(),
+    ai_chat_profile_id: settingsRef.value.ai_chat_profile_id ?? settingsDefaults.ai_chat_profile_id,
     ai_custom_headers: settingsRef.value.ai_custom_headers ?? settingsDefaults.ai_custom_headers,
     ai_endpoint: settingsRef.value.ai_endpoint ?? settingsDefaults.ai_endpoint,
     ai_model: settingsRef.value.ai_model ?? settingsDefaults.ai_model,
     ai_search_enabled: (
       settingsRef.value.ai_search_enabled ?? settingsDefaults.ai_search_enabled
     ).toString(),
+    ai_search_profile_id:
+      settingsRef.value.ai_search_profile_id ?? settingsDefaults.ai_search_profile_id,
+    ai_summary_profile_id:
+      settingsRef.value.ai_summary_profile_id ?? settingsDefaults.ai_summary_profile_id,
     ai_summary_prompt: settingsRef.value.ai_summary_prompt ?? settingsDefaults.ai_summary_prompt,
+    ai_translation_profile_id:
+      settingsRef.value.ai_translation_profile_id ?? settingsDefaults.ai_translation_profile_id,
     ai_translation_prompt:
       settingsRef.value.ai_translation_prompt ?? settingsDefaults.ai_translation_prompt,
     ai_usage_limit: settingsRef.value.ai_usage_limit ?? settingsDefaults.ai_usage_limit,

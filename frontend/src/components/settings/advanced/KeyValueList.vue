@@ -142,9 +142,9 @@ defineOptions({
 </script>
 
 <template>
-  <div class="key-value-list">
+  <div class="key-value-list w-full">
     <!-- Pairs List -->
-    <div class="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2 w-full">
+    <div class="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2">
       <div v-for="pair in pairs" :key="pair.id" class="flex items-center gap-1.5 sm:gap-2">
         <KeyValueInput
           :model-value="pair.key"
@@ -171,7 +171,7 @@ defineOptions({
       <!-- Add Pair Button -->
       <button
         type="button"
-        class="w-full p-1.5 sm:p-2 rounded border border-dashed border-border text-text-secondary hover:border-accent hover:text-accent hover:bg-accent/5 transition-all text-xs font-medium flex items-center justify-center gap-1.5 sm:gap-2"
+        class="!w-full p-1.5 sm:p-2 rounded border border-dashed border-border text-text-secondary hover:border-accent hover:text-accent hover:bg-accent/5 transition-all text-xs font-medium flex items-center justify-center gap-1.5 sm:gap-2"
         @click="addPair"
       >
         <PhPlus :size="14" class="sm:w-4 sm:h-4" />

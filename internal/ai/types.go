@@ -1,6 +1,11 @@
 // Package ai provides shared types and interfaces for AI client operations
 package ai
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // FormatType represents the type of API format
 type FormatType string
 
@@ -51,4 +56,37 @@ type FormatHandler interface {
 
 	// ValidateResponse checks if the HTTP response indicates success
 	ValidateResponse(statusCode int, body []byte) error
+}
+
+// ParseCustomHeaders parses custom headers from JSON string to map
+func ParseCustomHeaders(headersJSON string) map[string]string {
+	headers := make(map[string]string)
+	if headersJSON == "" {
+		return headers
+	}
+
+	// Try to parse as JSON array of key-value pairs
+	var pairs []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal([]byte(headersJSON), &pairs); err == nil {
+		for _, pair := range pairs {
+			if pair.Key != "" {
+				headers[pair.Key] = pair.Value
+			}
+		}
+		return headers
+	}
+
+	// Fallback: try to parse as simple key:value format (one per line)
+	lines := strings.Split(headersJSON, "\n")
+	for _, line := range lines {
+		parts := strings.SplitN(strings.TrimSpace(line), ":", 2)
+		if len(parts) == 2 {
+			headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+
+	return headers
 }
