@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"MrRSS/internal/handlers/core"
@@ -189,11 +190,15 @@ func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	feedTypes := make(map[int64]string)
 	feedIsImageMode := make(map[int64]bool)
 	feedTags := make(map[int64][]string)
+	feedArticlesPerMonth := make(map[int64]float64)
+	feedLastUpdateStatus := make(map[int64]string)
 
 	for _, feed := range feeds {
 		feedCategories[feed.ID] = feed.Category
 		feedTypes[feed.ID] = GetFeedType(&feed)
 		feedIsImageMode[feed.ID] = feed.IsImageMode
+		feedArticlesPerMonth[feed.ID] = feed.ArticlesPerMonth
+		feedLastUpdateStatus[feed.ID] = feed.LastUpdateStatus
 
 		// Build tag names list for this feed
 		tags, _ := h.DB.GetFeedTags(feed.ID)
@@ -204,11 +209,62 @@ func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		feedTags[feed.ID] = tagNames
 	}
 
+	// Check if any filter condition requires article content
+	needsArticleContent := false
+	for _, condition := range req.Conditions {
+		if condition.Field == "article_content" {
+			needsArticleContent = true
+			break
+		}
+	}
+
+	// Build article content map if needed
+	articleContents := make(map[int64]string)
+	if needsArticleContent {
+		// Collect article IDs
+		articleIDs := make([]int64, len(articles))
+		for i, article := range articles {
+			articleIDs[i] = article.ID
+		}
+
+		// Build placeholders for SQL query
+		placeholders := make([]string, len(articleIDs))
+		args := make([]interface{}, len(articleIDs))
+		for i, id := range articleIDs {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+
+		// Query all article contents at once
+		query := `SELECT article_id, content FROM article_contents WHERE article_id IN (` + strings.Join(placeholders, ",") + `)`
+		rows, err := h.DB.Query(query, args...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var articleID int64
+				var content string
+				if err := rows.Scan(&articleID, &content); err == nil {
+					articleContents[articleID] = content
+				}
+			}
+		}
+	}
+
 	// Apply filter conditions
 	if len(req.Conditions) > 0 {
 		var filteredArticles []models.Article
 		for _, article := range articles {
-			if evaluateArticleConditions(article, req.Conditions, feedCategories, feedTypes, feedIsImageMode, feedTags) {
+			if evaluateArticleConditions(
+				article,
+				req.Conditions,
+				feedCategories,
+				feedTypes,
+				feedIsImageMode,
+				feedTags,
+				feedArticlesPerMonth,
+				feedLastUpdateStatus,
+				articleContents,
+			) {
 				filteredArticles = append(filteredArticles, article)
 			}
 		}

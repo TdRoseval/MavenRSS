@@ -18,9 +18,35 @@ export function useFilterFields() {
     { value: 'feed_category', labelKey: 'modal.feed.feedCategory', multiSelect: true },
     { value: 'feed_tags', labelKey: 'modal.feed.feedTags', multiSelect: true },
     { value: 'article_title', labelKey: 'article.parts.articleTitle', multiSelect: false },
+    { value: 'article_content', labelKey: 'modal.filter.articleContent', multiSelect: false },
+    { value: 'author', labelKey: 'modal.filter.author', multiSelect: false },
+    { value: 'url', labelKey: 'modal.filter.url', multiSelect: false },
     { value: 'feed_type', labelKey: 'modal.filter.feedType', multiSelect: true },
     { value: 'published_after', labelKey: 'modal.filter.publishedAfter', multiSelect: false },
     { value: 'published_before', labelKey: 'modal.filter.publishedBefore', multiSelect: false },
+    {
+      value: 'published_after_hours',
+      labelKey: 'modal.filter.publishedAfterHours',
+      multiSelect: false,
+      numberField: true,
+    },
+    {
+      value: 'published_after_days',
+      labelKey: 'modal.filter.publishedAfterDays',
+      multiSelect: false,
+      numberField: true,
+    },
+    {
+      value: 'feed_articles_per_month',
+      labelKey: 'modal.filter.feedArticlesPerMonth',
+      multiSelect: false,
+      numberField: true,
+    },
+    {
+      value: 'feed_last_update_status',
+      labelKey: 'modal.filter.feedLastUpdateStatus',
+      multiSelect: false,
+    },
     {
       value: 'is_read',
       labelKey: 'modal.filter.readStatus',
@@ -36,6 +62,42 @@ export function useFilterFields() {
     {
       value: 'is_read_later',
       labelKey: 'modal.filter.readLaterStatus',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'is_hidden',
+      labelKey: 'modal.filter.hiddenStatus',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_summary',
+      labelKey: 'modal.filter.hasSummary',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_translation',
+      labelKey: 'modal.filter.hasTranslation',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_image',
+      labelKey: 'modal.filter.hasImage',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_audio',
+      labelKey: 'modal.filter.hasAudio',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_video',
+      labelKey: 'modal.filter.hasVideo',
       multiSelect: false,
       booleanField: true,
     },
@@ -148,15 +210,30 @@ export function useFilterFields() {
    * Check if field is a boolean field
    */
   function isBooleanField(field: string): boolean {
-    return field === 'is_read' || field === 'is_favorite' || field === 'is_read_later';
+    return (
+      field === 'is_read' ||
+      field === 'is_favorite' ||
+      field === 'is_read_later' ||
+      field === 'is_hidden' ||
+      field === 'has_summary' ||
+      field === 'has_translation' ||
+      field === 'has_image' ||
+      field === 'has_audio' ||
+      field === 'has_video'
+    );
   }
 
   /**
    * Check if field needs an operator selector
    */
   function needsOperator(field: string): boolean {
-    // Only article_title needs the contains/exact operator
-    return field === 'article_title';
+    // article_title, article_content, author, and url need the contains/exact/regex operator
+    return (
+      field === 'article_title' ||
+      field === 'article_content' ||
+      field === 'author' ||
+      field === 'url'
+    );
   }
 
   /**

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Notion integration for exporting articles directly to Notion pages. (#625)
 - Supported hiding and showing the activity bar. (#588)
 - Added show only unread functionality for image gallery. (#559)
+- Added more filter conditions for article list and automatic rules. (#642)
 
 ### Changed
 

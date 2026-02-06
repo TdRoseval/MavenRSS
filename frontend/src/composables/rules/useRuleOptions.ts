@@ -32,6 +32,9 @@ export function useRuleOptions() {
     { value: 'feed_category', labelKey: 'modal.feed.feedCategory', multiSelect: true },
     { value: 'feed_tags', labelKey: 'modal.feed.feedTags', multiSelect: true },
     { value: 'article_title', labelKey: 'article.parts.articleTitle', multiSelect: false },
+    { value: 'article_content', labelKey: 'modal.filter.articleContent', multiSelect: false },
+    { value: 'author', labelKey: 'modal.filter.author', multiSelect: false },
+    { value: 'url', labelKey: 'modal.filter.url', multiSelect: false },
     { value: 'feed_type', labelKey: 'modal.filter.feedType', multiSelect: true },
     {
       value: 'is_image_mode_feed',
@@ -41,6 +44,29 @@ export function useRuleOptions() {
     },
     { value: 'published_after', labelKey: 'modal.filter.publishedAfter', multiSelect: false },
     { value: 'published_before', labelKey: 'modal.filter.publishedBefore', multiSelect: false },
+    {
+      value: 'published_after_hours',
+      labelKey: 'modal.filter.publishedAfterHours',
+      multiSelect: false,
+      numberField: true,
+    },
+    {
+      value: 'published_after_days',
+      labelKey: 'modal.filter.publishedAfterDays',
+      multiSelect: false,
+      numberField: true,
+    },
+    {
+      value: 'feed_articles_per_month',
+      labelKey: 'modal.filter.feedArticlesPerMonth',
+      multiSelect: false,
+      numberField: true,
+    },
+    {
+      value: 'feed_last_update_status',
+      labelKey: 'modal.filter.feedLastUpdateStatus',
+      multiSelect: false,
+    },
     {
       value: 'is_read',
       labelKey: 'modal.filter.readStatus',
@@ -62,6 +88,36 @@ export function useRuleOptions() {
     {
       value: 'is_read_later',
       labelKey: 'modal.filter.readLaterStatus',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_summary',
+      labelKey: 'modal.filter.hasSummary',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_translation',
+      labelKey: 'modal.filter.hasTranslation',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_image',
+      labelKey: 'modal.filter.hasImage',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_audio',
+      labelKey: 'modal.filter.hasAudio',
+      multiSelect: false,
+      booleanField: true,
+    },
+    {
+      value: 'has_video',
+      labelKey: 'modal.filter.hasVideo',
       multiSelect: false,
       booleanField: true,
     },
@@ -176,10 +232,28 @@ export function isBooleanField(field: string): boolean {
     field === 'is_favorite' ||
     field === 'is_hidden' ||
     field === 'is_read_later' ||
-    field === 'is_image_mode_feed'
+    field === 'is_image_mode_feed' ||
+    field === 'has_summary' ||
+    field === 'has_translation' ||
+    field === 'has_image' ||
+    field === 'has_audio' ||
+    field === 'has_video'
   );
 }
 
 export function needsOperator(field: string): boolean {
-  return field === 'article_title';
+  return (
+    field === 'article_title' ||
+    field === 'article_content' ||
+    field === 'author' ||
+    field === 'url'
+  );
+}
+
+export function isNumberField(field: string): boolean {
+  return (
+    field === 'published_after_hours' ||
+    field === 'published_after_days' ||
+    field === 'feed_articles_per_month'
+  );
 }

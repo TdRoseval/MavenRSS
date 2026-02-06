@@ -6,6 +6,7 @@ import {
   type Condition,
   isDateField,
   isBooleanField,
+  isNumberField,
   needsOperator,
 } from '@/composables/rules/useRuleOptions';
 
@@ -164,6 +165,28 @@ function getMultiSelectDisplayText(): string {
           <option v-for="opt in booleanOptions" :key="opt.value" :value="opt.value">
             {{ t(opt.labelKey) }}
           </option>
+        </select>
+
+        <!-- Number input -->
+        <input
+          v-else-if="isNumberField(condition.field)"
+          type="number"
+          :value="condition.value"
+          class="input-field w-full text-xs sm:text-sm"
+          :placeholder="t('modal.filter.filterValue')"
+          @input="handleValueChange"
+        />
+
+        <!-- Special dropdown for feed_last_update_status -->
+        <select
+          v-else-if="condition.field === 'feed_last_update_status'"
+          :value="condition.value"
+          class="select-field w-full text-xs sm:text-sm"
+          @change="handleValueChange"
+        >
+          <option value="">{{ t('modal.filter.updateSuccess') }}</option>
+          <option value="success">{{ t('modal.filter.updateSuccess') }}</option>
+          <option value="failed">{{ t('modal.filter.updateFailed') }}</option>
         </select>
 
         <!-- Multi-select dropdown for feed name -->
@@ -383,7 +406,7 @@ function getMultiSelectDisplayText(): string {
 }
 .dropdown-menu {
   @apply absolute left-0 right-0 border border-border rounded-md bg-bg-primary;
-  @apply max-h-40 overflow-y-auto z-50 shadow-lg scroll-smooth;
+  @apply max-h-32 overflow-y-auto z-50 shadow-lg scroll-smooth;
 }
 .dropdown-menu.dropdown-down {
   @apply top-full mt-1;

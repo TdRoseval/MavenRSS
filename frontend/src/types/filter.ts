@@ -17,6 +17,7 @@ export interface FieldOption {
   labelKey: string;
   multiSelect: boolean;
   booleanField?: boolean;
+  numberField?: boolean;
 }
 
 export interface OperatorOption {
