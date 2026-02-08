@@ -193,7 +193,7 @@ defineExpose({
 <template>
   <div
     v-if="!props.isCollapsed"
-    class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative z-60"
+    class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative z-30"
   >
     <!-- Logo -->
     <div class="mb-6">

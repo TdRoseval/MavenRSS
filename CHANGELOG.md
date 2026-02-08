@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed multiple minor styling inconsistencies. (#668)
+- Fixed multiple minor styling inconsistencies. (#665, #668)
 
 ## [1.3.19] - 2026-02-07
 
