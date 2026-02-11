@@ -460,10 +460,9 @@ function handleManageTags() {
           v-for="feed in sortedFeeds"
           :key="feed.id"
           :class="[
-            'grid grid-cols-[auto,auto,1fr,auto] sm:grid-cols-[16px,16px,1fr,90px,100px,40px,44px,52px] lg:grid-cols-[16px,16px,2fr,100px,110px,40px,44px,52px] gap-1.5 sm:gap-2 p-1.5 sm:p-2 border-b border-border last:border-0 items-center cursor-pointer',
-            feed.is_freshrss_source ? 'bg-info/10' : 'bg-bg-primary hover:bg-bg-secondary',
+            'grid grid-cols-[auto,auto,1fr,auto] sm:grid-cols-[16px,16px,1fr,90px,100px,40px,44px,52px] lg:grid-cols-[16px,16px,2fr,100px,110px,40px,44px,52px] gap-1.5 sm:gap-2 p-1.5 sm:p-2 border-b border-border last:border-0 items-center',
+            feed.is_freshrss_source ? 'bg-info/10' : 'bg-bg-primary',
           ]"
-          @click="handleFeedClick(feed, $event)"
         >
           <!-- Checkbox -->
           <input
@@ -494,7 +493,8 @@ function handleManageTags() {
           <!-- Title Column -->
           <div class="min-w-0 flex-1">
             <div
-              class="font-medium text-xs sm:text-sm flex items-center gap-1 sm:gap-2 overflow-hidden"
+              class="font-medium text-xs sm:text-sm flex items-center gap-1 sm:gap-2 overflow-hidden cursor-pointer hover:text-accent"
+              @click="handleFeedClick(feed, $event)"
             >
               <span class="truncate" :title="feed.title">{{ feed.title }}</span>
               <!-- Feed Type Indicators -->

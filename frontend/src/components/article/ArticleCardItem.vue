@@ -292,8 +292,8 @@ function handleImageError(event: Event) {
 .card-title {
   @apply text-base font-semibold text-text-primary leading-snug;
   display: -webkit-box;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
@@ -301,8 +301,8 @@ function handleImageError(event: Event) {
 
 /* Allow more lines for cards without thumbnails */
 .no-thumbnail .card-title {
-  -webkit-line-clamp: 10;
-  line-clamp: 10;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
 }
 
 .card-title.read-title {

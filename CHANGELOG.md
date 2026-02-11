@@ -5,6 +5,12 @@ All notable changes to MrRSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed multiple minor styling inconsistencies. (#665, #666, #668)
+
 ## [1.3.19] - 2026-02-07
 
 **NOTE:** After the update, AI-related settings may require reconfiguration due to conflicts introduced by new features.

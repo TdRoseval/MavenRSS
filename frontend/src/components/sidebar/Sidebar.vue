@@ -166,7 +166,7 @@ function toggleActivityBar() {
 
 .compact-sidebar-wrapper {
   position: relative;
-  z-index: 10;
+  z-index: 20;
   display: flex;
   align-items: stretch;
 }
@@ -216,7 +216,7 @@ function toggleActivityBar() {
   left: 56px;
   top: 0;
   bottom: 0;
-  z-index: 10;
+  z-index: 20;
 }
 
 /* When activity bar is collapsed, feed drawer should start from edge toggle button */
