@@ -450,6 +450,11 @@ onUnmounted(() => {
       @open-image="openImage"
       @context-menu="handleContextMenu"
       @toggle-favorite="imageActions.toggleFavorite"
+      @container-mounted="
+        (el) => {
+          masonryLayout.containerRef.value = el;
+        }
+      "
     />
 
     <!-- Image Viewer Modal -->

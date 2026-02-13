@@ -1,4 +1,4 @@
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, watch } from 'vue';
 import type { Article } from '@/types/models';
 import type { MasonryLayoutReturn } from '../types';
 
@@ -16,6 +16,7 @@ export function useMasonryLayout(articles: { value: Article[] }): MasonryLayoutR
   const containerRef = ref<HTMLElement | null>(null);
   // eslint-disable-next-line no-undef
   let resizeObserver: ResizeObserver | null = null;
+  let isObserverSetup = false;
 
   /**
    * Calculate number of columns based on container width dynamically
@@ -32,6 +33,38 @@ export function useMasonryLayout(articles: { value: Article[] }): MasonryLayoutR
 
     // Rearrange columns after calculating new count
     arrangeColumns();
+  }
+
+  /**
+   * Setup resize observer on container
+   */
+  function setupResizeObserver(): void {
+    if (isObserverSetup) return; // Already set up
+
+    // Watch for containerRef to become available
+    const stopWatch = watch(
+      containerRef,
+      (el) => {
+        if (el && !isObserverSetup) {
+          // Set up the observer
+          // eslint-disable-next-line no-undef
+          resizeObserver = new ResizeObserver(() => {
+            calculateColumns();
+          });
+          resizeObserver.observe(el);
+          isObserverSetup = true;
+
+          // Calculate columns immediately after setting up observer
+          nextTick(() => {
+            calculateColumns();
+          });
+
+          // Stop watching once observer is set up
+          stopWatch();
+        }
+      },
+      { immediate: true }
+    );
   }
 
   /**
@@ -64,27 +97,17 @@ export function useMasonryLayout(articles: { value: Article[] }): MasonryLayoutR
   }
 
   /**
-   * Setup resize observer on container
-   */
-  function setupResizeObserver(): void {
-    if (containerRef.value) {
-      // eslint-disable-next-line no-undef
-      resizeObserver = new ResizeObserver(() => {
-        calculateColumns();
-      });
-      resizeObserver.observe(containerRef.value);
-    }
-  }
-
-  /**
    * Cleanup resize observer
    */
   function cleanupResizeObserver(): void {
-    if (resizeObserver && containerRef.value) {
-      resizeObserver.unobserve(containerRef.value);
+    if (resizeObserver) {
+      if (containerRef.value) {
+        resizeObserver.unobserve(containerRef.value);
+      }
       resizeObserver.disconnect();
       resizeObserver = null;
     }
+    isObserverSetup = false;
   }
 
   return {

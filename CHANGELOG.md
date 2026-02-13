@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the issue where rule adding / editing modal cannot be closed. (#647)
 - Fixed the issue where some input fields will revert to previous values after clearing. (#689)
 - Fixed the issue where read later can not work correctly in card layout. (#662)
+- Fixed the issue where image gallery can not adjust the number of columns according to the window width. (#652)
 
 ## [1.3.19] - 2026-02-07
 

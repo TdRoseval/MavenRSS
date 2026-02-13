@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import { ref, watch } from 'vue';
 import { PhImage } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 import ImageCard from './ImageCard.vue';
@@ -17,9 +18,24 @@ const emit = defineEmits<{
   openImage: [article: Article];
   contextMenu: [event: MouseEvent, article: Article];
   toggleFavorite: [article: Article, event: Event];
+  containerMounted: [element: HTMLElement];
 }>();
 
 const { t } = useI18n();
+
+// Local ref for the container element
+const localContainerRef = ref<HTMLElement | null>(null);
+
+// Emit event when container is mounted so parent can set up its ref
+watch(
+  localContainerRef,
+  (newVal) => {
+    if (newVal) {
+      emit('containerMounted', newVal);
+    }
+  },
+  { immediate: true }
+);
 
 /**
  * Get image count for an article
@@ -30,7 +46,7 @@ function getImageCount(article: Article): number {
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-scroll scroll-smooth">
+  <div ref="localContainerRef" class="flex-1 overflow-y-scroll scroll-smooth">
     <!-- Masonry Grid -->
     <div v-if="columns.length > 0 && columns.some((col) => col.length > 0)" class="p-4 flex gap-4">
       <div v-for="(column, colIndex) in columns" :key="colIndex" class="flex-1 flex flex-col gap-4">
