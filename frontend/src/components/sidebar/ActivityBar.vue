@@ -191,112 +191,202 @@ defineExpose({
 </script>
 
 <template>
-  <div
-    v-if="!props.isCollapsed"
-    class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative z-30"
-  >
-    <!-- Logo -->
-    <div class="mb-6">
-      <img :src="LogoSvg" alt="MrRSS" class="w-6 h-6" />
-    </div>
-
-    <!-- Divider -->
-    <div class="w-8 h-px bg-border mb-3"></div>
-
-    <!-- Navigation Items -->
-    <div class="flex-1 flex flex-col items-center gap-1 w-full overflow-y-auto overflow-x-hidden">
-      <button
-        v-for="item in navItems"
-        v-show="item.id !== 'imageGallery' || imageGalleryEnabled"
-        :key="item.id"
-        :class="[
-          'relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent',
-          store.currentFilter === item.filterType ? 'text-accent' : '',
-        ]"
-        style="width: 44px; height: 44px"
-        :title="item.label"
-        @click="handleNavClick(item)"
-      >
-        <!-- Icon -->
-        <component
-          :is="store.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon"
-          :size="24"
-          :weight="store.currentFilter === item.filterType ? 'fill' : 'regular'"
-          :class="[
-            store.currentFilter === item.filterType ? 'text-accent scale-105' : '',
-            'transition-all',
-          ]"
-        />
-
-        <!-- Unread Badge (only for 'all' button) -->
-        <span
-          v-if="item.id === 'all' && store.unreadCounts?.total > 0"
-          class="absolute bottom-0.5 right-0.5 min-w-[14px] h-[14px] px-0.5 text-[9px] font-medium flex items-center justify-center rounded-full text-white"
-          style="background-color: #999999"
-        >
-          {{ store.unreadCounts?.total > 99 ? '99+' : store.unreadCounts?.total }}
-        </span>
-      </button>
-    </div>
-
-    <!-- Bottom Actions -->
-    <div class="flex flex-col items-center gap-1 mt-auto w-full">
-      <button
-        class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-        style="width: 44px; height: 44px"
-        :title="t('sidebar.activity.addFeed')"
-        @click="emit('add-feed')"
-      >
-        <PhPlus :size="24" weight="regular" class="transition-all" />
-      </button>
-
-      <!-- Feed List Button -->
-      <button
-        class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-        style="width: 44px; height: 44px"
-        :title="
-          isFeedListExpanded
-            ? t('sidebar.activity.collapseFeedList')
-            : t('sidebar.activity.expandFeedList')
-        "
-        @click="toggleFeedList"
-      >
-        <PhSidebar :size="24" :weight="isFeedListExpanded ? 'fill' : 'regular'" />
-      </button>
-
-      <button
-        class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-        style="width: 44px; height: 44px"
-        :title="t('setting.tab.settings')"
-        @click="emit('settings')"
-      >
-        <PhGear :size="24" weight="regular" class="transition-all" />
-      </button>
+  <Transition name="activity-bar-slide">
+    <div
+      v-if="!props.isCollapsed"
+      class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative z-30"
+    >
+      <!-- Logo -->
+      <div class="mb-6">
+        <img :src="LogoSvg" alt="MrRSS" class="w-6 h-6" />
+      </div>
 
       <!-- Divider -->
-      <div class="w-8 h-px bg-border my-2"></div>
+      <div class="w-8 h-px bg-border mb-3"></div>
 
-      <!-- Collapse Button (at the bottom) -->
-      <button
-        class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-        style="width: 44px; height: 44px"
-        :title="t('sidebar.activity.collapseActivityBar')"
-        @click="emit('toggle-activity-bar')"
+      <!-- Navigation Items -->
+      <div
+        class="flex-1 flex flex-col items-center gap-1 w-full overflow-y-auto overflow-x-hidden nav-items-container"
       >
-        <PhTextOutdent :size="24" weight="regular" class="transition-all" />
-      </button>
+        <TransitionGroup name="nav-item">
+          <button
+            v-for="item in navItems"
+            v-show="item.id !== 'imageGallery' || imageGalleryEnabled"
+            :key="item.id"
+            :class="[
+              'relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent',
+              store.currentFilter === item.filterType ? 'text-accent' : '',
+            ]"
+            style="width: 44px; height: 44px"
+            :title="item.label"
+            @click="handleNavClick(item)"
+          >
+            <!-- Icon -->
+            <component
+              :is="
+                store.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon
+              "
+              :size="24"
+              :weight="store.currentFilter === item.filterType ? 'fill' : 'regular'"
+              :class="[
+                store.currentFilter === item.filterType ? 'text-accent scale-105' : '',
+                'transition-all',
+              ]"
+            />
+
+            <!-- Unread Badge (only for 'all' button) -->
+            <span
+              v-if="item.id === 'all' && store.unreadCounts?.total > 0"
+              class="absolute bottom-0.5 right-0.5 min-w-[14px] h-[14px] px-0.5 text-[9px] font-medium flex items-center justify-center rounded-full text-white"
+              style="background-color: #999999"
+            >
+              {{ store.unreadCounts?.total > 99 ? '99+' : store.unreadCounts?.total }}
+            </span>
+          </button>
+        </TransitionGroup>
+      </div>
+
+      <!-- Bottom Actions -->
+      <div class="flex flex-col items-center gap-1 mt-auto w-full">
+        <button
+          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+          style="width: 44px; height: 44px"
+          :title="t('sidebar.activity.addFeed')"
+          @click="emit('add-feed')"
+        >
+          <PhPlus :size="24" weight="regular" class="transition-all" />
+        </button>
+
+        <!-- Feed List Button -->
+        <button
+          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+          style="width: 44px; height: 44px"
+          :title="
+            isFeedListExpanded
+              ? t('sidebar.activity.collapseFeedList')
+              : t('sidebar.activity.expandFeedList')
+          "
+          @click="toggleFeedList"
+        >
+          <PhSidebar :size="24" :weight="isFeedListExpanded ? 'fill' : 'regular'" />
+        </button>
+
+        <button
+          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+          style="width: 44px; height: 44px"
+          :title="t('setting.tab.settings')"
+          @click="emit('settings')"
+        >
+          <PhGear :size="24" weight="regular" class="transition-all" />
+        </button>
+
+        <!-- Divider -->
+        <div class="w-8 h-px bg-border my-2"></div>
+
+        <!-- Collapse Button (at the bottom) -->
+        <button
+          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+          style="width: 44px; height: 44px"
+          :title="t('sidebar.activity.collapseActivityBar')"
+          @click="emit('toggle-activity-bar')"
+        >
+          <PhTextOutdent :size="24" weight="regular" class="transition-all" />
+        </button>
+      </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <style scoped>
 @reference "../../style.css";
 
+/* Activity bar slide transition */
+.activity-bar-slide-enter-active {
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
+  will-change: transform, opacity;
+}
+
+.activity-bar-slide-leave-active {
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.18s ease;
+  will-change: transform, opacity;
+}
+
+.activity-bar-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+.activity-bar-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+.activity-bar-slide-enter-to,
+.activity-bar-slide-leave-from {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 .smart-activity-bar {
   width: 56px;
   min-width: 56px;
-  position: relative;
-  z-index: 20;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 15;
+  /* Prevent layout shift during animations */
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Navigation items smooth transitions */
+.nav-items-container {
+  /* Smooth height transition when items are added/removed */
+  transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Nav item enter/leave transitions */
+.nav-item-enter-active,
+.nav-item-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.nav-item-enter-from {
+  opacity: 0;
+  transform: scale(0.9) translateY(-10px);
+}
+
+.nav-item-leave-to {
+  opacity: 0;
+  transform: scale(0.9) translateY(10px);
+}
+
+.nav-item-move {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* Ensure smooth transitions for icon scale changes */
+.smart-activity-bar button .ph,
+.smart-activity-bar button svg {
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s ease;
+  will-change: transform;
+}
+
+/* Improve button hover transition */
+.smart-activity-bar button {
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+  will-change: color, background-color;
 }
 
 /* Smaller screens (laptops, tablets) */

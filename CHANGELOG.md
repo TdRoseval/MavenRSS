@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed multiple minor styling inconsistencies. (#648, #649, #665, #666, #668) (@RUBisco0211)
+- Fixed multiple minor styling inconsistencies. (#648, #649, #651, #665, #666, #668) (@RUBisco0211)
 - Fixed the issue where rule adding / editing modal cannot be closed. (#647)
 - Fixed the issue where some input fields will revert to previous values after clearing. (#689)
 - Fixed the issue where read later can not work correctly in card layout. (#662)

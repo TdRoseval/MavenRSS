@@ -105,29 +105,35 @@ function toggleActivityBar() {
 </script>
 
 <template>
-  <div class="compact-sidebar-wrapper flex h-full relative">
-    <!-- Edge Toggle Button (visible when ActivityBar is collapsed) -->
-    <Transition name="edge-toggle-fade">
-      <button
-        v-if="isActivityBarCollapsed"
-        class="edge-toggle-button flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-secondary transition-all"
-        :title="t('sidebar.activity.expandActivityBar')"
-        @click="toggleActivityBar"
-      >
-        <PhCaretRight :size="20" weight="regular" />
-      </button>
-    </Transition>
+  <div
+    class="compact-sidebar-wrapper flex h-full relative"
+    :class="{ 'width-collapsed': isActivityBarCollapsed }"
+  >
+    <!-- Shared container for ActivityBar and Edge Toggle -->
+    <div class="sidebar-toggle-container">
+      <!-- Edge Toggle Button (visible when ActivityBar is collapsed) -->
+      <Transition name="edge-toggle-fade">
+        <button
+          v-if="isActivityBarCollapsed"
+          class="edge-toggle-button flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-secondary transition-all"
+          :title="t('sidebar.activity.expandActivityBar')"
+          @click="toggleActivityBar"
+        >
+          <PhCaretRight :size="20" weight="regular" />
+        </button>
+      </Transition>
 
-    <!-- Smart Activity Bar (Left) -->
-    <ActivityBar
-      ref="activityBarRef"
-      :is-collapsed="isActivityBarCollapsed"
-      @add-feed="emitShowAddFeed"
-      @settings="emitShowSettings"
-      @toggle-feed-drawer="handleToggleFeedList"
-      @toggle-activity-bar="toggleActivityBar"
-      @ready="handleActivityBarReady"
-    />
+      <!-- Smart Activity Bar (Left) -->
+      <ActivityBar
+        ref="activityBarRef"
+        :is-collapsed="isActivityBarCollapsed"
+        @add-feed="emitShowAddFeed"
+        @settings="emitShowSettings"
+        @toggle-feed-drawer="handleToggleFeedList"
+        @toggle-activity-bar="toggleActivityBar"
+        @ready="handleActivityBarReady"
+      />
+    </div>
 
     <!-- Feed Drawer -->
     <Transition name="drawer-position">
@@ -169,19 +175,42 @@ function toggleActivityBar() {
   z-index: 20;
   display: flex;
   align-items: stretch;
+  /* Smooth width transition between collapsed/expanded states */
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: width;
 }
 
-/* Edge toggle button - similar to Adobe Acrobat */
-.edge-toggle-button {
+/* Container for both ActivityBar and Edge Toggle - uses absolute positioning */
+.sidebar-toggle-container {
+  position: relative;
+  width: 56px;
+  min-width: 56px;
+  height: 100%;
+  flex-shrink: 0;
+  /* Width transition happens after button animations */
+  transition:
+    width 0.25s cubic-bezier(0.4, 0, 0.2, 1) 0.15s,
+    min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1) 0.15s;
+  will-change: width, min-width;
+}
+
+/* When collapsed, container shrinks to edge toggle button width */
+.compact-sidebar-wrapper.width-collapsed .sidebar-toggle-container {
   width: 16px;
   min-width: 16px;
+}
+
+/* Edge toggle button - absolutely positioned in shared space */
+.edge-toggle-button {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
   height: 100%;
   border-right: 1px solid var(--color-border);
   background-color: var(--color-bg-secondary);
   cursor: pointer;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 15;
+  z-index: 16;
   transition: background-color 0.2s;
 }
 
@@ -189,10 +218,11 @@ function toggleActivityBar() {
   background-color: var(--color-bg-tertiary);
 }
 
-/* Edge toggle fade transition */
+/* Edge toggle fade transition - faster than container width change */
 .edge-toggle-fade-enter-active,
 .edge-toggle-fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
 }
 
 .edge-toggle-fade-enter-from,
@@ -203,6 +233,32 @@ function toggleActivityBar() {
 .edge-toggle-fade-enter-to,
 .edge-toggle-fade-leave-from {
   opacity: 1;
+}
+
+/* Smaller screens (laptops, tablets) */
+@media (max-width: 1400px) {
+  .sidebar-toggle-container {
+    width: 48px;
+    min-width: 48px;
+  }
+
+  .compact-sidebar-wrapper.width-collapsed .sidebar-toggle-container {
+    width: 16px;
+    min-width: 16px;
+  }
+}
+
+/* Mobile devices */
+@media (max-width: 767px) {
+  .sidebar-toggle-container {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  .compact-sidebar-wrapper.width-collapsed .sidebar-toggle-container {
+    width: 16px;
+    min-width: 16px;
+  }
 }
 
 .feed-drawer-wrapper {
@@ -247,15 +303,28 @@ function toggleActivityBar() {
 }
 
 /* Drawer position transition */
-.drawer-position-enter-active,
-.drawer-position-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.drawer-position-enter-active {
+  transition:
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
+  will-change: transform, opacity;
 }
 
-.drawer-position-enter-from,
+.drawer-position-leave-active {
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
+  will-change: transform, opacity;
+}
+
+.drawer-position-enter-from {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
 .drawer-position-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-16px);
 }
 
 .drawer-position-enter-to,
@@ -264,10 +333,18 @@ function toggleActivityBar() {
   transform: translateX(0);
 }
 
+/* Optimize feed drawer rendering */
+.feed-drawer-wrapper {
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  transform: translateZ(0);
+}
+
 /* Overlay transition */
 .overlay-fade-enter-active,
 .overlay-fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
 }
 
 .overlay-fade-enter-from,
