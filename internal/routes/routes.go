@@ -49,13 +49,6 @@ func RegisterAPIRoutes(mux *http.ServeMux, h *core.Handler) {
 
 // RegisterAPIRoutesWithConfig registers all API routes with the specified configuration.
 func RegisterAPIRoutesWithConfig(mux *http.ServeMux, h *core.Handler, cfg Config) {
-	// Create a wrapper mux with middleware applied
-	wrappedMux := WrapWithMiddleware(mux, cfg)
-	
-	// We need to replace the original mux's ServeMux with the wrapped one
-	// But since we can't directly do that, we register all routes to the original mux
-	// and apply middleware when we create the HTTP server in main.go/main-core.go
-	
 	// Register all route groups
 	registerFeedRoutes(mux, h)
 	registerArticleRoutes(mux, h)
