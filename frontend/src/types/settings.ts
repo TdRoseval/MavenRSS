@@ -35,6 +35,7 @@ export interface UpdateInfo {
   asset_name: string;
   is_portable: boolean;
   error?: string;
+  server_mode?: boolean;
 }
 
 export interface DownloadResponse {
