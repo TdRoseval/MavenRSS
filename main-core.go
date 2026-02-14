@@ -70,7 +70,48 @@ func (h *CombinedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.apiMux.ServeHTTP(w, r)
 		return
 	}
-	h.fileServer.ServeHTTP(w, r)
+	
+	// Use a custom response writer to capture 404s
+	recorder := &statusRecorder{
+		ResponseWriter: w,
+		status:         200,
+	}
+	
+	// Try to serve the file
+	h.fileServer.ServeHTTP(recorder, r)
+	
+	// If it was a 404 and not an API route, serve index.html
+	if recorder.status == http.StatusNotFound && !strings.HasPrefix(r.URL.Path, "/api/") {
+		// Read index.html from embedded FS
+		indexContent, err := frontendFiles.ReadFile("frontend/dist/index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(indexContent)
+		return
+	}
+}
+
+// statusRecorder captures the HTTP status code
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
+}
+
+func (sr *statusRecorder) Write(b []byte) (int, error) {
+	if sr.status == 0 {
+		sr.status = http.StatusOK
+	}
+	return sr.ResponseWriter.Write(b)
 }
 
 func main() {
@@ -153,7 +194,7 @@ func main() {
 	// API Routes
 	log.Println("Setting up API routes...")
 	apiMux := http.NewServeMux()
-	routes.RegisterAPIRoutes(apiMux, h)
+	routes.RegisterAPIRoutesWithConfig(apiMux, h, routes.ServerConfig())
 
 	// Swagger Documentation - Serve swagger.json file
 	apiMux.HandleFunc("/docs/SERVER_MODE/swagger.json", func(w http.ResponseWriter, r *http.Request) {
@@ -177,6 +218,9 @@ func main() {
 		apiMux:     apiMux,
 		fileServer: fileServer,
 	}
+
+	// Wrap the combined handler with server middleware
+	wrappedHandler := routes.WrapWithMiddleware(combinedHandler, routes.ServerConfig())
 
 	log.Printf("Starting in headless server mode on http://%s:%s", *host, *port)
 
@@ -205,7 +249,7 @@ func main() {
 	// Start HTTP Server
 	srv := &http.Server{
 		Addr:    *host + ":" + *port,
-		Handler: combinedHandler,
+		Handler: wrappedHandler,
 	}
 
 	go func() {
