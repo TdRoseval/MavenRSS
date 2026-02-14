@@ -355,7 +355,8 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Tags         media
 // @Accept       json
 // @Produce      html
-// @Param        url  query     string  true  "Webpage URL to proxy"
+// @Param        url      query     string  false  "Webpage URL to proxy (direct)"
+// @Param        url_b64  query     string  false  "Webpage URL to proxy (base64-encoded)"
 // @Success      200  {string}  string  "Webpage HTML content"
 // @Failure      400  {object}  map[string]string  "Bad request (missing or invalid URL)"
 // @Failure      500  {object}  map[string]string  "Internal server error"
@@ -366,8 +367,22 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get URL from query parameter
+	// Get URL from query parameter (support both direct and base64-encoded)
 	webpageURL := r.URL.Query().Get("url")
+	webpageURLBase64 := r.URL.Query().Get("url_b64")
+
+	// Use base64-encoded URL if provided, otherwise use direct URL
+	if webpageURLBase64 != "" {
+		// Decode base64 URL
+		decodedBytes, err := base64.StdEncoding.DecodeString(webpageURLBase64)
+		if err != nil {
+			log.Printf("Failed to decode base64 URL: %v", err)
+			response.Error(w, err, http.StatusBadRequest)
+			return
+		}
+		webpageURL = string(decodedBytes)
+	}
+
 	if webpageURL == "" {
 		response.Error(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest)
 		return

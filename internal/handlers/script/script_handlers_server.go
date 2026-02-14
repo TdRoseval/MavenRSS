@@ -1,13 +1,13 @@
-//go:build !server
+//go:build server
 
+// Package script provides HTTP handlers for script operations (server mode).
 package script
 
 import (
+	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"MrRSS/internal/handlers/core"
@@ -15,7 +15,7 @@ import (
 	"MrRSS/internal/utils/fileutil"
 )
 
-// HandleGetScriptsDir returns the path to the scripts directory
+// HandleGetScriptsDir returns the path to the scripts directory.
 // @Summary      Get scripts directory path
 // @Description  Get the file system path to the scripts directory
 // @Tags         scripts
@@ -41,60 +41,29 @@ func HandleGetScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Request
 	})
 }
 
-// HandleOpenScriptsDir opens the scripts directory in the system file explorer
-// @Summary      Open scripts directory
-// @Description  Open the scripts directory in the system's file explorer/finder
+// HandleOpenScriptsDir is not available in server mode.
+// @Summary      Open scripts directory (not available)
+// @Description  Opening file explorer is not available in server mode
 // @Tags         scripts
 // @Accept       json
 // @Produce      json
-// @Success      200  {object}  map[string]string  "Open status (status, scripts_dir)"
-// @Failure      400  {object}  map[string]string  "Unsupported platform"
-// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Success      501  {object}  map[string]string  "Not implemented"
 // @Router       /scripts/dir/open [post]
 func HandleOpenScriptsDir(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		response.Error(w, nil, http.StatusMethodNotAllowed)
-		return
-	}
-
-	scriptsDir, err := fileutil.GetScriptsDir()
-	if err != nil {
-		response.Error(w, err, http.StatusInternalServerError)
-		return
-	}
-
-	// Open the directory based on the OS
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("explorer", scriptsDir)
-	case "darwin":
-		cmd = exec.Command("open", scriptsDir)
-	case "linux":
-		cmd = exec.Command("xdg-open", scriptsDir)
-	default:
-		response.Error(w, nil, http.StatusBadRequest)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		response.Error(w, err, http.StatusInternalServerError)
-		return
-	}
-
+	log.Printf("HandleOpenScriptsDir: Server mode - file explorer not available")
+	w.WriteHeader(http.StatusNotImplemented)
 	response.JSON(w, map[string]string{
-		"status":      "opened",
-		"scripts_dir": scriptsDir,
+		"error": "Opening file explorer is not available in server mode. Please access scripts directory via the server's file system directly.",
 	})
 }
 
-// HandleListScripts returns a list of available scripts in the scripts directory
+// HandleListScripts returns a list of available scripts in the scripts directory.
 // @Summary      List available scripts
-// @Description  Get a list of all available scripts in the scripts directory (Python, Shell, PowerShell, Node.js, Ruby)
+// @Description  Get a list of all available scripts in the scripts directory
 // @Tags         scripts
 // @Accept       json
 // @Produce      json
-// @Success      200  {object}  map[string]interface{}  "List of scripts (scripts array with name, path, type)"
+// @Success      200  {object}  map[string]interface{}  "List of scripts"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /scripts/list [get]
 func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) {
@@ -109,7 +78,6 @@ func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Valid script extensions
 	validExtensions := map[string]bool{
 		".py":  true,
 		".sh":  true,
@@ -125,12 +93,10 @@ func HandleListScripts(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 			return err
 		}
 
-		// Skip directories
 		if info.IsDir() {
 			return nil
 		}
 
-		// Get relative path from scripts directory
 		relPath, err := filepath.Rel(scriptsDir, path)
 		if err != nil {
 			return err
