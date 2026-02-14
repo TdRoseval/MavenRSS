@@ -14,14 +14,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
-
-	md "github.com/JohannesKaufmann/html-to-markdown"
 )
-
-// ExportToNotionRequest represents the request for exporting to Notion
-type ExportToNotionRequest struct {
-	ArticleID int `json:"article_id"`
-}
 
 // NotionBlock represents a Notion block structure
 type NotionBlock struct {

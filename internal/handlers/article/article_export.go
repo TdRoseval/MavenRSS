@@ -15,14 +15,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
-
-	md "github.com/JohannesKaufmann/html-to-markdown"
 )
-
-// ExportToObsidianRequest represents the request for exporting to Obsidian
-type ExportToObsidianRequest struct {
-	ArticleID int `json:"article_id"`
-}
 
 // HandleExportToObsidian exports an article to Obsidian using direct file system access
 // @Summary      Export article to Obsidian
@@ -150,107 +143,4 @@ func generateObsidianMarkdown(article models.Article, content string) string {
 	sb.WriteString(fmt.Sprintf("**Article ID:** %d\n", article.ID))
 
 	return sb.String()
-}
-
-// sanitizeFilename creates a safe filename from a title
-func sanitizeFilename(title string) string {
-	// Replace invalid filename characters
-	invalidChars := []string{"<", ">", ":", "\"", "|", "?", "*", "\\", "/"}
-	result := title
-
-	for _, char := range invalidChars {
-		result = strings.ReplaceAll(result, char, "_")
-	}
-
-	// Trim spaces and limit length
-	result = strings.TrimSpace(result)
-	if len(result) > 100 {
-		result = result[:100]
-	}
-
-	return result
-}
-
-// sanitizeTag creates a safe tag from feed name
-func sanitizeTag(feedName string) string {
-	// Convert to lowercase, replace spaces with underscores
-	tag := strings.ToLower(strings.ReplaceAll(feedName, " ", "_"))
-	// Remove special characters
-	tag = strings.ReplaceAll(tag, "-", "_")
-	tag = strings.ReplaceAll(tag, ".", "_")
-	return tag
-}
-
-// htmlEncodeURL encodes URL characters that could interfere with URI parsing
-func htmlEncodeURL(url string) string {
-	// Replace characters that could be mistaken for URI parameters
-	result := strings.ReplaceAll(url, "&", "&amp;")
-	result = strings.ReplaceAll(result, "?", "&#63;")
-	result = strings.ReplaceAll(result, "=", "&#61;")
-	result = strings.ReplaceAll(result, "%", "&#37;")
-	return result
-}
-
-// escapeYamlString escapes special characters for YAML
-func escapeYamlString(s string) string {
-	// Basic escaping for quotes
-	return strings.ReplaceAll(s, "\"", "\\\"")
-}
-
-// htmlToMarkdown converts HTML to Markdown using html-to-markdown library
-func htmlToMarkdown(html string) string {
-	// Create a new converter with default plugins
-	converter := md.NewConverter("", true, nil)
-
-	// Convert HTML to Markdown
-	markdown, err := converter.ConvertString(html)
-	if err != nil {
-		// If conversion fails, return the original HTML with basic cleanup
-		return cleanWhitespace(removeHTMLTags(html))
-	}
-
-	// Clean up excessive whitespace
-	return cleanWhitespace(markdown)
-}
-
-// removeHTMLTags removes HTML tags (basic implementation)
-func removeHTMLTags(html string) string {
-	var result strings.Builder
-	inTag := false
-
-	for _, char := range html {
-		if char == '<' {
-			inTag = true
-		} else if char == '>' {
-			inTag = false
-		} else if !inTag {
-			result.WriteRune(char)
-		}
-	}
-
-	return result.String()
-}
-
-// cleanWhitespace removes excessive whitespace and empty lines
-func cleanWhitespace(text string) string {
-	lines := strings.Split(text, "\n")
-	var cleaned []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// Only keep non-empty lines or single empty lines between content
-		if trimmed != "" || (len(cleaned) > 0 && cleaned[len(cleaned)-1] != "") {
-			cleaned = append(cleaned, trimmed)
-		}
-	}
-
-	// Join with single newlines
-	result := strings.Join(cleaned, "\n")
-
-	// Remove multiple consecutive empty lines
-	for strings.Contains(result, "\n\n\n") {
-		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
-	}
-
-	return result
 }
