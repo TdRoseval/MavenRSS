@@ -16,11 +16,17 @@ COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download
 
+# Copy frontend package files first for better caching
+COPY frontend/package*.json ./frontend/
+
+# Install frontend dependencies
+RUN cd frontend && npm install
+
 # Copy source code
 COPY . .
 
-# Build frontend
-RUN cd frontend && npm install && npm run build
+# Set Node.js memory limit and build frontend
+RUN cd frontend && NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # Build the server version
 RUN CGO_ENABLED=1 GOOS=linux go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o mrrss-server ./main-core.go

@@ -22,11 +22,17 @@ COPY go.mod go.sum ./
 # Download dependencies with verbose output
 RUN go mod download -x
 
+# Copy frontend package files first for better caching
+COPY frontend/package*.json ./frontend/
+
+# Set npm registry and install frontend dependencies
+RUN cd frontend && npm config set registry https://registry.npmmirror.com && npm install
+
 # Copy source code
 COPY . .
 
-# Build frontend with China npm mirror
-RUN cd frontend && npm config set registry https://registry.npmmirror.com && npm install && npm run build
+# Set Node.js memory limit and build frontend
+RUN cd frontend && NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # Build the server version
 RUN CGO_ENABLED=1 GOOS=linux go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o mrrss-server ./main-core.go
