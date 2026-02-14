@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, type Ref } from 'vue';
+import { ref, onMounted, type Ref, computed } from 'vue';
 import {
   PhArrowsClockwise,
   PhArrowCircleUp,
@@ -9,8 +9,10 @@ import {
   PhGear,
   PhGithubLogo,
   PhDownloadSimple,
+  PhInfo,
 } from '@phosphor-icons/vue';
 import { openInBrowser } from '@/utils/browser';
+import { checkServerMode } from '@/utils/serverMode';
 
 const { t } = useI18n();
 
@@ -45,6 +47,11 @@ const emit = defineEmits<{
 
 const appVersion: Ref<string> = ref('');
 const isLoadingVersion: Ref<boolean> = ref(true);
+const isServerMode: Ref<boolean> = ref(false);
+
+const isUpdateAvailableInServerMode = computed(() => {
+  return isServerMode.value;
+});
 
 onMounted(async () => {
   // Fetch current version from API
@@ -53,6 +60,7 @@ onMounted(async () => {
     if (versionRes.ok) {
       const versionData = await versionRes.json();
       appVersion.value = versionData.version;
+      isServerMode.value = versionData.server_mode === 'true';
     } else {
       console.error('Failed to fetch version:', versionRes.status, versionRes.statusText);
       appVersion.value = 'Unknown';
@@ -91,9 +99,25 @@ function openGitHubRelease() {
       <span v-if="isLoadingVersion" class="inline-block animate-pulse">Loading...</span>
       <span v-else>{{ appVersion }}</span>
     </p>
+    
+    <!-- Server Mode Indicator -->
+    <div v-if="isServerMode" class="mt-4 mx-auto max-w-md text-left bg-blue-50 dark:bg-blue-900/20 p-3 sm:p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+      <div class="flex items-start gap-2 sm:gap-3">
+        <PhInfo :size="28" class="text-blue-500 mt-0.5 shrink-0 sm:w-8 sm:h-8" />
+        <div class="flex-1 min-w-0">
+          <h4 class="font-semibold mb-1 text-sm sm:text-base text-blue-700 dark:text-blue-300">
+            Server Mode
+          </h4>
+          <p class="text-xs sm:text-sm text-blue-600 dark:text-blue-400">
+            MrRSS is running in server mode. Auto-updates are not available for server instances. To update, pull the latest Docker image and restart the container.
+          </p>
+        </div>
+      </div>
+    </div>
 
     <div class="mt-4 sm:mt-6 mb-4 sm:mb-6 flex justify-center">
       <button
+        v-if="!isServerMode"
         :disabled="checkingUpdates"
         class="btn btn-secondary justify-center text-sm sm:text-base"
         @click="handleCheckUpdates"
@@ -108,7 +132,7 @@ function openGitHubRelease() {
     </div>
 
     <div
-      v-if="updateInfo && !updateInfo.error"
+      v-if="updateInfo && !updateInfo.error && !isServerMode"
       class="mt-3 sm:mt-4 mx-auto max-w-md text-left bg-bg-secondary p-3 sm:p-4 rounded-lg border border-border"
     >
       <div class="flex items-start gap-2 sm:gap-3">

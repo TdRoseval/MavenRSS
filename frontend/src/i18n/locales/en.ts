@@ -738,6 +738,7 @@ const en: TranslationMessages = {
       scriptDoc: 'View Documentation',
       scriptsFolder: 'Open Scripts Folder',
       scriptsFolderOpened: 'Scripts folder opened',
+      scriptsFolderNotAvailable: 'Opening scripts folder is not available in server mode. Please access it directly on the server.',
       scriptsNotFound: 'No scripts found in the scripts folder.',
       selectScript: 'Select Script',
       selectScriptPlaceholder: 'Select a script...',
@@ -1046,6 +1047,7 @@ const en: TranslationMessages = {
       noInstallerAvailable:
         'No installer available for your platform. Please download manually from',
       notNow: 'Not Now',
+      serverModeNoAutoUpdate: 'Auto-update is not available in server mode. Please update manually.',
       updateAvailable: 'Update available',
       updateFailed: 'Last update failed',
       updateNow: 'Update Now',

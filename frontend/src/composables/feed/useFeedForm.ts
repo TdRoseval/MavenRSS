@@ -2,6 +2,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Feed } from '@/types/models';
 import { useAppStore } from '@/stores/app';
+import { checkServerMode } from '@/utils/serverMode';
 
 export type FeedType = 'url' | 'script' | 'xpath' | 'email';
 export type ProxyMode = 'global' | 'custom' | 'none';
@@ -78,7 +79,7 @@ export function useFeedForm(feed?: Feed) {
     const categoryFeedsMap = new Map<string, boolean>();
 
     // Build a map of category -> whether it has non-FreshRSS feeds
-    store.feeds.forEach((feed) => {
+  store.feeds.forEach((feed: Feed) => {
       if (feed.category && feed.category.trim() !== '') {
         if (!categoryFeedsMap.has(feed.category)) {
           categoryFeedsMap.set(feed.category, !feed.is_freshrss_source);
@@ -345,10 +346,33 @@ export function useFeedForm(feed?: Feed) {
 
   async function openScriptsFolder() {
     try {
-      await fetch('/api/scripts/open', { method: 'POST' });
+      const isServerMode = await checkServerMode();
+      
+      if (isServerMode) {
+        // In server mode, just show a toast with the scripts directory path
+        if (scriptsDir.value) {
+          window.showToast(`Scripts directory: ${scriptsDir.value}`, 'info');
+        } else {
+          window.showToast('Scripts directory available on server', 'info');
+        }
+        return;
+      }
+      
+      // Desktop mode: try to open the folder
+      const response = await fetch('/api/scripts/open', { method: 'POST' });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        if (response.status === 501) {
+          window.showToast(t('setting.customization.scriptsFolderNotAvailable'), 'info');
+        } else {
+          throw new Error(errorData.error || 'Failed to open scripts folder');
+        }
+        return;
+      }
       window.showToast(t('setting.customization.scriptsFolderOpened'), 'success');
     } catch (e) {
       console.error('Failed to open scripts folder:', e);
+      window.showToast(t('common.errors.unknownError'), 'error');
     }
   }
 

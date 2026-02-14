@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
-import { ref, computed, type Ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { Article, Feed, Tag, UnreadCounts, RefreshProgress } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 import { useSettings } from '@/composables/core/useSettings';
+import { apiClient } from '@/utils/apiClient';
 
 export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | '';
 export type ThemePreference = 'light' | 'dark' | 'auto';
@@ -15,25 +16,25 @@ export interface TempSelection {
 }
 
 export interface AppState {
-  articles: Ref<Article[]>;
-  feeds: Ref<Feed[]>;
-  unreadCounts: Ref<UnreadCounts>;
-  currentFilter: Ref<Filter>;
-  currentFeedId: Ref<number | null>;
-  currentCategory: Ref<string | null>;
-  currentArticleId: Ref<number | null>;
-  tempSelection: Ref<TempSelection>;
-  isLoading: Ref<boolean>;
-  page: Ref<number>;
-  hasMore: Ref<boolean>;
-  searchQuery: Ref<string>;
-  themePreference: Ref<ThemePreference>;
-  theme: Ref<Theme>;
-  refreshProgress: Ref<RefreshProgress>;
-  showOnlyUnread: Ref<boolean>;
-  activeFilters: Ref<FilterCondition[]>;
-  filteredArticlesFromServer: Ref<Article[]>;
-  isFilterLoading: Ref<boolean>;
+  articles: any;
+  feeds: any;
+  unreadCounts: any;
+  currentFilter: any;
+  currentFeedId: any;
+  currentCategory: any;
+  currentArticleId: any;
+  tempSelection: any;
+  isLoading: any;
+  page: any;
+  hasMore: any;
+  searchQuery: any;
+  themePreference: any;
+  theme: any;
+  refreshProgress: any;
+  showOnlyUnread: any;
+  activeFilters: any;
+  filteredArticlesFromServer: any;
+  isFilterLoading: any;
 }
 
 export interface AppActions {
@@ -183,15 +184,16 @@ export const useAppStore = defineStore('app', () => {
     isLoading.value = true;
     const limit = 50;
 
-    let url = `/api/articles?page=${page.value}&limit=${limit}`;
-    if (currentFilter.value) url += `&filter=${currentFilter.value}`;
-    if (currentFeedId.value) url += `&feed_id=${currentFeedId.value}`;
-    if (currentCategory.value !== null)
-      url += `&category=${encodeURIComponent(currentCategory.value)}`;
-
     try {
-      const res = await fetch(url);
-      const data: Article[] = (await res.json()) || [];
+      const params: Record<string, any> = {
+        page: page.value,
+        limit: limit
+      };
+      if (currentFilter.value) params.filter = currentFilter.value;
+      if (currentFeedId.value) params.feed_id = currentFeedId.value;
+      if (currentCategory.value !== null) params.category = currentCategory.value;
+      
+      const data: Article[] = await apiClient.get<Article[]>('/articles', params) || [];
 
       if (data.length < limit) {
         hasMore.value = false;
@@ -202,8 +204,9 @@ export const useAppStore = defineStore('app', () => {
       } else {
         articles.value = data;
       }
-    } catch {
-      // Error handled silently
+    } catch (e) {
+      console.error('Error fetching articles:', e);
+      // Error handled by apiClient
     } finally {
       isLoading.value = false;
     }
@@ -218,20 +221,8 @@ export const useAppStore = defineStore('app', () => {
 
   async function fetchFeeds(): Promise<void> {
     try {
-      const res = await fetch('/api/feeds');
-
-      const text = await res.text();
-
-      let data;
-      try {
-        data = JSON.parse(text) || [];
-      } catch (e) {
-        console.error('[App Store] JSON parse error:', e);
-        console.error('[App Store] Response text (first 500 chars):', text.substring(0, 500));
-        throw e;
-      }
-
-      feeds.value = data;
+      const data = await apiClient.get<Feed[]>('/feeds');
+      feeds.value = data || [];
 
       // Fetch unread counts and filter counts after fetching feeds
       await fetchUnreadCounts();
@@ -246,8 +237,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function fetchTags(): Promise<void> {
     try {
-      const res = await fetch('/api/tags');
-      const data = await res.json();
+      const data = await apiClient.get<Tag[]>('/tags');
       tags.value = data || [];
     } catch (e) {
       console.error('[App Store] Fetch tags error:', e);
@@ -257,8 +247,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function fetchUnreadCounts(): Promise<void> {
     try {
-      const res = await fetch('/api/articles/unread-counts');
-      const data = await res.json();
+      const data: any = await apiClient.get('/articles/unread-counts');
       unreadCounts.value = {
         total: data.total || 0,
         feedCounts: data.feed_counts || {},
@@ -281,8 +270,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function fetchFilterCounts(): Promise<void> {
     try {
-      const res = await fetch('/api/articles/filter-counts');
-      const data = await res.json();
+      const data: any = await apiClient.get('/articles/filter-counts');
       filterCounts.value = {
         unread: data.unread || {},
         favorites: data.favorites || {},
@@ -308,19 +296,17 @@ export const useAppStore = defineStore('app', () => {
 
   async function markAllAsRead(feedId?: number, category?: string): Promise<void> {
     try {
-      const params = new URLSearchParams();
-      if (feedId) params.append('feed_id', String(feedId));
-      if (category) params.append('category', category);
+      const params: Record<string, any> = {};
+      if (feedId) params.feed_id = feedId;
+      if (category) params.category = category;
 
-      const url = params.toString()
-        ? `/api/articles/mark-all-read?${params.toString()}`
-        : '/api/articles/mark-all-read';
-      await fetch(url, { method: 'POST' });
+      await apiClient.post('/articles/mark-all-read', {}, params);
       // Refresh articles and unread counts
       await fetchArticles();
       await fetchUnreadCounts();
-    } catch {
-      // Error handled silently
+    } catch (e) {
+      console.error('[App Store] Mark all as read error:', e);
+      // Error handled by apiClient
     }
   }
 
@@ -394,22 +380,12 @@ export const useAppStore = defineStore('app', () => {
     refreshProgress.value.isRunning = true;
     try {
       // First, trigger standard refresh
-      const refreshRes = await fetch('/api/refresh', { method: 'POST' });
-      if (!refreshRes.ok) {
-        throw new Error(`Refresh API returned ${refreshRes.status}: ${refreshRes.statusText}`);
-      }
-      // Verify the response is valid JSON by consuming it
-      try {
-        await refreshRes.json();
-      } catch (e) {
-        console.error('Invalid JSON response from /api/refresh:', e);
-        throw new Error(`Invalid JSON response from refresh API: ${e}`);
-      }
+      await apiClient.post('/refresh');
 
       // Also trigger FreshRSS sync if enabled
       if (settingsRef.value.freshrss_enabled === true) {
         try {
-          await fetch('/api/freshrss/sync', { method: 'POST' });
+          await apiClient.post('/freshrss/sync');
         } catch (e) {
           // If FreshRSS sync fails, it's okay - just log it
           console.log('FreshRSS sync failed:', e);
@@ -420,11 +396,7 @@ export const useAppStore = defineStore('app', () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Check progress to see if there are actually any tasks
-      const progressRes = await fetch('/api/progress');
-      if (!progressRes.ok) {
-        throw new Error(`Progress API returned ${progressRes.status}: ${progressRes.statusText}`);
-      }
-      const progressData = await progressRes.json();
+      const progressData: any = await apiClient.get('/progress');
 
       // If no tasks are running, mark as completed immediately
       if (!progressData.is_running) {
@@ -454,11 +426,7 @@ export const useAppStore = defineStore('app', () => {
       // Wait a bit for the backend to start processing
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const res = await fetch('/api/progress');
-      if (!res.ok) {
-        throw new Error(`Progress API returned ${res.status}: ${res.statusText}`);
-      }
-      const data = await res.json();
+      const data: any = await apiClient.get('/progress');
       console.log('Initial progress update:', data);
       refreshProgress.value = {
         ...refreshProgress.value,
@@ -481,11 +449,7 @@ export const useAppStore = defineStore('app', () => {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/progress');
-        if (!res.ok) {
-          throw new Error(`Progress API returned ${res.status}: ${res.statusText}`);
-        }
-        const data = await res.json();
+        const data: any = await apiClient.get('/progress');
         refreshProgress.value = {
           ...refreshProgress.value, // Preserve existing pool_tasks and queue_tasks
           isRunning: data.is_running,
@@ -533,7 +497,8 @@ export const useAppStore = defineStore('app', () => {
 
           checkForAppUpdates();
         }
-      } catch {
+      } catch (e) {
+        console.error('Error polling progress:', e);
         clearInterval(interval);
         refreshProgress.value.isRunning = false;
       }
@@ -552,20 +517,14 @@ export const useAppStore = defineStore('app', () => {
 
     // Check if FreshRSS is enabled
     try {
-      const res = await fetch('/api/settings');
-      if (!res.ok) return;
-      const settings = await res.json();
-
+      const settings: any = await apiClient.get('/settings');
       if (settings.freshrss_enabled !== 'true') {
         return; // FreshRSS not enabled, don't start polling
       }
 
       // Initialize last known sync time
-      const statusRes = await fetch('/api/freshrss/status');
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
-        lastKnownFreshRSSSyncTime = statusData.last_sync_time;
-      }
+      const statusData: any = await apiClient.get('/freshrss/status');
+      lastKnownFreshRSSSyncTime = statusData.last_sync_time;
     } catch (e) {
       console.error('[FreshRSS] Error checking status:', e);
       return;
@@ -574,10 +533,7 @@ export const useAppStore = defineStore('app', () => {
     // Start polling every 5 seconds
     freshrssPollInterval = setInterval(async () => {
       try {
-        const res = await fetch('/api/freshrss/status');
-        if (!res.ok) return;
-
-        const data = await res.json();
+        const data: any = await apiClient.get('/freshrss/status');
 
         // Check if sync time has updated (sync completed)
         if (
@@ -608,31 +564,28 @@ export const useAppStore = defineStore('app', () => {
 
   async function checkForAppUpdates(): Promise<void> {
     try {
-      const res = await fetch('/api/check-updates');
-      if (res.ok) {
-        const data = await res.json();
+      const data: any = await apiClient.get('/check-updates');
 
-        // Only proceed if there's an update available and a download URL
-        if (data.has_update && data.download_url) {
-          // Check if auto-update is enabled before downloading
-          const { settings } = useSettings();
+      // Only proceed if there's an update available and a download URL
+      if (data.has_update && data.download_url) {
+        // Check if auto-update is enabled before downloading
+        const { settings } = useSettings();
 
-          console.log('[DEBUG] Update found, auto_update =', settings.value.auto_update);
-          if (settings.value.auto_update) {
-            console.log('[DEBUG] Auto-downloading update...');
-            // Auto download and install in background
-            autoDownloadAndInstall(data.download_url, data.asset_name);
-          } else {
-            console.log('[DEBUG] Auto-update disabled, showing notification only');
-            // Just show notification that update is available
-            if (window.showToast) {
-              window.showToast(`Update available: v${data.latest_version}`, 'info', 5000);
-            }
+        console.log('[DEBUG] Update found, auto_update =', settings.value.auto_update);
+        if (settings.value.auto_update) {
+          console.log('[DEBUG] Auto-downloading update...');
+          // Auto download and install in background
+          autoDownloadAndInstall(data.download_url, data.asset_name);
+        } else {
+          console.log('[DEBUG] Auto-update disabled, showing notification only');
+          // Just show notification that update is available
+          if (window.showToast) {
+            window.showToast(`Update available: v${data.latest_version}`, 'info');
           }
         }
       }
-    } catch {
-      console.error('Auto-update check failed');
+    } catch (e) {
+      console.error('Auto-update check failed:', e);
       // Silently fail - don't disrupt user experience
     }
   }
@@ -640,21 +593,11 @@ export const useAppStore = defineStore('app', () => {
   async function autoDownloadAndInstall(downloadUrl: string, assetName?: string): Promise<void> {
     try {
       // Download the update in background
-      const downloadRes = await fetch('/api/download-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          download_url: downloadUrl,
-          asset_name: assetName,
-        }),
+      const downloadData: any = await apiClient.post('/download-update', {
+        download_url: downloadUrl,
+        asset_name: assetName,
       });
 
-      if (!downloadRes.ok) {
-        console.error('Auto-download failed');
-        return;
-      }
-
-      const downloadData = await downloadRes.json();
       if (!downloadData.success || !downloadData.file_path) {
         console.error('Auto-download failed: Invalid response');
         return;
@@ -664,25 +607,15 @@ export const useAppStore = defineStore('app', () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Install the update
-      const installRes = await fetch('/api/install-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_path: downloadData.file_path,
-        }),
+      const installData: any = await apiClient.post('/install-update', {
+        file_path: downloadData.file_path,
       });
 
-      if (!installRes.ok) {
-        console.error('Auto-install failed');
-        return;
-      }
-
-      const installData = await installRes.json();
       if (installData.success && window.showToast) {
         window.showToast('Update installed. Restart to apply.', 'success');
       }
-    } catch {
-      console.error('Auto-update failed');
+    } catch (e) {
+      console.error('Auto-update failed:', e);
       // Silently fail - don't disrupt user experience
     }
   }
@@ -718,15 +651,12 @@ export const useAppStore = defineStore('app', () => {
 
   async function fetchTaskDetails(): Promise<void> {
     try {
-      const res = await fetch('/api/progress/task-details');
-      if (res.ok) {
-        const data = await res.json();
-        refreshProgress.value = {
-          ...refreshProgress.value,
-          pool_tasks: data.pool_tasks,
-          queue_tasks: data.queue_tasks,
-        };
-      }
+      const data: any = await apiClient.get('/progress/task-details');
+      refreshProgress.value = {
+        ...refreshProgress.value,
+        pool_tasks: data.pool_tasks,
+        queue_tasks: data.queue_tasks,
+      };
     } catch (e) {
       console.error('Error fetching task details:', e);
     }

@@ -1,14 +1,14 @@
 /**
  * Composable for app update checking and installation
  */
-import { ref, type Ref } from 'vue';
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { UpdateInfo, DownloadResponse, InstallResponse } from '@/types/settings';
 
 export function useAppUpdates() {
   const { t } = useI18n();
 
-  const updateInfo: Ref<UpdateInfo | null> = ref(null);
+  const updateInfo = ref<UpdateInfo | null>(null);
   const checkingUpdates = ref(false);
   const downloadingUpdate = ref(false);
   const installingUpdate = ref(false);
@@ -27,6 +27,12 @@ export function useAppUpdates() {
       if (res.ok) {
         const data = await res.json();
         updateInfo.value = data;
+
+        if (data.server_mode) {
+          // Server mode - auto-update is not available, silently skip
+          // Don't show any toast in server mode
+          return;
+        }
 
         if (data.error) {
           // Handle different error types with specific messages
@@ -56,7 +62,18 @@ export function useAppUpdates() {
    * Download and install update
    */
   async function downloadAndInstallUpdate() {
-    if (!updateInfo.value || !updateInfo.value.download_url) {
+    if (!updateInfo.value) {
+      window.showToast(t('common.errors.errorCheckingUpdates'), 'error');
+      return;
+    }
+
+    // Check if running in server mode
+    if (updateInfo.value.server_mode) {
+      window.showToast(t('setting.update.serverModeNoAutoUpdate'), 'info');
+      return;
+    }
+
+    if (!updateInfo.value.download_url) {
       window.showToast(t('common.errors.errorCheckingUpdates'), 'error');
       return;
     }

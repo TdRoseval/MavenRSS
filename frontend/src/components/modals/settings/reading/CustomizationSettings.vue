@@ -7,6 +7,7 @@ import { SettingGroup, SettingItem } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 import { openInBrowser } from '@/utils/browser';
+import { checkServerMode } from '@/utils/serverMode';
 
 const { t, locale } = useI18n();
 const { fetchSettings } = useSettings();
@@ -38,6 +39,62 @@ const handleFileUpload = async () => {
   uploading.value = true;
 
   try {
+    const serverMode = await checkServerMode();
+
+    if (serverMode) {
+      // Server mode: use file input for upload
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.css';
+
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) {
+          uploading.value = false;
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          const response = await fetch('/api/custom-css/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(error.error || 'Upload failed');
+          }
+
+          const result = await response.json();
+          console.log('CSS upload successful:', result);
+          window.showToast(t('setting.customization.cssUploaded'), 'success');
+
+          // Reload settings from backend to update composable
+          try {
+            const updatedSettings = await fetchSettings();
+            emit('update:settings', updatedSettings);
+          } catch (settingsError) {
+            console.error('Failed to reload settings:', settingsError);
+          }
+
+          // Notify ArticleBody components to reload CSS
+          window.dispatchEvent(new CustomEvent('custom-css-changed'));
+        } catch (error) {
+          console.error('CSS upload error:', error);
+          window.showToast(t('setting.customization.cssUploadFailed'), 'error');
+        } finally {
+          uploading.value = false;
+        }
+      };
+
+      input.click();
+      return;
+    }
+
+    // Desktop mode: use dialog
     const response = await fetch('/api/custom-css/upload-dialog', {
       method: 'POST',
     });

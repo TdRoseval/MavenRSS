@@ -4,16 +4,62 @@
 import { useI18n } from 'vue-i18n';
 import { useAppStore } from '@/stores/app';
 import type { Feed } from '@/types/models';
+import { checkServerMode } from '@/utils/serverMode';
 
 export function useFeedManagement() {
   const { t } = useI18n();
   const store = useAppStore();
 
   /**
-   * Import OPML file using dialog
+   * Import OPML file using dialog (desktop) or file upload (server mode)
    */
   async function handleImportOPML() {
     try {
+      const serverMode = await checkServerMode();
+
+      if (serverMode) {
+        // Server mode: use file input for upload
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.opml,.xml,.json';
+
+        input.onchange = async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file) return;
+
+          const formData = new FormData();
+          formData.append('file', file);
+
+          try {
+            const response = await fetch('/api/opml/import', {
+              method: 'POST',
+              body: formData,
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+              throw new Error(errorData.error || 'Import failed');
+            }
+
+            const result = await response.json();
+            console.log('OPML import successful:', result);
+            window.showToast(
+              t('modal.feed.feedAddedSuccess') + ` (${result.imported || 0} feeds)`,
+              'success'
+            );
+            store.fetchFeeds();
+            store.pollProgress();
+          } catch (error) {
+            console.error('OPML import error:', error);
+            window.showToast(t('common.errors.addingFeed'), 'error');
+          }
+        };
+
+        input.click();
+        return;
+      }
+
+      // Desktop mode: use dialog
       console.log('Starting OPML import dialog...');
       const response = await fetch('/api/opml/import-dialog', {
         method: 'POST',
@@ -49,10 +95,25 @@ export function useFeedManagement() {
   }
 
   /**
-   * Export OPML file using dialog
+   * Export OPML file using dialog (desktop) or direct download (server mode)
    */
   async function handleExportOPML() {
     try {
+      const serverMode = await checkServerMode();
+
+      if (serverMode) {
+        // Server mode: direct download
+        const link = document.createElement('a');
+        link.href = '/api/opml/export';
+        link.download = 'subscriptions.opml';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.showToast(t('modal.opml.exportSuccess'), 'success');
+        return;
+      }
+
+      // Desktop mode: use dialog
       console.log('Starting OPML export dialog...');
       const response = await fetch('/api/opml/export-dialog', {
         method: 'POST',
@@ -174,7 +235,7 @@ export function useFeedManagement() {
     const categoryFeedsMap = new Map<string, boolean>();
 
     // Build a map of category -> whether it has non-FreshRSS feeds
-    store.feeds.forEach((feed) => {
+    store.feeds.forEach((feed: Feed) => {
       if (feed.category && feed.category.trim() !== '') {
         if (!categoryFeedsMap.has(feed.category)) {
           categoryFeedsMap.set(feed.category, !feed.is_freshrss_source);
@@ -219,7 +280,7 @@ export function useFeedManagement() {
     if (newCategory === null) return;
 
     const promises = selectedIds.map((id: number) => {
-      const feed = store.feeds.find((f) => f.id === id);
+      const feed = store.feeds.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
       return fetch('/api/feeds/update', {
         method: 'POST',
@@ -267,11 +328,11 @@ export function useFeedManagement() {
 
     // Add selected tags to each feed
     const promises = selectedIds.map((id: number) => {
-      const feed = store.feeds!.find((f) => f.id === id);
+      const feed = store.feeds!.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
 
       // Get existing tags
-      const existingTagIds = (feed.tags || []).map((t) => t.id);
+      const existingTagIds = (feed.tags || []).map((t: { id: number }) => t.id);
       // Merge with new tags (avoid duplicates)
       const mergedTagIds = Array.from(new Set([...existingTagIds, ...tagIds]));
 
@@ -344,7 +405,7 @@ export function useFeedManagement() {
     if (!store.feeds) return;
 
     const promises = selectedIds.map((id: number) => {
-      const feed = store.feeds!.find((f) => f.id === id);
+      const feed = store.feeds!.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
 
       return fetch('/api/feeds/update', {
@@ -401,7 +462,7 @@ export function useFeedManagement() {
     if (!store.feeds) return;
 
     const promises = selectedIds.map((id: number) => {
-      const feed = store.feeds!.find((f) => f.id === id);
+      const feed = store.feeds!.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
 
       return fetch('/api/feeds/update', {

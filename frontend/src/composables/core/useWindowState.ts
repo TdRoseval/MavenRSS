@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted } from 'vue';
+import { checkServerMode } from '@/utils/serverMode';
 
 interface WindowState {
   x: number;
@@ -9,8 +10,10 @@ interface WindowState {
 }
 
 export function useWindowState() {
-  let saveTimeout: NodeJS.Timeout | null = null;
+  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   let isRestoringState = false;
+  let isServerModeChecked = false;
+  let isServerModeValue = false;
 
   /**
    * Load and restore window state from database
@@ -22,6 +25,18 @@ export function useWindowState() {
    */
   async function restoreWindowState() {
     try {
+      // Check if we're in server mode first
+      if (!isServerModeChecked) {
+        isServerModeValue = await checkServerMode();
+        isServerModeChecked = true;
+      }
+
+      // In server mode, skip window state handling since it doesn't make sense
+      if (isServerModeValue) {
+        console.debug('Server mode detected, skipping window state management');
+        return;
+      }
+
       isRestoringState = true;
 
       const response = await fetch('/api/window/state');
@@ -30,7 +45,7 @@ export function useWindowState() {
         return;
       }
 
-      const data = await response.json();
+      await response.json();
     } catch (error) {
       // Log fetch errors during state restoration for debugging
       console.debug('Failed to restore window state:', error);
@@ -46,6 +61,17 @@ export function useWindowState() {
    * Save current window state to database
    */
   async function saveWindowState() {
+    // Check if we're in server mode first
+    if (!isServerModeChecked) {
+      isServerModeValue = await checkServerMode();
+      isServerModeChecked = true;
+    }
+
+    // In server mode, skip window state handling
+    if (isServerModeValue) {
+      return;
+    }
+
     // Don't save while we're restoring state
     if (isRestoringState) {
       return;
@@ -96,6 +122,11 @@ export function useWindowState() {
    * Setup window event listeners
    */
   function setupListeners() {
+    // Check if we're in server mode first
+    if (isServerModeValue) {
+      return () => {}; // No cleanup needed
+    }
+
     // Listen to window resize and move events
     // We use multiple approaches to catch window state changes:
 
@@ -136,6 +167,18 @@ export function useWindowState() {
     let cleanup: (() => void) | null = null;
 
     onMounted(async () => {
+      // Check server mode first before doing anything
+      if (!isServerModeChecked) {
+        isServerModeValue = await checkServerMode();
+        isServerModeChecked = true;
+      }
+
+      // If in server mode, skip everything
+      if (isServerModeValue) {
+        console.debug('Server mode detected, window state management disabled');
+        return;
+      }
+
       // Load state for logging
       await restoreWindowState();
 

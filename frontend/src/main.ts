@@ -4,15 +4,15 @@ import PhosphorIcons from '@phosphor-icons/vue';
 import i18n, { locale } from './i18n';
 import './style.css';
 import App from './App.vue';
-import { useAppStore } from './stores/app';
+import { setCachedServerMode } from './utils/serverMode';
 
 const app = createApp(App);
 const pinia = createPinia();
 
 // Add global error handler for Vue errors
-app.config.errorHandler = (err, instance, info) => {
+app.config.errorHandler = (err: unknown, instance: unknown, info: string) => {
   console.error('[Vue Error Handler] Error:', err);
-  console.error('[Vue Error Handler] Component:', instance?.$?.type?.name || 'Unknown');
+  console.error('[Vue Error Handler] Component:', (instance as any)?.$?.type?.name || 'Unknown');
   console.error('[Vue Error Handler] Info:', info);
   // Log the full stack trace
   if (err instanceof Error) {
@@ -47,6 +47,17 @@ async function initializeApp() {
 
     if (data.language) {
       locale.value = data.language;
+    }
+
+    // Also check server mode and cache it for future use
+    try {
+      const versionRes = await fetch('/api/version');
+      if (versionRes.ok) {
+        const versionData = await versionRes.json();
+        setCachedServerMode(versionData.server_mode === 'true');
+      }
+    } catch (e) {
+      console.error('Failed to cache server mode:', e);
     }
 
     // Start FreshRSS status polling if enabled

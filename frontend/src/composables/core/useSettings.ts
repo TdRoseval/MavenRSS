@@ -1,33 +1,56 @@
 /**
  * Composable for settings management
  */
-import { ref, type Ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SettingsData } from '@/types/settings';
 import type { ThemePreference } from '@/stores/app';
 import { generateInitialSettings, parseSettingsData } from './useSettings.generated';
+import { apiClient } from '@/utils/apiClient';
 
 export function useSettings() {
   const { locale } = useI18n();
 
   // Use generated helper for initial settings (alphabetically sorted)
-  const settings: Ref<SettingsData> = ref(generateInitialSettings());
+  const settings = ref(generateInitialSettings()) as any;
+  const isLoading = ref(false);
 
   /**
    * Fetch settings from backend
    */
   async function fetchSettings(): Promise<SettingsData> {
+    isLoading.value = true;
     try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
-
+      const data = await apiClient.get<SettingsData>('/settings');
+      
       // Use generated helper to parse settings (alphabetically sorted)
-      settings.value = parseSettingsData(data);
+      settings.value = parseSettingsData(data as Record<string, string>);
 
       return settings.value;
     } catch (e) {
       console.error('Error fetching settings:', e);
       throw e;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /**
+   * Save settings to backend
+   */
+  async function saveSettings(data: Partial<SettingsData>): Promise<void> {
+    isLoading.value = true;
+    try {
+      await apiClient.post('/settings', data);
+      // Refresh settings to get the latest values
+      await fetchSettings();
+      // Notify other components that settings have been updated
+      window.dispatchEvent(new CustomEvent('settings-updated', { detail: { autoSave: true } }));
+    } catch (e) {
+      console.error('Error saving settings:', e);
+      throw e;
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -85,13 +108,15 @@ export function useSettings() {
     window.addEventListener('settings-updated', handleSettingsUpdated);
   });
 
-  onUnmounted(() => {
-    window.removeEventListener('settings-updated', handleSettingsUpdated);
-  });
+  // onUnmounted(() => {
+  //   window.removeEventListener('settings-updated', handleSettingsUpdated);
+  // });
 
   return {
     settings,
+    isLoading,
     fetchSettings,
+    saveSettings,
     applySettings,
   };
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { PhKey, PhFile } from '@phosphor-icons/vue';
+import { PhKey, PhFile, PhInfo } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
 import {
   NestedSettingsContainer,
@@ -8,6 +8,8 @@ import {
   InputControl,
   TipBox,
 } from '@/components/settings';
+import { checkServerMode } from '@/utils/serverMode';
+import { ref, onMounted } from 'vue';
 
 const { t } = useI18n();
 
@@ -21,12 +23,18 @@ const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
 
+const isServerMode = ref(false);
+
 function updateSetting(key: keyof SettingsData, value: any) {
   emit('update:settings', {
     ...props.settings,
     [key]: value,
   });
 }
+
+onMounted(async () => {
+  isServerMode.value = await checkServerMode();
+});
 </script>
 
 <template>
@@ -56,6 +64,16 @@ function updateSetting(key: keyof SettingsData, value: any) {
   </div>
 
   <NestedSettingsContainer v-if="props.settings.notion_enabled">
+    <!-- Server Mode Tip -->
+    <TipBox v-if="isServerMode" type="info" :icon="PhInfo">
+      <template #title>
+        {{ t('setting.plugins.notion.serverModeTitle', 'Server Mode') }}
+      </template>
+      <p class="text-xs sm:text-sm">
+        {{ t('setting.plugins.notion.serverModeDescription', 'In server mode, articles will be downloaded as Markdown files instead of being synced directly to Notion. You can then manually import them into your Notion workspace.') }}
+      </p>
+    </TipBox>
+
     <!-- Help text -->
     <TipBox type="help" :title="t('setting.plugins.notion.setupInstructions')">
       <ol>
