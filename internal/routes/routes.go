@@ -49,6 +49,13 @@ func RegisterAPIRoutes(mux *http.ServeMux, h *core.Handler) {
 
 // RegisterAPIRoutesWithConfig registers all API routes with the specified configuration.
 func RegisterAPIRoutesWithConfig(mux *http.ServeMux, h *core.Handler, cfg Config) {
+	// Create a wrapper mux with middleware applied
+	wrappedMux := WrapWithMiddleware(mux, cfg)
+	
+	// We need to replace the original mux's ServeMux with the wrapped one
+	// But since we can't directly do that, we register all routes to the original mux
+	// and apply middleware when we create the HTTP server in main.go/main-core.go
+	
 	// Register all route groups
 	registerFeedRoutes(mux, h)
 	registerArticleRoutes(mux, h)
@@ -72,8 +79,10 @@ func WrapWithMiddleware(handler http.Handler, cfg Config) http.Handler {
 	if cfg.EnableCORS {
 		corsConfig := middleware.CORSConfig{
 			AllowedOrigins: cfg.CORSOrigins,
-			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowedHeaders: []string{"Content-Type", "Authorization"},
+			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+			AllowedHeaders: []string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "Cache-Control"},
+			ExposedHeaders: []string{"Content-Length", "Content-Type", "Content-Disposition"},
+			MaxAge:         86400,
 		}
 		middlewares = append(middlewares, middleware.CORSWithConfig(corsConfig))
 	}
