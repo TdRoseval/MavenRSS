@@ -11,21 +11,18 @@ export default defineConfig({
     }
   },
   build: {
+    target: 'es2015',
+    cssMinify: true,
+    sourcemap: false,
+    chunkSizeWarningLimit: 2000,
+    reportCompressedSize: false,
+    minify: 'esbuild',
+    esbuild: {
+      drop: ['console', 'debugger']
+    },
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['vue', 'vue-router', 'pinia'],
-          ui: ['@tailwindcss/typography', 'tailwindcss']
-        }
-      }
-    },
-    chunkSizeWarningLimit: 1000,
-    reportCompressedSize: false,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
+        manualChunks: undefined
       }
     }
   },

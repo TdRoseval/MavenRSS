@@ -32,7 +32,7 @@ RUN cd frontend && npm config set registry https://registry.npmmirror.com && npm
 COPY . .
 
 # Set Node.js memory limit and build frontend
-RUN cd frontend && NODE_OPTIONS="--max-old-space-size=2048" npm run build
+RUN cd frontend && NODE_OPTIONS="--max-old-space-size=2048 --optimize-for-size --no-warnings" npm run build
 
 # Build the server version
 RUN CGO_ENABLED=1 GOOS=linux go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o mrrss-server ./main-core.go
