@@ -6,7 +6,7 @@ import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 import FindInPage from '../common/FindInPage.vue';
 
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 
 const {
   article,
@@ -37,6 +37,12 @@ const {
 
 const showTranslations = ref(true);
 const showFindInPage = ref(false);
+
+const webpageProxyUrl = computed(() => {
+  if (!article.value) return '';
+  const urlB64 = btoa(article.value.url);
+  return `/api/webpage/proxy?url_b64=${urlB64}`;
+});
 
 function toggleTranslations() {
   showTranslations.value = !showTranslations.value;
@@ -112,7 +118,7 @@ onBeforeUnmount(() => {
       <div v-if="!showContent" class="flex-1 bg-bg-primary w-full">
         <iframe
           :key="article.id"
-          :src="`/api/webpage/proxy?url=${encodeURIComponent(article.url)}`"
+          :src="webpageProxyUrl"
           class="w-full h-full border-none"
           sandbox="allow-scripts allow-same-origin allow-popups"
         ></iframe>

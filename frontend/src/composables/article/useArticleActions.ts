@@ -1,13 +1,23 @@
 import { openInBrowser } from '@/utils/browser';
 import { copyArticleLink, copyArticleTitle } from '@/utils/clipboard';
 import { useAppStore } from '@/stores/app';
+import { apiClient } from '@/utils/apiClient';
 import type { Article } from '@/types/models';
-import type { Composer } from 'vue-i18n';
 
 type ViewMode = 'original' | 'rendered' | 'external';
 
+interface MenuItem {
+  label?: string;
+  action?: string;
+  icon?: string;
+  iconWeight?: string;
+  iconColor?: string;
+  separator?: boolean;
+  danger?: boolean;
+}
+
 export function useArticleActions(
-  t: Composer['t'],
+  t: (key: string, params?: Record<string, any>) => string,
   defaultViewMode: { value: ViewMode },
   onReadStatusChange?: () => void
 ) {
@@ -15,7 +25,7 @@ export function useArticleActions(
 
   // Get effective view mode for an article based on feed settings and global settings
   function getEffectiveViewMode(article: Article): ViewMode {
-    const feed = store.feeds.find((f) => f.id === article.feed_id);
+    const feed = store.feeds.find((f: any) => f.id === article.feed_id);
     if (!feed) return defaultViewMode.value;
 
     if (feed.article_view_mode === 'webpage') {
@@ -38,7 +48,7 @@ export function useArticleActions(
     const effectiveMode = getEffectiveViewMode(article);
 
     // Build menu items array
-    const menuItems = [
+    const menuItems: MenuItem[] = [
       {
         label: article.is_read ? t('article.action.markAsUnread') : t('article.action.markAsRead'),
         action: 'toggleRead',
@@ -164,9 +174,7 @@ export function useArticleActions(
       const newState = !article.is_read;
       article.is_read = newState;
       try {
-        await fetch(`/api/articles/read?id=${article.id}&read=${newState}`, {
-          method: 'POST',
-        });
+        await apiClient.post('/articles/read', { id: article.id, read: newState });
         // Update unread counts after toggling read status
         if (onReadStatusChange) {
           onReadStatusChange();
@@ -204,27 +212,19 @@ export function useArticleActions(
         }
 
         // Build query parameters
-        const params = new URLSearchParams({
-          id: article.id.toString(),
+        const params: Record<string, any> = {
+          id: article.id,
           direction: direction,
-        });
+        };
 
         // Add feed_id or category if we're in a filtered view
         if (store.currentFeedId) {
-          params.append('feed_id', store.currentFeedId.toString());
+          params.feed_id = store.currentFeedId;
         } else if (store.currentCategory) {
-          params.append('category', store.currentCategory);
+          params.category = store.currentCategory;
         }
 
-        const res = await fetch(`/api/articles/mark-relative?${params.toString()}`, {
-          method: 'POST',
-        });
-
-        if (!res.ok) {
-          throw new Error('Failed to mark articles');
-        }
-
-        const data = await res.json();
+        const data: any = await apiClient.post('/articles/mark-relative', {}, params);
 
         // Refresh the article list to show updated read status
         if (onReadStatusChange) {
@@ -246,7 +246,7 @@ export function useArticleActions(
       const newState = !article.is_favorite;
       article.is_favorite = newState;
       try {
-        await fetch(`/api/articles/favorite?id=${article.id}`, { method: 'POST' });
+        await apiClient.post('/articles/favorite', { id: article.id });
         // Update filter counts after toggling favorite status
         if (onReadStatusChange) {
           onReadStatusChange();
@@ -265,7 +265,7 @@ export function useArticleActions(
         article.is_read = false;
       }
       try {
-        await fetch(`/api/articles/toggle-read-later?id=${article.id}`, { method: 'POST' });
+        await apiClient.post('/articles/toggle-read-later', { id: article.id });
         // Update unread counts after toggling read later status
         if (onReadStatusChange) {
           onReadStatusChange();
@@ -278,7 +278,7 @@ export function useArticleActions(
       }
     } else if (action === 'toggleHide') {
       try {
-        await fetch(`/api/articles/toggle-hide?id=${article.id}`, { method: 'POST' });
+        await apiClient.post('/articles/toggle-hide', { id: article.id });
         // Dispatch event to refresh article list
         window.dispatchEvent(new CustomEvent('refresh-articles'));
       } catch (e) {
@@ -303,9 +303,7 @@ export function useArticleActions(
       if (!article.is_read) {
         article.is_read = true;
         try {
-          await fetch(`/api/articles/read?id=${article.id}&read=true`, {
-            method: 'POST',
-          });
+          await apiClient.post('/articles/read', { id: article.id, read: true });
           if (onReadStatusChange) {
             onReadStatusChange();
           }
@@ -335,9 +333,7 @@ export function useArticleActions(
       if (!article.is_read) {
         article.is_read = true;
         try {
-          await fetch(`/api/articles/read?id=${article.id}&read=true`, {
-            method: 'POST',
-          });
+          await apiClient.post('/articles/read', { id: article.id, read: true });
           if (onReadStatusChange) {
             onReadStatusChange();
           }
@@ -367,9 +363,7 @@ export function useArticleActions(
       if (!article.is_read) {
         article.is_read = true;
         try {
-          await fetch(`/api/articles/read?id=${article.id}&read=true`, {
-            method: 'POST',
-          });
+          await apiClient.post('/articles/read', { id: article.id, read: true });
           if (onReadStatusChange) {
             onReadStatusChange();
           }

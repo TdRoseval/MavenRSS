@@ -1,8 +1,8 @@
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
-import type { Article } from '@/types/models';
+import type { Article, Feed } from '@/types/models';
 import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
 
 type ViewMode = 'original' | 'rendered' | 'external';
@@ -25,13 +25,13 @@ export function useArticleDetail() {
   const { t, locale } = useI18n();
 
   const article = computed<Article | undefined>(() =>
-    store.articles.find((a) => a.id === store.currentArticleId)
+    store.articles.find((a: Article) => a.id === store.currentArticleId)
   );
 
   // Get current article index in the filtered list
   const currentArticleIndex = computed(() => {
     if (!store.currentArticleId) return -1;
-    return store.articles.findIndex((a) => a.id === store.currentArticleId);
+    return store.articles.findIndex((a: Article) => a.id === store.currentArticleId);
   });
 
   // Check if there's a previous article
@@ -96,7 +96,7 @@ export function useArticleDetail() {
     if (!article.value) return defaultViewMode.value;
 
     // Find the feed for this article
-    const feed = store.feeds.find((f) => f.id === article.value!.feed_id);
+    const feed = store.feeds.find((f: Feed) => f.id === article.value!.feed_id);
     if (!feed) return defaultViewMode.value;
 
     // Check feed's article_view_mode
@@ -696,12 +696,39 @@ export function useArticleDetail() {
         throw new Error(error);
       }
 
-      const data = await response.json();
-
-      // Show success message with file path
-      const message = data.message || t('setting.plugins.obsidian.exported');
-      const filePath = data.file_path ? ` (${data.file_path})` : '';
-      window.showToast(message + filePath, 'success');
+      // Check if it's a file download (server mode)
+      const contentType = response.headers.get('Content-Type');
+      if (contentType?.includes('text/markdown') || contentType?.includes('application/octet-stream')) {
+        // Handle file download
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        
+        // Get filename from Content-Disposition or use default
+        let filename = 'article.md';
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+        
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        window.showToast(t('setting.plugins.obsidian.exported'), 'success');
+      } else {
+        // Handle JSON response (desktop mode)
+        const data = await response.json();
+        const message = data.message || t('setting.plugins.obsidian.exported');
+        const filePath = data.file_path ? ` (${data.file_path})` : '';
+        window.showToast(message + filePath, 'success');
+      }
     } catch (error) {
       console.error('Failed to export to Obsidian:', error);
       const message =
@@ -730,15 +757,44 @@ export function useArticleDetail() {
         throw new Error(error);
       }
 
-      const data = await response.json();
+      // Check if it's a file download (server mode)
+      const contentType = response.headers.get('Content-Type');
+      if (contentType?.includes('text/markdown') || contentType?.includes('application/octet-stream')) {
+        // Handle file download (server mode)
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        
+        // Get filename from Content-Disposition or use default
+        let filename = 'article.md';
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+        
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        window.showToast(t('setting.plugins.notion.exported'), 'success');
+      } else {
+        // Handle JSON response (desktop mode)
+        const data = await response.json();
 
-      // Show success message with page URL
-      const message = data.message || t('setting.plugins.notion.exported');
-      window.showToast(message, 'success');
+        // Show success message with page URL
+        const message = data.message || t('setting.plugins.notion.exported');
+        window.showToast(message, 'success');
 
-      // Open the Notion page in external browser
-      if (data.page_url) {
-        openInBrowser(data.page_url);
+        // Open the Notion page in external browser
+        if (data.page_url) {
+          openInBrowser(data.page_url);
+        }
       }
     } catch (error) {
       console.error('Failed to export to Notion:', error);
@@ -831,7 +887,7 @@ export function useArticleDetail() {
     }
   });
 
-  onBeforeUnmount(() => {
+  onUnmounted(() => {
     window.removeEventListener('render-article-content', handleRenderContent);
     window.removeEventListener('explicit-render-action', handleExplicitRenderAction);
     window.removeEventListener('toggle-content-view', handleToggleContentView);

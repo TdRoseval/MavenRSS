@@ -28,6 +28,7 @@ import { useSettings } from '@/composables/core/useSettings';
 import { parseSettingsData } from '@/composables/core/useSettings.generated';
 import { openInBrowser } from '@/utils/browser';
 import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
+import { apiClient } from '@/utils/apiClient';
 import type { Article } from '@/types/models';
 
 const store = useAppStore();
@@ -389,26 +390,57 @@ function onRefreshTooltipHide(): void {
 }
 
 // Article selection and interaction
-function selectArticle(article: Article): void {
-  // Check if we should open in browser based on feed or global settings
-  const feed = store.feeds.find((f) => f.id === article.feed_id);
-  let openInBrowserMode = false;
+  function selectArticle(article: Article): void {
+    // Check if we should open in browser based on feed or global settings
+    const feed = store.feeds.find((f) => f.id === article.feed_id);
+    let openInBrowserMode = false;
 
-  if (feed?.article_view_mode === 'external') {
-    openInBrowserMode = true;
-  } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
-    // Check global setting
-    if (defaultViewMode.value === 'external') {
+    if (feed?.article_view_mode === 'external') {
       openInBrowserMode = true;
+    } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
+      // Check global setting
+      if (defaultViewMode.value === 'external') {
+        openInBrowserMode = true;
+      }
     }
-  }
 
-  // If external mode is selected, open in browser and mark as read
-  if (openInBrowserMode) {
-    // Mark as read if not already read
+    // If external mode is selected, open in browser and mark as read
+    if (openInBrowserMode) {
+      // Mark as read if not already read
+      if (!article.is_read) {
+        article.is_read = true;
+        apiClient.post('/articles/read', { id: article.id, read: true })
+          .then(async () => {
+            await store.fetchUnreadCounts();
+            await store.fetchFilterCounts();
+          })
+          .catch((e) => {
+            console.error('Error marking as read:', e);
+          });
+      }
+      // Open article URL in browser
+      openInBrowser(article.url);
+      return;
+    }
+
+    // Card mode: open in modal instead of side panel
+    if (isCardMode.value) {
+      openCardModal(article);
+      return;
+    }
+
+    // Normal article selection - show in app
+    // If switching from one article to another, remove the previous one from temp list
+    if (store.currentArticleId) {
+      temporarilyKeepArticles.value.delete(store.currentArticleId);
+    }
+
+    store.currentArticleId = article.id;
     if (!article.is_read) {
       article.is_read = true;
-      fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
+      // Add to temporarily keep list so it doesn't disappear immediately
+      temporarilyKeepArticles.value.add(article.id);
+      apiClient.post('/articles/read', { id: article.id, read: true })
         .then(async () => {
           await store.fetchUnreadCounts();
           await store.fetchFilterCounts();
@@ -417,38 +449,7 @@ function selectArticle(article: Article): void {
           console.error('Error marking as read:', e);
         });
     }
-    // Open article URL in browser
-    openInBrowser(article.url);
-    return;
   }
-
-  // Card mode: open in modal instead of side panel
-  if (isCardMode.value) {
-    openCardModal(article);
-    return;
-  }
-
-  // Normal article selection - show in app
-  // If switching from one article to another, remove the previous one from temp list
-  if (store.currentArticleId) {
-    temporarilyKeepArticles.value.delete(store.currentArticleId);
-  }
-
-  store.currentArticleId = article.id;
-  if (!article.is_read) {
-    article.is_read = true;
-    // Add to temporarily keep list so it doesn't disappear immediately
-    temporarilyKeepArticles.value.add(article.id);
-    fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
-      .then(async () => {
-        await store.fetchUnreadCounts();
-        await store.fetchFilterCounts();
-      })
-      .catch((e) => {
-        console.error('Error marking as read:', e);
-      });
-  }
-}
 
 // Scrolling handler with throttling to improve performance
 let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -556,17 +557,15 @@ async function markAllAsRead(): Promise<void> {
 }
 
 async function clearReadLater(): Promise<void> {
-  try {
-    const res = await fetch('/api/articles/clear-read-later', { method: 'POST' });
-    if (res.ok) {
+    try {
+      await apiClient.post('/articles/clear-read-later');
       await store.fetchArticles();
       await store.fetchFilterCounts();
       window.showToast(t('common.toast.clearedReadLater'), 'success');
+    } catch (e) {
+      console.error('Error clearing read later:', e);
     }
-  } catch (e) {
-    console.error('Error clearing read later:', e);
   }
-}
 
 // Handle hover mark as read event from ArticleItem
 function handleHoverMarkAsRead(articleId: number): void {
@@ -583,119 +582,110 @@ function handleHoverMarkAsRead(articleId: number): void {
 }
 
 // Card mode functions
-async function openCardModal(article: Article): Promise<void> {
-  cardModalArticle.value = article;
-  showCardModal.value = true;
-  isCardModalLoading.value = true;
-  cardModalContent.value = '';
+  async function openCardModal(article: Article): Promise<void> {
+    cardModalArticle.value = article;
+    showCardModal.value = true;
+    isCardModalLoading.value = true;
+    cardModalContent.value = '';
 
-  // Mark as read
-  if (!article.is_read) {
-    article.is_read = true;
-    temporarilyKeepArticles.value.add(article.id);
-    fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
-      .then(async () => {
-        await store.fetchUnreadCounts();
-        await store.fetchFilterCounts();
-      })
-      .catch((e) => console.error('Error marking as read:', e));
-  }
+    // Mark as read
+    if (!article.is_read) {
+      article.is_read = true;
+      temporarilyKeepArticles.value.add(article.id);
+      apiClient.post('/articles/read', { id: article.id, read: true })
+        .then(async () => {
+          await store.fetchUnreadCounts();
+          await store.fetchFilterCounts();
+        })
+        .catch((e) => console.error('Error marking as read:', e));
+    }
 
-  // Load article content
-  try {
-    const mediaCacheEnabled = await isMediaCacheEnabled();
-    const res = await fetch(`/api/articles/content?id=${article.id}`);
-    if (res.ok) {
-      const data = await res.json();
+    // Load article content
+    try {
+      const mediaCacheEnabled = await isMediaCacheEnabled();
+      const data = await apiClient.get('/articles/content', { id: article.id });
       let content = data.content || '';
       if (mediaCacheEnabled && content) {
         content = proxyImagesInHtml(content, article.url);
       }
       cardModalContent.value = content;
-    } else {
+    } catch (e) {
+      console.error('Error loading article content:', e);
       cardModalContent.value = '';
+    } finally {
+      isCardModalLoading.value = false;
     }
-  } catch (e) {
-    console.error('Error loading article content:', e);
+  }
+
+  function closeCardModal(): void {
+    showCardModal.value = false;
+    cardModalArticle.value = null;
     cardModalContent.value = '';
-  } finally {
-    isCardModalLoading.value = false;
   }
-}
 
-function closeCardModal(): void {
-  showCardModal.value = false;
-  cardModalArticle.value = null;
-  cardModalContent.value = '';
-}
-
-function cardModalPrevious(): void {
-  if (!cardModalArticle.value) return;
-  const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
-  if (currentIndex > 0) {
-    openCardModal(filteredArticles.value[currentIndex - 1]);
+  function cardModalPrevious(): void {
+    if (!cardModalArticle.value) return;
+    const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
+    if (currentIndex > 0) {
+      openCardModal(filteredArticles.value[currentIndex - 1]);
+    }
   }
-}
 
-function cardModalNext(): void {
-  if (!cardModalArticle.value) return;
-  const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
-  if (currentIndex >= 0 && currentIndex < filteredArticles.value.length - 1) {
-    openCardModal(filteredArticles.value[currentIndex + 1]);
+  function cardModalNext(): void {
+    if (!cardModalArticle.value) return;
+    const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
+    if (currentIndex >= 0 && currentIndex < filteredArticles.value.length - 1) {
+      openCardModal(filteredArticles.value[currentIndex + 1]);
+    }
   }
-}
 
-async function cardModalToggleRead(): Promise<void> {
-  if (!cardModalArticle.value) return;
-  const article = cardModalArticle.value;
-  const newReadState = !article.is_read;
+  async function cardModalToggleRead(): Promise<void> {
+    if (!cardModalArticle.value) return;
+    const article = cardModalArticle.value;
+    const newReadState = !article.is_read;
 
-  try {
-    await fetch(`/api/articles/read?id=${article.id}&read=${newReadState}`, { method: 'POST' });
-    article.is_read = newReadState;
-    await store.fetchUnreadCounts();
-    await store.fetchFilterCounts();
-  } catch (e) {
-    console.error('Error toggling read state:', e);
+    try {
+      await apiClient.post('/articles/read', { id: article.id, read: newReadState });
+      article.is_read = newReadState;
+      await store.fetchUnreadCounts();
+      await store.fetchFilterCounts();
+    } catch (e) {
+      console.error('Error toggling read state:', e);
+    }
   }
-}
 
-async function cardModalToggleFavorite(): Promise<void> {
-  if (!cardModalArticle.value) return;
-  const article = cardModalArticle.value;
-  const newFavoriteState = !article.is_favorite;
+  async function cardModalToggleFavorite(): Promise<void> {
+    if (!cardModalArticle.value) return;
+    const article = cardModalArticle.value;
+    const newFavoriteState = !article.is_favorite;
 
-  try {
-    await fetch(`/api/articles/favorite?id=${article.id}&favorite=${newFavoriteState}`, {
-      method: 'POST',
-    });
-    article.is_favorite = newFavoriteState;
-    await store.fetchFilterCounts();
-  } catch (e) {
-    console.error('Error toggling favorite:', e);
+    try {
+      await apiClient.post('/articles/favorite', { id: article.id, favorite: newFavoriteState });
+      article.is_favorite = newFavoriteState;
+      await store.fetchFilterCounts();
+    } catch (e) {
+      console.error('Error toggling favorite:', e);
+    }
   }
-}
 
-async function cardModalToggleReadLater(): Promise<void> {
-  if (!cardModalArticle.value) return;
-  const article = cardModalArticle.value;
+  async function cardModalToggleReadLater(): Promise<void> {
+    if (!cardModalArticle.value) return;
+    const article = cardModalArticle.value;
 
-  try {
-    await fetch(`/api/articles/toggle-read-later?id=${article.id}`, {
-      method: 'POST',
-    });
-    article.is_read_later = !article.is_read_later;
-    await store.fetchFilterCounts();
-  } catch (e) {
-    console.error('Error toggling read later:', e);
+    try {
+      await apiClient.post('/articles/toggle-read-later', { id: article.id });
+      article.is_read_later = !article.is_read_later;
+      await store.fetchFilterCounts();
+    } catch (e) {
+      console.error('Error toggling read later:', e);
+    }
   }
-}
 
-function cardModalRetryLoadContent(): void {
-  if (cardModalArticle.value) {
-    openCardModal(cardModalArticle.value);
+  function cardModalRetryLoadContent(): void {
+    if (cardModalArticle.value) {
+      openCardModal(cardModalArticle.value);
+    }
   }
-}
 </script>
 
 <template>

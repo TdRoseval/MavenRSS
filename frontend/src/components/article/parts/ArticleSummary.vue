@@ -135,11 +135,21 @@ async function handleSummaryLinkClick(event: MouseEvent) {
     event.stopPropagation();
 
     try {
-      await fetch('/api/browser/open', {
+      const response = await fetch('/api/browser/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: anchor.href }),
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to open URL: ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (data.redirect) {
+        window.open(data.redirect, '_blank');
+      }
     } catch (error) {
       console.error('Failed to open link:', error);
       window.showToast(t('common.errors.failedToOpenLink'), 'error');
