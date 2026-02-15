@@ -53,7 +53,13 @@ func (p *ProfileProvider) GetProfileForFeature(feature FeatureType) (*models.AIP
 	}
 
 	// Fallback to default profile
-	return p.db.GetDefaultAIProfile()
+	profile, err := p.db.GetDefaultAIProfile()
+	if err != nil {
+		// If GetDefaultAIProfile returns an error (like sql.ErrNoRows), just return nil, nil
+		// so that the caller can fall back to legacy settings
+		return nil, nil
+	}
+	return profile, nil
 }
 
 // getSettingKeyForFeature returns the settings key for a feature's AI profile
@@ -76,18 +82,9 @@ func (p *ProfileProvider) getSettingKeyForFeature(feature FeatureType) string {
 // This is a convenience method that combines profile lookup with config creation
 func (p *ProfileProvider) GetConfigForFeature(feature FeatureType) (*ClientConfig, error) {
 	profile, err := p.GetProfileForFeature(feature)
-	if err != nil {
-		return nil, err
-	}
-
-	if profile == nil {
-		// No profile configured, return defaults
-		defaults := config.Get()
-		return &ClientConfig{
-			APIKey:   "",
-			Endpoint: defaults.AIEndpoint,
-			Model:    defaults.AIModel,
-		}, nil
+	if err != nil || profile == nil {
+		// No profile configured or error occurred, return nil so caller can fallback
+		return nil, nil
 	}
 
 	cfg := &ClientConfig{
@@ -108,5 +105,10 @@ func (p *ProfileProvider) HasProfileConfigured(feature FeatureType) bool {
 		return false
 	}
 	profileID, err := strconv.ParseInt(profileIDStr, 10, 64)
-	return err == nil && profileID > 0
+	if err != nil || profileID <= 0 {
+		return false
+	}
+	// Verify the profile actually exists
+	profile, err := p.db.GetAIProfile(profileID)
+	return err == nil && profile != nil
 }
