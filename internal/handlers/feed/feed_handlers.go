@@ -141,6 +141,10 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
+	if feed == nil {
+		response.Error(w, nil, http.StatusNotFound)
+		return
+	}
 	if err := h.DB.UpdateFeed(feed.ID, feed.Title, feed.URL, feed.Category, feed.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, feed.Type, feed.XPathItem, feed.XPathItemTitle, feed.XPathItemContent, feed.XPathItemUri, feed.XPathItemAuthor, feed.XPathItemTimestamp, feed.XPathItemTimeFormat, feed.XPathItemThumbnail, feed.XPathItemCategories, feed.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, feed.EmailAddress, feed.EmailIMAPServer, feed.EmailUsername, feed.EmailPassword, feed.EmailFolder, feed.EmailIMAPPort); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -296,6 +300,10 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
+		if currentFeed == nil {
+			response.Error(w, nil, http.StatusNotFound)
+			return
+		}
 
 		// Fetch default title based on feed type
 		if req.ScriptPath != "" || (currentFeed != nil && currentFeed.ScriptPath != "") {
@@ -394,7 +402,11 @@ func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 
 	feed, err := h.DB.GetFeedByID(id)
 	if err != nil {
-		response.Error(w, err, http.StatusNotFound)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if feed == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 

@@ -43,11 +43,11 @@ func HandleDiscoverBlogs(h *core.Handler, w http.ResponseWriter, r *http.Request
 	// Get the specific feed by ID
 	targetFeed, err := h.DB.GetFeedByID(req.FeedID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			response.Error(w, nil, http.StatusNotFound)
-		} else {
-			response.Error(w, err, http.StatusInternalServerError)
-		}
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if targetFeed == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 
@@ -139,6 +139,15 @@ func HandleStartSingleDiscovery(h *core.Handler, w http.ResponseWriter, r *http.
 	// Get the specific feed by ID
 	targetFeed, err := h.DB.GetFeedByID(req.FeedID)
 	if err != nil {
+		h.DiscoveryMu.Lock()
+		h.SingleDiscoveryState.IsRunning = false
+		h.SingleDiscoveryState.IsComplete = true
+		h.SingleDiscoveryState.Error = err.Error()
+		h.DiscoveryMu.Unlock()
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if targetFeed == nil {
 		h.DiscoveryMu.Lock()
 		h.SingleDiscoveryState.IsRunning = false
 		h.SingleDiscoveryState.IsComplete = true

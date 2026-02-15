@@ -370,12 +370,12 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 	article, err := h.DB.GetArticleByID(id)
 	if err != nil {
 		log.Printf("[HandleMarkRelativeToArticle] Error getting article: %v", err)
-		response.Error(w, err, http.StatusNotFound)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	if article == nil {
-		response.Error(w, err, http.StatusNotFound)
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 

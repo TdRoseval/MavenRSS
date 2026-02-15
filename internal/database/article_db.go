@@ -231,6 +231,9 @@ func (db *DB) GetArticleByID(id int64) (*models.Article, error) {
 	var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, feedTitle, author sql.NullString
 	var publishedAt sql.NullTime
 	if err := row.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &feedTitle, &author); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	a.ImageURL = imageURL.String
@@ -321,6 +324,9 @@ func (db *DB) GetArticleIDByUniqueID(title string, feedID int64, publishedAt tim
 	var id int64
 	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&id)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return id, nil

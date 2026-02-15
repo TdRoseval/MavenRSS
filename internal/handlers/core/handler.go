@@ -133,6 +133,9 @@ func (h *Handler) GetArticleContent(articleID int64) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
+	if article == nil {
+		return "", false, nil
+	}
 
 	// Get the feed
 	targetFeed, err := h.DB.GetFeedByID(article.FeedID)

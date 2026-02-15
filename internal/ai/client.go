@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -101,6 +102,10 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error) {
 	provider := DetectAPIProvider(c.config.Endpoint)
 
+	logFn := func(name string, err error) {
+		log.Printf("[AI Client] %s format failed: %v", name, err)
+	}
+
 	// Try provider-specific format first based on endpoint detection
 	switch provider {
 	case "gemini":
@@ -108,6 +113,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		if err == nil {
 			return result, nil
 		}
+		logFn("Gemini", err)
 		// Fall through to other formats
 
 	case "anthropic":
@@ -115,6 +121,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		if err == nil {
 			return result, nil
 		}
+		logFn("Anthropic", err)
 		// Fall through to other formats
 
 	case "deepseek":
@@ -122,6 +129,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		if err == nil {
 			return result, nil
 		}
+		logFn("DeepSeek", err)
 		// Fall through to other formats
 
 	case "ollama":
@@ -129,6 +137,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		if err == nil {
 			return result, nil
 		}
+		logFn("Ollama", err)
 		// Fall through to other formats
 	}
 
@@ -137,6 +146,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 	if err == nil {
 		return result, nil
 	}
+	logFn("OpenAI", err)
 
 	// Try other formats as fallback
 	if provider != "gemini" {
@@ -144,6 +154,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		if err == nil {
 			return result, nil
 		}
+		logFn("Gemini (fallback)", err)
 	}
 
 	if provider != "ollama" {
@@ -151,6 +162,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		if err == nil {
 			return result, nil
 		}
+		logFn("Ollama (fallback)", err)
 	}
 
 	// All formats failed

@@ -112,7 +112,7 @@ func sanitizeFeedXML(xmlContent string) string {
 }
 
 // fetchAndSanitizeFeed fetches feed content and sanitizes it before parsing
-func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feedURL string) (string, error) {
+func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, feedURL string) (string, error) {
 	debugTimer := NewDebugTimer(fmt.Sprintf("FetchSanitize-%s", feedURL), shouldEnableDebugLogging(feedURL))
 	defer debugTimer.End()
 
@@ -120,7 +120,7 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feedURL string) (str
 
 	// Use the feed's HTTP client to fetch content
 	debugTimer.LogWithTime("Getting HTTP client")
-	httpClient, err := f.getHTTPClient(models.Feed{URL: feedURL})
+	httpClient, err := f.getHTTPClient(*feed)
 	if err != nil {
 		debugTimer.LogWithTime("Failed to create HTTP client: %v", err)
 		return "", fmt.Errorf("failed to create HTTP client: %w", err)
@@ -590,7 +590,7 @@ func (f *Fetcher) parseFeedWithFeedInternal(ctx context.Context, feed *models.Fe
 	// Try fetching and sanitizing the feed first to handle file:// URLs in atom:link
 	debugTimer.LogWithTime("About to call fetchAndSanitizeFeed")
 	utils.DebugLog("parseFeedWithFeedInternal: Attempting to fetch and sanitize feed for %s", actualURL)
-	cleanedXML, sanitizeErr := f.fetchAndSanitizeFeed(fetchCtx, actualURL)
+	cleanedXML, sanitizeErr := f.fetchAndSanitizeFeed(fetchCtx, feed, actualURL)
 	debugTimer.LogWithTime("fetchAndSanitizeFeed completed, err=%v", sanitizeErr)
 
 	if sanitizeErr == nil {

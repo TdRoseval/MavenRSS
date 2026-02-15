@@ -19,6 +19,7 @@ import (
 // @Param        id   query     int64   true  "Article ID"
 // @Success      200  {object}  map[string]string  "Article content (content, feed_url)"
 // @Failure      400  {object}  map[string]string  "Bad request (invalid article ID)"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/content [get]
 func HandleGetArticleContent(h *core.Handler, w http.ResponseWriter, r *http.Request) {
@@ -39,6 +40,10 @@ func HandleGetArticleContent(h *core.Handler, w http.ResponseWriter, r *http.Req
 	if err != nil {
 		log.Printf("Error getting article: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if article == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 
@@ -77,6 +82,7 @@ func HandleGetArticleContent(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Success      200  {object}  map[string]string  "Full article content (content, feed_url)"
 // @Failure      400  {object}  map[string]string  "Bad request (invalid ID or missing URL)"
 // @Failure      403  {object}  map[string]string  "Full-text fetching disabled"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/fetch-full [post]
 func HandleFetchFullArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
@@ -97,6 +103,10 @@ func HandleFetchFullArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		log.Printf("Error getting article: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if article == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 
@@ -143,6 +153,7 @@ func HandleFetchFullArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 // @Param        id   query     int64   true  "Article ID"
 // @Success      200  {object}  map[string]interface{}  "List of image URLs (images, feed_url)"
 // @Failure      400  {object}  map[string]string  "Bad request (invalid article ID)"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/extract-images [get]
 func HandleExtractAllImages(h *core.Handler, w http.ResponseWriter, r *http.Request) {
@@ -163,6 +174,10 @@ func HandleExtractAllImages(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		log.Printf("Error getting article: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if article == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 

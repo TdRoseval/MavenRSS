@@ -182,6 +182,9 @@ func (db *DB) DeleteChatMessage(messageID int64) error {
 	var sessionID int64
 	err := db.QueryRow(`SELECT session_id FROM chat_messages WHERE id = ?`, messageID).Scan(&sessionID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
 		return fmt.Errorf("failed to get session ID: %w", err)
 	}
 
