@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
