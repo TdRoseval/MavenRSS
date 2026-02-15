@@ -187,7 +187,8 @@ func (f *Fetcher) AddSubscription(url string, category string, customTitle strin
 
 	// Try fetching and sanitizing the feed first
 	ctx := context.Background()
-	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, url)
+	tempFeed := &models.Feed{URL: url}
+	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, tempFeed, url)
 	if err != nil {
 		utils.DebugLog("AddSubscription: Failed to fetch feed for %s: %v", url, err)
 		// Fall through to standard parsing which might handle it differently
