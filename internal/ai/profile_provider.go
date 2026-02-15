@@ -3,7 +3,6 @@ package ai
 import (
 	"strconv"
 
-	"MrRSS/internal/config"
 	"MrRSS/internal/models"
 )
 
