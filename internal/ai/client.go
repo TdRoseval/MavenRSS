@@ -172,7 +172,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		}
 
 	case "ollama":
-		result, err := c.tryFormat(NewOllamaHandler(), configWithContext)
+		result, err := c.tryFormat(&OllamaHandler{}, configWithContext)
 		if err == nil {
 			return result, nil
 		}
@@ -193,7 +193,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		{"Anthropic", &AnthropicHandler{}, provider == "anthropic"},
 		{"DeepSeek", &DeepSeekHandler{}, provider == "deepseek"},
 		{"Gemini", NewGeminiHandler(), provider == "gemini"},
-		{"Ollama", NewOllamaHandler{}, provider == "ollama"},
+		{"Ollama", &OllamaHandler{}, provider == "ollama"},
 	}
 
 	for _, h := range remainingHandlers {

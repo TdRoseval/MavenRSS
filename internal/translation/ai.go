@@ -2,7 +2,6 @@ package translation
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"

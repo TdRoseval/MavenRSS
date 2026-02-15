@@ -29,9 +29,9 @@ func NewDeepLTranslatorWithEndpoint(apiKey, endpoint string) *DeepLTranslator {
 }
 
 func NewDeepLTranslatorWithDB(apiKey string, db DBInterface) *DeepLTranslator {
-	client, err := CreateHTTPClientWithProxy(db, translationTimeout)
+	client, err := CreateHTTPClientWithProxy(db, httputil.DefaultTranslationTimeout)
 	if err != nil {
-		client = httputil.GetPooledAIHTTPClient("", translationTimeout)
+		client = httputil.GetPooledAIHTTPClient("", httputil.DefaultTranslationTimeout)
 	}
 	return &DeepLTranslator{
 		APIKey:   apiKey,
@@ -42,9 +42,9 @@ func NewDeepLTranslatorWithDB(apiKey string, db DBInterface) *DeepLTranslator {
 }
 
 func NewDeepLTranslatorWithEndpointAndDB(apiKey, endpoint string, db DBInterface) *DeepLTranslator {
-	client, err := CreateHTTPClientWithProxy(db, translationTimeout)
+	client, err := CreateHTTPClientWithProxy(db, httputil.DefaultTranslationTimeout)
 	if err != nil {
-		client = httputil.GetPooledAIHTTPClient("", translationTimeout)
+		client = httputil.GetPooledAIHTTPClient("", httputil.DefaultTranslationTimeout)
 	}
 	return &DeepLTranslator{
 		APIKey:   apiKey,
@@ -59,9 +59,9 @@ func (t *DeepLTranslator) RefreshProxy() {
 		return
 	}
 
-	client, err := CreateHTTPClientWithProxy(t.db, translationTimeout)
+	client, err := CreateHTTPClientWithProxy(t.db, httputil.DefaultTranslationTimeout)
 	if err != nil {
-		client = httputil.GetPooledAIHTTPClient("", translationTimeout)
+		client = httputil.GetPooledAIHTTPClient("", httputil.DefaultTranslationTimeout)
 	}
 	t.client = client
 }

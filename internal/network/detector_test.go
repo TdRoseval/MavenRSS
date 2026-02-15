@@ -1,7 +1,6 @@
 package network
 
 import (
-	"net/http"
 	"testing"
 	"time"
 

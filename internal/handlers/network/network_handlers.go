@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,13 +15,13 @@ import (
 )
 
 type StoredTestResult struct {
-	URL          string `json:"url"`
-	Domain       string `json:"domain"`
-	Success      bool   `json:"success"`
-	LatencyMs    int64  `json:"latency_ms,omitempty"`
-	Error        string `json:"error,omitempty"`
-	IsDomestic   bool   `json:"is_domestic"`
-	TestType     string `json:"test_type"`
+	URL        string `json:"url"`
+	Domain     string `json:"domain"`
+	Success    bool   `json:"success"`
+	LatencyMs  int64  `json:"latency_ms,omitempty"`
+	Error      string `json:"error,omitempty"`
+	IsDomestic bool   `json:"is_domestic"`
+	TestType   string `json:"test_type"`
 }
 
 type StoredDetectionResult struct {

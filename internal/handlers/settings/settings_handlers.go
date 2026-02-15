@@ -74,7 +74,6 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check if proxy settings are changing
-		oldProxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 		oldProxyType, _ := h.DB.GetSetting("proxy_type")
 		oldProxyHost, _ := h.DB.GetSetting("proxy_host")
 		oldProxyPort, _ := h.DB.GetSetting("proxy_port")

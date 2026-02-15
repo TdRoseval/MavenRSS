@@ -98,7 +98,7 @@ func (f *Factory) Create(providerType ProviderType) (Provider, error) {
 }
 
 // createGoogleProvider 创建 Google 翻译提供商
-func (f *Factory) createGoogleProvider(config ProviderConfig) Provider {
+func (f *Factory) createGoogleProvider(_ ProviderConfig) Provider {
 	return &googleProvider{
 		translator: NewGoogleFreeTranslatorWithDB(f.settingsProvider),
 	}

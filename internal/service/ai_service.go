@@ -66,7 +66,7 @@ func (s *aiService) Summarize(ctx context.Context, content string) (string, erro
 
 	s.registry.AITracker().AddUsage(int64(len(content)))
 
-	return response, nil
+	return response.Content, nil
 }
 
 func (s *aiService) Chat(ctx context.Context, sessionID int64, message string) (string, error) {
@@ -109,7 +109,7 @@ func (s *aiService) Chat(ctx context.Context, sessionID int64, message string) (
 
 	s.registry.AITracker().AddUsage(int64(len(message)))
 
-	return response, nil
+	return response.Content, nil
 }
 
 func (s *aiService) Search(ctx context.Context, query string) ([]models.Article, error) {

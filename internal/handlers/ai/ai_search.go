@@ -303,10 +303,10 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[AI Search] AI response: %s", aiResponse)
+	log.Printf("[AI Search] AI response: %s", aiResponse.Content)
 
 	// Parse search terms from AI response
-	searchTerms, err := parseSearchTermsAdvanced(aiResponse)
+	searchTerms, err := parseSearchTermsAdvanced(aiResponse.Content)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,

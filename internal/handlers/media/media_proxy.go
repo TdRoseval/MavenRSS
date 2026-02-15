@@ -446,7 +446,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	// Execute the request with retry
 	var resp *http.Response
 	var lastErr error
-	
+
 	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
 		select {
 		case <-r.Context().Done():
@@ -455,15 +455,15 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			return
 		default:
 		}
-		
+
 		reqCopy := req.Clone(r.Context())
-		
+
 		resp, err = client.Do(reqCopy)
 		if err != nil {
 			lastErr = err
 			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
 				backoff := calculateProxyBackoff(attempt)
-				log.Printf("[WebpageProxy] Network error on attempt %d/%d for %s, retrying in %v: %v", 
+				log.Printf("[WebpageProxy] Network error on attempt %d/%d for %s, retrying in %v: %v",
 					attempt+1, proxyMaxRetries, webpageURL, backoff, err)
 				select {
 				case <-r.Context().Done():
@@ -483,7 +483,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
 			resp.Body.Close()
 			backoff := calculateProxyBackoff(attempt)
-			log.Printf("[WebpageProxy] Server error %d on attempt %d/%d for %s, retrying in %v", 
+			log.Printf("[WebpageProxy] Server error %d on attempt %d/%d for %s, retrying in %v",
 				resp.StatusCode, attempt+1, proxyMaxRetries, webpageURL, backoff)
 			select {
 			case <-r.Context().Done():
@@ -494,10 +494,10 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			}
 			continue
 		}
-		
+
 		break
 	}
-	
+
 	if resp == nil {
 		response.Error(w, fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr), http.StatusInternalServerError)
 		return
@@ -1684,10 +1684,12 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 
 	// Create request to the resource URL
 	var req *http.Request
+	var err error
 
 	// For POST requests, read the body
 	if r.Method == http.MethodPost {
-		body, err := io.ReadAll(r.Body)
+		var body []byte
+		body, err = io.ReadAll(r.Body)
 		if err != nil {
 			log.Printf("Failed to read request body: %v", err)
 			response.Error(w, err, http.StatusInternalServerError)
@@ -1720,16 +1722,16 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	// Execute the request with retry
 	var resp *http.Response
 	var lastErr error
-	
+
 	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
 		reqCopy := req.Clone(r.Context())
-		
+
 		resp, err = httpClient.Do(reqCopy)
 		if err != nil {
 			lastErr = err
 			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
 				backoff := calculateProxyBackoff(attempt)
-				log.Printf("[WebpageResource] Network error on attempt %d/%d for %s, retrying in %v: %v", 
+				log.Printf("[WebpageResource] Network error on attempt %d/%d for %s, retrying in %v: %v",
 					attempt+1, proxyMaxRetries, resourceURL, backoff, err)
 				time.Sleep(backoff)
 				continue
@@ -1743,15 +1745,15 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
 			resp.Body.Close()
 			backoff := calculateProxyBackoff(attempt)
-			log.Printf("[WebpageResource] Server error %d on attempt %d/%d for %s, retrying in %v", 
+			log.Printf("[WebpageResource] Server error %d on attempt %d/%d for %s, retrying in %v",
 				resp.StatusCode, attempt+1, proxyMaxRetries, resourceURL, backoff)
 			time.Sleep(backoff)
 			continue
 		}
-		
+
 		break
 	}
-	
+
 	if resp == nil {
 		response.Error(w, fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr), http.StatusInternalServerError)
 		return
@@ -1871,16 +1873,16 @@ func proxyMediaDirectly(mediaURL, referer, proxyURL string, w http.ResponseWrite
 
 	var resp *http.Response
 	var lastErr error
-	
+
 	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
 		reqCopy := req.Clone(req.Context())
-		
+
 		resp, err = client.Do(reqCopy)
 		if err != nil {
 			lastErr = err
 			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
 				backoff := calculateProxyBackoff(attempt)
-				log.Printf("[MediaProxy] Network error on attempt %d/%d for %s, retrying in %v: %v", 
+				log.Printf("[MediaProxy] Network error on attempt %d/%d for %s, retrying in %v: %v",
 					attempt+1, proxyMaxRetries, mediaURL, backoff, err)
 				time.Sleep(backoff)
 				continue
@@ -1892,15 +1894,15 @@ func proxyMediaDirectly(mediaURL, referer, proxyURL string, w http.ResponseWrite
 		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
 			resp.Body.Close()
 			backoff := calculateProxyBackoff(attempt)
-			log.Printf("[MediaProxy] Server error %d on attempt %d/%d for %s, retrying in %v", 
+			log.Printf("[MediaProxy] Server error %d on attempt %d/%d for %s, retrying in %v",
 				resp.StatusCode, attempt+1, proxyMaxRetries, mediaURL, backoff)
 			time.Sleep(backoff)
 			continue
 		}
-		
+
 		break
 	}
-	
+
 	if resp == nil {
 		return fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr)
 	}
