@@ -34,9 +34,24 @@ func NewClient(config ClientConfig) *Client {
 		config.Timeout = 30 * time.Second
 	}
 
+	// Create optimized HTTP client for AI requests
+	transport := &http.Transport{
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   5,
+		IdleConnTimeout:       90 * time.Second,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: 20 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   config.Timeout,
+	}
+
 	return &Client{
 		config: config,
-		client: &http.Client{Timeout: config.Timeout},
+		client: client,
 	}
 }
 

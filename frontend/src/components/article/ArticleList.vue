@@ -129,11 +129,40 @@ const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, async (
   await store.fetchFilterCounts();
 });
 
-// Virtual rendering: only render visible articles + buffer
+// Virtual scroll state
+const scrollTop = ref(0);
+const containerHeight = ref(0);
+const ITEM_HEIGHT = 96; // Estimated height per article item
+const BUFFER_SIZE = 10; // Number of items to buffer above and below
+
+// Calculate visible range for virtual scrolling
+const visibleRange = computed(() => {
+  const articles = filteredArticles.value;
+  if (!articles.length) return { start: 0, end: 0 };
+
+  const start = Math.max(0, Math.floor(scrollTop.value / ITEM_HEIGHT) - BUFFER_SIZE);
+  const end = Math.min(
+    articles.length,
+    Math.ceil((scrollTop.value + containerHeight.value) / ITEM_HEIGHT) + BUFFER_SIZE
+  );
+
+  return { start, end };
+});
+
+// Only render visible articles (virtual scrolling)
 const visibleArticles = computed(() => {
-  // For now, render all articles but could be optimized for virtual scrolling
-  // Keeping it simple to avoid complexity
-  return filteredArticles.value;
+  const articles = filteredArticles.value;
+  const { start, end } = visibleRange.value;
+  return articles.slice(start, end);
+});
+
+// Calculate padding for virtual scroll container
+const listPaddingTop = computed(() => {
+  return visibleRange.value.start * ITEM_HEIGHT;
+});
+
+const listPaddingBottom = computed(() => {
+  return (filteredArticles.value.length - visibleRange.value.end) * ITEM_HEIGHT;
 });
 
 // Helper to truncate text to max length
@@ -457,13 +486,18 @@ const SCROLL_THROTTLE_DELAY = 200; // 200ms throttle
 const SCROLL_THRESHOLD = 400; // Increased from 200 to 400 for better UX
 
 function handleScroll(e: Event): void {
-  // Throttle scroll events to improve performance
+  const target = e.target as HTMLElement;
+  
+  // Update scroll position for virtual scrolling
+  scrollTop.value = target.scrollTop;
+  containerHeight.value = target.clientHeight;
+
+  // Throttle load more logic
   if (scrollThrottleTimer) return;
 
   scrollThrottleTimer = setTimeout(() => {
     scrollThrottleTimer = null;
 
-    const target = e.target as HTMLElement;
     const { scrollTop, clientHeight, scrollHeight } = target;
 
     // Load more when user is within threshold distance from bottom
@@ -915,8 +949,8 @@ function handleHoverMarkAsRead(articleId: number): void {
         {{ t('aiSearch.noResults') }}
       </div>
 
-      <!-- Article list with content-visibility for performance -->
-      <!-- Card mode: grid layout -->
+      <!-- Article list with virtual scrolling -->
+      <!-- Card mode: grid layout - virtual scroll not as critical here -->
       <div v-if="isCardMode" class="card-grid-container">
         <ArticleCardItem
           v-for="article in visibleArticles"
@@ -927,18 +961,27 @@ function handleHoverMarkAsRead(articleId: number): void {
           @contextmenu="(e) => showArticleContextMenu(e, article)"
         />
       </div>
-      <!-- Normal/Compact mode: list layout -->
-      <div v-else class="article-list-container">
-        <ArticleItem
-          v-for="article in visibleArticles"
-          :key="article.id"
-          :article="article"
-          :is-active="store.currentArticleId === article.id"
-          @click="selectArticle(article)"
-          @contextmenu="(e) => showArticleContextMenu(e, article)"
-          @observe-element="observeArticle"
-          @hover-mark-as-read="handleHoverMarkAsRead"
-        />
+      <!-- Normal/Compact mode: list layout with virtual scroll -->
+      <div v-else>
+        <!-- Virtual scroll spacer - top padding -->
+        <div :style="{ paddingTop: listPaddingTop + 'px' }"></div>
+        
+        <!-- Visible articles -->
+        <div class="article-list-container">
+          <ArticleItem
+            v-for="article in visibleArticles"
+            :key="article.id"
+            :article="article"
+            :is-active="store.currentArticleId === article.id"
+            @click="selectArticle(article)"
+            @contextmenu="(e) => showArticleContextMenu(e, article)"
+            @observe-element="observeArticle"
+            @hover-mark-as-read="handleHoverMarkAsRead"
+          />
+        </div>
+        
+        <!-- Virtual scroll spacer - bottom padding -->
+        <div :style="{ paddingBottom: listPaddingBottom + 'px' }"></div>
       </div>
 
       <div

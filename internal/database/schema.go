@@ -101,6 +101,18 @@ func initSchema(db *sql.DB) error {
 	-- Optimizes queries with: WHERE is_hidden = 0 ORDER BY published_at DESC
 	CREATE INDEX IF NOT EXISTS idx_articles_hidden_published ON articles(is_hidden, published_at DESC);
 
+	-- Composite index for common unread articles with hide_from_timeline filter
+	CREATE INDEX IF NOT EXISTS idx_articles_unread_hidden_published ON articles(is_read, is_hidden, published_at DESC);
+
+	-- Composite index for feed + hidden + published (for per-feed queries)
+	CREATE INDEX IF NOT EXISTS idx_articles_feed_hidden_published ON articles(feed_id, is_hidden, published_at DESC);
+
+	-- Composite index for unread per feed
+	CREATE INDEX IF NOT EXISTS idx_articles_feed_read_published ON articles(feed_id, is_read, published_at DESC);
+
+	-- Unique ID index for deduplication (critical for import performance)
+	CREATE INDEX IF NOT EXISTS idx_articles_unique_id ON articles(unique_id);
+
 	-- Translation cache index
 	CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
 

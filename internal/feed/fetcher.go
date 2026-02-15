@@ -51,13 +51,13 @@ func NewFetcher(db *database.DB) *Fetcher {
 	// This is critical because many RSS servers block requests without a proper User-Agent
 	httpClient, err := httputil.CreateHTTPClientWithUserAgent(
 		"",
-		30*time.Second,
+		20*time.Second, // Optimized timeout from 30s to 20s
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	)
 	if err != nil {
 		// Fallback to default client if proxy setup fails
 		log.Printf("Warning: Failed to create HTTP client with User-Agent: %v, using default client", err)
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = &http.Client{Timeout: 20 * time.Second}
 	}
 
 	// Create parser with custom HTTP client to support localhost and other endpoints
@@ -188,7 +188,7 @@ func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 	// This is critical for RSSHub feeds and other services with anti-bot protection
 	return httputil.CreateHTTPClientWithUserAgent(
 		proxyURL,
-		30*time.Second,
+		20*time.Second, // Optimized timeout from 30s to 20s
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	)
 }

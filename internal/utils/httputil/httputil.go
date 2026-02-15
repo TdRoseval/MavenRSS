@@ -35,14 +35,19 @@ func BuildProxyURL(proxyType, proxyHost, proxyPort, username, password string) s
 func CreateHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, error) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: false,
 		},
-		MaxIdleConns:        50,
-		MaxIdleConnsPerHost: 5,
-		IdleConnTimeout:     90 * time.Second,
-		ForceAttemptHTTP2:   false,
-		WriteBufferSize:     32 * 1024,
-		ReadBufferSize:      32 * 1024,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		MaxConnsPerHost:       20,
+		IdleConnTimeout:       120 * time.Second,
+		ForceAttemptHTTP2:     true,
+		WriteBufferSize:       64 * 1024,
+		ReadBufferSize:        64 * 1024,
+		ResponseHeaderTimeout: 10 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 
 	if proxyURL != "" {

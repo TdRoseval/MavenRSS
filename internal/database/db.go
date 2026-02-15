@@ -22,9 +22,9 @@ func NewDB(dataSourceName string) (*DB, error) {
 	// Also enable WAL mode for better concurrency
 	// Add performance optimizations: increase cache size, set synchronous=NORMAL
 	if !strings.Contains(dataSourceName, "?") {
-		dataSourceName += "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=cache_size(-32000)&_pragma=synchronous(NORMAL)"
+		dataSourceName += "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=cache_size(-64000)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(30000000000)&_pragma=locking_mode(NORMAL)"
 	} else {
-		dataSourceName += "&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=cache_size(-32000)&_pragma=synchronous(NORMAL)"
+		dataSourceName += "&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=cache_size(-64000)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(30000000000)&_pragma=locking_mode(NORMAL)"
 	}
 
 	db, err := sql.Open("sqlite", dataSourceName)
@@ -33,9 +33,11 @@ func NewDB(dataSourceName string) (*DB, error) {
 	}
 
 	// Set connection pool limits for better performance
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	// Optimized for read-heavy workloads like RSS readers
+	db.SetMaxOpenConns(5)  // SQLite works best with low connection count in WAL mode
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(1 * time.Hour)
+	db.SetConnMaxIdleTime(30 * time.Minute)
 
 	return &DB{
 		DB:    db,
