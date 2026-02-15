@@ -95,6 +95,7 @@ func (h *OpenAIHandler) ParseResponse(body []byte) (ResponseResult, error) {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			Text string `json:"text"`
 		} `json:"choices"`
 		Error *struct {
 			Message string `json:"message"`
@@ -116,7 +117,14 @@ func (h *OpenAIHandler) ParseResponse(body []byte) (ResponseResult, error) {
 		return ResponseResult{}, fmt.Errorf("no choices in OpenAI response")
 	}
 
-	content := strings.TrimSpace(response.Choices[0].Message.Content)
+	var content string
+	choice := response.Choices[0]
+	if choice.Message.Content != "" {
+		content = strings.TrimSpace(choice.Message.Content)
+	} else if choice.Text != "" {
+		content = strings.TrimSpace(choice.Text)
+	}
+
 	if content == "" {
 		return ResponseResult{}, fmt.Errorf("empty content in OpenAI response")
 	}

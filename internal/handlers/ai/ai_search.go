@@ -13,6 +13,7 @@ import (
 	"MrRSS/internal/config"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/httputil"
 )
 
 // AISearchRequest represents the request for AI-powered search
@@ -271,7 +272,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create AI client
-	httpClient, err := createHTTPClientWithProxy(h, useGlobalProxy)
+	httpClient, err := createAIHTTPClientWithProxyForSearch(h, useGlobalProxy)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,
@@ -279,7 +280,6 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	httpClient.Timeout = 30 * time.Second
 
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
@@ -289,9 +289,12 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
 
-	// Get expanded search terms from AI
+	// Get expanded search terms from AI using Messages format for better compatibility
 	systemPrompt := buildAISearchPrompt()
-	aiResponse, err := client.Request(systemPrompt, req.Query)
+	messages := []map[string]string{
+		{"role": "user", "content": systemPrompt + "\n\n" + req.Query},
+	}
+	aiResponse, err := client.RequestWithMessages(messages)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,
@@ -366,4 +369,26 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		SearchTerms: strings.Join(allTerms, ", "),
 		TotalCount:  len(articles),
 	})
+}
+
+func createAIHTTPClientWithProxyForSearch(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+	var proxyURL string
+
+	if useGlobalProxy {
+		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSetting("proxy_type")
+			proxyHost, _ := h.DB.GetSetting("proxy_host")
+			proxyPort, _ := h.DB.GetSetting("proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			proxyURL = buildProxyURLForSearch(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	}
+
+	return httputil.CreateAIHTTPClient(proxyURL, 30*time.Second)
+}
+
+func buildProxyURLForSearch(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 }

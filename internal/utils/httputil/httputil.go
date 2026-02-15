@@ -14,21 +14,36 @@ import (
 )
 
 // BuildProxyURL constructs a proxy URL from settings.
+// This is the canonical implementation used across all AI-related handlers.
 func BuildProxyURL(proxyType, proxyHost, proxyPort, username, password string) string {
 	if proxyHost == "" || proxyPort == "" {
 		return ""
 	}
 
-	auth := ""
-	if username != "" {
-		if password != "" {
-			auth = username + ":" + password + "@"
-		} else {
-			auth = username + "@"
-		}
+	scheme := strings.ToLower(proxyType)
+	switch scheme {
+	case "socks5", "socks5h":
+		scheme = "socks5"
+	case "https", "http":
+		scheme = "http"
 	}
 
-	return fmt.Sprintf("%s://%s%s:%s", proxyType, auth, proxyHost, proxyPort)
+	if username != "" && password != "" {
+		return fmt.Sprintf("%s://%s:%s@%s:%s",
+			scheme,
+			url.QueryEscape(username),
+			url.QueryEscape(password),
+			proxyHost,
+			proxyPort)
+	} else if username != "" {
+		return fmt.Sprintf("%s://%s@%s:%s",
+			scheme,
+			url.QueryEscape(username),
+			proxyHost,
+			proxyPort)
+	}
+
+	return fmt.Sprintf("%s://%s:%s", scheme, proxyHost, proxyPort)
 }
 
 // CreateHTTPClient creates an HTTP client with optional proxy support.
@@ -48,6 +63,38 @@ func CreateHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, err
 		ResponseHeaderTimeout: 10 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	if proxyURL != "" {
+		parsedProxy, err := url.Parse(proxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy URL: %w", err)
+		}
+		transport.Proxy = http.ProxyURL(parsedProxy)
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}, nil
+}
+
+// CreateAIHTTPClient creates an HTTP client optimized for AI API requests.
+// It has longer timeouts and better connection handling for AI services.
+func CreateAIHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: false,
+		},
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		ForceAttemptHTTP2:     false, // Don't force HTTP/2 - let Go decide for better proxy compatibility
+		ResponseHeaderTimeout: 45 * time.Second, // Optimized for better timeout behavior
+		TLSHandshakeTimeout:   20 * time.Second, // Increased for better TLS stability
+		ExpectContinueTimeout: 1 * time.Second,
+		DialContext:           nil, // Let the default dialer handle it
 	}
 
 	if proxyURL != "" {

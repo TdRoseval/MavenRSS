@@ -15,6 +15,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
+	"MrRSS/internal/utils/httputil"
 )
 
 // ProfileRequest represents the request body for creating/updating an AI profile
@@ -510,7 +511,6 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 		result.ResponseTimeMs = time.Since(startTime).Milliseconds()
 		return result
 	}
-	httpClient.Timeout = 30 * time.Second
 
 	// Create AI client for testing
 	clientConfig := ai.ClientConfig{
@@ -523,8 +523,11 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
 
-	// Try a simple test request
-	_, err = client.Request("", "test")
+	// Try a simple test request using Messages format (more compatible with modern APIs)
+	testMessages := []map[string]string{
+		{"role": "user", "content": "Hello"},
+	}
+	_, err = client.RequestWithMessages(testMessages)
 
 	if err != nil {
 		result.ConnectionSuccess = false
@@ -541,54 +544,24 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 
 // createHTTPClientWithProxyForProfile creates an HTTP client with global proxy settings
 func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
-	if !useGlobalProxy {
-		return &http.Client{}, nil
+	var proxyURL string
+
+	if useGlobalProxy {
+		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSetting("proxy_type")
+			proxyHost, _ := h.DB.GetSetting("proxy_host")
+			proxyPort, _ := h.DB.GetSetting("proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			proxyURL = buildProxyURLForProfile(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
 	}
 
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
-	if proxyEnabled != "true" {
-		return &http.Client{}, nil
-	}
-
-	proxyType, _ := h.DB.GetSetting("proxy_type")
-	proxyHost, _ := h.DB.GetSetting("proxy_host")
-	proxyPort, _ := h.DB.GetSetting("proxy_port")
-	proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-	proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
-
-	proxyURL := buildProxyURLForProfile(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-	if proxyURL == "" {
-		return &http.Client{}, nil
-	}
-
-	u, err := url.Parse(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
-	}
-
-	return &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(u),
-		},
-	}, nil
+	return httputil.CreateAIHTTPClient(proxyURL, 30*time.Second)
 }
 
 // buildProxyURLForProfile builds a proxy URL from components
 func buildProxyURLForProfile(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {
-	if proxyHost == "" || proxyPort == "" {
-		return ""
-	}
-
-	scheme := "http"
-	switch proxyType {
-	case "socks5":
-		scheme = "socks5"
-	case "https":
-		scheme = "http" // HTTPS proxies use HTTP CONNECT
-	}
-
-	if proxyUsername != "" && proxyPassword != "" {
-		return fmt.Sprintf("%s://%s:%s@%s:%s", scheme, proxyUsername, proxyPassword, proxyHost, proxyPort)
-	}
-	return fmt.Sprintf("%s://%s:%s", scheme, proxyHost, proxyPort)
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 }

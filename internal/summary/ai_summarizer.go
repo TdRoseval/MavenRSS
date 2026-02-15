@@ -3,6 +3,7 @@ package summary
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type AISummarizer struct {
 	CustomHeaders string
 	Language      string // User's language setting (e.g., "en", "zh")
 	client        *ai.Client
+	httpClient    *http.Client // Store HTTP client to preserve proxy settings
 }
 
 // DBInterface defines the minimal database interface needed for proxy settings
@@ -46,16 +48,29 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 	}
 
 	// Create HTTP client with or without proxy
-	return httputil.CreateHTTPClient(proxyURL, timeout)
+	return httputil.CreateAIHTTPClient(proxyURL, timeout)
+}
+
+func getProxyFromEnv() string {
+	if proxyURL := os.Getenv("HTTP_PROXY"); proxyURL != "" {
+		return proxyURL
+	}
+	if proxyURL := os.Getenv("HTTPS_PROXY"); proxyURL != "" {
+		return proxyURL
+	}
+	if proxyURL := os.Getenv("ALL_PROXY"); proxyURL != "" {
+		return proxyURL
+	}
+	return ""
 }
 
 // NewAISummarizer creates a new AI summarizer with the given credentials.
 // endpoint should be the full API URL (e.g., "https://api.openai.com/v1/chat/completions" for OpenAI, "http://localhost:11434/api/generate" for Ollama)
 // model should be the model name (e.g., "gpt-4o-mini", "claude-3-haiku-20240307")
 // Uses global AI settings shared between translation and summarization.
+// Supports proxy via HTTP_PROXY, HTTPS_PROXY, ALL_PROXY environment variables.
 func NewAISummarizer(apiKey, endpoint, model string) *AISummarizer {
 	defaults := config.Get()
-	// Use global AI endpoint and model
 	if endpoint == "" {
 		endpoint = defaults.AIEndpoint
 	}
@@ -63,20 +78,23 @@ func NewAISummarizer(apiKey, endpoint, model string) *AISummarizer {
 		model = defaults.AIModel
 	}
 
+	proxyURL := getProxyFromEnv()
+
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
 		Endpoint: strings.TrimSuffix(endpoint, "/"),
 		Model:    model,
-		Timeout:  30 * time.Second,
+		Timeout:  60 * time.Second,
+		ProxyURL: proxyURL,
 	}
 
 	return &AISummarizer{
 		APIKey:        apiKey,
 		Endpoint:      strings.TrimSuffix(endpoint, "/"),
 		Model:         model,
-		SystemPrompt:  "",   // Will be set from settings when used
-		CustomHeaders: "",   // Will be set from settings when used
-		Language:      "en", // Default to English
+		SystemPrompt:  "",
+		CustomHeaders: "",
+		Language:      "en",
 		client:        ai.NewClient(clientConfig),
 	}
 }
@@ -96,17 +114,17 @@ func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		useProxy = useGlobalProxy[0]
 	}
 
-	httpClient, err := translation.CreateHTTPClientWithProxyOption(db, 30*time.Second, useProxy)
+	httpClient, err := translation.CreateHTTPClientWithProxyOption(db, 60*time.Second, useProxy)
 	if err != nil {
 		// Fallback to default client if proxy creation fails
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = &http.Client{Timeout: 60 * time.Second}
 	}
 
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
 		Endpoint: strings.TrimSuffix(endpoint, "/"),
 		Model:    model,
-		Timeout:  30 * time.Second,
+		Timeout:  60 * time.Second,
 	}
 
 	return &AISummarizer{
@@ -116,6 +134,7 @@ func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		SystemPrompt:  "",
 		CustomHeaders: "",   // Will be set from settings when used
 		Language:      "en", // Default to English
+		httpClient:    httpClient,
 		client:        ai.NewClientWithHTTPClient(clientConfig, httpClient),
 	}
 }
@@ -143,6 +162,7 @@ func (s *AISummarizer) SetLanguage(language string) {
 }
 
 // recreateClient re-creates the AI client with current configuration
+// Preserves the HTTP client (and its proxy settings) if available
 func (s *AISummarizer) recreateClient() {
 	clientConfig := ai.ClientConfig{
 		APIKey:        s.APIKey,
@@ -150,9 +170,13 @@ func (s *AISummarizer) recreateClient() {
 		Model:         s.Model,
 		SystemPrompt:  s.SystemPrompt,
 		CustomHeaders: s.CustomHeaders,
-		Timeout:       30 * time.Second,
+		Timeout:       60 * time.Second,
 	}
-	s.client = ai.NewClient(clientConfig)
+	if s.httpClient != nil {
+		s.client = ai.NewClientWithHTTPClient(clientConfig, s.httpClient)
+	} else {
+		s.client = ai.NewClient(clientConfig)
+	}
 }
 
 // getDefaultSystemPrompt returns the default system prompt based on the configured language.

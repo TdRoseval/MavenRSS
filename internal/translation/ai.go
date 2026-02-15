@@ -3,6 +3,7 @@ package translation
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -18,37 +19,53 @@ type AITranslator struct {
 	SystemPrompt  string
 	CustomHeaders string
 	client        *ai.Client
+	httpClient    *http.Client // Store HTTP client to preserve proxy settings
 }
 
 // NewAITranslator creates a new AI translator with the given credentials.
 // endpoint should be the full API URL (e.g., "https://api.openai.com/v1/chat/completions" for OpenAI, "http://localhost:11434/api/generate" for Ollama)
 // model should be the model name (e.g., "gpt-4o-mini", "claude-3-haiku-20240307")
+// Supports proxy via HTTP_PROXY, HTTPS_PROXY, ALL_PROXY environment variables.
 func NewAITranslator(apiKey, endpoint, model string) *AITranslator {
 	defaults := config.Get()
-	// Default to OpenAI endpoint if not specified
 	if endpoint == "" {
 		endpoint = defaults.AIEndpoint
 	}
-	// Default to a cost-effective model if not specified
 	if model == "" {
 		model = defaults.AIModel
 	}
+
+	proxyURL := getProxyFromEnv()
 
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
 		Endpoint: strings.TrimSuffix(endpoint, "/"),
 		Model:    model,
-		Timeout:  30 * time.Second,
+		Timeout:  60 * time.Second,
+		ProxyURL: proxyURL,
 	}
 
 	return &AITranslator{
 		APIKey:        apiKey,
 		Endpoint:      strings.TrimSuffix(endpoint, "/"),
 		Model:         model,
-		SystemPrompt:  "", // Will be set from settings when used
-		CustomHeaders: "", // Will be set from settings when used
+		SystemPrompt:  "",
+		CustomHeaders: "",
 		client:        ai.NewClient(clientConfig),
 	}
+}
+
+func getProxyFromEnv() string {
+	if proxyURL := os.Getenv("HTTP_PROXY"); proxyURL != "" {
+		return proxyURL
+	}
+	if proxyURL := os.Getenv("HTTPS_PROXY"); proxyURL != "" {
+		return proxyURL
+	}
+	if proxyURL := os.Getenv("ALL_PROXY"); proxyURL != "" {
+		return proxyURL
+	}
+	return ""
 }
 
 // NewAITranslatorWithDB creates a new AI translator with database for proxy support
@@ -66,17 +83,17 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		useProxy = useGlobalProxy[0]
 	}
 
-	httpClient, err := CreateHTTPClientWithProxyOption(db, 30*time.Second, useProxy)
+	httpClient, err := CreateHTTPClientWithProxyOption(db, 60*time.Second, useProxy)
 	if err != nil {
 		// Fallback to default client if proxy creation fails
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = &http.Client{Timeout: 60 * time.Second}
 	}
 
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
 		Endpoint: strings.TrimSuffix(endpoint, "/"),
 		Model:    model,
-		Timeout:  30 * time.Second,
+		Timeout:  60 * time.Second,
 	}
 
 	return &AITranslator{
@@ -85,6 +102,7 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		Model:         model,
 		SystemPrompt:  "",
 		CustomHeaders: "", // Will be set from settings when used
+		httpClient:    httpClient,
 		client:        ai.NewClientWithHTTPClient(clientConfig, httpClient),
 	}
 }
@@ -92,31 +110,33 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 // SetSystemPrompt sets a custom system prompt for the translator.
 func (t *AITranslator) SetSystemPrompt(prompt string) {
 	t.SystemPrompt = prompt
-	// Re-create client with updated system prompt
-	clientConfig := ai.ClientConfig{
-		APIKey:        t.APIKey,
-		Endpoint:      t.Endpoint,
-		Model:         t.Model,
-		SystemPrompt:  prompt,
-		CustomHeaders: t.CustomHeaders,
-		Timeout:       30 * time.Second,
-	}
-	t.client = ai.NewClient(clientConfig)
+	// Re-create client with updated system prompt, preserving HTTP client
+	t.recreateClient()
 }
 
 // SetCustomHeaders sets custom headers for AI requests.
 func (t *AITranslator) SetCustomHeaders(headers string) {
 	t.CustomHeaders = headers
-	// Re-create client with updated custom headers
+	// Re-create client with updated custom headers, preserving HTTP client
+	t.recreateClient()
+}
+
+// recreateClient re-creates the AI client with current configuration
+// Preserves the HTTP client (and its proxy settings) if available
+func (t *AITranslator) recreateClient() {
 	clientConfig := ai.ClientConfig{
 		APIKey:        t.APIKey,
 		Endpoint:      t.Endpoint,
 		Model:         t.Model,
 		SystemPrompt:  t.SystemPrompt,
-		CustomHeaders: headers,
-		Timeout:       30 * time.Second,
+		CustomHeaders: t.CustomHeaders,
+		Timeout:       60 * time.Second,
 	}
-	t.client = ai.NewClient(clientConfig)
+	if t.httpClient != nil {
+		t.client = ai.NewClientWithHTTPClient(clientConfig, t.httpClient)
+	} else {
+		t.client = ai.NewClient(clientConfig)
+	}
 }
 
 // Translate translates text to the target language using an OpenAI-compatible API.

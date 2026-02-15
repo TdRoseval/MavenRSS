@@ -168,29 +168,18 @@ func (h *AnthropicHandler) ParseResponse(body []byte) (ResponseResult, error) {
 
 // ValidateResponse checks if the response is valid
 func (h *AnthropicHandler) ValidateResponse(statusCode int, body []byte) error {
-	var response struct {
-		Error struct {
-			Type    string `json:"type"`
-			Message string `json:"message"`
-		} `json:"error"`
-		Content []struct {
-			Type string `json:"type"`
-		} `json:"content"`
+	switch statusCode {
+	case 200:
+		return nil
+	case 401, 403:
+		return fmt.Errorf("authentication failed - check API key")
+	case 404:
+		return fmt.Errorf("endpoint or model not found")
+	case 400:
+		return fmt.Errorf("bad request - check parameters")
+	default:
+		return fmt.Errorf("Anthropic API returned status %d: %s", statusCode, string(body))
 	}
-
-	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("invalid JSON response: %w", err)
-	}
-
-	if response.Error.Message != "" {
-		return fmt.Errorf("API error (%s): %s", response.Error.Type, response.Error.Message)
-	}
-
-	if len(response.Content) == 0 {
-		return fmt.Errorf("no content in response")
-	}
-
-	return nil
 }
 
 // FormatEndpoint formats the API endpoint URL
@@ -209,9 +198,16 @@ func (h *AnthropicHandler) GetRequiredHeaders(apiKey string) map[string]string {
 	headers := make(map[string]string)
 
 	// Anthropic requires specific headers
-	headers["x-api-key"] = apiKey
+	if apiKey != "" {
+		headers["x-api-key"] = apiKey
+	}
 	headers["anthropic-version"] = "2023-06-01" // API version
 	headers["content-type"] = "application/json"
 
 	return headers
+}
+
+// RequiresAPIKey returns true if this handler requires an API key
+func (h *AnthropicHandler) RequiresAPIKey() bool {
+	return true
 }

@@ -21,6 +21,7 @@ type ClientConfig struct {
 	SystemPrompt  string
 	CustomHeaders string
 	Timeout       time.Duration
+	ProxyURL      string
 }
 
 // Client represents a universal AI client that supports multiple API formats
@@ -32,17 +33,24 @@ type Client struct {
 // NewClient creates a new universal AI client
 func NewClient(config ClientConfig) *Client {
 	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
+		config.Timeout = 60 * time.Second
 	}
 
-	// Create optimized HTTP client for AI requests
 	transport := &http.Transport{
-		MaxIdleConns:          10,
-		MaxIdleConnsPerHost:   5,
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       90 * time.Second,
-		ForceAttemptHTTP2:     true,
-		ResponseHeaderTimeout: 20 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
+		ForceAttemptHTTP2:     false,
+		ResponseHeaderTimeout: 45 * time.Second,
+		TLSHandshakeTimeout:   20 * time.Second,
+		DialContext:           nil, // Let the default dialer handle it
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	if config.ProxyURL != "" {
+		if proxyURL, err := url.Parse(config.ProxyURL); err == nil {
+			transport.Proxy = http.ProxyURL(proxyURL)
+		}
 	}
 
 	client := &http.Client{
@@ -102,8 +110,17 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error) {
 	provider := DetectAPIProvider(c.config.Endpoint)
 
+	var allErrors []string
+	var networkErrors []string
+
 	logFn := func(name string, err error) {
+		errStr := fmt.Sprintf("%v", err)
 		log.Printf("[AI Client] %s format failed: %v", name, err)
+		allErrors = append(allErrors, fmt.Sprintf("%s: %v", name, err))
+
+		if isNetworkError(errStr) {
+			networkErrors = append(networkErrors, fmt.Sprintf("%s: %v", name, err))
+		}
 	}
 
 	// Try provider-specific format first based on endpoint detection
@@ -148,7 +165,23 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 	}
 	logFn("OpenAI", err)
 
-	// Try other formats as fallback
+	// Try all other formats as fallback (comprehensive fallback)
+	if provider != "anthropic" {
+		result, err = c.tryFormat(&AnthropicHandler{}, config)
+		if err == nil {
+			return result, nil
+		}
+		logFn("Anthropic (fallback)", err)
+	}
+
+	if provider != "deepseek" {
+		result, err = c.tryFormat(&DeepSeekHandler{}, config)
+		if err == nil {
+			return result, nil
+		}
+		logFn("DeepSeek (fallback)", err)
+	}
+
 	if provider != "gemini" {
 		result, err = c.tryFormat(NewGeminiHandler(), config)
 		if err == nil {
@@ -165,8 +198,14 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		logFn("Ollama (fallback)", err)
 	}
 
-	// All formats failed
-	return ResponseResult{}, fmt.Errorf("all API formats failed")
+	// All formats failed - return detailed error
+	errMsg := "all API formats failed: [" + strings.Join(allErrors, "; ") + "]"
+
+	if len(networkErrors) > 0 {
+		errMsg += " [Network errors detected: " + strings.Join(networkErrors, "; ") + ". Check your network/proxy configuration]"
+	}
+
+	return ResponseResult{}, fmt.Errorf(errMsg)
 }
 
 // tryFormat attempts to make a request using a specific format handler
@@ -191,29 +230,67 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 		formattedEndpoint = strings.Replace(formattedEndpoint, "/api/generate", "/api/chat", 1)
 	}
 
-	// Send request with formatted endpoint and handler
-	resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
-	if err != nil {
-		return ResponseResult{}, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
+	// Retry for network errors only (5 attempts total for better reliability)
+	maxRetries := 5
+	var lastErr error
 
-	// Validate response
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ResponseResult{}, fmt.Errorf("failed to read response body: %w", err)
-	}
-	if err := handler.ValidateResponse(resp.StatusCode, bodyBytes); err != nil {
-		return ResponseResult{}, err
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Send request with formatted endpoint and handler
+		resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
+		if err != nil {
+			lastErr = fmt.Errorf("request failed: %w", err)
+			
+			// Only retry on network errors
+			errStr := fmt.Sprintf("%v", err)
+			if isNetworkError(errStr) && attempt < maxRetries-1 {
+				log.Printf("[AI Client] Network error on attempt %d/%d, retrying: %v", attempt+1, maxRetries, err)
+				// Exponential backoff: 1s, 2s, 4s, 8s, 16s
+				backoffTime := time.Duration(1<<uint(attempt)) * time.Second
+				if backoffTime > 30*time.Second {
+					backoffTime = 30 * time.Second
+				}
+				time.Sleep(backoffTime)
+				continue
+			}
+			return ResponseResult{}, lastErr
+		}
+
+		// Read response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body: %w", err)
+			if isNetworkError(fmt.Sprintf("%v", err)) && attempt < maxRetries-1 {
+				log.Printf("[AI Client] Read error on attempt %d/%d, retrying: %v", attempt+1, maxRetries, err)
+				backoffTime := time.Duration(1<<uint(attempt)) * time.Second
+				if backoffTime > 30*time.Second {
+					backoffTime = 30 * time.Second
+				}
+				time.Sleep(backoffTime)
+				continue
+			}
+			return ResponseResult{}, lastErr
+		}
+
+		// Validate response
+		if err := handler.ValidateResponse(resp.StatusCode, bodyBytes); err != nil {
+			// Don't retry on validation errors (auth errors, bad requests, etc.)
+			return ResponseResult{}, err
+		}
+
+		// Parse response
+		result, err := handler.ParseResponse(bodyBytes)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to parse response: %w", err)
+			// Don't retry parse errors
+			return ResponseResult{}, lastErr
+		}
+
+		return result, nil
 	}
 
-	// Parse response
-	result, err := handler.ParseResponse(bodyBytes)
-	if err != nil {
-		return ResponseResult{}, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return result, nil
+	return ResponseResult{}, lastErr
 }
 
 // sendRequestToEndpointWithHandler sends the HTTP request to a specific endpoint with handler-specific headers
@@ -380,4 +457,67 @@ func RemoveThinkingTags(content string) string {
 	}
 
 	return strings.TrimSpace(result)
+}
+
+// isNetworkError checks if an error message indicates a network connectivity issue
+func isNetworkError(errMsg string) bool {
+	errLower := strings.ToLower(errMsg)
+	networkErrorPatterns := []string{
+		"connection refused",
+		"connection reset",
+		"connection timed out",
+		"no route to host",
+		"network is unreachable",
+		"timeout",
+		"temporary failure in name resolution",
+		"dial tcp",
+		"i/o timeout",
+		"tls:",
+		"certificate",
+		"x509",
+		"proxy",
+		"no such host",
+		"server misbehaving",
+		"connection closed",
+		"broken pipe",
+		"net/http:",
+		"context deadline exceeded",
+		"eof",
+		"unexpected eof",
+		"handshake timeout",
+		"read: connection reset",
+		"write: connection reset",
+		"connection refused by peer",
+		"remote error",
+		"stream error",
+		"protocol not available",
+		"address already in use",
+		"cannot assign requested address",
+		"network down",
+		"socket is not connected",
+		"connection aborted",
+		"too many open files",
+		"resource temporarily unavailable",
+		"connection failed",
+		"connect: connection refused",
+		"connect: no route to host",
+		"connect: network is unreachable",
+		"dns timeout",
+		"name resolution",
+		"lookup failed",
+		"socket error",
+		"transport error",
+		"request canceled",
+		"client.Timeout exceeded",
+		"deadline exceeded",
+		"operation timed out",
+	}
+
+	for _, pattern := range networkErrorPatterns {
+		if strings.Contains(errLower, pattern) {
+			return true
+		}
+	}
+
+	return false
 }

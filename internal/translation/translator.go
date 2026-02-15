@@ -37,14 +37,14 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 	}
 
 	// Create HTTP client with or without proxy
-	return httputil.CreateHTTPClient(proxyURL, timeout)
+	return httputil.CreateAIHTTPClient(proxyURL, timeout)
 }
 
 // CreateHTTPClientWithProxyOption creates an HTTP client with optional global proxy control
 // If useGlobalProxy is false, no proxy will be used regardless of global settings
 func CreateHTTPClientWithProxyOption(db DBInterface, timeout time.Duration, useGlobalProxy bool) (*http.Client, error) {
 	if !useGlobalProxy {
-		return httputil.CreateHTTPClient("", timeout)
+		return httputil.CreateAIHTTPClient("", timeout)
 	}
 	return CreateHTTPClientWithProxy(db, timeout)
 }
