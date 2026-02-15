@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"log"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 )
@@ -44,16 +43,6 @@ type TransportConfig struct {
 	ResponseHeaderTimeout time.Duration
 	TLSHandshakeTimeout   time.Duration
 	ForceAttemptHTTP2     bool
-}
-
-type UserAgentTransport struct {
-	Original  http.RoundTripper
-	userAgent string
-}
-
-func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("User-Agent", t.userAgent)
-	return t.Original.RoundTrip(req)
 }
 
 var (
