@@ -40,6 +40,15 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 	return httputil.CreateHTTPClient(proxyURL, timeout)
 }
 
+// CreateHTTPClientWithProxyOption creates an HTTP client with optional global proxy control
+// If useGlobalProxy is false, no proxy will be used regardless of global settings
+func CreateHTTPClientWithProxyOption(db DBInterface, timeout time.Duration, useGlobalProxy bool) (*http.Client, error) {
+	if !useGlobalProxy {
+		return httputil.CreateHTTPClient("", timeout)
+	}
+	return CreateHTTPClientWithProxy(db, timeout)
+}
+
 // MockTranslator is a simple translator for demonstration
 type MockTranslator struct{}
 

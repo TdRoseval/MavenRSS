@@ -519,6 +519,8 @@ const en: TranslationMessages = {
       aiCustomHeadersName: 'Header Name',
       aiCustomHeadersRemove: 'Remove',
       aiCustomHeadersValue: 'Header Value',
+      useGlobalProxy: 'Use Global Proxy',
+      useGlobalProxyDesc: 'Use global proxy settings when calling AI (requires proxy to be enabled in Network settings)',
       aiEndpoint: 'API Endpoint',
       aiSearchEnabled: 'AI Search',
       aiSearchEnabledDesc: 'Use AI to intelligently search articles with keyword expansion',

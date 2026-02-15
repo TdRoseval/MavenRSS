@@ -96,6 +96,17 @@ func (p *ProfileProvider) GetConfigForFeature(feature FeatureType) (*ClientConfi
 	return cfg, nil
 }
 
+// UseGlobalProxyForFeature returns whether the profile for a feature should use global proxy
+// Returns true by default if no profile is configured
+func (p *ProfileProvider) UseGlobalProxyForFeature(feature FeatureType) bool {
+	profile, err := p.GetProfileForFeature(feature)
+	if err != nil || profile == nil {
+		// Default to using global proxy when no profile is configured
+		return true
+	}
+	return profile.UseGlobalProxy
+}
+
 // HasProfileConfigured checks if a specific profile is configured for a feature
 func (p *ProfileProvider) HasProfileConfigured(feature FeatureType) bool {
 	settingKey := p.getSettingKeyForFeature(feature)

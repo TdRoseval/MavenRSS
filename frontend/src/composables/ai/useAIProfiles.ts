@@ -216,6 +216,7 @@ export function useAIProfiles() {
       model: profile.model,
       custom_headers: profile.custom_headers,
       is_default: profile.is_default,
+      use_global_proxy: profile.use_global_proxy ?? true,
     };
   }
 

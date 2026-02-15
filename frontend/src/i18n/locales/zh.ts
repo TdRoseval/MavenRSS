@@ -513,6 +513,8 @@ const zh: TranslationMessages = {
       aiCustomHeadersName: '请求头名称',
       aiCustomHeadersRemove: '删除',
       aiCustomHeadersValue: '请求头内容',
+      useGlobalProxy: '使用全局代理',
+      useGlobalProxyDesc: '调用 AI 时使用全局代理设置（需在网络设置中启用代理）',
       aiEndpoint: 'API 端点',
       aiSearchEnabled: 'AI 搜索',
       aiSearchEnabledDesc: '使用 AI 智能扩展关键词搜索文章',

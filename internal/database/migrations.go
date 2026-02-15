@@ -135,6 +135,9 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_is_default ON ai_profiles(is_default)`)
 
+	// Migration: Add use_global_proxy column to ai_profiles table
+	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN use_global_proxy BOOLEAN DEFAULT 1`)
+
 	return nil
 }
 

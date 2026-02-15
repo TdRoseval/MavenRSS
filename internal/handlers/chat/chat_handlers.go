@@ -87,13 +87,15 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Get AI settings - try ProfileProvider first
 	var apiKey, endpoint, model string
+	var useGlobalProxy bool = true
 	if h.AIProfileProvider != nil {
 		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureChat)
 		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "") {
 			apiKey = cfg.APIKey
 			endpoint = cfg.Endpoint
 			model = cfg.Model
-			log.Printf("Using AI profile for chat (endpoint: %s, model: %s)", endpoint, model)
+			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureChat)
+			log.Printf("Using AI profile for chat (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
 		}
 	}
 
@@ -126,7 +128,7 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create HTTP client with proxy support if configured
-	httpClient, err := createHTTPClientWithProxy(h)
+	httpClient, err := createHTTPClientWithProxy(h, useGlobalProxy)
 	if err != nil {
 		log.Printf("Failed to create HTTP client with proxy: %v", err)
 		httpClient = &http.Client{Timeout: 60 * time.Second}
@@ -216,7 +218,11 @@ func estimateChatTokens(messages []ChatMessage, response string) int {
 }
 
 // createHTTPClientWithProxy creates an HTTP client with global proxy settings if enabled
-func createHTTPClientWithProxy(h *core.Handler) (*http.Client, error) {
+func createHTTPClientWithProxy(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+	if !useGlobalProxy {
+		return &http.Client{Timeout: 60 * time.Second}, nil
+	}
+
 	// Check if global proxy is enabled
 	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 	if proxyEnabled != "true" {

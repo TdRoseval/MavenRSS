@@ -25,6 +25,7 @@ type ProfileRequest struct {
 	Model         string `json:"model"`
 	CustomHeaders string `json:"custom_headers"`
 	IsDefault     bool   `json:"is_default"`
+	UseGlobalProxy bool `json:"use_global_proxy"`
 }
 
 // ProfileTestRequest represents the request body for testing a configuration without saving
@@ -165,6 +166,7 @@ func HandleCreateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		Model:         req.Model,
 		CustomHeaders: req.CustomHeaders,
 		IsDefault:     req.IsDefault,
+		UseGlobalProxy: req.UseGlobalProxy,
 	}
 
 	id, err := h.DB.CreateAIProfile(profile)
@@ -254,6 +256,7 @@ func HandleUpdateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		Model:         req.Model,
 		CustomHeaders: req.CustomHeaders,
 		IsDefault:     req.IsDefault,
+		UseGlobalProxy: req.UseGlobalProxy,
 	}
 
 	if err := h.DB.UpdateAIProfile(profile); err != nil {
@@ -499,7 +502,7 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 	}
 
 	// Create HTTP client with proxy support if configured
-	httpClient, err := createHTTPClientWithProxyForProfile(h)
+	httpClient, err := createHTTPClientWithProxyForProfile(h, profile.UseGlobalProxy)
 	if err != nil {
 		result.ConnectionSuccess = false
 		result.ModelAvailable = false
@@ -537,7 +540,11 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 }
 
 // createHTTPClientWithProxyForProfile creates an HTTP client with global proxy settings
-func createHTTPClientWithProxyForProfile(h *core.Handler) (*http.Client, error) {
+func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+	if !useGlobalProxy {
+		return &http.Client{}, nil
+	}
+
 	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 	if proxyEnabled != "true" {
 		return &http.Client{}, nil

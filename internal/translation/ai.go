@@ -52,7 +52,7 @@ func NewAITranslator(apiKey, endpoint, model string) *AITranslator {
 }
 
 // NewAITranslatorWithDB creates a new AI translator with database for proxy support
-func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface) *AITranslator {
+func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGlobalProxy ...bool) *AITranslator {
 	defaults := config.Get()
 	if endpoint == "" {
 		endpoint = defaults.AIEndpoint
@@ -61,7 +61,12 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface) *AITr
 		model = defaults.AIModel
 	}
 
-	httpClient, err := CreateHTTPClientWithProxy(db, 30*time.Second)
+	useProxy := true
+	if len(useGlobalProxy) > 0 {
+		useProxy = useGlobalProxy[0]
+	}
+
+	httpClient, err := CreateHTTPClientWithProxyOption(db, 30*time.Second, useProxy)
 	if err != nil {
 		// Fallback to default client if proxy creation fails
 		httpClient = &http.Client{Timeout: 30 * time.Second}

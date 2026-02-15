@@ -97,7 +97,8 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	startTime := time.Now()
 
 	// Create HTTP client with proxy support if configured
-	httpClient, err := createHTTPClientWithProxy(h)
+	// For global settings test, always use global proxy (no profile-specific setting)
+	httpClient, err := createHTTPClientWithProxy(h, true)
 	if err != nil {
 		result.ConnectionSuccess = false
 		result.ModelAvailable = false
@@ -162,7 +163,11 @@ func HandleGetAITestInfo(h *core.Handler, w http.ResponseWriter, r *http.Request
 }
 
 // createHTTPClientWithProxy creates an HTTP client with global proxy settings if enabled
-func createHTTPClientWithProxy(h *core.Handler) (*http.Client, error) {
+func createHTTPClientWithProxy(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+	if !useGlobalProxy {
+		return &http.Client{}, nil
+	}
+
 	// Check if global proxy is enabled
 	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 	if proxyEnabled != "true" {

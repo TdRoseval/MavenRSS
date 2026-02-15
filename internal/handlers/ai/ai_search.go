@@ -232,13 +232,15 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Get AI settings - try ProfileProvider first
 	var apiKey, endpoint, model string
+	var useGlobalProxy bool = true
 	if h.AIProfileProvider != nil {
 		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureSearch)
 		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "") {
 			apiKey = cfg.APIKey
 			endpoint = cfg.Endpoint
 			model = cfg.Model
-			log.Printf("[AI Search] Using AI profile for search (endpoint: %s, model: %s)", endpoint, model)
+			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureSearch)
+			log.Printf("[AI Search] Using AI profile for search (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
 		}
 	}
 
@@ -269,7 +271,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create AI client
-	httpClient, err := createHTTPClientWithProxy(h)
+	httpClient, err := createHTTPClientWithProxy(h, useGlobalProxy)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,

@@ -8,6 +8,7 @@ import (
 
 	"MrRSS/internal/ai"
 	"MrRSS/internal/config"
+	"MrRSS/internal/translation"
 	"MrRSS/internal/utils/httputil"
 )
 
@@ -81,7 +82,7 @@ func NewAISummarizer(apiKey, endpoint, model string) *AISummarizer {
 }
 
 // NewAISummarizerWithDB creates a new AI summarizer with database for proxy support
-func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface) *AISummarizer {
+func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface, useGlobalProxy ...bool) *AISummarizer {
 	defaults := config.Get()
 	if endpoint == "" {
 		endpoint = defaults.AIEndpoint
@@ -90,7 +91,12 @@ func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface) *AISu
 		model = defaults.AIModel
 	}
 
-	httpClient, err := CreateHTTPClientWithProxy(db, 30*time.Second)
+	useProxy := true
+	if len(useGlobalProxy) > 0 {
+		useProxy = useGlobalProxy[0]
+	}
+
+	httpClient, err := translation.CreateHTTPClientWithProxyOption(db, 30*time.Second, useProxy)
 	if err != nil {
 		// Fallback to default client if proxy creation fails
 		httpClient = &http.Client{Timeout: 30 * time.Second}

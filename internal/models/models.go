@@ -102,6 +102,7 @@ type AIProfile struct {
 	Model         string    `json:"model"`
 	CustomHeaders string    `json:"custom_headers"` // JSON string of key-value pairs
 	IsDefault     bool      `json:"is_default"`     // Default profile for new features
+	UseGlobalProxy bool     `json:"use_global_proxy"` // Whether to use global proxy settings
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
