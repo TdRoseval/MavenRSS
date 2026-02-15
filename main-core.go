@@ -26,6 +26,7 @@ import (
 	"MrRSS/internal/routes"
 	"MrRSS/internal/translation"
 	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -234,7 +235,20 @@ func main() {
 	// Start Network Speed Detection (optional but good to have)
 	go func() {
 		log.Println("Detecting network speed...")
-		detector := network.NewDetector(&http.Client{Timeout: 10 * time.Second})
+
+		var proxyURL string
+		proxyEnabled, _ := db.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := db.GetSetting("proxy_type")
+			proxyHost, _ := db.GetSetting("proxy_host")
+			proxyPort, _ := db.GetSetting("proxy_port")
+			proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+
+		httpClient := httputil.GetPooledHTTPClient(proxyURL, 10*time.Second)
+		detector := network.NewDetector(httpClient)
 		detectCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
@@ -242,7 +256,12 @@ func main() {
 		if result.DetectionSuccess {
 			db.SetSetting("network_speed", string(result.SpeedLevel))
 			db.SetSetting("network_bandwidth_mbps", fmt.Sprintf("%.2f", result.BandwidthMbps))
-			log.Printf("Network detection complete: %s", result.SpeedLevel)
+			db.SetSetting("network_latency_ms", strconv.FormatInt(result.LatencyMs, 10))
+			db.SetSetting("max_concurrent_refreshes", strconv.Itoa(result.MaxConcurrency))
+			db.SetSetting("last_network_test", result.DetectionTime.Format(time.RFC3339))
+			log.Printf("Network detection complete: %s (%.2f Mbps, %d ms latency)", result.SpeedLevel, result.BandwidthMbps, result.LatencyMs)
+		} else {
+			log.Printf("Network detection failed: %s", result.ErrorMessage)
 		}
 	}()
 

@@ -8,6 +8,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/rsshub"
+	"MrRSS/internal/utils/httputil"
 )
 
 // HandleAddFeed adds a new RSSHub feed subscription
@@ -89,7 +90,19 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	}
 
 	// Test with a simple, common route
-	client := rsshub.NewClient(req.Endpoint, req.APIKey)
+	// Build proxy URL if enabled
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	client := rsshub.NewClientWithProxy(req.Endpoint, req.APIKey, proxyURL)
 	err := client.ValidateRoute("nytimes")
 
 	if err != nil {
@@ -144,7 +157,19 @@ func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 	apiKey, _ := h.DB.GetEncryptedSetting("rsshub_api_key")
 
-	client := rsshub.NewClient(endpoint, apiKey)
+	// Build proxy URL if enabled
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	client := rsshub.NewClientWithProxy(endpoint, apiKey, proxyURL)
 	err := client.ValidateRoute(req.Route)
 
 	if err != nil {
@@ -214,9 +239,21 @@ func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 	apiKey, _ := h.DB.GetEncryptedSetting("rsshub_api_key")
 
+	// Build proxy URL if enabled
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
 	// Extract route and build URL
 	route := rsshub.ExtractRoute(req.URL)
-	client := rsshub.NewClient(endpoint, apiKey)
+	client := rsshub.NewClientWithProxy(endpoint, apiKey, proxyURL)
 	transformedURL := client.BuildURL(route)
 
 	response.JSON(w, map[string]interface{}{

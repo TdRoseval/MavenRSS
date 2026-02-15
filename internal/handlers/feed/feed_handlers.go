@@ -10,6 +10,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/rsshub"
+	"MrRSS/internal/utils/httputil"
 	"MrRSS/internal/utils/urlutil"
 )
 
@@ -265,7 +266,20 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		// Skip validation if API key is empty (public rsshub.app instance with Cloudflare protection)
 		if apiKey != "" {
 			route := rsshub.ExtractRoute(req.URL)
-			client := rsshub.NewClient(endpoint, apiKey)
+
+			// Build proxy URL if enabled
+			var proxyURL string
+			proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+			if proxyEnabled == "true" {
+				proxyType, _ := h.DB.GetSetting("proxy_type")
+				proxyHost, _ := h.DB.GetSetting("proxy_host")
+				proxyPort, _ := h.DB.GetSetting("proxy_port")
+				proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+				proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+				proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			}
+
+			client := rsshub.NewClientWithProxy(endpoint, apiKey, proxyURL)
 			if err := client.ValidateRoute(route); err != nil {
 				response.Error(w, err, http.StatusBadRequest)
 				return

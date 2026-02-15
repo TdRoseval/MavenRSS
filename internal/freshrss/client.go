@@ -2,7 +2,6 @@ package freshrss
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +12,10 @@ import (
 	"time"
 
 	"MrRSS/internal/models"
+	"MrRSS/internal/utils/httputil"
 )
+
+const maxRetries = 3
 
 // Client represents a FreshRSS API client
 type Client struct {
@@ -22,26 +24,90 @@ type Client struct {
 	password   string
 	authToken  string
 	httpClient *http.Client
+	proxyURL   string
 }
 
 // NewClient creates a new FreshRSS API client
 func NewClient(serverURL, username, password string) *Client {
+	return NewClientWithProxy(serverURL, username, password, "")
+}
+
+// NewClientWithProxy creates a new FreshRSS API client with proxy support
+func NewClientWithProxy(serverURL, username, password, proxyURL string) *Client {
 	// Ensure URL ends with /api/greader.php
 	if !strings.HasSuffix(serverURL, "/api/greader.php") {
 		serverURL = strings.TrimSuffix(serverURL, "/") + "/api/greader.php"
 	}
 
+	httpClient := httputil.GetPooledHTTPClient(proxyURL, httputil.DefaultFreshRSSTimeout)
+
 	return &Client{
-		baseURL:  serverURL,
-		username: username,
-		password: password,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
-			},
-		},
+		baseURL:    serverURL,
+		username:   username,
+		password:   password,
+		httpClient: httpClient,
+		proxyURL:   proxyURL,
 	}
+}
+
+// SetProxy updates the proxy URL for the client
+func (c *Client) SetProxy(proxyURL string) {
+	if c.proxyURL == proxyURL {
+		return
+	}
+	c.proxyURL = proxyURL
+	c.httpClient = httputil.GetPooledHTTPClient(proxyURL, httputil.DefaultFreshRSSTimeout)
+}
+
+// doWithRetry performs an HTTP request with exponential backoff retry for network errors
+func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
+	var lastErr error
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		// Clone the request for each attempt (body is already consumed)
+		reqCopy := req.Clone(ctx)
+		
+		resp, err := c.httpClient.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < maxRetries-1 {
+				backoff := httputil.CalculateBackoffSimple(attempt)
+				log.Printf("[FreshRSS] Network error on attempt %d/%d, retrying in %v: %v", attempt+1, maxRetries, backoff, err)
+				
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(backoff):
+				}
+				continue
+			}
+			return nil, err
+		}
+
+		// Retry on server errors (5xx)
+		if resp.StatusCode >= 500 && attempt < maxRetries-1 {
+			resp.Body.Close()
+			backoff := httputil.CalculateBackoffSimple(attempt)
+			log.Printf("[FreshRSS] Server error %d on attempt %d/%d, retrying in %v", resp.StatusCode, attempt+1, maxRetries, backoff)
+			
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			continue
+		}
+
+		return resp, nil
+	}
+
+	return nil, fmt.Errorf("all %d attempts failed, last error: %w", maxRetries, lastErr)
 }
 
 // Login authenticates with the FreshRSS server and retrieves an auth token
@@ -59,7 +125,7 @@ func (c *Client) Login(ctx context.Context) error {
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return fmt.Errorf("login request: %w", err)
 	}
@@ -100,7 +166,7 @@ func (c *Client) GetToken(ctx context.Context) (string, error) {
 
 	req.Header.Set("Authorization", "GoogleLogin auth="+c.authToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("token request: %w", err)
 	}
@@ -146,7 +212,7 @@ func (c *Client) GetCategories(ctx context.Context) ([]Category, error) {
 
 	req.Header.Set("Authorization", "GoogleLogin auth="+c.authToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("categories request: %w", err)
 	}
@@ -197,7 +263,7 @@ func (c *Client) GetSubscriptions(ctx context.Context) ([]Subscription, error) {
 
 	req.Header.Set("Authorization", "GoogleLogin auth="+c.authToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("subscriptions request: %w", err)
 	}
@@ -246,7 +312,7 @@ func (c *Client) GetUnreadCount(ctx context.Context) (map[string]int, error) {
 
 	req.Header.Set("Authorization", "GoogleLogin auth="+c.authToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("unread-count request: %w", err)
 	}
@@ -338,7 +404,7 @@ func (c *Client) GetStreamContents(ctx context.Context, streamID string, exclude
 
 	req.Header.Set("Authorization", "GoogleLogin auth="+c.authToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("stream contents request: %w", err)
 	}
@@ -458,7 +524,7 @@ func (c *Client) editTag(ctx context.Context, itemIDs []string, addTag string, r
 		c.baseURL+"/reader/api/0/edit-tag", addTag, removeTag, len(itemIDs))
 	log.Printf("[FreshRSS API] Request body: %s", data.Encode())
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return fmt.Errorf("edit-tag request: %w", err)
 	}
@@ -537,7 +603,7 @@ func (c *Client) SubscribeToFeed(ctx context.Context, feedURL, title string) err
 	data.Set("ac", "subscribe")
 	req.Body = io.NopCloser(strings.NewReader(data.Encode()))
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return fmt.Errorf("subscribe request: %w", err)
 	}

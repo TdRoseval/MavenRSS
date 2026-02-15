@@ -53,6 +53,8 @@ func registerOtherRoutes(mux *http.ServeMux, h *core.Handler) {
 	// Network
 	mux.HandleFunc("/api/network/detect", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleDetectNetwork(h, w, r) })
 	mux.HandleFunc("/api/network/info", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleGetNetworkInfo(h, w, r) })
+	mux.HandleFunc("/api/network/test-proxy", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleTestProxy(h, w, r) })
+	mux.HandleFunc("/api/network/test-custom-proxy", func(w http.ResponseWriter, r *http.Request) { networkhandlers.HandleTestCustomProxy(h, w, r) })
 
 	// Browser
 	mux.HandleFunc("/api/browser/open", func(w http.ResponseWriter, r *http.Request) { browser.HandleOpenURL(h, w, r) })

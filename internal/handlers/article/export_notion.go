@@ -14,6 +14,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
+	"MrRSS/internal/utils/httputil"
 )
 
 // NotionBlock represents a Notion block structure
@@ -243,7 +244,8 @@ func HandleExportToNotion(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	}
 
 	// Send request to Notion API to create the page
-	pageURL, createdPageID, err := createNotionPage(apiKey, notionRequest)
+	proxyURL := buildNotionProxyURL(h)
+	pageURL, createdPageID, err := createNotionPage(apiKey, notionRequest, proxyURL)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -251,7 +253,7 @@ func HandleExportToNotion(h *core.Handler, w http.ResponseWriter, r *http.Reques
 
 	// If there are remaining content blocks, append them in batches
 	if len(contentBlocks) > 0 {
-		err = appendBlocksInBatches(apiKey, createdPageID, contentBlocks)
+		err = appendBlocksInBatches(apiKey, createdPageID, contentBlocks, proxyURL)
 		if err != nil {
 			// Page was created but some content failed to append
 			// Still return success but mention the issue
@@ -658,9 +660,27 @@ func parseRichText(text string) []RichText {
 	return result
 }
 
+// buildNotionProxyURL builds proxy URL from database settings
+func buildNotionProxyURL(h *core.Handler) string {
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled != "true" {
+		return ""
+	}
+
+	proxyType, _ := h.DB.GetSetting("proxy_type")
+	proxyHost, _ := h.DB.GetSetting("proxy_host")
+	proxyPort, _ := h.DB.GetSetting("proxy_port")
+	proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+	proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+}
+
 // appendBlocksInBatches appends blocks to a page in batches of 100
-func appendBlocksInBatches(apiKey string, pageID string, blocks []NotionBlock) error {
+func appendBlocksInBatches(apiKey string, pageID string, blocks []NotionBlock, proxyURL string) error {
 	const batchSize = 100
+
+	client := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
 
 	for i := 0; i < len(blocks); i += batchSize {
 		end := i + batchSize
@@ -689,7 +709,6 @@ func appendBlocksInBatches(apiKey string, pageID string, blocks []NotionBlock) e
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Notion-Version", "2022-06-28")
 
-		client := &http.Client{Timeout: 30 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to append blocks: %w", err)
@@ -739,7 +758,7 @@ func splitIntoChunks(text string, maxLen int) []string {
 
 // createNotionPage sends a request to Notion API to create a page
 // Returns (pageURL, pageID, error)
-func createNotionPage(apiKey string, pageRequest NotionPageRequest) (string, string, error) {
+func createNotionPage(apiKey string, pageRequest NotionPageRequest, proxyURL string) (string, string, error) {
 	jsonBody, err := json.Marshal(pageRequest)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to marshal request: %w", err)
@@ -754,7 +773,7 @@ func createNotionPage(apiKey string, pageRequest NotionPageRequest) (string, str
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Notion-Version", "2022-06-28")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to send request: %w", err)

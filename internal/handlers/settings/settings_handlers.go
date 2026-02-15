@@ -8,6 +8,8 @@ import (
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/translation"
+	"MrRSS/internal/utils/httputil"
 )
 
 // safeGetEncryptedSetting safely retrieves an encrypted setting, returning empty string on error.
@@ -71,11 +73,55 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Check if proxy settings are changing
+		oldProxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		oldProxyType, _ := h.DB.GetSetting("proxy_type")
+		oldProxyHost, _ := h.DB.GetSetting("proxy_host")
+		oldProxyPort, _ := h.DB.GetSetting("proxy_port")
+		oldProxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		oldProxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		oldProxyURL := httputil.BuildProxyURL(oldProxyType, oldProxyHost, oldProxyPort, oldProxyUsername, oldProxyPassword)
+
 		// Save settings using the definition-driven approach
 		if err := SaveSettings(h, req); err != nil {
 			log.Printf("Failed to save settings: %v", err)
 			response.Error(w, err, http.StatusInternalServerError)
 			return
+		}
+
+		// Check if proxy settings changed and refresh connection pool
+		newProxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		var newProxyURL string
+		if newProxyEnabled == "true" {
+			newProxyType, _ := h.DB.GetSetting("proxy_type")
+			newProxyHost, _ := h.DB.GetSetting("proxy_host")
+			newProxyPort, _ := h.DB.GetSetting("proxy_port")
+			newProxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+			newProxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			newProxyURL = httputil.BuildProxyURL(newProxyType, newProxyHost, newProxyPort, newProxyUsername, newProxyPassword)
+		}
+
+		if oldProxyURL != newProxyURL {
+			log.Printf("[HandleSettings] Proxy settings changed, refreshing connection pool...")
+			httputil.RefreshProxyClients(newProxyURL)
+
+			// Refresh translator proxy
+			if refresher, ok := h.Translator.(translation.ProxyRefresher); ok {
+				refresher.InvalidateCache()
+				log.Printf("[HandleSettings] Translator cache invalidated for proxy refresh")
+			}
+
+			// Also call RefreshProxy if available to refresh individual translator HTTP clients
+			if refresherWithProxy, ok := h.Translator.(interface{ RefreshProxy() }); ok {
+				refresherWithProxy.RefreshProxy()
+				log.Printf("[HandleSettings] Translator proxy refreshed via RefreshProxy()")
+			}
+
+			// Refresh discovery service proxy
+			if h.DiscoveryService != nil {
+				h.DiscoveryService.SetProxy(newProxyURL)
+				log.Printf("[HandleSettings] Discovery service proxy refreshed")
+			}
 		}
 
 		// Re-fetch all settings after save to return updated values

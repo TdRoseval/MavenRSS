@@ -2,6 +2,7 @@ package translation
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"MrRSS/internal/ai"
 	"MrRSS/internal/config"
+	"MrRSS/internal/utils/httputil"
 )
 
 // AITranslator implements translation using OpenAI-compatible APIs (GPT, Claude, etc.).
@@ -18,6 +20,7 @@ type AITranslator struct {
 	Model         string
 	SystemPrompt  string
 	CustomHeaders string
+	db            DBInterface // Store DB reference for proxy updates
 	client        *ai.Client
 	httpClient    *http.Client // Store HTTP client to preserve proxy settings
 }
@@ -26,7 +29,8 @@ type AITranslator struct {
 // endpoint should be the full API URL (e.g., "https://api.openai.com/v1/chat/completions" for OpenAI, "http://localhost:11434/api/generate" for Ollama)
 // model should be the model name (e.g., "gpt-4o-mini", "claude-3-haiku-20240307")
 // Supports proxy via HTTP_PROXY, HTTPS_PROXY, ALL_PROXY environment variables.
-func NewAITranslator(apiKey, endpoint, model string) *AITranslator {
+// If db is provided, it will also check for database proxy settings (higher priority than env vars).
+func NewAITranslator(apiKey, endpoint, model string, db ...DBInterface) *AITranslator {
 	defaults := config.Get()
 	if endpoint == "" {
 		endpoint = defaults.AIEndpoint
@@ -35,7 +39,7 @@ func NewAITranslator(apiKey, endpoint, model string) *AITranslator {
 		model = defaults.AIModel
 	}
 
-	proxyURL := getProxyFromEnv()
+	proxyURL := getProxyFromSettings(db...)
 
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
@@ -51,8 +55,40 @@ func NewAITranslator(apiKey, endpoint, model string) *AITranslator {
 		Model:         model,
 		SystemPrompt:  "",
 		CustomHeaders: "",
+		db:            getDBFromSlice(db),
 		client:        ai.NewClient(clientConfig),
 	}
+}
+
+// getDBFromSlice extracts DBInterface from variadic arguments
+func getDBFromSlice(dbArgs []DBInterface) DBInterface {
+	if len(dbArgs) > 0 {
+		return dbArgs[0]
+	}
+	return nil
+}
+
+// getProxyFromSettings retrieves proxy URL from database (higher priority) or environment variables
+func getProxyFromSettings(dbArgs ...DBInterface) string {
+	// First try database settings if available
+	if len(dbArgs) > 0 && dbArgs[0] != nil {
+		db := dbArgs[0]
+		proxyEnabled, _ := db.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := db.GetSetting("proxy_type")
+			proxyHost, _ := db.GetSetting("proxy_host")
+			proxyPort, _ := db.GetSetting("proxy_port")
+			proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
+			proxyURL := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			if proxyURL != "" {
+				return proxyURL
+			}
+		}
+	}
+
+	// Fallback to environment variables
+	return getProxyFromEnv()
 }
 
 func getProxyFromEnv() string {
@@ -85,8 +121,7 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 
 	httpClient, err := CreateHTTPClientWithProxyOption(db, 60*time.Second, useProxy)
 	if err != nil {
-		// Fallback to default client if proxy creation fails
-		httpClient = &http.Client{Timeout: 60 * time.Second}
+		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
 	}
 
 	clientConfig := ai.ClientConfig{
@@ -137,6 +172,26 @@ func (t *AITranslator) recreateClient() {
 	} else {
 		t.client = ai.NewClient(clientConfig)
 	}
+}
+
+// RefreshProxy refreshes the HTTP client with current proxy settings from database
+// This allows proxy changes to take effect without restarting the application
+func (t *AITranslator) RefreshProxy() {
+	if t.db == nil {
+		return
+	}
+
+	proxyURL := getProxyFromSettings(t.db)
+	t.httpClient = httputil.GetPooledAIHTTPClient(proxyURL, 60*time.Second)
+	clientConfig := ai.ClientConfig{
+		APIKey:        t.APIKey,
+		Endpoint:      t.Endpoint,
+		Model:         t.Model,
+		SystemPrompt:  t.SystemPrompt,
+		CustomHeaders: t.CustomHeaders,
+		Timeout:       60 * time.Second,
+	}
+	t.client = ai.NewClientWithHTTPClient(clientConfig, t.httpClient)
 }
 
 // Translate translates text to the target language using an OpenAI-compatible API.

@@ -190,7 +190,7 @@ func createAIHTTPClientWithProxy(h *core.Handler, useGlobalProxy bool, timeout t
 		}
 	}
 
-	return httputil.CreateAIHTTPClient(proxyURL, timeout)
+	return httputil.GetPooledAIHTTPClient(proxyURL, timeout), nil
 }
 
 func buildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {

@@ -1,38 +1,31 @@
-// Package discovery provides blog discovery functionality
 package discovery
 
 import (
 	"net/http"
 	"time"
 
+	"MrRSS/internal/utils/httputil"
+
 	"github.com/mmcdole/gofeed"
 )
 
-// Discovery configuration constants
 const (
-	// MaxConcurrentRSSChecks limits the number of concurrent RSS feed checks
-	MaxConcurrentRSSChecks = 8
-	// MaxConcurrentPathChecks limits the number of concurrent common path checks
+	MaxConcurrentRSSChecks  = 8
 	MaxConcurrentPathChecks = 5
-	// HTTPClientTimeout is the timeout for HTTP requests
-	HTTPClientTimeout = 15 * time.Second
 )
 
-// ProgressCallback is called with progress updates during discovery
 type ProgressCallback func(progress Progress)
 
-// Progress represents the current discovery progress
 type Progress struct {
-	Stage      string `json:"stage"`       // Current stage (e.g., "fetching_homepage", "finding_friend_links", "checking_rss")
-	Message    string `json:"message"`     // Human-readable message
-	Detail     string `json:"detail"`      // Additional detail (e.g., current URL being checked)
-	Current    int    `json:"current"`     // Current item index
-	Total      int    `json:"total"`       // Total items to process
-	FeedName   string `json:"feed_name"`   // Name of the feed being processed (for batch discovery)
-	FoundCount int    `json:"found_count"` // Number of feeds found so far
+	Stage      string `json:"stage"`
+	Message    string `json:"message"`
+	Detail     string `json:"detail"`
+	Current    int    `json:"current"`
+	Total      int    `json:"total"`
+	FeedName   string `json:"feed_name"`
+	FoundCount int    `json:"found_count"`
 }
 
-// DiscoveredBlog represents a blog found through friend links
 type DiscoveredBlog struct {
 	Name           string          `json:"name"`
 	Homepage       string          `json:"homepage"`
@@ -41,41 +34,59 @@ type DiscoveredBlog struct {
 	RecentArticles []RecentArticle `json:"recent_articles"`
 }
 
-// RecentArticle represents a recent article with title and date
 type RecentArticle struct {
 	Title string `json:"title"`
-	Date  string `json:"date"` // ISO 8601 format or relative time
+	Date  string `json:"date"`
 }
 
-// Service handles blog discovery operations
 type Service struct {
 	client     *http.Client
 	feedParser *gofeed.Parser
+	proxyURL   string
 }
 
-// NewService creates a new discovery service
 func NewService() *Service {
-	feedParser := gofeed.NewParser()
-	feedParser.Client = &http.Client{
-		Timeout: HTTPClientTimeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return errTooManyRedirects
-			}
-			return nil
-		},
+	return NewServiceWithProxy("")
+}
+
+func NewServiceWithProxy(proxyURL string) *Service {
+	redirectChecker := func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return errTooManyRedirects
+		}
+		return nil
 	}
 
+	httpClient := httputil.GetPooledHTTPClient(proxyURL, httputil.DefaultDiscoveryTimeout)
+	httpClient.CheckRedirect = redirectChecker
+
+	feedParser := gofeed.NewParser()
+	feedParser.Client = httpClient
+
 	return &Service{
-		client: &http.Client{
-			Timeout: HTTPClientTimeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 5 {
-					return errTooManyRedirects
-				}
-				return nil
-			},
-		},
+		client:     httpClient,
 		feedParser: feedParser,
+		proxyURL:   proxyURL,
 	}
+}
+
+// SetProxy updates the proxy URL for the service.
+// This allows dynamic proxy updates without recreating the service.
+func (s *Service) SetProxy(proxyURL string) {
+	if s.proxyURL == proxyURL {
+		return
+	}
+
+	s.proxyURL = proxyURL
+
+	redirectChecker := func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return errTooManyRedirects
+		}
+		return nil
+	}
+
+	s.client = httputil.GetPooledHTTPClient(proxyURL, httputil.DefaultDiscoveryTimeout)
+	s.client.CheckRedirect = redirectChecker
+	s.feedParser.Client = s.client
 }

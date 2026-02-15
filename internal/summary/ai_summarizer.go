@@ -23,6 +23,7 @@ type AISummarizer struct {
 	Language      string // User's language setting (e.g., "en", "zh")
 	client        *ai.Client
 	httpClient    *http.Client // Store HTTP client to preserve proxy settings
+	db            DBInterface  // Store DB reference for proxy updates
 }
 
 // DBInterface defines the minimal database interface needed for proxy settings
@@ -47,8 +48,8 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
-	// Create HTTP client with or without proxy
-	return httputil.CreateAIHTTPClient(proxyURL, timeout)
+	// Get pooled HTTP client with or without proxy
+	return httputil.GetPooledAIHTTPClient(proxyURL, timeout), nil
 }
 
 func getProxyFromEnv() string {
@@ -116,8 +117,7 @@ func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 
 	httpClient, err := translation.CreateHTTPClientWithProxyOption(db, 60*time.Second, useProxy)
 	if err != nil {
-		// Fallback to default client if proxy creation fails
-		httpClient = &http.Client{Timeout: 60 * time.Second}
+		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
 	}
 
 	clientConfig := ai.ClientConfig{
@@ -136,6 +136,7 @@ func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		Language:      "en", // Default to English
 		httpClient:    httpClient,
 		client:        ai.NewClientWithHTTPClient(clientConfig, httpClient),
+		db:            db,
 	}
 }
 
@@ -159,6 +160,28 @@ func (s *AISummarizer) SetLanguage(language string) {
 	if language != "" {
 		s.Language = language
 	}
+}
+
+func (s *AISummarizer) RefreshProxy() {
+	if s.db == nil {
+		return
+	}
+
+	httpClient, err := translation.CreateHTTPClientWithProxyOption(s.db, 60*time.Second, true)
+	if err != nil {
+		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
+	}
+	s.httpClient = httpClient
+
+	clientConfig := ai.ClientConfig{
+		APIKey:        s.APIKey,
+		Endpoint:      s.Endpoint,
+		Model:         s.Model,
+		SystemPrompt:  s.SystemPrompt,
+		CustomHeaders: s.CustomHeaders,
+		Timeout:       60 * time.Second,
+	}
+	s.client = ai.NewClientWithHTTPClient(clientConfig, s.httpClient)
 }
 
 // recreateClient re-creates the AI client with current configuration

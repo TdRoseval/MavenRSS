@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/httputil"
 )
 
 // HandleDownloadUpdate downloads the update file.
@@ -62,9 +64,24 @@ func HandleDownloadUpdate(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	tempDir := os.TempDir()
 	filePath := filepath.Join(tempDir, req.AssetName)
 
+	// Build proxy URL from global settings if enabled
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	// Get pooled HTTP client with proxy support (longer timeout for large file downloads)
+	client := httputil.GetPooledHTTPClient(proxyURL, 300*time.Second)
+
 	// Download the file
 	log.Printf("Downloading update from: %s", req.DownloadURL)
-	resp, err := http.Get(req.DownloadURL)
+	resp, err := client.Get(req.DownloadURL)
 	if err != nil {
 		log.Printf("Error downloading update: %v", err)
 		response.Error(w, fmt.Errorf("failed to download update: %w", err), http.StatusInternalServerError)

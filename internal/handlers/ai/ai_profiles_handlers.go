@@ -558,7 +558,7 @@ func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool) (
 		}
 	}
 
-	return httputil.CreateAIHTTPClient(proxyURL, 30*time.Second)
+	return httputil.GetPooledAIHTTPClient(proxyURL, 30*time.Second), nil
 }
 
 // buildProxyURLForProfile builds a proxy URL from components

@@ -171,7 +171,7 @@ func (s *aiService) createAIHTTPClient() (*http.Client, error) {
 		proxyURL = s.buildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
-	return httputil.CreateAIHTTPClient(proxyURL, 60*time.Second)
+	return httputil.GetPooledAIHTTPClient(proxyURL, 60*time.Second), nil
 }
 
 func (s *aiService) buildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {

@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
 // ClientConfig holds the configuration for the AI client
@@ -36,31 +38,11 @@ func NewClient(config ClientConfig) *Client {
 		config.Timeout = 60 * time.Second
 	}
 
-	transport := &http.Transport{
-		MaxIdleConns:          20,
-		MaxIdleConnsPerHost:   10,
-		IdleConnTimeout:       90 * time.Second,
-		ForceAttemptHTTP2:     false,
-		ResponseHeaderTimeout: 45 * time.Second,
-		TLSHandshakeTimeout:   20 * time.Second,
-		DialContext:           nil, // Let the default dialer handle it
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-
-	if config.ProxyURL != "" {
-		if proxyURL, err := url.Parse(config.ProxyURL); err == nil {
-			transport.Proxy = http.ProxyURL(proxyURL)
-		}
-	}
-
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   config.Timeout,
-	}
+	httpClient := httputil.GetPooledAIHTTPClient(config.ProxyURL, config.Timeout)
 
 	return &Client{
 		config: config,
-		client: client,
+		client: httpClient,
 	}
 }
 
@@ -108,6 +90,19 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 
 // RequestWithConfig makes an AI request with full configuration
 func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error) {
+	const totalAITimeout = 120 * time.Second
+	
+	ctx := config.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	
+	totalCtx, cancel := context.WithTimeout(ctx, totalAITimeout)
+	defer cancel()
+	
+	configWithContext := config
+	configWithContext.Context = totalCtx
+	
 	provider := DetectAPIProvider(c.config.Endpoint)
 
 	var allErrors []string
@@ -123,79 +118,98 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		}
 	}
 
-	// Try provider-specific format first based on endpoint detection
-	switch provider {
-	case "gemini":
-		result, err := c.tryFormat(NewGeminiHandler(), config)
-		if err == nil {
-			return result, nil
-		}
-		logFn("Gemini", err)
-		// Fall through to other formats
-
-	case "anthropic":
-		result, err := c.tryFormat(&AnthropicHandler{}, config)
-		if err == nil {
-			return result, nil
-		}
-		logFn("Anthropic", err)
-		// Fall through to other formats
-
-	case "deepseek":
-		result, err := c.tryFormat(&DeepSeekHandler{}, config)
-		if err == nil {
-			return result, nil
-		}
-		logFn("DeepSeek", err)
-		// Fall through to other formats
-
-	case "ollama":
-		result, err := c.tryFormat(NewOllamaHandler(), config)
-		if err == nil {
-			return result, nil
-		}
-		logFn("Ollama", err)
-		// Fall through to other formats
-	}
-
-	// Try OpenAI format (most common, good fallback)
-	result, err := c.tryFormat(NewOpenAIHandler(), config)
+	// Try OpenAI format first (most common and widely compatible)
+	result, err := c.tryFormat(NewOpenAIHandler(), configWithContext)
 	if err == nil {
 		return result, nil
 	}
 	logFn("OpenAI", err)
-
-	// Try all other formats as fallback (comprehensive fallback)
-	if provider != "anthropic" {
-		result, err = c.tryFormat(&AnthropicHandler{}, config)
-		if err == nil {
-			return result, nil
-		}
-		logFn("Anthropic (fallback)", err)
+	
+	// Check if we've already timed out
+	select {
+	case <-totalCtx.Done():
+		return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
+	default:
 	}
 
-	if provider != "deepseek" {
-		result, err = c.tryFormat(&DeepSeekHandler{}, config)
+	// Try provider-specific format based on endpoint detection as fallback
+	switch provider {
+	case "gemini":
+		result, err := c.tryFormat(NewGeminiHandler(), configWithContext)
 		if err == nil {
 			return result, nil
 		}
-		logFn("DeepSeek (fallback)", err)
+		logFn("Gemini", err)
+		select {
+		case <-totalCtx.Done():
+			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
+		default:
+		}
+
+	case "anthropic":
+		result, err := c.tryFormat(&AnthropicHandler{}, configWithContext)
+		if err == nil {
+			return result, nil
+		}
+		logFn("Anthropic", err)
+		select {
+		case <-totalCtx.Done():
+			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
+		default:
+		}
+
+	case "deepseek":
+		result, err := c.tryFormat(&DeepSeekHandler{}, configWithContext)
+		if err == nil {
+			return result, nil
+		}
+		logFn("DeepSeek", err)
+		select {
+		case <-totalCtx.Done():
+			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
+		default:
+		}
+
+	case "ollama":
+		result, err := c.tryFormat(NewOllamaHandler(), configWithContext)
+		if err == nil {
+			return result, nil
+		}
+		logFn("Ollama", err)
+		select {
+		case <-totalCtx.Done():
+			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
+		default:
+		}
 	}
 
-	if provider != "gemini" {
-		result, err = c.tryFormat(NewGeminiHandler(), config)
-		if err == nil {
-			return result, nil
-		}
-		logFn("Gemini (fallback)", err)
+	// Try remaining formats only if needed (reduced fallback list for faster failure)
+	remainingHandlers := []struct {
+		name    string
+		handler FormatHandler
+		skip    bool
+	}{
+		{"Anthropic", &AnthropicHandler{}, provider == "anthropic"},
+		{"DeepSeek", &DeepSeekHandler{}, provider == "deepseek"},
+		{"Gemini", NewGeminiHandler(), provider == "gemini"},
+		{"Ollama", NewOllamaHandler{}, provider == "ollama"},
 	}
 
-	if provider != "ollama" {
-		result, err = c.tryFormat(NewOllamaHandler(), config)
+	for _, h := range remainingHandlers {
+		if h.skip {
+			continue
+		}
+		result, err = c.tryFormat(h.handler, configWithContext)
 		if err == nil {
 			return result, nil
 		}
-		logFn("Ollama (fallback)", err)
+		logFn(h.name, err)
+		
+		select {
+		case <-totalCtx.Done():
+			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
+		default:
+		}
 	}
 
 	// All formats failed - return detailed error
@@ -230,26 +244,47 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 		formattedEndpoint = strings.Replace(formattedEndpoint, "/api/generate", "/api/chat", 1)
 	}
 
-	// Retry for network errors only (5 attempts total for better reliability)
-	maxRetries := 5
+	// Reduced retry count for faster failure (2 attempts instead of 3)
+	maxRetries := 2
 	var lastErr error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Check if context is cancelled before making request
+		if config.Context != nil {
+			select {
+			case <-config.Context.Done():
+				return ResponseResult{}, fmt.Errorf("request cancelled: %w", config.Context.Err())
+			default:
+			}
+		}
+
 		// Send request with formatted endpoint and handler
 		resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
 		if err != nil {
 			lastErr = fmt.Errorf("request failed: %w", err)
-			
+
 			// Only retry on network errors
 			errStr := fmt.Sprintf("%v", err)
 			if isNetworkError(errStr) && attempt < maxRetries-1 {
 				log.Printf("[AI Client] Network error on attempt %d/%d, retrying: %v", attempt+1, maxRetries, err)
-				// Exponential backoff: 1s, 2s, 4s, 8s, 16s
-				backoffTime := time.Duration(1<<uint(attempt)) * time.Second
-				if backoffTime > 30*time.Second {
-					backoffTime = 30 * time.Second
+				// Shorter exponential backoff: 500ms, 1s
+				backoffTime := time.Duration(500*(1<<uint(attempt))) * time.Millisecond
+				if backoffTime > 5*time.Second {
+					backoffTime = 5 * time.Second
 				}
-				time.Sleep(backoffTime)
+
+				// Wait with context cancellation check
+				if config.Context != nil {
+					select {
+					case <-config.Context.Done():
+						return ResponseResult{}, fmt.Errorf("request cancelled during backoff: %w", config.Context.Err())
+					case <-time.After(backoffTime):
+					}
+				} else {
+					select {
+					case <-time.After(backoffTime):
+					}
+				}
 				continue
 			}
 			return ResponseResult{}, lastErr
@@ -263,11 +298,23 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 			lastErr = fmt.Errorf("failed to read response body: %w", err)
 			if isNetworkError(fmt.Sprintf("%v", err)) && attempt < maxRetries-1 {
 				log.Printf("[AI Client] Read error on attempt %d/%d, retrying: %v", attempt+1, maxRetries, err)
-				backoffTime := time.Duration(1<<uint(attempt)) * time.Second
-				if backoffTime > 30*time.Second {
-					backoffTime = 30 * time.Second
+				backoffTime := time.Duration(500*(1<<uint(attempt))) * time.Millisecond
+				if backoffTime > 5*time.Second {
+					backoffTime = 5 * time.Second
 				}
-				time.Sleep(backoffTime)
+
+				// Wait with context cancellation check
+				if config.Context != nil {
+					select {
+					case <-config.Context.Done():
+						return ResponseResult{}, fmt.Errorf("request cancelled during backoff: %w", config.Context.Err())
+					case <-time.After(backoffTime):
+					}
+				} else {
+					select {
+					case <-time.After(backoffTime):
+					}
+				}
 				continue
 			}
 			return ResponseResult{}, lastErr
@@ -468,21 +515,14 @@ func isNetworkError(errMsg string) bool {
 		"connection timed out",
 		"no route to host",
 		"network is unreachable",
-		"timeout",
 		"temporary failure in name resolution",
 		"dial tcp",
 		"i/o timeout",
 		"tls:",
-		"certificate",
-		"x509",
-		"proxy",
 		"no such host",
-		"server misbehaving",
 		"connection closed",
 		"broken pipe",
-		"net/http:",
 		"context deadline exceeded",
-		"eof",
 		"unexpected eof",
 		"handshake timeout",
 		"read: connection reset",
@@ -490,25 +530,13 @@ func isNetworkError(errMsg string) bool {
 		"connection refused by peer",
 		"remote error",
 		"stream error",
-		"protocol not available",
-		"address already in use",
-		"cannot assign requested address",
-		"network down",
-		"socket is not connected",
-		"connection aborted",
-		"too many open files",
-		"resource temporarily unavailable",
-		"connection failed",
 		"connect: connection refused",
 		"connect: no route to host",
 		"connect: network is unreachable",
 		"dns timeout",
 		"name resolution",
 		"lookup failed",
-		"socket error",
-		"transport error",
-		"request canceled",
-		"client.Timeout exceeded",
+		"client.timeout exceeded",
 		"deadline exceeded",
 		"operation timed out",
 	}

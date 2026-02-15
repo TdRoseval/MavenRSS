@@ -10,6 +10,7 @@ import (
 	"MrRSS/internal/freshrss"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/httputil"
 )
 
 // HandleSyncFeed syncs articles for a single FreshRSS feed
@@ -58,8 +59,20 @@ func HandleSyncFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create bidirectional sync service
-	syncService := freshrss.NewBidirectionalSyncService(serverURL, username, password, h.DB)
+	// Build proxy URL from global settings for FreshRSS
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	// Create bidirectional sync service with proxy support
+	syncService := freshrss.NewBidirectionalSyncServiceWithProxy(serverURL, username, password, proxyURL, h.DB)
 	log.Printf("[HandleSyncFeed] Syncing stream: %s", streamID)
 
 	// Perform sync in background
@@ -121,8 +134,20 @@ func HandleSync(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create bidirectional sync service
-	syncService := freshrss.NewBidirectionalSyncService(serverURL, username, password, h.DB)
+	// Build proxy URL from global settings for FreshRSS
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	// Create bidirectional sync service with proxy support
+	syncService := freshrss.NewBidirectionalSyncServiceWithProxy(serverURL, username, password, proxyURL, h.DB)
 	log.Printf("[HandleSync] Sync service created, starting sync")
 
 	// Perform sync in background
