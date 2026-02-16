@@ -41,7 +41,7 @@ func HandleMarkReadWithImmediateSync(h *core.Handler, w http.ResponseWriter, r *
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	response.JSON(w, map[string]bool{"success": true})
 
 	// Immediately sync to FreshRSS if needed
 	if syncReq != nil {
@@ -70,7 +70,7 @@ func HandleToggleFavoriteWithImmediateSync(h *core.Handler, w http.ResponseWrite
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	response.JSON(w, map[string]bool{"success": true})
 
 	// Immediately sync to FreshRSS if needed
 	if syncReq != nil {
