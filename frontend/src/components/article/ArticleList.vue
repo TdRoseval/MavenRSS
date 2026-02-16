@@ -58,12 +58,17 @@ const isCardMode = computed(() => layoutMode.value === 'card');
 
 interface Props {
   isSidebarOpen?: boolean;
+  isMobile?: boolean;
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  isSidebarOpen: true,
+  isMobile: false,
+});
 
 const emit = defineEmits<{
   toggleSidebar: [];
+  selectArticle: [articleId: number];
 }>();
 
 // Use composables
@@ -479,6 +484,11 @@ function selectArticle(article: Article): void {
       .catch((e) => {
         console.error('Error marking as read:', e);
       });
+  }
+
+  // Mobile: emit event to parent to switch to detail view
+  if (props.isMobile) {
+    emit('selectArticle', article.id);
   }
 }
 

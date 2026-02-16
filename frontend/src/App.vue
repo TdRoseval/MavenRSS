@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from './stores/app';
 import { useI18n } from 'vue-i18n';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import Sidebar from './components/sidebar/Sidebar.vue';
 import ArticleList from './components/article/ArticleList.vue';
 import ArticleDetail from './components/article/ArticleDetail.vue';
@@ -15,7 +16,6 @@ import ConfirmDialog from './components/modals/common/ConfirmDialog.vue';
 import InputDialog from './components/modals/common/InputDialog.vue';
 import MultiSelectDialog from './components/modals/common/MultiSelectDialog.vue';
 import Toast from './components/common/Toast.vue';
-import { onMounted, ref, computed } from 'vue';
 import { useNotifications } from './composables/ui/useNotifications';
 import { useKeyboardShortcuts } from './composables/ui/useKeyboardShortcuts';
 import { useContextMenu } from './composables/ui/useContextMenu';
@@ -34,6 +34,36 @@ const showSettings = ref(false);
 const showDiscoverBlogs = ref(false);
 const feedToDiscover = ref<Feed | null>(null);
 const isSidebarOpen = ref(true);
+
+const isMobile = ref(false);
+const mobileView = ref<'list' | 'detail'>('list');
+const currentArticleIdOnMobile = ref<number | null>(null);
+
+function checkIsMobile(): boolean {
+  return window.innerWidth < 768;
+}
+
+function handleResize(): void {
+  const wasMobile = isMobile.value;
+  isMobile.value = checkIsMobile();
+
+  if (wasMobile && !isMobile.value) {
+    if (mobileView.value === 'detail') {
+      mobileView.value = 'list';
+    }
+  }
+}
+
+function openArticleOnMobile(articleId: number): void {
+  currentArticleIdOnMobile.value = articleId;
+  mobileView.value = 'detail';
+}
+
+function closeArticleOnMobile(): void {
+  store.currentArticleId = null;
+  currentArticleIdOnMobile.value = null;
+  mobileView.value = 'list';
+}
 
 // Check if we're in image gallery mode
 const isImageGalleryMode = computed(() => store.currentFilter === 'imageGallery');
@@ -98,6 +128,10 @@ onMounted(async () => {
 
   // Initialize theme system immediately (lightweight)
   store.initTheme();
+
+  // Initialize mobile detection
+  isMobile.value = checkIsMobile();
+  window.addEventListener('resize', handleResize);
 
   // Load remaining settings (theme and other settings are already loaded in main.ts)
   let updateInterval = 10;
@@ -286,27 +320,69 @@ function onFeedUpdated(): void {
 <template>
   <div
     class="app-container flex h-screen w-full bg-bg-primary text-text-primary overflow-hidden"
+    :class="{ 'mobile-mode': isMobile }"
     :style="{
       '--sidebar-width': sidebarWidth + 'px',
       '--article-list-width': articleListWidth + 'px',
     }"
   >
-    <Sidebar :is-open="isSidebarOpen" @toggle="toggleSidebar" />
+    <!-- Mobile: Slide-out Sidebar -->
+    <Transition name="sidebar-slide">
+      <Sidebar
+        v-if="isMobile ? isSidebarOpen : true"
+        :is-open="isSidebarOpen"
+        :is-mobile="isMobile"
+        @toggle="toggleSidebar"
+      />
+    </Transition>
 
-    <!-- Show ImageGalleryView when in image gallery mode -->
-    <template v-if="isImageGalleryMode">
-      <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
-    </template>
+    <!-- Mobile overlay -->
+    <Transition name="overlay-fade">
+      <div
+        v-if="isMobile && isSidebarOpen"
+        class="fixed inset-0 bg-black/50 z-40 md:hidden"
+        @click="toggleSidebar"
+      ></div>
+    </Transition>
 
-    <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
+    <!-- Mobile main content area -->
+    <div v-if="isMobile" class="flex-1 flex flex-col h-full overflow-hidden">
+      <!-- Mobile: Article List View -->
+      <template v-if="mobileView === 'list'">
+        <ArticleList
+          :is-mobile="isMobile"
+          :is-sidebar-open="isSidebarOpen"
+          @toggle-sidebar="toggleSidebar"
+          @select-article="openArticleOnMobile"
+        />
+      </template>
+
+      <!-- Mobile: Article Detail View -->
+      <template v-else-if="mobileView === 'detail'">
+        <ArticleDetail
+          :is-mobile="isMobile"
+          @close="closeArticleOnMobile"
+        />
+      </template>
+    </div>
+
+    <!-- Desktop: Original layout -->
     <template v-else>
-      <ArticleList :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+      <!-- Show ImageGalleryView when in image gallery mode -->
+      <template v-if="isImageGalleryMode">
+        <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+      </template>
 
-      <!-- Hide resizer and ArticleDetail when in card mode -->
-      <template v-if="!isCardMode">
-        <div class="resizer hidden md:block" @mousedown="startResizeArticleList"></div>
+      <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
+      <template v-else>
+        <ArticleList :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
 
-        <ArticleDetail />
+        <!-- Hide resizer and ArticleDetail when in card mode -->
+        <template v-if="!isCardMode">
+          <div class="resizer hidden md:block" @mousedown="startResizeArticleList"></div>
+
+          <ArticleDetail />
+        </template>
       </template>
     </template>
 
@@ -440,5 +516,33 @@ function onFeedUpdated(): void {
 .resizer:active {
   background-color: var(--color-accent, #3b82f6);
 }
+
+/* Mobile sidebar slide transition */
+.sidebar-slide-enter-active,
+.sidebar-slide-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-slide-enter-from,
+.sidebar-slide-leave-to {
+  transform: translateX(-100%);
+}
+
+/* Mobile overlay fade transition */
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
+}
+
+/* Mobile mode adjustments */
+.mobile-mode .resizer {
+  display: none;
+}
+
 /* Global styles if needed */
 </style>

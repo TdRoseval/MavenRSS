@@ -35,6 +35,8 @@ const emit = defineEmits<{
 }>();
 
 const showErrorTooltip = ref(false);
+let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
+const isLongPress = ref(false);
 
 function getFriendlyErrorMessage(error: string): string {
   if (!error) return '';
@@ -92,6 +94,48 @@ function handleDragStart(event: Event) {
 function handleDragEnd() {
   emit('dragend');
 }
+
+// Touch/long press handlers
+function handleTouchStart(event: TouchEvent) {
+  isLongPress.value = false;
+  longPressTimeout = setTimeout(() => {
+    isLongPress.value = true;
+    const touch = event.touches[0];
+    const mouseEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      screenX: touch.screenX,
+      screenY: touch.screenY,
+    });
+    emit('contextmenu', mouseEvent as any);
+  }, 500);
+}
+
+function handleTouchEnd() {
+  if (longPressTimeout) {
+    clearTimeout(longPressTimeout);
+    longPressTimeout = null;
+  }
+}
+
+function handleTouchMove() {
+  if (longPressTimeout) {
+    clearTimeout(longPressTimeout);
+    longPressTimeout = null;
+  }
+}
+
+function handleClickWithLongPressCheck(event: Event) {
+  if (isLongPress.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    isLongPress.value = false;
+    return;
+  }
+  emit('click');
+}
 </script>
 
 <template>
@@ -99,8 +143,11 @@ function handleDragEnd() {
     :class="['feed-item', isActive ? 'active' : '', props.compactMode ? 'compact' : '']"
     :data-feed-id="feed.id"
     :data-level="level || 0"
-    @click="emit('click')"
+    @click="handleClickWithLongPressCheck"
     @contextmenu="(e) => emit('contextmenu', e)"
+    @touchstart="handleTouchStart"
+    @touchend="handleTouchEnd"
+    @touchmove="handleTouchMove"
   >
     <!-- Drag handle (only visible in edit mode and not for FreshRSS feeds) -->
     <div

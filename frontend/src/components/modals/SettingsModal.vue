@@ -109,9 +109,81 @@ function handleDiscoverAll() {
         >
       </div>
 
-      <div class="flex flex-1 min-h-0 overflow-hidden">
-        <!-- Sidebar Navigation -->
-        <div class="w-48 sm:w-56 border-r border-border bg-bg-secondary shrink-0 overflow-y-scroll">
+      <div class="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
+        <!-- Mobile Tab Navigation - Horizontal Scroll -->
+        <div class="md:hidden w-full border-b border-border bg-bg-secondary shrink-0 overflow-x-auto">
+          <nav class="flex whitespace-nowrap p-2 gap-1">
+            <button
+              :class="['mobile-tab-btn', activeTab === 'general' ? 'active' : '']"
+              @click="activeTab = 'general'"
+            >
+              <PhSlidersHorizontal :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'reading' ? 'active' : '']"
+              @click="activeTab = 'reading'"
+            >
+              <PhBookOpen :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'feeds' ? 'active' : '']"
+              @click="activeTab = 'feeds'"
+            >
+              <PhRss :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'content' ? 'active' : '']"
+              @click="activeTab = 'content'"
+            >
+              <PhTextT :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'ai' ? 'active' : '']"
+              @click="activeTab = 'ai'"
+            >
+              <PhBrain :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'rules' ? 'active' : '']"
+              @click="activeTab = 'rules'"
+            >
+              <PhFunnel :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'network' ? 'active' : '']"
+              @click="activeTab = 'network'"
+            >
+              <PhGlobe :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'plugins' ? 'active' : '']"
+              @click="activeTab = 'plugins'"
+            >
+              <PhPuzzlePiece :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'shortcuts' ? 'active' : '']"
+              @click="activeTab = 'shortcuts'"
+            >
+              <PhKeyboard :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'statistics' ? 'active' : '']"
+              @click="activeTab = 'statistics'"
+            >
+              <PhChartBar :size="18" />
+            </button>
+            <button
+              :class="['mobile-tab-btn', activeTab === 'about' ? 'active' : '']"
+              @click="activeTab = 'about'"
+            >
+              <PhInfo :size="18" />
+            </button>
+          </nav>
+        </div>
+
+        <!-- Sidebar Navigation - Desktop -->
+        <div class="hidden md:block w-48 sm:w-56 border-r border-border bg-bg-secondary shrink-0 overflow-y-scroll">
           <nav class="p-2 space-y-1">
             <button
               :class="['sidebar-tab-btn', activeTab === 'general' ? 'active' : '']"
@@ -311,6 +383,23 @@ function handleDiscoverAll() {
   width: 3px;
   background: var(--accent-color);
   border-radius: 0 2px 2px 0;
+}
+
+/* Mobile tab button styles */
+.mobile-tab-btn {
+  @apply flex items-center justify-center p-2.5 rounded-lg bg-transparent text-text-secondary transition-all;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.mobile-tab-btn:hover {
+  background-color: rgba(128, 128, 128, 0.1);
+  color: var(--text-primary);
+}
+
+.mobile-tab-btn.active {
+  @apply text-accent;
+  background-color: rgba(128, 128, 128, 0.08);
 }
 
 .btn-primary {

@@ -137,7 +137,7 @@ const menuStyle = computed(() => ({
 <template>
   <div
     ref="menuRef"
-    class="fixed z-50 bg-bg-primary border border-border rounded-lg shadow-xl py-1 min-w-[180px] animate-fade-in"
+    class="fixed z-[100] bg-bg-primary border border-border rounded-lg shadow-xl py-1 min-w-[180px] animate-fade-in"
     :style="menuStyle"
   >
     <template v-for="(item, index) in items" :key="index">

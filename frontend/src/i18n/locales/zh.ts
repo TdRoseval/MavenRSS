@@ -91,6 +91,7 @@ const zh: TranslationMessages = {
       goToUnread: '转到未读',
       nextArticle: '下一篇文章',
       previousArticle: '上一篇文章',
+      backToList: '返回列表',
     },
     parts: {
       articleTitle: '文章标题',

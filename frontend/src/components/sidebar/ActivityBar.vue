@@ -23,9 +23,13 @@ const { clearAllFilters } = useArticleFilter();
 
 interface Props {
   isCollapsed?: boolean;
+  isMobile?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  isCollapsed: false,
+  isMobile: false,
+});
 
 const emit = defineEmits<{
   'select-filter': [filterType: string];
@@ -283,8 +287,9 @@ defineExpose({
         <!-- Divider -->
         <div class="w-8 h-px bg-border my-2"></div>
 
-        <!-- Collapse Button (at the bottom) -->
+        <!-- Collapse Button (at the bottom) - Hidden on mobile -->
         <button
+          v-if="!isMobile"
           class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
           style="width: 44px; height: 44px"
           :title="t('sidebar.activity.collapseActivityBar')"
@@ -342,6 +347,13 @@ defineExpose({
   /* Prevent layout shift during animations */
   backface-visibility: hidden;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Mobile: activity bar should have the same z-index as sidebar */
+@media (max-width: 767px) {
+  .smart-activity-bar {
+    z-index: 60;
+  }
 }
 
 /* Navigation items smooth transitions */

@@ -1151,9 +1151,11 @@
     margin: 1.5em 0;
   }
 
-  /* Inline images on mobile */
-  .prose p img,
-  .prose li img {
+  /* Inline images on mobile - only apply to very small images (icons/emojis) */
+  .prose p img[height],
+  .prose p img[width],
+  .prose li img[height],
+  .prose li img[width] {
     max-height: 1.25em;
   }
 
@@ -1173,6 +1175,18 @@
 
   .prose h3 + .translation-text {
     font-size: 1.25em;
+  }
+
+  /* Mobile video styling */
+  .prose video {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .prose iframe {
+    width: 100%;
+    max-width: 100%;
   }
 }
 

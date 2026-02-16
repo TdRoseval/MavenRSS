@@ -112,11 +112,11 @@ export function useArticleDetail() {
     }
   }
 
-  const showContent = ref(false);
+  const showContent = ref(true);
   const articleContent = ref('');
   const isLoadingContent = ref(false);
   const currentArticleId = ref<number | null>(null);
-  const defaultViewMode = ref<ViewMode>('original');
+  const defaultViewMode = ref<ViewMode>('rendered');
   const pendingRenderAction = ref<RenderAction>(null);
   const imageViewerSrc = ref<string | null>(null);
   const imageViewerAlt = ref('');

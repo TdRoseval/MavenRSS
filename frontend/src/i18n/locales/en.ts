@@ -94,6 +94,7 @@ const en: TranslationMessages = {
       goToUnread: 'Go to Unread',
       nextArticle: 'Next Article',
       previousArticle: 'Previous Article',
+      backToList: 'Back to List',
     },
     parts: {
       articleTitle: 'Article Title',
