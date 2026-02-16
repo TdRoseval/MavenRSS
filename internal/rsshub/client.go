@@ -118,6 +118,45 @@ func (c *Client) ValidateRouteWithContext(ctx context.Context, route string) err
 	return lastErr
 }
 
+// TestEndpoint tests if the RSSHub endpoint is reachable
+func (c *Client) TestEndpoint() error {
+	return c.TestEndpointWithContext(context.Background())
+}
+
+// TestEndpointWithContext tests if the RSSHub endpoint is reachable with context support
+func (c *Client) TestEndpointWithContext(ctx context.Context) error {
+	testURL := c.Endpoint
+	if !strings.HasSuffix(testURL, "/") {
+		testURL += "/"
+	}
+
+	client := httputil.GetPooledHTTPClient(c.proxyURL, httputil.DefaultRSSHubTimeout)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", testURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to RSSHub endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		return fmt.Errorf("RSSHub server returned error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("RSSHub server returned error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	return nil
+}
+
 func (c *Client) BuildURL(route string) string {
 	url := fmt.Sprintf("%s/%s", c.Endpoint, route)
 	if c.APIKey != "" {

@@ -62,7 +62,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // HandleTestConnection tests the RSSHub endpoint and API key
 //
 //	@Summary		Test RSSHub connection
-//	@Description	Tests the connection to RSSHub endpoint with the provided API key by validating a common route
+//	@Description	Tests the connection to RSSHub endpoint with the provided API key by validating the endpoint
 //	@Tags			rsshub
 //	@Accept			json
 //	@Produce		json
@@ -89,7 +89,15 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Test with a simple, common route
+	// Validate endpoint
+	if req.Endpoint == "" {
+		response.JSON(w, map[string]interface{}{
+			"success": false,
+			"error":   "Endpoint is required",
+		})
+		return
+	}
+
 	// Build proxy URL if enabled
 	var proxyURL string
 	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
@@ -103,7 +111,7 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 	}
 
 	client := rsshub.NewClientWithProxy(req.Endpoint, req.APIKey, proxyURL)
-	err := client.ValidateRoute("nytimes")
+	err := client.TestEndpoint()
 
 	if err != nil {
 		response.JSON(w, map[string]interface{}{
