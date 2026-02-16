@@ -200,7 +200,13 @@ func (f *Fetcher) AddSubscription(url string, category string, customTitle strin
 	// Try fetching and sanitizing the feed first with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), httputil.DefaultRSSFetchTimeout)
 	defer cancel()
+
+	// Create tempFeed with global proxy settings if enabled
 	tempFeed := &models.Feed{URL: url}
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		tempFeed.ProxyEnabled = true
+	}
 	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, tempFeed, url)
 	if err != nil {
 		utils.DebugLog("AddSubscription: Failed to fetch feed for %s: %v", url, err)
@@ -505,14 +511,18 @@ func (f *Fetcher) ParseFeed(ctx context.Context, url string) (*gofeed.Feed, erro
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Use fetchAndSanitizeFeed to ensure proper HTTP client (with proxy) is used
 	tempFeed := &models.Feed{URL: actualURL}
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		tempFeed.ProxyEnabled = true
+	}
 	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, tempFeed, actualURL)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Parse the sanitized XML
 	parser := gofeed.NewParser()
 	httpClient, err := f.getHTTPClient(*tempFeed)
@@ -662,14 +672,14 @@ func (f *Fetcher) parseFeedWithFeedInternal(ctx context.Context, feed *models.Fe
 	debugTimer.Stage("Standard parsing via ParseURLWithContext")
 	debugTimer.LogWithTime("About to call ParseURLWithContext with fresh client")
 	utils.DebugLog("parseFeedWithFeedInternal: Attempting standard RSS parsing for %s", actualURL)
-	
+
 	// Create a fresh parser with latest proxy configuration for this request
 	freshParser := gofeed.NewParser()
 	httpClient, err := f.getHTTPClient(*feed)
 	if err == nil {
 		freshParser.Client = httpClient
 	}
-	
+
 	parsedFeed, err := freshParser.ParseURLWithContext(actualURL, fetchCtx)
 	debugTimer.LogWithTime("ParseURLWithContext completed, err=%v", err)
 	if err != nil {
