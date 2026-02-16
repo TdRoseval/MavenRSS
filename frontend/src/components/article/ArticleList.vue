@@ -228,48 +228,42 @@ function getFilterText(): string {
 const { initialize: initializeShowPreviewImages } = useShowPreviewImages();
 
 // Load settings and setup
-onMounted(async () => {
-  await loadTranslationSettings();
-  await initializeShowPreviewImages();
-
-  try {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    defaultViewMode.value = data.default_view_mode || 'original';
-
-    // Parse and apply settings including layout_mode
-    settings.value = parseSettingsData(data);
-    console.log('ArticleList settings loaded on mount:', settings.value.layout_mode);
-
-    // Set up intersection observer for auto-translation
-    if (translationSettings.value.enabled && listRef.value) {
-      setupIntersectionObserver(listRef.value, store.articles);
-    }
-  } catch (e) {
-    console.error('Error loading settings:', e);
-  }
+onMounted(() => {
+  loadTranslationSettings();
+  initializeShowPreviewImages();
+  loadArticleListSettings();
 
   // Listen for translation settings changes
   window.addEventListener(
     'translation-settings-changed',
     onTranslationSettingsChanged as EventListener
   );
-  // Listen for default view mode changes
   window.addEventListener('default-view-mode-changed', onDefaultViewModeChanged as EventListener);
-  // Listen for show preview images changes
   window.addEventListener(
     'show-preview-images-changed',
     onShowPreviewImagesChanged as EventListener
   );
-  // Listen for layout mode changes
   window.addEventListener('layout-mode-changed', onLayoutModeChanged as EventListener);
-  // Listen for settings loaded event (from App.vue on startup)
   window.addEventListener('settings-loaded', onSettingsLoaded as EventListener);
-  // Listen for refresh articles events
   window.addEventListener('refresh-articles', onRefreshArticles);
-  // Listen for toggle filter events (from keyboard shortcut)
   window.addEventListener('toggle-filter', onToggleFilter);
 });
+
+async function loadArticleListSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    defaultViewMode.value = data.default_view_mode || 'original';
+    settings.value = parseSettingsData(data);
+    console.log('ArticleList settings loaded on mount:', settings.value.layout_mode);
+
+    if (translationSettings.value.enabled && listRef.value) {
+      setupIntersectionObserver(listRef.value, store.articles);
+    }
+  } catch (e) {
+    console.error('Error loading settings:', e);
+  }
+}
 
 // Watch for articles array length changes (list content changes)
 watch(

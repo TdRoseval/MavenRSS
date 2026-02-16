@@ -123,7 +123,7 @@ const { shortcuts } = useKeyboardShortcuts({
   },
 });
 
-onMounted(async () => {
+onMounted(() => {
   // Install global notification handlers
   installGlobalHandlers();
 
@@ -134,7 +134,51 @@ onMounted(async () => {
   isMobile.value = checkIsMobile();
   window.addEventListener('resize', handleResize);
 
-  // Load remaining settings (theme and other settings are already loaded in main.ts)
+  // Load settings in the background without blocking
+  loadInitialSettings();
+
+  // Check for updates on startup (silent mode - don't show toast if up to date)
+  setTimeout(async () => {
+    try {
+      await checkForUpdates(true);
+
+      if (updateInfo.value && updateInfo.value.has_update) {
+        showUpdateDialog.value = true;
+      }
+    } catch (e) {
+      console.error('Error checking for updates:', e);
+    }
+  }, 3000);
+
+  // Load feeds and articles in background
+  setTimeout(() => {
+    store.fetchFeeds();
+    store.fetchArticles();
+
+    setTimeout(async () => {
+      try {
+        const progressRes = await fetch('/api/progress');
+        const progressData = await progressRes.json();
+
+        if (progressData.is_running) {
+          store.refreshProgress = {
+            ...store.refreshProgress,
+            isRunning: true,
+            pool_task_count: progressData.pool_task_count,
+            article_click_count: progressData.article_click_count,
+            queue_task_count: progressData.queue_task_count,
+          };
+          store.pollProgress();
+          return;
+        }
+      } catch (e) {
+        console.error('Error checking initial refresh progress:', e);
+      }
+    }, 500);
+  }, 100);
+});
+
+async function loadInitialSettings() {
   let updateInterval = 10;
   let lastGlobalRefresh = '';
 
@@ -142,23 +186,18 @@ onMounted(async () => {
     const res = await fetch('/api/settings');
     const data = await res.json();
 
-    // Set initial article list width based on layout mode setting
     const layoutMode = data.layout_mode || 'normal';
     const isCompactModeLayout = layoutMode === 'compact';
     isCardMode.value = layoutMode === 'card';
-    // First set the compact mode, then set the width (order matters)
     setCompactMode(isCompactModeLayout);
     setArticleListWidth(isCompactModeLayout ? 500 : 350);
 
-    // Notify all components that settings have been loaded
     window.dispatchEvent(new CustomEvent('settings-loaded'));
 
-    // Apply saved theme preference (already applied in main.ts, but ensure it's set)
     if (data.theme) {
       store.setTheme(data.theme);
     }
 
-    // Apply other settings
     if (data.update_interval) {
       updateInterval = parseInt(data.update_interval);
       store.startAutoRefresh(updateInterval);
@@ -168,7 +207,6 @@ onMounted(async () => {
       lastGlobalRefresh = data.last_global_refresh;
     }
 
-    // Load saved shortcuts
     if (data.shortcuts) {
       try {
         const parsed = JSON.parse(data.shortcuts);
@@ -177,76 +215,26 @@ onMounted(async () => {
         console.error('Error parsing shortcuts:', e);
       }
     }
+
+    let latestLastGlobalRefresh = lastGlobalRefresh;
+    try {
+      const settingsRes = await fetch('/api/settings');
+      const settingsData = await settingsRes.json();
+      if (settingsData.last_global_refresh) {
+        latestLastGlobalRefresh = settingsData.last_global_refresh;
+      }
+    } catch (e) {
+      console.error('Error fetching latest last_global_refresh:', e);
+    }
+
+    const shouldRefresh = shouldTriggerRefresh(latestLastGlobalRefresh, updateInterval);
+    if (shouldRefresh) {
+      store.refreshFeeds();
+    }
   } catch (e) {
     console.error('Error loading initial settings:', e);
   }
-
-  // Check for updates on startup (silent mode - don't show toast if up to date)
-  setTimeout(async () => {
-    try {
-      await checkForUpdates(true);
-
-      // If update is available, show dialog for user to manually confirm
-      if (updateInfo.value && updateInfo.value.has_update) {
-        showUpdateDialog.value = true;
-      }
-    } catch (e) {
-      console.error('Error checking for updates:', e);
-    }
-  }, 3000); // Check 3 seconds after startup
-
-  // Defer heavy operations to allow UI to render first
-  setTimeout(() => {
-    // Load feeds and articles in background
-    store.fetchFeeds();
-    store.fetchArticles();
-
-    // Check if backend is already refreshing (e.g., from auto-refresh on startup)
-    // and start polling progress if so
-    setTimeout(async () => {
-      try {
-        const progressRes = await fetch('/api/progress');
-        const progressData = await progressRes.json();
-
-        if (progressData.is_running) {
-          // Backend is already refreshing, start polling
-          store.refreshProgress = {
-            ...store.refreshProgress,
-            isRunning: true,
-            pool_task_count: progressData.pool_task_count,
-            article_click_count: progressData.article_click_count,
-            queue_task_count: progressData.queue_task_count,
-          };
-          store.pollProgress();
-          return; // Don't trigger another refresh
-        }
-      } catch (e) {
-        console.error('Error checking initial refresh progress:', e);
-      }
-
-      // Only trigger feed refresh if enough time has passed since last update
-      // and backend is not already refreshing
-
-      // Re-fetch the latest last_global_refresh from backend to ensure we have
-      // the most recent value (in case a previous update just completed)
-      let latestLastGlobalRefresh = lastGlobalRefresh;
-      try {
-        const settingsRes = await fetch('/api/settings');
-        const settingsData = await settingsRes.json();
-        if (settingsData.last_global_refresh) {
-          latestLastGlobalRefresh = settingsData.last_global_refresh;
-        }
-      } catch (e) {
-        console.error('Error fetching latest last_global_refresh:', e);
-      }
-
-      const shouldRefresh = shouldTriggerRefresh(latestLastGlobalRefresh, updateInterval);
-      if (shouldRefresh) {
-        store.refreshFeeds();
-      }
-    }, 500);
-  }, 100);
-});
+}
 
 // Listen for events from Sidebar (moved outside onMounted to ensure proper capture)
 window.addEventListener('show-add-feed', () => {
