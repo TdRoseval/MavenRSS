@@ -27,6 +27,22 @@ const (
 	proxyMaxRetries = 2
 )
 
+// decodeURLSafeBase64 decodes URL-safe Base64 strings
+// This handles both standard Base64 and URL-safe Base64 (with - and _ instead of + and /)
+func decodeURLSafeBase64(encoded string) ([]byte, error) {
+	standard := strings.ReplaceAll(encoded, "-", "+")
+	standard = strings.ReplaceAll(standard, "_", "/")
+
+	switch len(standard) % 4 {
+	case 2:
+		standard += "=="
+	case 3:
+		standard += "="
+	}
+
+	return base64.StdEncoding.DecodeString(standard)
+}
+
 // validateMediaURL validates that the URL is HTTP/HTTPS and properly formatted
 func validateMediaURL(urlStr string) error {
 	u, err := url.Parse(urlStr)
@@ -175,14 +191,19 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Use base64-encoded URL if provided, otherwise use direct URL
 	if mediaURLBase64 != "" {
-		// Decode base64 URL
-		decodedBytes, err := base64.StdEncoding.DecodeString(mediaURLBase64)
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(mediaURLBase64)
 		if err != nil {
-			log.Printf("Failed to decode base64 URL: %v", err)
+			log.Printf("Failed to decode base64 URL '%s': %v", mediaURLBase64, err)
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		mediaURL = string(decodedBytes)
+		// Decode URL-encoded characters (handle potential double-encoding)
+		mediaURL, err = url.QueryUnescape(mediaURL)
+		if err != nil {
+			log.Printf("[MediaProxy] Failed to unescape URL '%s': %v", mediaURL, err)
+		}
 	}
 
 	if mediaURL == "" {
@@ -218,13 +239,15 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	referer := r.URL.Query().Get("referer")
 	refererBase64 := r.URL.Query().Get("referer_b64")
 	if refererBase64 != "" {
-		// Decode base64 referer
-		decodedBytes, err := base64.StdEncoding.DecodeString(refererBase64)
+		// Decode base64 referer (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(refererBase64)
 		if err != nil {
-			log.Printf("Failed to decode base64 referer: %v", err)
+			log.Printf("Failed to decode base64 referer '%s': %v", refererBase64, err)
 			// Fall back to unencoded referer
 		} else {
 			referer = string(decodedBytes)
+			// Decode URL-encoded characters
+			referer, _ = url.QueryUnescape(referer)
 		}
 	}
 
@@ -391,14 +414,16 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	// Use base64-encoded URL if provided, otherwise use direct URL
 	if webpageURLBase64 != "" {
-		// Decode base64 URL
-		decodedBytes, err := base64.StdEncoding.DecodeString(webpageURLBase64)
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(webpageURLBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 URL: %v", err)
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		webpageURL = string(decodedBytes)
+		// Decode URL-encoded characters
+		webpageURL, _ = url.QueryUnescape(webpageURL)
 	}
 
 	if webpageURL == "" {
@@ -1619,14 +1644,16 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 
 	// Use base64-encoded URL if provided, otherwise use direct URL
 	if resourceURLBase64 != "" {
-		// Decode base64 URL
-		decodedBytes, err := base64.StdEncoding.DecodeString(resourceURLBase64)
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(resourceURLBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 URL: %v", err)
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		resourceURL = string(decodedBytes)
+		// Decode URL-encoded characters
+		resourceURL, _ = url.QueryUnescape(resourceURL)
 	}
 
 	if resourceURL == "" {
@@ -1640,13 +1667,15 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 
 	// Use base64-encoded referer if provided, otherwise use direct referer
 	if refererBase64 != "" {
-		// Decode base64 referer
-		decodedBytes, err := base64.StdEncoding.DecodeString(refererBase64)
+		// Decode base64 referer (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(refererBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 referer: %v", err)
 			// Fall back to unencoded referer if available
 		} else {
 			referer = string(decodedBytes)
+			// Decode URL-encoded characters
+			referer, _ = url.QueryUnescape(referer)
 		}
 	}
 

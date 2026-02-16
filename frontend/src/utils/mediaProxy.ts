@@ -7,6 +7,45 @@ let mediaCacheEnabledCache: boolean | null = null;
 let mediaCachePromise: Promise<boolean> | null = null;
 
 /**
+ * Encode a string to URL-safe Base64
+ * This handles Unicode characters and special symbols correctly
+ * Also handles double URL encoding by decoding first
+ * @param str String to encode
+ * @returns URL-safe Base64 encoded string
+ */
+export function encodeURLSafe(str: string): string {
+  if (!str) return '';
+  // First, decode any existing URL encoding to avoid double-encoding
+  try {
+    str = decodeURIComponent(str);
+  } catch {
+    // If decode fails, just use the original string
+  }
+  // Then convert to Base64 and make it URL-safe
+  const encoded = btoa(str);
+  return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Decode a URL-safe Base64 string
+ * @param str URL-safe Base64 encoded string
+ * @returns Decoded string
+ */
+export function decodeURLSafe(str: string): string {
+  // Restore padding if needed
+  let padded = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (padded.length % 4) {
+    padded += '=';
+  }
+  // Decode Base64 and then decode URI component
+  try {
+    return decodeURIComponent(atob(padded));
+  } catch {
+    return atob(padded);
+  }
+}
+
+/**
  * Convert a media URL to use the proxy endpoint
  * @param url Original media URL
  * @param referer Optional referer URL for anti-hotlinking and resolving relative URLs
@@ -41,17 +80,15 @@ export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: b
     }
   }
 
-  // CRITICAL FIX: Use base64 encoding to avoid all URL encoding issues
-  // This prevents double-encoding problems with special characters, Chinese characters, etc.
-  // Base64 encoding is safe for URLs and doesn't interfere with query parameter parsing
-  const urlB64 = btoa(urlToProxy);
+  // Use URL-safe Base64 encoding to handle Unicode and special characters
+  const urlB64 = encodeURLSafe(urlToProxy);
 
   // Build proxy URL with base64-encoded parameters
   let proxyUrl = `/api/media/proxy?url_b64=${urlB64}`;
 
   // Add referer if provided (also base64-encoded)
   if (referer) {
-    const refererB64 = btoa(referer);
+    const refererB64 = encodeURLSafe(referer);
     proxyUrl += `&referer_b64=${refererB64}`;
   }
 
