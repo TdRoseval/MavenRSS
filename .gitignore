@@ -87,3 +87,7 @@ tmpclaude-*-cwd
 i18n_usage_report.md
 __pycache__/
 .VSCodeCounter
+
+# Air (Go hot reload)
+tmp/
+.air.toml

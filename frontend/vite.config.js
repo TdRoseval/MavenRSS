@@ -10,6 +10,23 @@ export default defineConfig({
       '@': resolve(__dirname, './src')
     }
   },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:1234',
+        changeOrigin: true
+      },
+      '/docs': {
+        target: 'http://127.0.0.1:1234',
+        changeOrigin: true
+      },
+      '/swagger': {
+        target: 'http://127.0.0.1:1234',
+        changeOrigin: true
+      }
+    }
+  },
   build: {
     target: 'es2015',
     cssMinify: true,
