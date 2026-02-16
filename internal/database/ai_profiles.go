@@ -142,17 +142,31 @@ func (db *DB) GetAllAIProfilesWithoutKeys() ([]models.AIProfile, error) {
 
 // UpdateAIProfile updates an existing AI profile
 func (db *DB) UpdateAIProfile(profile *models.AIProfile) error {
-	// Encrypt API key before storing
-	encryptedKey := profile.APIKey
+	var encryptedKey string
+	var err error
+
+	// If new API key is provided, encrypt it; otherwise, keep the existing one
 	if profile.APIKey != "" {
-		encrypted, err := crypto.Encrypt(profile.APIKey)
+		encryptedKey, err = crypto.Encrypt(profile.APIKey)
 		if err != nil {
 			return fmt.Errorf("encrypt API key: %w", err)
 		}
-		encryptedKey = encrypted
+	} else {
+		// Get the existing encrypted key from database
+		var existingEncryptedKey string
+		err := db.QueryRow(`SELECT api_key FROM ai_profiles WHERE id = ?`, profile.ID).Scan(&existingEncryptedKey)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				encryptedKey = ""
+			} else {
+				return fmt.Errorf("get existing api key: %w", err)
+			}
+		} else {
+			encryptedKey = existingEncryptedKey
+		}
 	}
 
-	_, err := db.Exec(`
+	_, err = db.Exec(`
 		UPDATE ai_profiles
 		SET name = ?, api_key = ?, endpoint = ?, model = ?, custom_headers = ?, is_default = ?, use_global_proxy = ?, updated_at = ?
 		WHERE id = ?
