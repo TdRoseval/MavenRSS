@@ -93,12 +93,18 @@ func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTit
 
 	utils.DebugLog("AddRSSHubSubscription: Creating feed with URL: %s", url)
 
+	// Mark feed as using proxy if global proxy is enabled
+	// This ensures RSSHub feeds use the configured proxy during refresh
+	useProxy := proxyEnabled == "true"
+
 	feed := &models.Feed{
-		Title:       title,
-		URL:         url,
-		Link:        client.BuildURL(route), // Store the actual RSSHub URL as link
-		Description: fmt.Sprintf("RSSHub route: %s", route),
-		Category:    category,
+		Title:        title,
+		URL:          url,
+		Link:         client.BuildURL(route), // Store the actual RSSHub URL as link
+		Description:  fmt.Sprintf("RSSHub route: %s", route),
+		Category:     category,
+		ProxyEnabled: useProxy,
+		ProxyURL:     proxyURL,
 	}
 
 	return f.db.AddFeed(feed)
