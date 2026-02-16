@@ -118,24 +118,43 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 // cachedStaticHandler adds caching headers and ETag support for static files
 type cachedStaticHandler struct {
 	handler http.Handler
+	fs      fs.FS
 }
 
 func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Set caching headers for static assets (1 year for versioned files)
-	if strings.Contains(r.URL.Path, "/assets/") {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// First check if the file actually exists
+	filePath := strings.TrimPrefix(r.URL.Path, "/")
+	if filePath == "" {
+		filePath = "index.html"
 	}
-
-	// Add ETag support
-	// Use request path as a simple ETag (in production, could use file hash)
-	etag := fmt.Sprintf(`"%s"`, strings.ReplaceAll(r.URL.Path, "/", "_"))
-	if match := r.Header.Get("If-None-Match"); match != "" {
-		if match == etag {
-			w.WriteHeader(http.StatusNotModified)
-			return
+	
+	// Try to open the file to verify existence
+	_, err := h.fs.Open(filePath)
+	fileExists := err == nil
+	
+	// Only set caching headers and ETag if file exists
+	if fileExists {
+		// index.html should never be cached for long - it references versioned assets
+		if filePath == "index.html" || r.URL.Path == "/" {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		} else if strings.Contains(r.URL.Path, "/assets/") {
+			// Versioned assets can be cached forever
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
+
+		// Add ETag support
+		// Use request path as a simple ETag (in production, could use file hash)
+		etag := fmt.Sprintf(`"%s"`, strings.ReplaceAll(r.URL.Path, "/", "_"))
+		if match := r.Header.Get("If-None-Match"); match != "" {
+			if match == etag && !(filePath == "index.html" || r.URL.Path == "/") {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+		w.Header().Set("ETag", etag)
 	}
-	w.Header().Set("ETag", etag)
 
 	h.handler.ServeHTTP(w, r)
 }
@@ -240,7 +259,7 @@ func main() {
 
 	// Create a caching file server
 	fileServer := http.FileServer(http.FS(frontendFS))
-	cachedFileServer := &cachedStaticHandler{fileServer}
+	cachedFileServer := &cachedStaticHandler{handler: fileServer, fs: frontendFS}
 
 	combinedHandler := &CombinedHandler{
 		apiMux:     apiMux,
