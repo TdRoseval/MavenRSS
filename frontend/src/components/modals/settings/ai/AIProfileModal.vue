@@ -11,7 +11,12 @@ import {
   PhBookOpen,
   PhGlobe,
 } from '@phosphor-icons/vue';
-import { SettingItem, KeyValueList, StatusBoxGroup, SettingWithToggle } from '@/components/settings';
+import {
+  SettingItem,
+  KeyValueList,
+  StatusBoxGroup,
+  SettingWithToggle,
+} from '@/components/settings';
 import BaseModal from '@/components/common/BaseModal.vue';
 import ModalFooter from '@/components/common/ModalFooter.vue';
 import type { AIProfileFormData, AIProfileTestResult } from '@/types/aiProfile';

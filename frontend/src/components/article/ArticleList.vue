@@ -419,57 +419,27 @@ function onRefreshTooltipHide(): void {
 }
 
 // Article selection and interaction
-  function selectArticle(article: Article): void {
-    // Check if we should open in browser based on feed or global settings
-    const feed = store.feeds.find((f) => f.id === article.feed_id);
-    let openInBrowserMode = false;
+function selectArticle(article: Article): void {
+  // Check if we should open in browser based on feed or global settings
+  const feed = store.feeds.find((f) => f.id === article.feed_id);
+  let openInBrowserMode = false;
 
-    if (feed?.article_view_mode === 'external') {
+  if (feed?.article_view_mode === 'external') {
+    openInBrowserMode = true;
+  } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
+    // Check global setting
+    if (defaultViewMode.value === 'external') {
       openInBrowserMode = true;
-    } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
-      // Check global setting
-      if (defaultViewMode.value === 'external') {
-        openInBrowserMode = true;
-      }
     }
+  }
 
-    // If external mode is selected, open in browser and mark as read
-    if (openInBrowserMode) {
-      // Mark as read if not already read
-      if (!article.is_read) {
-        article.is_read = true;
-        apiClient.post('/articles/read', { id: article.id, read: true })
-          .then(async () => {
-            await store.fetchUnreadCounts();
-            await store.fetchFilterCounts();
-          })
-          .catch((e) => {
-            console.error('Error marking as read:', e);
-          });
-      }
-      // Open article URL in browser
-      openInBrowser(article.url);
-      return;
-    }
-
-    // Card mode: open in modal instead of side panel
-    if (isCardMode.value) {
-      openCardModal(article);
-      return;
-    }
-
-    // Normal article selection - show in app
-    // If switching from one article to another, remove the previous one from temp list
-    if (store.currentArticleId) {
-      temporarilyKeepArticles.value.delete(store.currentArticleId);
-    }
-
-    store.currentArticleId = article.id;
+  // If external mode is selected, open in browser and mark as read
+  if (openInBrowserMode) {
+    // Mark as read if not already read
     if (!article.is_read) {
       article.is_read = true;
-      // Add to temporarily keep list so it doesn't disappear immediately
-      temporarilyKeepArticles.value.add(article.id);
-      apiClient.post('/articles/read', { id: article.id, read: true })
+      apiClient
+        .post('/articles/read', { id: article.id, read: true })
         .then(async () => {
           await store.fetchUnreadCounts();
           await store.fetchFilterCounts();
@@ -478,7 +448,39 @@ function onRefreshTooltipHide(): void {
           console.error('Error marking as read:', e);
         });
     }
+    // Open article URL in browser
+    openInBrowser(article.url);
+    return;
   }
+
+  // Card mode: open in modal instead of side panel
+  if (isCardMode.value) {
+    openCardModal(article);
+    return;
+  }
+
+  // Normal article selection - show in app
+  // If switching from one article to another, remove the previous one from temp list
+  if (store.currentArticleId) {
+    temporarilyKeepArticles.value.delete(store.currentArticleId);
+  }
+
+  store.currentArticleId = article.id;
+  if (!article.is_read) {
+    article.is_read = true;
+    // Add to temporarily keep list so it doesn't disappear immediately
+    temporarilyKeepArticles.value.add(article.id);
+    apiClient
+      .post('/articles/read', { id: article.id, read: true })
+      .then(async () => {
+        await store.fetchUnreadCounts();
+        await store.fetchFilterCounts();
+      })
+      .catch((e) => {
+        console.error('Error marking as read:', e);
+      });
+  }
+}
 
 // Scrolling handler with throttling to improve performance
 let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -487,7 +489,7 @@ const SCROLL_THRESHOLD = 400; // Increased from 200 to 400 for better UX
 
 function handleScroll(e: Event): void {
   const target = e.target as HTMLElement;
-  
+
   // Update scroll position for virtual scrolling
   scrollTop.value = target.scrollTop;
   containerHeight.value = target.clientHeight;
@@ -591,15 +593,15 @@ async function markAllAsRead(): Promise<void> {
 }
 
 async function clearReadLater(): Promise<void> {
-    try {
-      await apiClient.post('/articles/clear-read-later');
-      await store.fetchArticles();
-      await store.fetchFilterCounts();
-      window.showToast(t('common.toast.clearedReadLater'), 'success');
-    } catch (e) {
-      console.error('Error clearing read later:', e);
-    }
+  try {
+    await apiClient.post('/articles/clear-read-later');
+    await store.fetchArticles();
+    await store.fetchFilterCounts();
+    window.showToast(t('common.toast.clearedReadLater'), 'success');
+  } catch (e) {
+    console.error('Error clearing read later:', e);
   }
+}
 
 // Handle hover mark as read event from ArticleItem
 function handleHoverMarkAsRead(articleId: number): void {
@@ -616,110 +618,111 @@ function handleHoverMarkAsRead(articleId: number): void {
 }
 
 // Card mode functions
-  async function openCardModal(article: Article): Promise<void> {
-    cardModalArticle.value = article;
-    showCardModal.value = true;
-    isCardModalLoading.value = true;
+async function openCardModal(article: Article): Promise<void> {
+  cardModalArticle.value = article;
+  showCardModal.value = true;
+  isCardModalLoading.value = true;
+  cardModalContent.value = '';
+
+  // Mark as read
+  if (!article.is_read) {
+    article.is_read = true;
+    temporarilyKeepArticles.value.add(article.id);
+    apiClient
+      .post('/articles/read', { id: article.id, read: true })
+      .then(async () => {
+        await store.fetchUnreadCounts();
+        await store.fetchFilterCounts();
+      })
+      .catch((e) => console.error('Error marking as read:', e));
+  }
+
+  // Load article content
+  try {
+    const mediaCacheEnabled = await isMediaCacheEnabled();
+    const data = await apiClient.get('/articles/content', { id: article.id });
+    let content = data.content || '';
+    if (mediaCacheEnabled && content) {
+      content = proxyImagesInHtml(content, article.url);
+    }
+    cardModalContent.value = content;
+  } catch (e) {
+    console.error('Error loading article content:', e);
     cardModalContent.value = '';
-
-    // Mark as read
-    if (!article.is_read) {
-      article.is_read = true;
-      temporarilyKeepArticles.value.add(article.id);
-      apiClient.post('/articles/read', { id: article.id, read: true })
-        .then(async () => {
-          await store.fetchUnreadCounts();
-          await store.fetchFilterCounts();
-        })
-        .catch((e) => console.error('Error marking as read:', e));
-    }
-
-    // Load article content
-    try {
-      const mediaCacheEnabled = await isMediaCacheEnabled();
-      const data = await apiClient.get('/articles/content', { id: article.id });
-      let content = data.content || '';
-      if (mediaCacheEnabled && content) {
-        content = proxyImagesInHtml(content, article.url);
-      }
-      cardModalContent.value = content;
-    } catch (e) {
-      console.error('Error loading article content:', e);
-      cardModalContent.value = '';
-    } finally {
-      isCardModalLoading.value = false;
-    }
+  } finally {
+    isCardModalLoading.value = false;
   }
+}
 
-  function closeCardModal(): void {
-    showCardModal.value = false;
-    cardModalArticle.value = null;
-    cardModalContent.value = '';
+function closeCardModal(): void {
+  showCardModal.value = false;
+  cardModalArticle.value = null;
+  cardModalContent.value = '';
+}
+
+function cardModalPrevious(): void {
+  if (!cardModalArticle.value) return;
+  const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
+  if (currentIndex > 0) {
+    openCardModal(filteredArticles.value[currentIndex - 1]);
   }
+}
 
-  function cardModalPrevious(): void {
-    if (!cardModalArticle.value) return;
-    const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
-    if (currentIndex > 0) {
-      openCardModal(filteredArticles.value[currentIndex - 1]);
-    }
+function cardModalNext(): void {
+  if (!cardModalArticle.value) return;
+  const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
+  if (currentIndex >= 0 && currentIndex < filteredArticles.value.length - 1) {
+    openCardModal(filteredArticles.value[currentIndex + 1]);
   }
+}
 
-  function cardModalNext(): void {
-    if (!cardModalArticle.value) return;
-    const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
-    if (currentIndex >= 0 && currentIndex < filteredArticles.value.length - 1) {
-      openCardModal(filteredArticles.value[currentIndex + 1]);
-    }
+async function cardModalToggleRead(): Promise<void> {
+  if (!cardModalArticle.value) return;
+  const article = cardModalArticle.value;
+  const newReadState = !article.is_read;
+
+  try {
+    await apiClient.post('/articles/read', { id: article.id, read: newReadState });
+    article.is_read = newReadState;
+    await store.fetchUnreadCounts();
+    await store.fetchFilterCounts();
+  } catch (e) {
+    console.error('Error toggling read state:', e);
   }
+}
 
-  async function cardModalToggleRead(): Promise<void> {
-    if (!cardModalArticle.value) return;
-    const article = cardModalArticle.value;
-    const newReadState = !article.is_read;
+async function cardModalToggleFavorite(): Promise<void> {
+  if (!cardModalArticle.value) return;
+  const article = cardModalArticle.value;
+  const newFavoriteState = !article.is_favorite;
 
-    try {
-      await apiClient.post('/articles/read', { id: article.id, read: newReadState });
-      article.is_read = newReadState;
-      await store.fetchUnreadCounts();
-      await store.fetchFilterCounts();
-    } catch (e) {
-      console.error('Error toggling read state:', e);
-    }
+  try {
+    await apiClient.post('/articles/favorite', { id: article.id, favorite: newFavoriteState });
+    article.is_favorite = newFavoriteState;
+    await store.fetchFilterCounts();
+  } catch (e) {
+    console.error('Error toggling favorite:', e);
   }
+}
 
-  async function cardModalToggleFavorite(): Promise<void> {
-    if (!cardModalArticle.value) return;
-    const article = cardModalArticle.value;
-    const newFavoriteState = !article.is_favorite;
+async function cardModalToggleReadLater(): Promise<void> {
+  if (!cardModalArticle.value) return;
+  const article = cardModalArticle.value;
 
-    try {
-      await apiClient.post('/articles/favorite', { id: article.id, favorite: newFavoriteState });
-      article.is_favorite = newFavoriteState;
-      await store.fetchFilterCounts();
-    } catch (e) {
-      console.error('Error toggling favorite:', e);
-    }
+  try {
+    await apiClient.post('/articles/toggle-read-later', { id: article.id });
+    article.is_read_later = !article.is_read_later;
+    await store.fetchFilterCounts();
+  } catch (e) {
+    console.error('Error toggling read later:', e);
   }
+}
 
-  async function cardModalToggleReadLater(): Promise<void> {
-    if (!cardModalArticle.value) return;
-    const article = cardModalArticle.value;
-
-    try {
-      await apiClient.post('/articles/toggle-read-later', { id: article.id });
-      article.is_read_later = !article.is_read_later;
-      await store.fetchFilterCounts();
-    } catch (e) {
-      console.error('Error toggling read later:', e);
-    }
+function cardModalRetryLoadContent(): void {
+  if (cardModalArticle.value) {
+    openCardModal(cardModalArticle.value);
   }
-
-  function cardModalRetryLoadContent(): void {
-    if (cardModalArticle.value) {
-      openCardModal(cardModalArticle.value);
-    }
-  }
+}
 </script>
 
 <template>
@@ -965,7 +968,7 @@ function handleHoverMarkAsRead(articleId: number): void {
       <div v-else>
         <!-- Virtual scroll spacer - top padding -->
         <div :style="{ paddingTop: listPaddingTop + 'px' }"></div>
-        
+
         <!-- Visible articles -->
         <div class="article-list-container">
           <ArticleItem
@@ -979,7 +982,7 @@ function handleHoverMarkAsRead(articleId: number): void {
             @hover-mark-as-read="handleHoverMarkAsRead"
           />
         </div>
-        
+
         <!-- Virtual scroll spacer - bottom padding -->
         <div :style="{ paddingBottom: listPaddingBottom + 'px' }"></div>
       </div>

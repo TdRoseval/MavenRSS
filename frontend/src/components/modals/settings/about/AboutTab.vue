@@ -99,9 +99,12 @@ function openGitHubRelease() {
       <span v-if="isLoadingVersion" class="inline-block animate-pulse">Loading...</span>
       <span v-else>{{ appVersion }}</span>
     </p>
-    
+
     <!-- Server Mode Indicator -->
-    <div v-if="isServerMode" class="mt-4 mx-auto max-w-md text-left bg-blue-50 dark:bg-blue-900/20 p-3 sm:p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+    <div
+      v-if="isServerMode"
+      class="mt-4 mx-auto max-w-md text-left bg-blue-50 dark:bg-blue-900/20 p-3 sm:p-4 rounded-lg border border-blue-200 dark:border-blue-800"
+    >
       <div class="flex items-start gap-2 sm:gap-3">
         <PhInfo :size="28" class="text-blue-500 mt-0.5 shrink-0 sm:w-8 sm:h-8" />
         <div class="flex-1 min-w-0">
@@ -109,7 +112,8 @@ function openGitHubRelease() {
             Server Mode
           </h4>
           <p class="text-xs sm:text-sm text-blue-600 dark:text-blue-400">
-            MrRSS is running in server mode. Auto-updates are not available for server instances. To update, pull the latest Docker image and restart the container.
+            MrRSS is running in server mode. Auto-updates are not available for server instances. To
+            update, pull the latest Docker image and restart the container.
           </p>
         </div>
       </div>

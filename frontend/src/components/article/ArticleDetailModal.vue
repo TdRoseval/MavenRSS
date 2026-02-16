@@ -66,12 +66,15 @@ async function exportToObsidian() {
 
     // Check if it's a file download (server mode)
     const contentType = response.headers.get('Content-Type');
-    if (contentType?.includes('text/markdown') || contentType?.includes('application/octet-stream')) {
+    if (
+      contentType?.includes('text/markdown') ||
+      contentType?.includes('application/octet-stream')
+    ) {
       // Handle file download
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      
+
       // Get filename from Content-Disposition or use default
       let filename = 'article.md';
       const contentDisposition = response.headers.get('Content-Disposition');
@@ -81,14 +84,14 @@ async function exportToObsidian() {
           filename = filenameMatch[1];
         }
       }
-      
+
       link.href = url;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      
+
       window.showToast(t('setting.plugins.obsidian.exported'), 'success');
     } else {
       // Handle JSON response (desktop mode)

@@ -5,6 +5,7 @@ import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 import FindInPage from '../common/FindInPage.vue';
+import { encodeURLSafe } from '@/utils/mediaProxy';
 
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 
@@ -40,7 +41,7 @@ const showFindInPage = ref(false);
 
 const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
-  const urlB64 = btoa(article.value.url);
+  const urlB64 = encodeURLSafe(article.value.url);
   return `/api/webpage/proxy?url_b64=${urlB64}`;
 });
 
