@@ -115,6 +115,31 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 	return sr.ResponseWriter.Write(b)
 }
 
+// cachedStaticHandler adds caching headers and ETag support for static files
+type cachedStaticHandler struct {
+	handler http.Handler
+}
+
+func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Set caching headers for static assets (1 year for versioned files)
+	if strings.Contains(r.URL.Path, "/assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
+
+	// Add ETag support
+	// Use request path as a simple ETag (in production, could use file hash)
+	etag := fmt.Sprintf(`"%s"`, strings.ReplaceAll(r.URL.Path, "/", "_"))
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		if match == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	w.Header().Set("ETag", etag)
+
+	h.handler.ServeHTTP(w, r)
+}
+
 func main() {
 	// Parse flags
 	flag.BoolFunc("server", "Run in headless server mode", func(s string) error {
@@ -213,11 +238,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Create a caching file server
 	fileServer := http.FileServer(http.FS(frontendFS))
+	cachedFileServer := &cachedStaticHandler{fileServer}
 
 	combinedHandler := &CombinedHandler{
 		apiMux:     apiMux,
-		fileServer: fileServer,
+		fileServer: cachedFileServer,
 	}
 
 	// Wrap the combined handler with server middleware
@@ -233,8 +260,9 @@ func main() {
 	go h.StartBackgroundScheduler(bgCtx)
 
 	// Start Network Speed Detection (optional but good to have)
+	// Run asynchronously in background - don't block server startup
 	go func() {
-		log.Println("Detecting network speed...")
+		log.Println("Detecting network speed in background...")
 
 		var proxyURL string
 		proxyEnabled, _ := db.GetSetting("proxy_enabled")
