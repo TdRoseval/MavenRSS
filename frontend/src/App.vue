@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from './stores/app';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import Sidebar from './components/sidebar/Sidebar.vue';
 import ArticleList from './components/article/ArticleList.vue';
 import ArticleDetail from './components/article/ArticleDetail.vue';
@@ -38,6 +38,7 @@ const isSidebarOpen = ref(true);
 const isMobile = ref(false);
 const mobileView = ref<'list' | 'detail'>('list');
 const currentArticleIdOnMobile = ref<number | null>(null);
+const articleListRef = ref<any>(null);
 
 function checkIsMobile(): boolean {
   return window.innerWidth < 768;
@@ -346,24 +347,35 @@ function onFeedUpdated(): void {
     </Transition>
 
     <!-- Mobile main content area -->
-    <div v-if="isMobile" class="flex-1 flex flex-col h-full overflow-hidden">
-      <!-- Mobile: Article List View -->
-      <template v-if="mobileView === 'list'">
+    <div v-if="isMobile" class="flex-1 flex flex-col h-full overflow-hidden relative">
+      <!-- Mobile: Article List View (always rendered, but hidden when in detail view) -->
+      <div
+        :class="[
+          'absolute inset-0 z-10 transition-opacity duration-200',
+          mobileView === 'list' ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'
+        ]"
+      >
         <ArticleList
+          ref="articleListRef"
           :is-mobile="isMobile"
           :is-sidebar-open="isSidebarOpen"
           @toggle-sidebar="toggleSidebar"
           @select-article="openArticleOnMobile"
         />
-      </template>
+      </div>
 
-      <!-- Mobile: Article Detail View -->
-      <template v-else-if="mobileView === 'detail'">
+      <!-- Mobile: Article Detail View (always rendered, but hidden when in list view) -->
+      <div
+        :class="[
+          'absolute inset-0 z-20 transition-transform duration-300',
+          mobileView === 'detail' ? 'translate-x-0' : 'translate-x-full'
+        ]"
+      >
         <ArticleDetail
           :is-mobile="isMobile"
           @close="closeArticleOnMobile"
         />
-      </template>
+      </div>
     </div>
 
     <!-- Desktop: Original layout -->
@@ -375,7 +387,7 @@ function onFeedUpdated(): void {
 
       <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
       <template v-else>
-        <ArticleList :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+        <ArticleList ref="articleListRef" :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
 
         <!-- Hide resizer and ArticleDetail when in card mode -->
         <template v-if="!isCardMode">
