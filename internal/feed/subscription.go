@@ -197,8 +197,9 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, f
 func (f *Fetcher) AddSubscription(url string, category string, customTitle string) (int64, error) {
 	utils.DebugLog("AddSubscription: Starting to add feed from URL: %s", url)
 
-	// Try fetching and sanitizing the feed first
-	ctx := context.Background()
+	// Try fetching and sanitizing the feed first with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), httputil.DefaultRSSFetchTimeout)
+	defer cancel()
 	tempFeed := &models.Feed{URL: url}
 	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, tempFeed, url)
 	if err != nil {
@@ -247,7 +248,7 @@ func (f *Fetcher) AddSubscription(url string, category string, customTitle strin
 	if err == nil {
 		freshParser.Client = httpClient
 	}
-	parsedFeed, err := freshParser.ParseURL(url)
+	parsedFeed, err := freshParser.ParseURLWithContext(url, ctx)
 	if err != nil {
 		utils.DebugLog("AddSubscription: Standard RSS parsing failed for %s: %v", url, err)
 

@@ -3,16 +3,16 @@ package httputil
 import "time"
 
 const (
-	DefaultRSSFetchTimeout     = 20 * time.Second
-	DefaultRSSHubTimeout       = 20 * time.Second
-	DefaultFreshRSSTimeout     = 30 * time.Second
-	DefaultDiscoveryTimeout    = 20 * time.Second
-	DefaultTranslationTimeout  = 30 * time.Second
-	DefaultAITimeout           = 60 * time.Second
-	DefaultMediaProxyTimeout   = 30 * time.Second
-	DefaultMediaCacheTimeout   = 30 * time.Second
+	DefaultRSSFetchTimeout     = 60 * time.Second
+	DefaultRSSHubTimeout       = 60 * time.Second
+	DefaultFreshRSSTimeout     = 60 * time.Second
+	DefaultDiscoveryTimeout    = 60 * time.Second
+	DefaultTranslationTimeout  = 60 * time.Second
+	DefaultAITimeout           = 120 * time.Second
+	DefaultMediaProxyTimeout   = 60 * time.Second
+	DefaultMediaCacheTimeout   = 60 * time.Second
 	DefaultNetworkDetectTimeout = 10 * time.Second
-	DefaultWebpageProxyTimeout = 30 * time.Second
+	DefaultWebpageProxyTimeout = 60 * time.Second
 	
 	MaxMediaDownloadTimeout = 120 * time.Second
 	LargeFileSizeThreshold  = 10 * 1024 * 1024 // 10MB
