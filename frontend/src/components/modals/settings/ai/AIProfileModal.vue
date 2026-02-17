@@ -227,7 +227,7 @@ function handleClose() {
 
 <template>
   <Teleport to="body">
-    <BaseModal v-if="isOpen" :title="modalTitle" size="2xl" :z-index="60" @close="handleClose">
+    <BaseModal v-if="isOpen" :title="modalTitle" size="2xl" :z-index="110" @close="handleClose">
       <!-- Form Content -->
       <div class="p-4 sm:p-6 space-y-4">
         <!-- Profile Name -->

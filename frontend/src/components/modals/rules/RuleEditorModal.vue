@@ -204,7 +204,7 @@ async function handleClose(checkUnsaved = false): Promise<void> {
 </script>
 
 <template>
-  <BaseModal v-if="show" size="2xl" :z-index="70" @close="handleClose(true)">
+  <BaseModal v-if="show" size="2xl" :z-index="110" @close="handleClose(true)">
     <!-- Custom Header -->
     <template #header>
       <h3 class="text-lg font-semibold m-0 flex items-center gap-2 text-text-primary">
