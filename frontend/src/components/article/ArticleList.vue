@@ -84,12 +84,11 @@ const {
 const { activeFilters, resetFilterState, fetchFilteredArticles, loadMoreFilteredArticles } =
   useArticleFilter();
 
-// AI Search state
-const aiSearchResults = ref<Article[]>([]);
-const isAISearchActive = ref(false);
-
 // AI Search enabled from settings
 const isAISearchEnabled = computed(() => settings.value.ai_search_enabled);
+
+// AI search active state
+const isAISearchActive = computed(() => store.aiSearchResults.length > 0);
 
 // Use store's filtered articles and loading state directly
 const filteredArticlesFromServer = computed(() => store.filteredArticlesFromServer);
@@ -98,8 +97,8 @@ const isFilterLoading = computed(() => store.isFilterLoading);
 // Computed filtered articles - optimized to avoid excessive recomputation
 const filteredArticles = computed(() => {
   // If AI search is active, use AI search results
-  if (isAISearchActive.value && aiSearchResults.value.length > 0) {
-    return aiSearchResults.value;
+  if (isAISearchActive.value && store.aiSearchResults.length > 0) {
+    return store.aiSearchResults;
   }
 
   let articles = activeFilters.value.length > 0 ? filteredArticlesFromServer.value : store.articles;
@@ -120,13 +119,11 @@ const filteredArticles = computed(() => {
 
 // AI Search handlers
 function handleAISearchResults(articles: Article[]) {
-  aiSearchResults.value = articles;
-  isAISearchActive.value = true;
+  store.setAISearchResults(articles);
 }
 
 function handleAISearchClear() {
-  aiSearchResults.value = [];
-  isAISearchActive.value = false;
+  store.clearAISearchResults();
 }
 
 const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, async () => {

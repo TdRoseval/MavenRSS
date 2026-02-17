@@ -104,6 +104,9 @@ export const useAppStore = defineStore('app', () => {
   // Article view mode preferences (persisted across component mounts)
   const articleViewModePreferences = ref<Map<number, 'original' | 'rendered'>>(new Map());
 
+  // AI Search results
+  const aiSearchResults = ref<Article[]>([]);
+
   // Refresh progress
   const refreshProgress = ref<RefreshProgress>({ isRunning: false });
   let refreshInterval: ReturnType<typeof setInterval> | null = null;
@@ -662,6 +665,14 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  function setAISearchResults(results: Article[]): void {
+    aiSearchResults.value = results;
+  }
+
+  function clearAISearchResults(): void {
+    aiSearchResults.value = [];
+  }
+
   return {
     // State
     articles,
@@ -688,6 +699,7 @@ export const useAppStore = defineStore('app', () => {
     filteredArticlesFromServer,
     isFilterLoading,
     articleViewModePreferences,
+    aiSearchResults,
 
     // Actions
     setFilter,
@@ -716,5 +728,7 @@ export const useAppStore = defineStore('app', () => {
     setFilteredArticlesFromServer,
     setIsFilterLoading,
     fetchTaskDetails,
+    setAISearchResults,
+    clearAISearchResults,
   };
 });

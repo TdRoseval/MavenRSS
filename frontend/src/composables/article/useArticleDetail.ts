@@ -24,14 +24,25 @@ export function useArticleDetail() {
   const store = useAppStore();
   const { t, locale } = useI18n();
 
-  const article = computed<Article | undefined>(() =>
-    store.articles.find((a: Article) => a.id === store.currentArticleId)
-  );
+  const article = computed<Article | undefined>(() => {
+    // First try to find in regular articles
+    let foundArticle = store.articles.find((a: Article) => a.id === store.currentArticleId);
+    // If not found, try AI search results
+    if (!foundArticle && store.aiSearchResults.length > 0) {
+      foundArticle = store.aiSearchResults.find((a: Article) => a.id === store.currentArticleId);
+    }
+    return foundArticle;
+  });
 
   // Get current article index in the filtered list
   const currentArticleIndex = computed(() => {
     if (!store.currentArticleId) return -1;
-    return store.articles.findIndex((a: Article) => a.id === store.currentArticleId);
+    // Check both regular articles and AI search results
+    let index = store.articles.findIndex((a: Article) => a.id === store.currentArticleId);
+    if (index === -1 && store.aiSearchResults.length > 0) {
+      index = store.aiSearchResults.findIndex((a: Article) => a.id === store.currentArticleId);
+    }
+    return index;
   });
 
   // Check if there's a previous article

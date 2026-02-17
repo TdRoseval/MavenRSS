@@ -18,7 +18,10 @@ import (
 
 // AISearchRequest represents the request for AI-powered search
 type AISearchRequest struct {
-	Query string `json:"query"`
+	Query    string `json:"query"`
+	Filter   string `json:"filter,omitempty"`
+	FeedID   *int   `json:"feed_id,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 // AISearchResponse represents the response from AI search
@@ -106,7 +109,7 @@ Output: {"required":["Python","web框架","web framework"],"optional":["Django",
 }
 
 // buildSearchSQL builds the SQL query from search terms with relevance scoring
-func buildSearchSQL(terms *SearchTerms, limit int) string {
+func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int, category string) string {
 	if terms == nil || (len(terms.Required) == 0 && len(terms.Patterns) == 0) {
 		return ""
 	}
@@ -178,6 +181,35 @@ func buildSearchSQL(terms *SearchTerms, limit int) string {
 
 	// Build full query with LEFT JOIN to article_contents for content search
 	whereClause := strings.Join(requiredConditions, " OR ")
+	
+	// Add filter conditions
+	var additionalConditions []string
+	additionalConditions = append(additionalConditions, "a.is_hidden = 0")
+	
+	if feedID != nil {
+		additionalConditions = append(additionalConditions, fmt.Sprintf("a.feed_id = %d", *feedID))
+	}
+	
+	if category != "" {
+		// Handle nested categories
+		additionalConditions = append(additionalConditions, fmt.Sprintf("(f.category = '%s' OR f.category LIKE '%s/%%')", strings.ReplaceAll(category, "'", "''"), strings.ReplaceAll(category, "'", "''")))
+	}
+	
+	// Add filter-specific conditions
+	switch filter {
+	case "unread":
+		additionalConditions = append(additionalConditions, "a.is_read = 0")
+	case "favorites":
+		additionalConditions = append(additionalConditions, "a.is_favorite = 1")
+	case "readLater":
+		additionalConditions = append(additionalConditions, "a.is_read_later = 1")
+	case "imageGallery":
+		additionalConditions = append(additionalConditions, "a.image_url != ''")
+	}
+	
+	fullWhereClause := strings.Join(additionalConditions, " AND ")
+	fullWhereClause = fmt.Sprintf("%s AND (%s)", fullWhereClause, whereClause)
+
 	query := fmt.Sprintf(`
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url,
 			   a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later,
@@ -186,10 +218,10 @@ func buildSearchSQL(terms *SearchTerms, limit int) string {
 		FROM articles a
 		JOIN feeds f ON a.feed_id = f.id
 		LEFT JOIN article_contents c ON a.id = c.article_id
-		WHERE a.is_hidden = 0 AND (%s)
+		WHERE %s
 		ORDER BY relevance_score DESC, a.published_at DESC
 		LIMIT %d
-	`, relevanceScore, whereClause, limit)
+	`, relevanceScore, fullWhereClause, limit)
 
 	return query
 }
@@ -323,7 +355,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	log.Printf("[AI Search] Required: %v, Optional: %v, Patterns: %v", searchTerms.Required, searchTerms.Optional, searchTerms.Patterns)
 
 	// Build and execute search query
-	searchSQL := buildSearchSQL(searchTerms, 100)
+	searchSQL := buildSearchSQL(searchTerms, 100, req.Filter, req.FeedID, req.Category)
 	log.Printf("[AI Search] SQL query:\n%s", searchSQL)
 
 	// Execute search
