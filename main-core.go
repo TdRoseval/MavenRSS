@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"MrRSS/internal/ai"
+	"MrRSS/internal/crypto"
 	"MrRSS/internal/database"
 	"MrRSS/internal/feed"
 	handlers "MrRSS/internal/handlers/core"
@@ -239,6 +240,13 @@ func main() {
 		log.Fatal(err)
 	}
 	debugLog("Database path: %s", dbPath)
+
+	// Set crypto key directory to data directory for server mode
+	dataDir, err := fileutil.GetDataDir()
+	if err == nil {
+		crypto.SetServerModeKeyDir(dataDir)
+		log.Printf("Encryption key directory: %s", dataDir)
+	}
 
 	// Initialize database
 	log.Println("Initializing Database...")
