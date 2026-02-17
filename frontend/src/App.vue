@@ -1,20 +1,11 @@
 <script setup lang="ts">
 import { useAppStore } from './stores/app';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import Sidebar from './components/sidebar/Sidebar.vue';
 import ArticleList from './components/article/ArticleList.vue';
 import ArticleDetail from './components/article/ArticleDetail.vue';
 import ImageGalleryView from './components/article/imageGallery/index.vue';
-import AddFeedModal from './components/modals/feed/AddFeedModal.vue';
-import EditFeedModal from './components/modals/feed/EditFeedModal.vue';
-import SettingsModal from './components/modals/SettingsModal.vue';
-import DiscoverFeedsModal from './components/modals/discovery/DiscoverFeedsModal.vue';
-import UpdateAvailableDialog from './components/modals/update/UpdateAvailableDialog.vue';
-import ContextMenu from './components/common/ContextMenu.vue';
-import ConfirmDialog from './components/modals/common/ConfirmDialog.vue';
-import InputDialog from './components/modals/common/InputDialog.vue';
-import MultiSelectDialog from './components/modals/common/MultiSelectDialog.vue';
 import Toast from './components/common/Toast.vue';
 import { useNotifications } from './composables/ui/useNotifications';
 import { useKeyboardShortcuts } from './composables/ui/useKeyboardShortcuts';
@@ -23,6 +14,16 @@ import { useResizablePanels } from './composables/ui/useResizablePanels';
 import { useWindowState } from './composables/core/useWindowState';
 import { useAppUpdates } from './composables/core/useAppUpdates';
 import type { Feed } from './types/models';
+
+const AddFeedModal = defineAsyncComponent(() => import('./components/modals/feed/AddFeedModal.vue'));
+const EditFeedModal = defineAsyncComponent(() => import('./components/modals/feed/EditFeedModal.vue'));
+const SettingsModal = defineAsyncComponent(() => import('./components/modals/SettingsModal.vue'));
+const DiscoverFeedsModal = defineAsyncComponent(() => import('./components/modals/discovery/DiscoverFeedsModal.vue'));
+const UpdateAvailableDialog = defineAsyncComponent(() => import('./components/modals/update/UpdateAvailableDialog.vue'));
+const ContextMenu = defineAsyncComponent(() => import('./components/common/ContextMenu.vue'));
+const ConfirmDialog = defineAsyncComponent(() => import('./components/modals/common/ConfirmDialog.vue'));
+const InputDialog = defineAsyncComponent(() => import('./components/modals/common/InputDialog.vue'));
+const MultiSelectDialog = defineAsyncComponent(() => import('./components/modals/common/MultiSelectDialog.vue'));
 
 const store = useAppStore();
 const { t } = useI18n();
@@ -38,7 +39,6 @@ const isSidebarOpen = ref(true);
 const isMobile = ref(false);
 const mobileView = ref<'list' | 'detail'>('list');
 const currentArticleIdOnMobile = ref<number | null>(null);
-const articleListRef = ref<any>(null);
 
 function checkIsMobile(): boolean {
   return window.innerWidth < 768;

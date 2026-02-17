@@ -32,21 +32,28 @@ export default defineConfig({
     target: 'es2015',
     cssMinify: true,
     sourcemap: false,
-    chunkSizeWarningLimit: 2000,
-    reportCompressedSize: false,
+    chunkSizeWarningLimit: 1000,
+    reportCompressedSize: true,
     minify: 'esbuild',
     esbuild: {
       drop: ['console', 'debugger']
     },
     rollupOptions: {
       output: {
-        manualChunks: undefined,
+        manualChunks: {
+          vendor: ['vue', 'pinia', 'vue-i18n'],
+          ui: ['@phosphor-icons/vue', 'tailwindcss'],
+          utils: ['highlight.js', 'katex']
+        },
         entryFileNames: 'assets/index-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
     emptyOutDir: true
+  },
+  optimizeDeps: {
+    include: ['vue', 'pinia', 'vue-i18n', '@phosphor-icons/vue', 'highlight.js', 'katex']
   },
   test: {
     globals: true,
