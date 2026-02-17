@@ -5,6 +5,7 @@ import i18n, { locale } from './i18n';
 import './style.css';
 import App from './App.vue';
 import { setCachedServerMode } from './utils/serverMode';
+import { register as registerServiceWorker } from './utils/serviceWorker';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -26,6 +27,18 @@ app.use(PhosphorIcons);
 
 // Mount app immediately for fast initial render
 app.mount('#app');
+
+// Register Service Worker for offline caching (only in production-like environments)
+if (import.meta.env.PROD || window.location.hostname !== 'localhost') {
+  registerServiceWorker({
+    onSuccess: () => {
+      console.log('[ServiceWorker] Service Worker registered successfully');
+    },
+    onUpdate: () => {
+      console.log('[ServiceWorker] New content available, please refresh');
+    }
+  });
+}
 
 // Initialize settings and language in the background (non-blocking)
 async function initializeSettings() {

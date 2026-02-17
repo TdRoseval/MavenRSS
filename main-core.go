@@ -128,12 +128,23 @@ func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		filePath = "index.html"
 	}
 	
-	// Try to open the file to verify existence
-	_, err := h.fs.Open(filePath)
+	// Try to open the file to verify existence and get info
+	file, err := h.fs.Open(filePath)
 	fileExists := err == nil
+	
+	var fileInfo fs.FileInfo
+	if fileExists {
+		fileInfo, _ = file.Stat()
+		file.Close()
+	}
 	
 	// Only set caching headers and ETag if file exists
 	if fileExists {
+		// Set security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		
 		// index.html should never be cached for long - it references versioned assets
 		if filePath == "index.html" || r.URL.Path == "/" {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -142,18 +153,35 @@ func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		} else if strings.Contains(r.URL.Path, "/assets/") {
 			// Versioned assets can be cached forever
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if strings.HasSuffix(filePath, ".css") || strings.HasSuffix(filePath, ".js") {
+			// Other static assets with short cache
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		} else if strings.HasSuffix(filePath, ".jpg") || strings.HasSuffix(filePath, ".jpeg") || 
+			strings.HasSuffix(filePath, ".png") || strings.HasSuffix(filePath, ".gif") || 
+			strings.HasSuffix(filePath, ".svg") || strings.HasSuffix(filePath, ".webp") {
+			// Images - longer cache
+			w.Header().Set("Cache-Control", "public, max-age=604800")
+		} else if strings.HasSuffix(filePath, ".woff") || strings.HasSuffix(filePath, ".woff2") || 
+			strings.HasSuffix(filePath, ".ttf") || strings.HasSuffix(filePath, ".otf") {
+			// Fonts - cache forever
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Default cache
+			w.Header().Set("Cache-Control", "public, max-age=3600")
 		}
 
-		// Add ETag support
-		// Use request path as a simple ETag (in production, could use file hash)
-		etag := fmt.Sprintf(`"%s"`, strings.ReplaceAll(r.URL.Path, "/", "_"))
-		if match := r.Header.Get("If-None-Match"); match != "" {
-			if match == etag && !(filePath == "index.html" || r.URL.Path == "/") {
-				w.WriteHeader(http.StatusNotModified)
-				return
+		// Add ETag support using file modification time and size
+		if fileInfo != nil {
+			etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().Unix(), fileInfo.Size())
+			if match := r.Header.Get("If-None-Match"); match != "" {
+				if match == etag && !(filePath == "index.html" || r.URL.Path == "/") {
+					w.WriteHeader(http.StatusNotModified)
+					return
+				}
 			}
+			w.Header().Set("ETag", etag)
+			w.Header().Set("Last-Modified", fileInfo.ModTime().UTC().Format(http.TimeFormat))
 		}
-		w.Header().Set("ETag", etag)
 	}
 
 	h.handler.ServeHTTP(w, r)
