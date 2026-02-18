@@ -123,11 +123,11 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 		useFeedIDFilter = true
 	}
 
-	// Build the main query
+	// Build the main query with optimized index usage
 	baseQuery := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url, a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later, a.translated_title, a.summary, a.freshrss_item_id, f.title, a.author
 		FROM articles a
-		JOIN feeds f ON a.feed_id = f.id
+		LEFT JOIN feeds f ON a.feed_id = f.id
 	`
 	var args []interface{}
 	whereClauses := []string{}
@@ -137,6 +137,7 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 		whereClauses = append(whereClauses, "a.is_hidden = 0")
 	}
 
+	// Apply filter conditions in optimal order to use our composite indexes
 	switch filter {
 	case "unread":
 		whereClauses = append(whereClauses, "a.is_read = 0")
@@ -155,7 +156,7 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 		}
 	}
 
-	// Apply feed ID filter
+	// Apply feed ID filter - this helps use our composite indexes
 	if useFeedIDFilter {
 		// Use optimized IN clause with pre-filtered feed IDs
 		placeholders := make([]string, len(feedIDFilter))
@@ -169,6 +170,7 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 		args = append(args, feedID)
 	}
 
+	// Build final query
 	query := baseQuery
 	if len(whereClauses) > 0 {
 		query += " WHERE " + whereClauses[0]
@@ -185,12 +187,13 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 	}
 	defer rows.Close()
 
-	var articles []models.Article
+	// Pre-allocate slice with known capacity for better performance
+	articles := make([]models.Article, 0, limit)
 	for rows.Next() {
 		var a models.Article
-		var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, author sql.NullString
+		var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, feedTitle, author sql.NullString
 		var publishedAt sql.NullTime
-		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &a.FeedTitle, &author); err != nil {
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &feedTitle, &author); err != nil {
 			log.Println("Error scanning article:", err)
 			continue
 		}
@@ -205,6 +208,7 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 		a.TranslatedTitle = translatedTitle.String
 		a.Summary = summary.String
 		a.FreshRSSItemID = freshrssItemID.String
+		a.FeedTitle = feedTitle.String
 		a.Author = author.String
 		articles = append(articles, a)
 	}
@@ -218,15 +222,18 @@ func (db *DB) GetArticleByID(id int64) (*models.Article, error) {
 	query := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url, a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later, a.translated_title, a.summary, a.freshrss_item_id, f.title, a.author
 		FROM articles a
-		JOIN feeds f ON a.feed_id = f.id
+		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.id = ?
 	`
 	row := db.QueryRow(query, id)
 
 	var a models.Article
-	var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, author sql.NullString
+	var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, feedTitle, author sql.NullString
 	var publishedAt sql.NullTime
-	if err := row.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &a.FeedTitle, &author); err != nil {
+	if err := row.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &feedTitle, &author); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	a.ImageURL = imageURL.String
@@ -240,6 +247,7 @@ func (db *DB) GetArticleByID(id int64) (*models.Article, error) {
 	a.TranslatedTitle = translatedTitle.String
 	a.Summary = summary.String
 	a.FreshRSSItemID = freshrssItemID.String
+	a.FeedTitle = feedTitle.String
 	a.Author = author.String
 	return &a, nil
 }
@@ -262,7 +270,7 @@ func (db *DB) GetArticlesByIDs(ids []int64) ([]models.Article, error) {
 	query := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url, a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later, a.translated_title, a.summary, a.freshrss_item_id, f.title, a.author
 		FROM articles a
-		JOIN feeds f ON a.feed_id = f.id
+		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.id IN (` + strings.Join(placeholders, ",") + `)
 	`
 
@@ -275,10 +283,10 @@ func (db *DB) GetArticlesByIDs(ids []int64) ([]models.Article, error) {
 	articles := []models.Article{}
 	for rows.Next() {
 		var a models.Article
-		var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, author sql.NullString
+		var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, feedTitle, author sql.NullString
 		var publishedAt sql.NullTime
 
-		err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &a.FeedTitle, &author)
+		err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &imageURL, &audioURL, &videoURL, &publishedAt, &a.IsRead, &a.IsFavorite, &a.IsHidden, &a.IsReadLater, &translatedTitle, &summary, &freshrssItemID, &feedTitle, &author)
 		if err != nil {
 			return nil, err
 		}
@@ -294,6 +302,7 @@ func (db *DB) GetArticlesByIDs(ids []int64) ([]models.Article, error) {
 		a.TranslatedTitle = translatedTitle.String
 		a.Summary = summary.String
 		a.FreshRSSItemID = freshrssItemID.String
+		a.FeedTitle = feedTitle.String
 		a.Author = author.String
 
 		articles = append(articles, a)
@@ -315,6 +324,9 @@ func (db *DB) GetArticleIDByUniqueID(title string, feedID int64, publishedAt tim
 	var id int64
 	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&id)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return id, nil

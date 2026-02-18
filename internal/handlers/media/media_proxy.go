@@ -23,6 +23,26 @@ import (
 	"MrRSS/internal/utils/httputil"
 )
 
+const (
+	proxyMaxRetries = 2
+)
+
+// decodeURLSafeBase64 decodes URL-safe Base64 strings
+// This handles both standard Base64 and URL-safe Base64 (with - and _ instead of + and /)
+func decodeURLSafeBase64(encoded string) ([]byte, error) {
+	standard := strings.ReplaceAll(encoded, "-", "+")
+	standard = strings.ReplaceAll(standard, "_", "/")
+
+	switch len(standard) % 4 {
+	case 2:
+		standard += "=="
+	case 3:
+		standard += "="
+	}
+
+	return base64.StdEncoding.DecodeString(standard)
+}
+
 // validateMediaURL validates that the URL is HTTP/HTTPS and properly formatted
 func validateMediaURL(urlStr string) error {
 	u, err := url.Parse(urlStr)
@@ -171,14 +191,19 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Use base64-encoded URL if provided, otherwise use direct URL
 	if mediaURLBase64 != "" {
-		// Decode base64 URL
-		decodedBytes, err := base64.StdEncoding.DecodeString(mediaURLBase64)
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(mediaURLBase64)
 		if err != nil {
-			log.Printf("Failed to decode base64 URL: %v", err)
+			log.Printf("Failed to decode base64 URL '%s': %v", mediaURLBase64, err)
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		mediaURL = string(decodedBytes)
+		// Decode URL-encoded characters (handle potential double-encoding)
+		mediaURL, err = url.QueryUnescape(mediaURL)
+		if err != nil {
+			log.Printf("[MediaProxy] Failed to unescape URL '%s': %v", mediaURL, err)
+		}
 	}
 
 	if mediaURL == "" {
@@ -214,14 +239,28 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	referer := r.URL.Query().Get("referer")
 	refererBase64 := r.URL.Query().Get("referer_b64")
 	if refererBase64 != "" {
-		// Decode base64 referer
-		decodedBytes, err := base64.StdEncoding.DecodeString(refererBase64)
+		// Decode base64 referer (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(refererBase64)
 		if err != nil {
-			log.Printf("Failed to decode base64 referer: %v", err)
+			log.Printf("Failed to decode base64 referer '%s': %v", refererBase64, err)
 			// Fall back to unencoded referer
 		} else {
 			referer = string(decodedBytes)
+			// Decode URL-encoded characters
+			referer, _ = url.QueryUnescape(referer)
 		}
+	}
+
+	// Build proxy URL from global settings for media cache
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
 	// Try cache first if enabled
@@ -232,8 +271,8 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to get media cache directory: %v", err)
 			// Continue to fallback if enabled
 		} else {
-			// Initialize media cache
-			mediaCache, err := cache.NewMediaCache(cacheDir)
+			// Initialize media cache with proxy support
+			mediaCache, err := cache.NewMediaCacheWithProxy(cacheDir, proxyURL)
 			if err != nil {
 				log.Printf("Failed to initialize media cache: %v", err)
 				// Continue to fallback if enabled
@@ -256,7 +295,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Fallback: Direct proxy if enabled
 	if mediaProxyFallback == "true" {
-		err := proxyMediaDirectly(mediaURL, referer, w)
+		err := proxyMediaDirectly(mediaURL, referer, proxyURL, w)
 		if err == nil {
 			return // Success
 		}
@@ -367,20 +406,24 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	const maxWebpageSize = 10 * 1024 * 1024 // 10MB limit for webpages
+
 	// Get URL from query parameter (support both direct and base64-encoded)
 	webpageURL := r.URL.Query().Get("url")
 	webpageURLBase64 := r.URL.Query().Get("url_b64")
 
 	// Use base64-encoded URL if provided, otherwise use direct URL
 	if webpageURLBase64 != "" {
-		// Decode base64 URL
-		decodedBytes, err := base64.StdEncoding.DecodeString(webpageURLBase64)
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(webpageURLBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 URL: %v", err)
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		webpageURL = string(decodedBytes)
+		// Decode URL-encoded characters
+		webpageURL, _ = url.QueryUnescape(webpageURL)
 	}
 
 	if webpageURL == "" {
@@ -394,36 +437,23 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Create HTTP client with proxy settings if enabled
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Check if proxy is enabled and configure client
+	// Build proxy URL from global settings for webpage proxy
+	var proxyURL string
 	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 	if proxyEnabled == "true" {
 		proxyType, _ := h.DB.GetSetting("proxy_type")
 		proxyHost, _ := h.DB.GetSetting("proxy_host")
 		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetSetting("proxy_password")
-
-		proxyURLStr := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-		if proxyURLStr != "" {
-			proxyURL, err := url.Parse(proxyURLStr)
-			if err != nil {
-				log.Printf("Failed to parse proxy URL: %v", err)
-			} else {
-				transport := &http.Transport{
-					Proxy: http.ProxyURL(proxyURL),
-				}
-				client.Transport = transport
-			}
-		}
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
+	// Get pooled HTTP client with proxy support
+	client := httputil.GetPooledHTTPClient(proxyURL, httputil.DefaultWebpageProxyTimeout)
+
 	// Create request to the target URL
-	req, err := http.NewRequest("GET", webpageURL, nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", webpageURL, nil)
 	if err != nil {
 		log.Printf("Failed to create request: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -438,11 +468,63 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		req.Header.Set("Referer", referer)
 	}
 
-	// Execute the request
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Failed to fetch webpage %s: %v", webpageURL, err)
-		response.Error(w, err, http.StatusInternalServerError)
+	// Execute the request with retry
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
+		select {
+		case <-r.Context().Done():
+			log.Printf("[WebpageProxy] Request cancelled for %s", webpageURL)
+			response.Error(w, r.Context().Err(), http.StatusRequestTimeout)
+			return
+		default:
+		}
+
+		reqCopy := req.Clone(r.Context())
+
+		resp, err = client.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
+				backoff := calculateProxyBackoff(attempt)
+				log.Printf("[WebpageProxy] Network error on attempt %d/%d for %s, retrying in %v: %v",
+					attempt+1, proxyMaxRetries, webpageURL, backoff, err)
+				select {
+				case <-r.Context().Done():
+					log.Printf("[WebpageProxy] Request cancelled during backoff for %s", webpageURL)
+					response.Error(w, r.Context().Err(), http.StatusRequestTimeout)
+					return
+				case <-time.After(backoff):
+				}
+				continue
+			}
+			log.Printf("Failed to fetch webpage %s: %v", webpageURL, err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Retry on server errors
+		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
+			resp.Body.Close()
+			backoff := calculateProxyBackoff(attempt)
+			log.Printf("[WebpageProxy] Server error %d on attempt %d/%d for %s, retrying in %v",
+				resp.StatusCode, attempt+1, proxyMaxRetries, webpageURL, backoff)
+			select {
+			case <-r.Context().Done():
+				log.Printf("[WebpageProxy] Request cancelled during backoff for %s", webpageURL)
+				response.Error(w, r.Context().Err(), http.StatusRequestTimeout)
+				return
+			case <-time.After(backoff):
+			}
+			continue
+		}
+
+		break
+	}
+
+	if resp == nil {
+		response.Error(w, fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
@@ -460,11 +542,18 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		contentType = "text/html; charset=utf-8"
 	}
 
-	// Read the entire response body
-	bodyBytes, err := io.ReadAll(resp.Body)
+	// Read response body with size limit
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxWebpageSize+1))
 	if err != nil {
 		log.Printf("Failed to read response body: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Check if we exceeded the size limit
+	if len(bodyBytes) > maxWebpageSize {
+		log.Printf("Webpage too large (exceeds %d MB): %s", maxWebpageSize/(1024*1024), webpageURL)
+		response.Error(w, fmt.Errorf("webpage too large"), http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -1555,14 +1644,16 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 
 	// Use base64-encoded URL if provided, otherwise use direct URL
 	if resourceURLBase64 != "" {
-		// Decode base64 URL
-		decodedBytes, err := base64.StdEncoding.DecodeString(resourceURLBase64)
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(resourceURLBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 URL: %v", err)
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
 		resourceURL = string(decodedBytes)
+		// Decode URL-encoded characters
+		resourceURL, _ = url.QueryUnescape(resourceURL)
 	}
 
 	if resourceURL == "" {
@@ -1576,13 +1667,15 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 
 	// Use base64-encoded referer if provided, otherwise use direct referer
 	if refererBase64 != "" {
-		// Decode base64 referer
-		decodedBytes, err := base64.StdEncoding.DecodeString(refererBase64)
+		// Decode base64 referer (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(refererBase64)
 		if err != nil {
 			log.Printf("Failed to decode base64 referer: %v", err)
 			// Fall back to unencoded referer if available
 		} else {
 			referer = string(decodedBytes)
+			// Decode URL-encoded characters
+			referer, _ = url.QueryUnescape(referer)
 		}
 	}
 
@@ -1603,33 +1696,20 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Create HTTP client with proxy settings if enabled
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Check if proxy is enabled and configure client
+	// Build proxy URL if enabled
+	var proxyURL string
 	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
 	if proxyEnabled == "true" {
 		proxyType, _ := h.DB.GetSetting("proxy_type")
 		proxyHost, _ := h.DB.GetSetting("proxy_host")
 		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetSetting("proxy_password")
-
-		proxyURLStr := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-		if proxyURLStr != "" {
-			proxyURL, err := url.Parse(proxyURLStr)
-			if err != nil {
-				log.Printf("Failed to parse proxy URL: %v", err)
-			} else {
-				transport := &http.Transport{
-					Proxy: http.ProxyURL(proxyURL),
-				}
-				client.Transport = transport
-			}
-		}
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
+
+	// Get pooled HTTP client with proxy support
+	httpClient := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
 
 	// Create request to the resource URL
 	var req *http.Request
@@ -1637,7 +1717,8 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 
 	// For POST requests, read the body
 	if r.Method == http.MethodPost {
-		body, err := io.ReadAll(r.Body)
+		var body []byte
+		body, err = io.ReadAll(r.Body)
 		if err != nil {
 			log.Printf("Failed to read request body: %v", err)
 			response.Error(w, err, http.StatusInternalServerError)
@@ -1667,11 +1748,43 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	req.Header.Set("Referer", referer)
 	req.Header.Set("Accept", "*/*")
 
-	// Execute the request
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Failed to fetch resource %s: %v", resourceURL, err)
-		response.Error(w, err, http.StatusInternalServerError)
+	// Execute the request with retry
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
+		reqCopy := req.Clone(r.Context())
+
+		resp, err = httpClient.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
+				backoff := calculateProxyBackoff(attempt)
+				log.Printf("[WebpageResource] Network error on attempt %d/%d for %s, retrying in %v: %v",
+					attempt+1, proxyMaxRetries, resourceURL, backoff, err)
+				time.Sleep(backoff)
+				continue
+			}
+			log.Printf("Failed to fetch resource %s: %v", resourceURL, err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Retry on server errors
+		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
+			resp.Body.Close()
+			backoff := calculateProxyBackoff(attempt)
+			log.Printf("[WebpageResource] Server error %d on attempt %d/%d for %s, retrying in %v",
+				resp.StatusCode, attempt+1, proxyMaxRetries, resourceURL, backoff)
+			time.Sleep(backoff)
+			continue
+		}
+
+		break
+	}
+
+	if resp == nil {
+		response.Error(w, fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
@@ -1765,10 +1878,8 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 }
 
 // proxyMediaDirectly proxies media directly without caching
-func proxyMediaDirectly(mediaURL, referer string, w http.ResponseWriter) error {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+func proxyMediaDirectly(mediaURL, referer, proxyURL string, w http.ResponseWriter) error {
+	client := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
 
 	req, err := http.NewRequest("GET", mediaURL, nil)
 	if err != nil {
@@ -1789,9 +1900,40 @@ func proxyMediaDirectly(mediaURL, referer string, w http.ResponseWriter) error {
 	req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to fetch media: %w", err)
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
+		reqCopy := req.Clone(req.Context())
+
+		resp, err = client.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
+				backoff := calculateProxyBackoff(attempt)
+				log.Printf("[MediaProxy] Network error on attempt %d/%d for %s, retrying in %v: %v",
+					attempt+1, proxyMaxRetries, mediaURL, backoff, err)
+				time.Sleep(backoff)
+				continue
+			}
+			return fmt.Errorf("failed to fetch media after %d attempts: %w", attempt+1, err)
+		}
+
+		// Retry on server errors
+		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
+			resp.Body.Close()
+			backoff := calculateProxyBackoff(attempt)
+			log.Printf("[MediaProxy] Server error %d on attempt %d/%d for %s, retrying in %v",
+				resp.StatusCode, attempt+1, proxyMaxRetries, mediaURL, backoff)
+			time.Sleep(backoff)
+			continue
+		}
+
+		break
+	}
+
+	if resp == nil {
+		return fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr)
 	}
 	defer resp.Body.Close()
 
@@ -1816,6 +1958,11 @@ func proxyMediaDirectly(mediaURL, referer string, w http.ResponseWriter) error {
 	}
 
 	return nil
+}
+
+// calculateProxyBackoff calculates exponential backoff duration for proxy requests
+func calculateProxyBackoff(attempt int) time.Duration {
+	return httputil.CalculateBackoffSimple(attempt)
 }
 
 // HandleMediaCacheInfo returns information about the media cache

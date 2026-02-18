@@ -50,6 +50,12 @@ jobs:
             echo "file=./Dockerfile.server" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set lowercase repository owner
+        id: repo-owner
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner=${OWNER_LOWER}" >> $GITHUB_OUTPUT
+
       - name: Build image
         uses: docker/build-push-action@v6
         with:
@@ -58,7 +64,7 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_to_registry }}
           tags: |
-            ${{ inputs.push_to_registry && format('ghcr.io/{0}/mrrss:{1}', github.repository_owner, inputs.image_tag) || '' }}
+            ${{ inputs.push_to_registry && format('ghcr.io/{0}/mrrss:{1}', steps.repo-owner.outputs.owner, inputs.image_tag) || '' }}
           labels: |
             org.opencontainers.image.title=MrRSS
             org.opencontainers.image.description=A modern, privacy-focused RSS reader

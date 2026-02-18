@@ -9,8 +9,14 @@ import {
   PhSliders,
   PhArrowClockwise,
   PhBookOpen,
+  PhGlobe,
 } from '@phosphor-icons/vue';
-import { SettingItem, KeyValueList, StatusBoxGroup } from '@/components/settings';
+import {
+  SettingItem,
+  KeyValueList,
+  StatusBoxGroup,
+  SettingWithToggle,
+} from '@/components/settings';
 import BaseModal from '@/components/common/BaseModal.vue';
 import ModalFooter from '@/components/common/ModalFooter.vue';
 import type { AIProfileFormData, AIProfileTestResult } from '@/types/aiProfile';
@@ -221,7 +227,7 @@ function handleClose() {
 
 <template>
   <Teleport to="body">
-    <BaseModal v-if="isOpen" :title="modalTitle" size="2xl" :z-index="60" @close="handleClose">
+    <BaseModal v-if="isOpen" :title="modalTitle" size="2xl" :z-index="110" @close="handleClose">
       <!-- Form Content -->
       <div class="p-4 sm:p-6 space-y-4">
         <!-- Profile Name -->
@@ -304,6 +310,15 @@ function handleClose() {
             ascii-only
           />
         </div>
+
+        <!-- Use Global Proxy -->
+        <SettingWithToggle
+          :icon="PhGlobe"
+          :title="t('setting.ai.useGlobalProxy')"
+          :description="t('setting.ai.useGlobalProxyDesc')"
+          :model-value="formData.use_global_proxy"
+          @update:model-value="formData.use_global_proxy = $event"
+        />
 
         <!-- Test Configuration Section -->
         <div class="border-t border-border pt-4 mt-4">

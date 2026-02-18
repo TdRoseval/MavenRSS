@@ -114,13 +114,15 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 			// Try to get AI config from ProfileProvider first
 			var apiKey, endpoint, model string
+			var useGlobalProxy bool = true
 			if h.AIProfileProvider != nil {
 				cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureSummary)
 				if err == nil && cfg != nil {
 					apiKey = cfg.APIKey
 					endpoint = cfg.Endpoint
 					model = cfg.Model
-					log.Printf("Using AI profile for summarization (endpoint: %s, model: %s)", endpoint, model)
+					useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureSummary)
+					log.Printf("Using AI profile for summarization (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
 				}
 			}
 
@@ -129,6 +131,8 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 				apiKey, _ = h.DB.GetEncryptedSetting("ai_api_key")
 				endpoint, _ = h.DB.GetSetting("ai_endpoint")
 				model, _ = h.DB.GetSetting("ai_model")
+				// Use global proxy by default for global settings
+				useGlobalProxy = true
 				log.Printf("Using global AI settings for summarization (API key: %s)", func() string {
 					if apiKey != "" {
 						return "configured"
@@ -141,7 +145,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 			customHeaders, _ := h.DB.GetSetting("ai_custom_headers")
 			language, _ := h.DB.GetSetting("language")
 
-			aiSummarizer := summary.NewAISummarizerWithDB(apiKey, endpoint, model, h.DB)
+			aiSummarizer := summary.NewAISummarizerWithDB(apiKey, endpoint, model, h.DB, useGlobalProxy)
 			if systemPrompt != "" {
 				aiSummarizer.SetSystemPrompt(systemPrompt)
 			}

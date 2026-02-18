@@ -227,17 +227,22 @@ func DetectAPIProvider(endpoint string) string {
 		return "deepseek"
 	}
 
-	// Ollama endpoints
-	if strings.Contains(endpoint, "localhost") ||
-		strings.Contains(endpoint, "127.0.0.1") ||
-		strings.Contains(endpoint, "ollama") {
-		return "ollama"
-	}
-
-	// OpenAI-compatible endpoints (default)
+	// OpenAI endpoints (check before Ollama to avoid false positives)
 	if strings.Contains(endpoint, "openai.com") ||
 		strings.Contains(endpoint, "api.openai.com") {
 		return "openai"
+	}
+
+	// Ollama endpoints - must contain /api/ path to avoid false positives with local proxies
+	// Local proxies like localhost:7890 should NOT be detected as Ollama
+	if (strings.Contains(endpoint, "localhost") ||
+		strings.Contains(endpoint, "127.0.0.1") ||
+		strings.Contains(endpoint, "::1") ||
+		strings.Contains(endpoint, "0.0.0.0")) &&
+		(strings.Contains(endpoint, "/api/generate") ||
+			strings.Contains(endpoint, "/api/chat") ||
+			strings.Contains(endpoint, ":11434")) {
+		return "ollama"
 	}
 
 	return "unknown"

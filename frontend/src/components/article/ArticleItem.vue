@@ -86,6 +86,8 @@ const formatDateWithI18n = (dateStr: string): string => {
 const mediaCacheEnabled = ref(false);
 const hoverMarkAsRead = ref(false);
 let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
+const isLongPress = ref(false);
 
 const imageUrl = computed(() => {
   if (!props.article.image_url) return '';
@@ -250,7 +252,52 @@ onUnmounted(() => {
   if (hoverTimeout) {
     clearTimeout(hoverTimeout);
   }
+  if (longPressTimeout) {
+    clearTimeout(longPressTimeout);
+  }
 });
+
+// Touch/long press handlers
+function handleTouchStart(event: TouchEvent) {
+  isLongPress.value = false;
+  longPressTimeout = setTimeout(() => {
+    isLongPress.value = true;
+    const touch = event.touches[0];
+    const mouseEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      screenX: touch.screenX,
+      screenY: touch.screenY,
+    });
+    emit('contextmenu', mouseEvent as any);
+  }, 500);
+}
+
+function handleTouchEnd() {
+  if (longPressTimeout) {
+    clearTimeout(longPressTimeout);
+    longPressTimeout = null;
+  }
+}
+
+function handleTouchMove() {
+  if (longPressTimeout) {
+    clearTimeout(longPressTimeout);
+    longPressTimeout = null;
+  }
+}
+
+function handleClickWithLongPressCheck(event: Event) {
+  if (isLongPress.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    isLongPress.value = false;
+    return;
+  }
+  emit('click');
+}
 </script>
 
 <template>
@@ -266,10 +313,13 @@ onUnmounted(() => {
       isActive ? 'active' : '',
       compactMode ? 'compact' : '',
     ]"
-    @click="emit('click')"
+    @click="handleClickWithLongPressCheck"
     @contextmenu="emit('contextmenu', $event)"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
+    @touchstart="handleTouchStart"
+    @touchend="handleTouchEnd"
+    @touchmove="handleTouchMove"
   >
     <!-- Image placeholder with lazy loading - hidden completely on error -->
     <div

@@ -1,12 +1,25 @@
 <script setup lang="ts">
-import { PhNewspaper, PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue';
+import { PhNewspaper, PhCaretLeft, PhCaretRight, PhX } from '@phosphor-icons/vue';
 import { useArticleDetail } from '@/composables/article/useArticleDetail';
 import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 import FindInPage from '../common/FindInPage.vue';
+import { encodeURLSafe } from '@/utils/mediaProxy';
 
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+
+interface Props {
+  isMobile?: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isMobile: false,
+});
+
+const emit = defineEmits<{
+  close: [];
+}>();
 
 const {
   article,
@@ -35,12 +48,19 @@ const {
   t,
 } = useArticleDetail();
 
+function handleClose() {
+  if (props.isMobile) {
+    emit('close');
+  }
+  close();
+}
+
 const showTranslations = ref(true);
 const showFindInPage = ref(false);
 
 const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
-  const urlB64 = btoa(article.value.url);
+  const urlB64 = encodeURLSafe(article.value.url);
   return `/api/webpage/proxy?url_b64=${urlB64}`;
 });
 
@@ -90,6 +110,21 @@ onBeforeUnmount(() => {
       article ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
     ]"
   >
+    <!-- Mobile header with back button -->
+    <div
+      v-if="isMobile && article"
+      class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-secondary"
+    >
+      <button
+        class="flex items-center justify-center p-2 -ml-2 rounded-lg hover:bg-bg-tertiary transition-colors"
+        :title="t('article.navigation.backToList') || 'Back to list'"
+        @click="emit('close')"
+      >
+        <PhCaretLeft :size="20" />
+      </button>
+      <span class="flex-1 truncate text-sm font-medium">{{ article.title }}</span>
+    </div>
+
     <div
       v-if="!article"
       class="hidden md:flex flex-col items-center justify-center h-full text-text-secondary text-center px-4"
@@ -103,7 +138,7 @@ onBeforeUnmount(() => {
         :article="article"
         :show-content="showContent"
         :show-translations="showTranslations"
-        @close="close"
+        @close="handleClose"
         @toggle-content-view="toggleContentView"
         @toggle-read="toggleRead"
         @toggle-favorite="toggleFavorite"
@@ -136,9 +171,9 @@ onBeforeUnmount(() => {
         @retry-load-content="handleRetryLoadContent"
       />
 
-      <!-- Navigation buttons -->
+      <!-- Navigation buttons - hidden on mobile -->
       <div
-        v-if="hasPreviousArticle || hasNextArticle"
+        v-if="(hasPreviousArticle || hasNextArticle) && !isMobile"
         class="flex items-center justify-between bg-bg-primary px-3 py-1.5"
       >
         <button

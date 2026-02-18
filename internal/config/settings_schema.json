@@ -20,7 +20,7 @@
     },
     "language": {
       "type": "string",
-      "default": "en-US",
+      "default": "zh-CN",
       "category": "general",
       "encrypted": false,
       "frontend_key": "language"

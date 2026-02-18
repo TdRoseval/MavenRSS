@@ -4,46 +4,34 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
 type DeepLTranslator struct {
 	APIKey   string
-	Endpoint string // Custom endpoint for deeplx self-hosted service
+	Endpoint string
 	client   *http.Client
 	db       DBInterface
 }
 
-// NewDeepLTranslator creates a new DeepL Translator
-// db is optional - if nil, no proxy will be used
 func NewDeepLTranslator(apiKey string) *DeepLTranslator {
-	return &DeepLTranslator{
-		APIKey:   apiKey,
-		Endpoint: "",
-		client:   &http.Client{Timeout: 10 * time.Second},
-		db:       nil,
-	}
+	return NewDeepLTranslatorWithDB(apiKey, nil)
 }
 
-// NewDeepLTranslatorWithEndpoint creates a new DeepL Translator with custom endpoint (for deeplx)
 func NewDeepLTranslatorWithEndpoint(apiKey, endpoint string) *DeepLTranslator {
-	return &DeepLTranslator{
-		APIKey:   apiKey,
-		Endpoint: strings.TrimSuffix(endpoint, "/"),
-		client:   &http.Client{Timeout: 10 * time.Second},
-		db:       nil,
-	}
+	return NewDeepLTranslatorWithEndpointAndDB(apiKey, endpoint, nil)
 }
 
-// NewDeepLTranslatorWithDB creates a new DeepL Translator with database for proxy support
 func NewDeepLTranslatorWithDB(apiKey string, db DBInterface) *DeepLTranslator {
-	client, err := CreateHTTPClientWithProxy(db, 10*time.Second)
+	client, err := CreateHTTPClientWithProxy(db, httputil.DefaultTranslationTimeout)
 	if err != nil {
-		// Fallback to default client if proxy creation fails
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = httputil.GetPooledAIHTTPClient("", httputil.DefaultTranslationTimeout)
 	}
 	return &DeepLTranslator{
 		APIKey:   apiKey,
@@ -53,11 +41,10 @@ func NewDeepLTranslatorWithDB(apiKey string, db DBInterface) *DeepLTranslator {
 	}
 }
 
-// NewDeepLTranslatorWithEndpointAndDB creates a DeepL Translator with custom endpoint and proxy support
 func NewDeepLTranslatorWithEndpointAndDB(apiKey, endpoint string, db DBInterface) *DeepLTranslator {
-	client, err := CreateHTTPClientWithProxy(db, 10*time.Second)
+	client, err := CreateHTTPClientWithProxy(db, httputil.DefaultTranslationTimeout)
 	if err != nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = httputil.GetPooledAIHTTPClient("", httputil.DefaultTranslationTimeout)
 	}
 	return &DeepLTranslator{
 		APIKey:   apiKey,
@@ -65,6 +52,18 @@ func NewDeepLTranslatorWithEndpointAndDB(apiKey, endpoint string, db DBInterface
 		client:   client,
 		db:       db,
 	}
+}
+
+func (t *DeepLTranslator) RefreshProxy() {
+	if t.db == nil {
+		return
+	}
+
+	client, err := CreateHTTPClientWithProxy(t.db, httputil.DefaultTranslationTimeout)
+	if err != nil {
+		client = httputil.GetPooledAIHTTPClient("", httputil.DefaultTranslationTimeout)
+	}
+	t.client = client
 }
 
 func (t *DeepLTranslator) Translate(text, targetLang string) (string, error) {
@@ -72,12 +71,10 @@ func (t *DeepLTranslator) Translate(text, targetLang string) (string, error) {
 		return "", nil
 	}
 
-	// Use custom endpoint if provided (for deeplx self-hosted service)
 	if t.Endpoint != "" {
 		return t.translateWithDeeplx(text, targetLang)
 	}
 
-	// Standard DeepL API
 	apiURL := "https://api.deepl.com/v2/translate"
 	if strings.HasSuffix(t.APIKey, ":fx") {
 		apiURL = "https://api-free.deepl.com/v2/translate"
@@ -88,24 +85,41 @@ func (t *DeepLTranslator) Translate(text, targetLang string) (string, error) {
 	data.Set("text", text)
 	data.Set("target_lang", strings.ToUpper(targetLang))
 
-	resp, err := t.client.PostForm(apiURL, data)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("deepl api returned status: %d", resp.StatusCode)
-	}
-
 	var result struct {
 		Translations []struct {
 			Text string `json:"text"`
 		} `json:"translations"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err := t.client.PostForm(apiURL, data)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < 2 {
+				log.Printf("[DeepL] Network error on attempt %d/3, retrying: %v", attempt+1, err)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("deepl api returned status: %d", resp.StatusCode)
+			if resp.StatusCode >= 500 && attempt < 2 {
+				log.Printf("[DeepL] Server error on attempt %d/3, retrying", attempt+1)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+			return "", lastErr
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", err
+		}
+
+		break
 	}
 
 	if len(result.Translations) > 0 {
@@ -115,8 +129,6 @@ func (t *DeepLTranslator) Translate(text, targetLang string) (string, error) {
 	return "", fmt.Errorf("no translation found")
 }
 
-// translateWithDeeplx handles translation using deeplx self-hosted service
-// deeplx API: POST /translate with JSON body {text, source_lang, target_lang}
 func (t *DeepLTranslator) translateWithDeeplx(text, targetLang string) (string, error) {
 	apiURL := t.Endpoint + "/translate"
 
@@ -131,28 +143,6 @@ func (t *DeepLTranslator) translateWithDeeplx(text, targetLang string) (string, 
 		return "", fmt.Errorf("failed to marshal deeplx request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to create deeplx request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	// Add Authorization header if API key is provided (some deeplx deployments require it)
-	if t.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+t.APIKey)
-	}
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("deeplx request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("deeplx returned status: %d", resp.StatusCode)
-	}
-
-	// deeplx response format: {code, message, data, source_lang, target_lang, alternatives}
 	var result struct {
 		Code    int      `json:"code"`
 		Message string   `json:"message"`
@@ -160,8 +150,45 @@ func (t *DeepLTranslator) translateWithDeeplx(text, targetLang string) (string, 
 		Alt     []string `json:"alternatives"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode deeplx response: %w", err)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBody))
+		if err != nil {
+			return "", fmt.Errorf("failed to create deeplx request: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		if t.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+t.APIKey)
+		}
+
+		resp, err := t.client.Do(req)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < 2 {
+				log.Printf("[DeepLX] Network error on attempt %d/3, retrying: %v", attempt+1, err)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("deeplx request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("deeplx returned status: %d", resp.StatusCode)
+			if resp.StatusCode >= 500 && attempt < 2 {
+				log.Printf("[DeepLX] Server error on attempt %d/3, retrying", attempt+1)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+			return "", lastErr
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", fmt.Errorf("failed to decode deeplx response: %w", err)
+		}
+
+		break
 	}
 
 	if result.Code != 200 {

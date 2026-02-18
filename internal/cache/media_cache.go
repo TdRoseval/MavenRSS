@@ -2,10 +2,12 @@
 package cache
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,15 +15,32 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
+)
+
+const (
+	maxRetries              = 2
+	largeFileSizeThreshold  = httputil.LargeFileSizeThreshold
+	defaultDownloadTimeout  = httputil.DefaultMediaCacheTimeout
+	maxDownloadTimeout      = httputil.MaxMediaDownloadTimeout
+	totalMaxTimeout         = 60 * time.Second
+	headRequestTimeout      = 3 * time.Second
 )
 
 // MediaCache handles caching of images and videos to work around anti-hotlinking
 type MediaCache struct {
 	cacheDir string
+	proxyURL string
 }
 
 // NewMediaCache creates a new media cache instance
 func NewMediaCache(cacheDir string) (*MediaCache, error) {
+	return NewMediaCacheWithProxy(cacheDir, "")
+}
+
+// NewMediaCacheWithProxy creates a new media cache instance with proxy support
+func NewMediaCacheWithProxy(cacheDir, proxyURL string) (*MediaCache, error) {
 	// Create cache directory if it doesn't exist
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
@@ -29,6 +48,7 @@ func NewMediaCache(cacheDir string) (*MediaCache, error) {
 
 	return &MediaCache{
 		cacheDir: cacheDir,
+		proxyURL: proxyURL,
 	}, nil
 }
 
@@ -37,6 +57,11 @@ func (mc *MediaCache) GetCachedPath(url string) string {
 	hash := hashURL(url)
 	ext := getExtensionFromURL(url)
 	return filepath.Join(mc.cacheDir, hash+ext)
+}
+
+// SetProxy updates the proxy URL for the media cache
+func (mc *MediaCache) SetProxy(proxyURL string) {
+	mc.proxyURL = proxyURL
 }
 
 // findCachedFile returns the path to a cached file for the given URL, regardless of extension.
@@ -73,6 +98,11 @@ func (mc *MediaCache) Exists(url string) bool {
 
 // Get retrieves cached media or downloads it if not cached
 func (mc *MediaCache) Get(url, referer string) ([]byte, string, error) {
+	return mc.GetWithContext(context.Background(), url, referer)
+}
+
+// GetWithContext retrieves cached media or downloads it with context support
+func (mc *MediaCache) GetWithContext(ctx context.Context, url, referer string) ([]byte, string, error) {
 	// Check if already cached
 	cachedPath, found := mc.findCachedFile(url)
 	if found {
@@ -85,7 +115,7 @@ func (mc *MediaCache) Get(url, referer string) ([]byte, string, error) {
 	}
 
 	// Download and cache
-	data, contentType, err := mc.download(url, referer)
+	data, contentType, err := mc.downloadWithContext(ctx, url, referer)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to download media: %w", err)
 	}
@@ -107,61 +137,179 @@ func (mc *MediaCache) Get(url, referer string) ([]byte, string, error) {
 	return data, contentType, nil
 }
 
-// download fetches media from the given URL with proper headers
-func (mc *MediaCache) download(url, referer string) ([]byte, string, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
+// download fetches media from the given URL with proper headers, retry support, and dynamic timeout
+func (mc *MediaCache) download(urlStr, referer string) ([]byte, string, error) {
+	return mc.downloadWithContext(context.Background(), urlStr, referer)
+}
+
+// downloadWithContext fetches media with context support for cancellation
+func (mc *MediaCache) downloadWithContext(ctx context.Context, urlStr, referer string) ([]byte, string, error) {
+	var lastErr error
+	var lastResp *http.Response
+	var contentLength int64 = -1
+	
+	totalCtx, cancel := context.WithTimeout(ctx, totalMaxTimeout)
+	defer cancel()
+	
+	// Try a HEAD request with a very short timeout - if it fails quickly, just skip it
+	// This avoids adding unnecessary latency for requests that don't support HEAD
+	headCtx, headCancel := context.WithTimeout(totalCtx, headRequestTimeout)
+	defer headCancel()
+	
+	headClient := httputil.GetPooledHTTPClient(mc.proxyURL, headRequestTimeout)
+	headReq, err := http.NewRequestWithContext(headCtx, "HEAD", urlStr, nil)
+	if err == nil {
+		userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+		headReq.Header.Set("User-Agent", userAgent)
+		smartReferer := getSmartReferer(urlStr, referer)
+		if smartReferer != "" {
+			headReq.Header.Set("Referer", smartReferer)
+		}
+		
+		headResp, headErr := headClient.Do(headReq)
+		if headErr == nil {
+			defer headResp.Body.Close()
+			if headResp.StatusCode == http.StatusOK {
+				if cl := headResp.Header.Get("Content-Length"); cl != "" {
+					if size, err := parseContentLength(cl); err == nil {
+						contentLength = size
+						log.Printf("[MediaCache] HEAD request successful, Content-Length: %d bytes", contentLength)
+					}
+				}
+			}
+		}
+	}
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		select {
+		case <-totalCtx.Done():
+			return nil, "", fmt.Errorf("total timeout exceeded after %v: %w", totalMaxTimeout, totalCtx.Err())
+		default:
+		}
+		
+		var timeout time.Duration
+		if contentLength > 0 {
+			timeout = httputil.CalculateDynamicMediaTimeout(contentLength)
+		} else if lastResp != nil {
+			timeout = mc.calculateTimeout(urlStr, lastResp)
+		} else {
+			timeout = defaultDownloadTimeout
+		}
+		
+		client := httputil.GetPooledHTTPClient(mc.proxyURL, timeout)
+
+		req, err := http.NewRequestWithContext(totalCtx, "GET", urlStr, nil)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create request: %w", err)
+		}
+
+		// Set headers to bypass anti-hotlinking - try multiple user agents
+		userAgents := []string{
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		}
+
+		req.Header.Set("User-Agent", userAgents[0]) // Start with Windows Chrome
+
+		// CRITICAL FIX: Use smart referer logic to handle cases where the original referer would be blocked
+		smartReferer := getSmartReferer(urlStr, referer)
+		if smartReferer != "" {
+			req.Header.Set("Referer", smartReferer)
+		}
+
+		// Add additional headers to bypass restrictions
+		// Note: Don't set Accept-Encoding - let Go's http.Transport handle it automatically
+		req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("DNT", "1")
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < maxRetries-1 {
+				backoff := httputil.CalculateBackoffSimple(attempt)
+				log.Printf("[MediaCache] Network error on attempt %d/%d for %s, retrying in %v: %v", 
+					attempt+1, maxRetries, urlStr, backoff, err)
+				select {
+				case <-totalCtx.Done():
+					return nil, "", totalCtx.Err()
+				case <-time.After(backoff):
+				}
+				continue
+			}
+			return nil, "", fmt.Errorf("failed to fetch media after %d attempts: %w", attempt+1, err)
+		}
+		lastResp = resp
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+			
+			// Retry on server errors
+			if resp.StatusCode >= 500 && attempt < maxRetries-1 {
+				backoff := httputil.CalculateBackoffSimple(attempt)
+				log.Printf("[MediaCache] Server error %d on attempt %d/%d for %s, retrying in %v", 
+					resp.StatusCode, attempt+1, maxRetries, urlStr, backoff)
+				select {
+				case <-totalCtx.Done():
+					return nil, "", totalCtx.Err()
+				case <-time.After(backoff):
+				}
+				continue
+			}
+			return nil, "", lastErr
+		}
+
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < maxRetries-1 {
+				backoff := httputil.CalculateBackoffSimple(attempt)
+				log.Printf("[MediaCache] Read error on attempt %d/%d for %s, retrying in %v: %v", 
+					attempt+1, maxRetries, urlStr, backoff, err)
+				select {
+				case <-totalCtx.Done():
+					return nil, "", totalCtx.Err()
+				case <-time.After(backoff):
+				}
+				continue
+			}
+			return nil, "", fmt.Errorf("failed to read response body: %w", err)
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = getContentTypeFromPath(urlStr)
+		}
+
+		return data, contentType, nil
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	return nil, "", fmt.Errorf("all %d attempts failed, last error: %w", maxRetries, lastErr)
+}
+
+// calculateTimeout determines the appropriate timeout based on Content-Length if available
+func (mc *MediaCache) calculateTimeout(urlStr string, lastResp *http.Response) time.Duration {
+	// Check if we have a Content-Length from a previous response
+	if lastResp != nil {
+		if contentLength := lastResp.Header.Get("Content-Length"); contentLength != "" {
+			if size, err := parseContentLength(contentLength); err == nil {
+				return httputil.CalculateDynamicMediaTimeout(size)
+			}
+		}
 	}
+	return defaultDownloadTimeout
+}
 
-	// Set headers to bypass anti-hotlinking - try multiple user agents
-	userAgents := []string{
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-	}
-
-	req.Header.Set("User-Agent", userAgents[0]) // Start with Windows Chrome
-
-	// CRITICAL FIX: Use smart referer logic to handle cases where the original referer would be blocked
-	smartReferer := getSmartReferer(url, referer)
-	if smartReferer != "" {
-		req.Header.Set("Referer", smartReferer)
-	}
-
-	// Add additional headers to bypass restrictions
-	// Note: Don't set Accept-Encoding - let Go's http.Transport handle it automatically
-	req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("DNT", "1")
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to fetch media: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = getContentTypeFromPath(url)
-	}
-
-	return data, contentType, nil
+// parseContentLength parses the Content-Length header value
+func parseContentLength(s string) (int64, error) {
+	var size int64
+	_, err := fmt.Sscanf(s, "%d", &size)
+	return size, err
 }
 
 // getSmartReferer determines the appropriate referer to use for a given image URL

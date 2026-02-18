@@ -94,6 +94,7 @@ const en: TranslationMessages = {
       goToUnread: 'Go to Unread',
       nextArticle: 'Next Article',
       previousArticle: 'Previous Article',
+      backToList: 'Back to List',
     },
     parts: {
       articleTitle: 'Article Title',
@@ -519,6 +520,8 @@ const en: TranslationMessages = {
       aiCustomHeadersName: 'Header Name',
       aiCustomHeadersRemove: 'Remove',
       aiCustomHeadersValue: 'Header Value',
+      useGlobalProxy: 'Use Global Proxy',
+      useGlobalProxyDesc: 'Use global proxy settings when calling AI (requires proxy to be enabled in Network settings)',
       aiEndpoint: 'API Endpoint',
       aiSearchEnabled: 'AI Search',
       aiSearchEnabledDesc: 'Use AI to intelligently search articles with keyword expansion',

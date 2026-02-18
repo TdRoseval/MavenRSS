@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -32,12 +33,67 @@ var (
 	ErrInvalidCiphertext = errors.New("invalid ciphertext")
 	// ErrDecryptionFailed is returned when decryption fails
 	ErrDecryptionFailed = errors.New("decryption failed")
+	// serverModeKeyDir is the directory where the server mode key file is stored
+	serverModeKeyDir string
+	// serverModeKeyFileName is the name of the server mode key file
+	serverModeKeyFileName = "encryption.key"
 )
+
+// SetServerModeKeyDir sets the directory where the server mode key file is stored
+func SetServerModeKeyDir(dir string) {
+	serverModeKeyDir = dir
+}
+
+// getServerModeKey reads or generates the server mode encryption key
+func getServerModeKey() ([]byte, error) {
+	if serverModeKeyDir == "" {
+		return nil, fmt.Errorf("server mode key directory not set")
+	}
+	
+	keyPath := filepath.Join(serverModeKeyDir, serverModeKeyFileName)
+	
+	// Check if key file exists
+	if _, err := os.Stat(keyPath); err == nil {
+		// Read existing key
+		key, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read encryption key: %w", err)
+		}
+		if len(key) == keySize {
+			return key, nil
+		}
+		// If key is wrong size, generate new one
+	}
+	
+	// Generate new key
+	key := make([]byte, keySize)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return nil, fmt.Errorf("failed to generate encryption key: %w", err)
+	}
+	
+	// Ensure directory exists
+	if err := os.MkdirAll(serverModeKeyDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create key directory: %w", err)
+	}
+	
+	// Write key to file
+	if err := os.WriteFile(keyPath, key, 0600); err != nil {
+		return nil, fmt.Errorf("failed to write encryption key: %w", err)
+	}
+	
+	return key, nil
+}
 
 // GetMachineID generates a machine-specific identifier for key derivation.
 // This ensures that encrypted data is tied to the specific machine.
 // It combines multiple sources of entropy for better security.
 func GetMachineID() (string, error) {
+	// If in server mode with key directory set, we won't use this
+	if serverModeKeyDir != "" {
+		// For backward compatibility, still return something
+		return "server-mode", nil
+	}
+	
 	// Use hostname as the primary identifier
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -64,9 +120,17 @@ func GetMachineID() (string, error) {
 	return machineID, nil
 }
 
-// DeriveKey derives a cryptographic key from a machine ID using PBKDF2.
-// The salt is stored with the ciphertext to allow key derivation during decryption.
+// DeriveKey derives a cryptographic key.
+// In server mode, uses the fixed key from file.
+// Otherwise, derives from machine ID using PBKDF2.
 func DeriveKey(machineID string, salt []byte) []byte {
+	if serverModeKeyDir != "" {
+		key, err := getServerModeKey()
+		if err == nil {
+			return key
+		}
+		// Fall back to PBKDF2 if key file fails
+	}
 	return pbkdf2.Key([]byte(machineID), salt, pbkdf2Iterations, keySize, sha256.New)
 }
 

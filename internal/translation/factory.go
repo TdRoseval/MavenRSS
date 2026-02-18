@@ -98,9 +98,9 @@ func (f *Factory) Create(providerType ProviderType) (Provider, error) {
 }
 
 // createGoogleProvider 创建 Google 翻译提供商
-func (f *Factory) createGoogleProvider(config ProviderConfig) Provider {
+func (f *Factory) createGoogleProvider(_ ProviderConfig) Provider {
 	return &googleProvider{
-		translator: NewGoogleFreeTranslator(),
+		translator: NewGoogleFreeTranslatorWithDB(f.settingsProvider),
 	}
 }
 
@@ -108,22 +108,22 @@ func (f *Factory) createGoogleProvider(config ProviderConfig) Provider {
 func (f *Factory) createDeepLProvider(config *deepLConfig) Provider {
 	var translator *DeepLTranslator
 	if config.Endpoint != "" {
-		translator = NewDeepLTranslatorWithEndpoint(config.APIKey, config.Endpoint)
+		translator = NewDeepLTranslatorWithEndpointAndDB(config.APIKey, config.Endpoint, f.settingsProvider)
 	} else {
-		translator = NewDeepLTranslator(config.APIKey)
+		translator = NewDeepLTranslatorWithDB(config.APIKey, f.settingsProvider)
 	}
 	return &deepLProvider{translator: translator}
 }
 
 // createBaiduProvider 创建百度翻译提供商
 func (f *Factory) createBaiduProvider(config *baiduConfig) Provider {
-	translator := NewBaiduTranslator(config.AppID, config.SecretKey)
+	translator := NewBaiduTranslatorWithDB(config.AppID, config.SecretKey, f.settingsProvider)
 	return &baiduProvider{translator: translator}
 }
 
 // createAIProvider 创建 AI 翻译提供商
 func (f *Factory) createAIProvider(config *aiConfig) Provider {
-	translator := NewAITranslator(config.APIKey, config.Endpoint, config.Model)
+	translator := NewAITranslatorWithDB(config.APIKey, config.Endpoint, config.Model, f.settingsProvider, true)
 	if config.SystemPrompt != "" {
 		translator.SetSystemPrompt(config.SystemPrompt)
 	}

@@ -58,12 +58,17 @@ const isCardMode = computed(() => layoutMode.value === 'card');
 
 interface Props {
   isSidebarOpen?: boolean;
+  isMobile?: boolean;
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  isSidebarOpen: true,
+  isMobile: false,
+});
 
 const emit = defineEmits<{
   toggleSidebar: [];
+  selectArticle: [articleId: number];
 }>();
 
 // Use composables
@@ -79,12 +84,11 @@ const {
 const { activeFilters, resetFilterState, fetchFilteredArticles, loadMoreFilteredArticles } =
   useArticleFilter();
 
-// AI Search state
-const aiSearchResults = ref<Article[]>([]);
-const isAISearchActive = ref(false);
-
 // AI Search enabled from settings
 const isAISearchEnabled = computed(() => settings.value.ai_search_enabled);
+
+// AI search active state
+const isAISearchActive = computed(() => store.aiSearchResults.length > 0);
 
 // Use store's filtered articles and loading state directly
 const filteredArticlesFromServer = computed(() => store.filteredArticlesFromServer);
@@ -93,8 +97,8 @@ const isFilterLoading = computed(() => store.isFilterLoading);
 // Computed filtered articles - optimized to avoid excessive recomputation
 const filteredArticles = computed(() => {
   // If AI search is active, use AI search results
-  if (isAISearchActive.value && aiSearchResults.value.length > 0) {
-    return aiSearchResults.value;
+  if (isAISearchActive.value && store.aiSearchResults.length > 0) {
+    return store.aiSearchResults;
   }
 
   let articles = activeFilters.value.length > 0 ? filteredArticlesFromServer.value : store.articles;
@@ -115,13 +119,11 @@ const filteredArticles = computed(() => {
 
 // AI Search handlers
 function handleAISearchResults(articles: Article[]) {
-  aiSearchResults.value = articles;
-  isAISearchActive.value = true;
+  store.setAISearchResults(articles);
 }
 
 function handleAISearchClear() {
-  aiSearchResults.value = [];
-  isAISearchActive.value = false;
+  store.clearAISearchResults();
 }
 
 const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, async () => {
@@ -129,11 +131,40 @@ const { showArticleContextMenu } = useArticleActions(t, defaultViewMode, async (
   await store.fetchFilterCounts();
 });
 
-// Virtual rendering: only render visible articles + buffer
+// Virtual scroll state
+const scrollTop = ref(0);
+const containerHeight = ref(0);
+const ITEM_HEIGHT = 96; // Estimated height per article item
+const BUFFER_SIZE = 10; // Number of items to buffer above and below
+
+// Calculate visible range for virtual scrolling
+const visibleRange = computed(() => {
+  const articles = filteredArticles.value;
+  if (!articles.length) return { start: 0, end: 0 };
+
+  const start = Math.max(0, Math.floor(scrollTop.value / ITEM_HEIGHT) - BUFFER_SIZE);
+  const end = Math.min(
+    articles.length,
+    Math.ceil((scrollTop.value + containerHeight.value) / ITEM_HEIGHT) + BUFFER_SIZE
+  );
+
+  return { start, end };
+});
+
+// Only render visible articles (virtual scrolling)
 const visibleArticles = computed(() => {
-  // For now, render all articles but could be optimized for virtual scrolling
-  // Keeping it simple to avoid complexity
-  return filteredArticles.value;
+  const articles = filteredArticles.value;
+  const { start, end } = visibleRange.value;
+  return articles.slice(start, end);
+});
+
+// Calculate padding for virtual scroll container
+const listPaddingTop = computed(() => {
+  return visibleRange.value.start * ITEM_HEIGHT;
+});
+
+const listPaddingBottom = computed(() => {
+  return (filteredArticles.value.length - visibleRange.value.end) * ITEM_HEIGHT;
 });
 
 // Helper to truncate text to max length
@@ -194,48 +225,42 @@ function getFilterText(): string {
 const { initialize: initializeShowPreviewImages } = useShowPreviewImages();
 
 // Load settings and setup
-onMounted(async () => {
-  await loadTranslationSettings();
-  await initializeShowPreviewImages();
-
-  try {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    defaultViewMode.value = data.default_view_mode || 'original';
-
-    // Parse and apply settings including layout_mode
-    settings.value = parseSettingsData(data);
-    console.log('ArticleList settings loaded on mount:', settings.value.layout_mode);
-
-    // Set up intersection observer for auto-translation
-    if (translationSettings.value.enabled && listRef.value) {
-      setupIntersectionObserver(listRef.value, store.articles);
-    }
-  } catch (e) {
-    console.error('Error loading settings:', e);
-  }
+onMounted(() => {
+  loadTranslationSettings();
+  initializeShowPreviewImages();
+  loadArticleListSettings();
 
   // Listen for translation settings changes
   window.addEventListener(
     'translation-settings-changed',
     onTranslationSettingsChanged as EventListener
   );
-  // Listen for default view mode changes
   window.addEventListener('default-view-mode-changed', onDefaultViewModeChanged as EventListener);
-  // Listen for show preview images changes
   window.addEventListener(
     'show-preview-images-changed',
     onShowPreviewImagesChanged as EventListener
   );
-  // Listen for layout mode changes
   window.addEventListener('layout-mode-changed', onLayoutModeChanged as EventListener);
-  // Listen for settings loaded event (from App.vue on startup)
   window.addEventListener('settings-loaded', onSettingsLoaded as EventListener);
-  // Listen for refresh articles events
   window.addEventListener('refresh-articles', onRefreshArticles);
-  // Listen for toggle filter events (from keyboard shortcut)
   window.addEventListener('toggle-filter', onToggleFilter);
 });
+
+async function loadArticleListSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    defaultViewMode.value = data.default_view_mode || 'original';
+    settings.value = parseSettingsData(data);
+    console.log('ArticleList settings loaded on mount:', settings.value.layout_mode);
+
+    if (translationSettings.value.enabled && listRef.value) {
+      setupIntersectionObserver(listRef.value, store.articles);
+    }
+  } catch (e) {
+    console.error('Error loading settings:', e);
+  }
+}
 
 // Watch for articles array length changes (list content changes)
 watch(
@@ -390,57 +415,27 @@ function onRefreshTooltipHide(): void {
 }
 
 // Article selection and interaction
-  function selectArticle(article: Article): void {
-    // Check if we should open in browser based on feed or global settings
-    const feed = store.feeds.find((f) => f.id === article.feed_id);
-    let openInBrowserMode = false;
+function selectArticle(article: Article): void {
+  // Check if we should open in browser based on feed or global settings
+  const feed = store.feeds.find((f) => f.id === article.feed_id);
+  let openInBrowserMode = false;
 
-    if (feed?.article_view_mode === 'external') {
+  if (feed?.article_view_mode === 'external') {
+    openInBrowserMode = true;
+  } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
+    // Check global setting
+    if (defaultViewMode.value === 'external') {
       openInBrowserMode = true;
-    } else if (feed?.article_view_mode === 'global' || !feed?.article_view_mode) {
-      // Check global setting
-      if (defaultViewMode.value === 'external') {
-        openInBrowserMode = true;
-      }
     }
+  }
 
-    // If external mode is selected, open in browser and mark as read
-    if (openInBrowserMode) {
-      // Mark as read if not already read
-      if (!article.is_read) {
-        article.is_read = true;
-        apiClient.post('/articles/read', { id: article.id, read: true })
-          .then(async () => {
-            await store.fetchUnreadCounts();
-            await store.fetchFilterCounts();
-          })
-          .catch((e) => {
-            console.error('Error marking as read:', e);
-          });
-      }
-      // Open article URL in browser
-      openInBrowser(article.url);
-      return;
-    }
-
-    // Card mode: open in modal instead of side panel
-    if (isCardMode.value) {
-      openCardModal(article);
-      return;
-    }
-
-    // Normal article selection - show in app
-    // If switching from one article to another, remove the previous one from temp list
-    if (store.currentArticleId) {
-      temporarilyKeepArticles.value.delete(store.currentArticleId);
-    }
-
-    store.currentArticleId = article.id;
+  // If external mode is selected, open in browser and mark as read
+  if (openInBrowserMode) {
+    // Mark as read if not already read
     if (!article.is_read) {
       article.is_read = true;
-      // Add to temporarily keep list so it doesn't disappear immediately
-      temporarilyKeepArticles.value.add(article.id);
-      apiClient.post('/articles/read', { id: article.id, read: true })
+      apiClient
+        .post('/articles/read', { id: article.id, read: true })
         .then(async () => {
           await store.fetchUnreadCounts();
           await store.fetchFilterCounts();
@@ -449,7 +444,44 @@ function onRefreshTooltipHide(): void {
           console.error('Error marking as read:', e);
         });
     }
+    // Open article URL in browser
+    openInBrowser(article.url);
+    return;
   }
+
+  // Card mode: open in modal instead of side panel
+  if (isCardMode.value) {
+    openCardModal(article);
+    return;
+  }
+
+  // Normal article selection - show in app
+  // If switching from one article to another, remove the previous one from temp list
+  if (store.currentArticleId) {
+    temporarilyKeepArticles.value.delete(store.currentArticleId);
+  }
+
+  store.currentArticleId = article.id;
+  if (!article.is_read) {
+    article.is_read = true;
+    // Add to temporarily keep list so it doesn't disappear immediately
+    temporarilyKeepArticles.value.add(article.id);
+    apiClient
+      .post('/articles/read', { id: article.id, read: true })
+      .then(async () => {
+        await store.fetchUnreadCounts();
+        await store.fetchFilterCounts();
+      })
+      .catch((e) => {
+        console.error('Error marking as read:', e);
+      });
+  }
+
+  // Mobile: emit event to parent to switch to detail view
+  if (props.isMobile) {
+    emit('selectArticle', article.id);
+  }
+}
 
 // Scrolling handler with throttling to improve performance
 let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -457,13 +489,18 @@ const SCROLL_THROTTLE_DELAY = 200; // 200ms throttle
 const SCROLL_THRESHOLD = 400; // Increased from 200 to 400 for better UX
 
 function handleScroll(e: Event): void {
-  // Throttle scroll events to improve performance
+  const target = e.target as HTMLElement;
+
+  // Update scroll position for virtual scrolling
+  scrollTop.value = target.scrollTop;
+  containerHeight.value = target.clientHeight;
+
+  // Throttle load more logic
   if (scrollThrottleTimer) return;
 
   scrollThrottleTimer = setTimeout(() => {
     scrollThrottleTimer = null;
 
-    const target = e.target as HTMLElement;
     const { scrollTop, clientHeight, scrollHeight } = target;
 
     // Load more when user is within threshold distance from bottom
@@ -557,15 +594,15 @@ async function markAllAsRead(): Promise<void> {
 }
 
 async function clearReadLater(): Promise<void> {
-    try {
-      await apiClient.post('/articles/clear-read-later');
-      await store.fetchArticles();
-      await store.fetchFilterCounts();
-      window.showToast(t('common.toast.clearedReadLater'), 'success');
-    } catch (e) {
-      console.error('Error clearing read later:', e);
-    }
+  try {
+    await apiClient.post('/articles/clear-read-later');
+    await store.fetchArticles();
+    await store.fetchFilterCounts();
+    window.showToast(t('common.toast.clearedReadLater'), 'success');
+  } catch (e) {
+    console.error('Error clearing read later:', e);
   }
+}
 
 // Handle hover mark as read event from ArticleItem
 function handleHoverMarkAsRead(articleId: number): void {
@@ -582,110 +619,111 @@ function handleHoverMarkAsRead(articleId: number): void {
 }
 
 // Card mode functions
-  async function openCardModal(article: Article): Promise<void> {
-    cardModalArticle.value = article;
-    showCardModal.value = true;
-    isCardModalLoading.value = true;
+async function openCardModal(article: Article): Promise<void> {
+  cardModalArticle.value = article;
+  showCardModal.value = true;
+  isCardModalLoading.value = true;
+  cardModalContent.value = '';
+
+  // Mark as read
+  if (!article.is_read) {
+    article.is_read = true;
+    temporarilyKeepArticles.value.add(article.id);
+    apiClient
+      .post('/articles/read', { id: article.id, read: true })
+      .then(async () => {
+        await store.fetchUnreadCounts();
+        await store.fetchFilterCounts();
+      })
+      .catch((e) => console.error('Error marking as read:', e));
+  }
+
+  // Load article content
+  try {
+    const mediaCacheEnabled = await isMediaCacheEnabled();
+    const data = await apiClient.get('/articles/content', { id: article.id });
+    let content = data.content || '';
+    if (mediaCacheEnabled && content) {
+      content = proxyImagesInHtml(content, article.url);
+    }
+    cardModalContent.value = content;
+  } catch (e) {
+    console.error('Error loading article content:', e);
     cardModalContent.value = '';
-
-    // Mark as read
-    if (!article.is_read) {
-      article.is_read = true;
-      temporarilyKeepArticles.value.add(article.id);
-      apiClient.post('/articles/read', { id: article.id, read: true })
-        .then(async () => {
-          await store.fetchUnreadCounts();
-          await store.fetchFilterCounts();
-        })
-        .catch((e) => console.error('Error marking as read:', e));
-    }
-
-    // Load article content
-    try {
-      const mediaCacheEnabled = await isMediaCacheEnabled();
-      const data = await apiClient.get('/articles/content', { id: article.id });
-      let content = data.content || '';
-      if (mediaCacheEnabled && content) {
-        content = proxyImagesInHtml(content, article.url);
-      }
-      cardModalContent.value = content;
-    } catch (e) {
-      console.error('Error loading article content:', e);
-      cardModalContent.value = '';
-    } finally {
-      isCardModalLoading.value = false;
-    }
+  } finally {
+    isCardModalLoading.value = false;
   }
+}
 
-  function closeCardModal(): void {
-    showCardModal.value = false;
-    cardModalArticle.value = null;
-    cardModalContent.value = '';
+function closeCardModal(): void {
+  showCardModal.value = false;
+  cardModalArticle.value = null;
+  cardModalContent.value = '';
+}
+
+function cardModalPrevious(): void {
+  if (!cardModalArticle.value) return;
+  const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
+  if (currentIndex > 0) {
+    openCardModal(filteredArticles.value[currentIndex - 1]);
   }
+}
 
-  function cardModalPrevious(): void {
-    if (!cardModalArticle.value) return;
-    const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
-    if (currentIndex > 0) {
-      openCardModal(filteredArticles.value[currentIndex - 1]);
-    }
+function cardModalNext(): void {
+  if (!cardModalArticle.value) return;
+  const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
+  if (currentIndex >= 0 && currentIndex < filteredArticles.value.length - 1) {
+    openCardModal(filteredArticles.value[currentIndex + 1]);
   }
+}
 
-  function cardModalNext(): void {
-    if (!cardModalArticle.value) return;
-    const currentIndex = filteredArticles.value.findIndex((a) => a.id === cardModalArticle.value!.id);
-    if (currentIndex >= 0 && currentIndex < filteredArticles.value.length - 1) {
-      openCardModal(filteredArticles.value[currentIndex + 1]);
-    }
+async function cardModalToggleRead(): Promise<void> {
+  if (!cardModalArticle.value) return;
+  const article = cardModalArticle.value;
+  const newReadState = !article.is_read;
+
+  try {
+    await apiClient.post('/articles/read', { id: article.id, read: newReadState });
+    article.is_read = newReadState;
+    await store.fetchUnreadCounts();
+    await store.fetchFilterCounts();
+  } catch (e) {
+    console.error('Error toggling read state:', e);
   }
+}
 
-  async function cardModalToggleRead(): Promise<void> {
-    if (!cardModalArticle.value) return;
-    const article = cardModalArticle.value;
-    const newReadState = !article.is_read;
+async function cardModalToggleFavorite(): Promise<void> {
+  if (!cardModalArticle.value) return;
+  const article = cardModalArticle.value;
+  const newFavoriteState = !article.is_favorite;
 
-    try {
-      await apiClient.post('/articles/read', { id: article.id, read: newReadState });
-      article.is_read = newReadState;
-      await store.fetchUnreadCounts();
-      await store.fetchFilterCounts();
-    } catch (e) {
-      console.error('Error toggling read state:', e);
-    }
+  try {
+    await apiClient.post('/articles/favorite', { id: article.id, favorite: newFavoriteState });
+    article.is_favorite = newFavoriteState;
+    await store.fetchFilterCounts();
+  } catch (e) {
+    console.error('Error toggling favorite:', e);
   }
+}
 
-  async function cardModalToggleFavorite(): Promise<void> {
-    if (!cardModalArticle.value) return;
-    const article = cardModalArticle.value;
-    const newFavoriteState = !article.is_favorite;
+async function cardModalToggleReadLater(): Promise<void> {
+  if (!cardModalArticle.value) return;
+  const article = cardModalArticle.value;
 
-    try {
-      await apiClient.post('/articles/favorite', { id: article.id, favorite: newFavoriteState });
-      article.is_favorite = newFavoriteState;
-      await store.fetchFilterCounts();
-    } catch (e) {
-      console.error('Error toggling favorite:', e);
-    }
+  try {
+    await apiClient.post('/articles/toggle-read-later', { id: article.id });
+    article.is_read_later = !article.is_read_later;
+    await store.fetchFilterCounts();
+  } catch (e) {
+    console.error('Error toggling read later:', e);
   }
+}
 
-  async function cardModalToggleReadLater(): Promise<void> {
-    if (!cardModalArticle.value) return;
-    const article = cardModalArticle.value;
-
-    try {
-      await apiClient.post('/articles/toggle-read-later', { id: article.id });
-      article.is_read_later = !article.is_read_later;
-      await store.fetchFilterCounts();
-    } catch (e) {
-      console.error('Error toggling read later:', e);
-    }
+function cardModalRetryLoadContent(): void {
+  if (cardModalArticle.value) {
+    openCardModal(cardModalArticle.value);
   }
-
-  function cardModalRetryLoadContent(): void {
-    if (cardModalArticle.value) {
-      openCardModal(cardModalArticle.value);
-    }
-  }
+}
 </script>
 
 <template>
@@ -915,8 +953,8 @@ function handleHoverMarkAsRead(articleId: number): void {
         {{ t('aiSearch.noResults') }}
       </div>
 
-      <!-- Article list with content-visibility for performance -->
-      <!-- Card mode: grid layout -->
+      <!-- Article list with virtual scrolling -->
+      <!-- Card mode: grid layout - virtual scroll not as critical here -->
       <div v-if="isCardMode" class="card-grid-container">
         <ArticleCardItem
           v-for="article in visibleArticles"
@@ -927,18 +965,27 @@ function handleHoverMarkAsRead(articleId: number): void {
           @contextmenu="(e) => showArticleContextMenu(e, article)"
         />
       </div>
-      <!-- Normal/Compact mode: list layout -->
-      <div v-else class="article-list-container">
-        <ArticleItem
-          v-for="article in visibleArticles"
-          :key="article.id"
-          :article="article"
-          :is-active="store.currentArticleId === article.id"
-          @click="selectArticle(article)"
-          @contextmenu="(e) => showArticleContextMenu(e, article)"
-          @observe-element="observeArticle"
-          @hover-mark-as-read="handleHoverMarkAsRead"
-        />
+      <!-- Normal/Compact mode: list layout with virtual scroll -->
+      <div v-else>
+        <!-- Virtual scroll spacer - top padding -->
+        <div :style="{ paddingTop: listPaddingTop + 'px' }"></div>
+
+        <!-- Visible articles -->
+        <div class="article-list-container">
+          <ArticleItem
+            v-for="article in visibleArticles"
+            :key="article.id"
+            :article="article"
+            :is-active="store.currentArticleId === article.id"
+            @click="selectArticle(article)"
+            @contextmenu="(e) => showArticleContextMenu(e, article)"
+            @observe-element="observeArticle"
+            @hover-mark-as-read="handleHoverMarkAsRead"
+          />
+        </div>
+
+        <!-- Virtual scroll spacer - bottom padding -->
+        <div :style="{ paddingBottom: listPaddingBottom + 'px' }"></div>
       </div>
 
       <div

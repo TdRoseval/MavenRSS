@@ -3,9 +3,12 @@ package translation
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
 type GoogleFreeTranslator struct {
@@ -13,21 +16,17 @@ type GoogleFreeTranslator struct {
 	db     DBInterface
 }
 
-// NewGoogleFreeTranslator creates a new Google Free Translator
-// db is optional - if nil, no proxy will be used
 func NewGoogleFreeTranslator() *GoogleFreeTranslator {
 	return &GoogleFreeTranslator{
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: httputil.GetPooledHTTPClient("", httputil.DefaultTranslationTimeout),
 		db:     nil,
 	}
 }
 
-// NewGoogleFreeTranslatorWithDB creates a new Google Free Translator with database for proxy support
 func NewGoogleFreeTranslatorWithDB(db DBInterface) *GoogleFreeTranslator {
-	client, err := CreateHTTPClientWithProxy(db, 10*time.Second)
+	client, err := CreateHTTPClientWithProxy(db, httputil.DefaultTranslationTimeout)
 	if err != nil {
-		// Fallback to default client if proxy creation fails
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = httputil.GetPooledHTTPClient("", httputil.DefaultTranslationTimeout)
 	}
 	return &GoogleFreeTranslator{
 		client: client,
@@ -35,12 +34,23 @@ func NewGoogleFreeTranslatorWithDB(db DBInterface) *GoogleFreeTranslator {
 	}
 }
 
+func (t *GoogleFreeTranslator) RefreshProxy() {
+	if t.db == nil {
+		return
+	}
+
+	client, err := CreateHTTPClientWithProxy(t.db, httputil.DefaultTranslationTimeout)
+	if err != nil {
+		client = httputil.GetPooledHTTPClient("", httputil.DefaultTranslationTimeout)
+	}
+	t.client = client
+}
+
 func (t *GoogleFreeTranslator) Translate(text, targetLang string) (string, error) {
 	if text == "" {
 		return "", nil
 	}
 
-	// Get the configured endpoint, default to translate.googleapis.com
 	endpoint := "translate.googleapis.com"
 	if t.db != nil {
 		if configuredEndpoint, err := t.db.GetSetting("google_translate_endpoint"); err == nil && configuredEndpoint != "" {
@@ -48,7 +58,6 @@ func (t *GoogleFreeTranslator) Translate(text, targetLang string) (string, error
 		}
 	}
 
-	// Determine which client parameter and path to use based on endpoint
 	var baseURL string
 	var clientParam string
 
@@ -56,7 +65,6 @@ func (t *GoogleFreeTranslator) Translate(text, targetLang string) (string, error
 		baseURL = "https://clients5.google.com/translate_a/t"
 		clientParam = "dict-chrome-ex"
 	} else {
-		// Default to translate.googleapis.com or any other endpoint
 		baseURL = "https://" + endpoint + "/translate_a/single"
 		clientParam = "gtx"
 	}
@@ -69,8 +77,6 @@ func (t *GoogleFreeTranslator) Translate(text, targetLang string) (string, error
 	q := u.Query()
 	q.Set("client", clientParam)
 	q.Set("sl", "auto")
-	// Map zh-TW to zh-TW for Google Translate
-	// Google Translate uses "zh-TW" for Traditional Chinese and "zh-CN" for Simplified
 	googleLang := targetLang
 	if targetLang == "zh" {
 		googleLang = "zh-CN"
@@ -80,21 +86,40 @@ func (t *GoogleFreeTranslator) Translate(text, targetLang string) (string, error
 	q.Set("q", text)
 	u.RawQuery = q.Encode()
 
-	resp, err := t.client.Get(u.String())
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("translation api returned status: %d", resp.StatusCode)
-	}
-
-	// The response is a complex nested array structure
-	// [[[ "translated", "original", ... ]], ...]
 	var result []interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+	var lastErr error
+	const maxRetries = 3
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		resp, err := t.client.Get(u.String())
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < maxRetries-1 {
+				backoff := httputil.CalculateBackoffSimple(attempt)
+				log.Printf("[Google Translate] Network error on attempt %d/%d, retrying in %v: %v", attempt+1, maxRetries, backoff, err)
+				time.Sleep(backoff)
+				continue
+			}
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("translation api returned status: %d", resp.StatusCode)
+			if resp.StatusCode >= 500 && attempt < maxRetries-1 {
+				backoff := httputil.CalculateBackoffSimple(attempt)
+				log.Printf("[Google Translate] Server error on attempt %d/%d, retrying in %v", attempt+1, maxRetries, backoff)
+				time.Sleep(backoff)
+				continue
+			}
+			return "", lastErr
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", err
+		}
+
+		break
 	}
 
 	if len(result) > 0 {

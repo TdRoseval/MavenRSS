@@ -29,6 +29,9 @@ func (db *DB) MarkArticleReadWithSync(id int64, read bool) (*SyncRequest, error)
 	var url string
 	var feedID int64
 	err := db.QueryRow("SELECT url, feed_id FROM articles WHERE id = ?", id).Scan(&url, &feedID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +50,9 @@ func (db *DB) MarkArticleReadWithSync(id int64, read bool) (*SyncRequest, error)
 	// Check if this article belongs to a FreshRSS feed
 	var isFreshRSSFeed bool
 	err = db.QueryRow("SELECT COALESCE(is_freshrss_source, 0) FROM feeds WHERE id = ?", feedID).Scan(&isFreshRSSFeed)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +81,9 @@ func (db *DB) SetArticleFavoriteWithSync(id int64, favorite bool) (*SyncRequest,
 	var url string
 	var feedID int64
 	err := db.QueryRow("SELECT url, feed_id FROM articles WHERE id = ?", id).Scan(&url, &feedID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +97,9 @@ func (db *DB) SetArticleFavoriteWithSync(id int64, favorite bool) (*SyncRequest,
 	// Check if this article belongs to a FreshRSS feed
 	var isFreshRSSFeed bool
 	err = db.QueryRow("SELECT COALESCE(is_freshrss_source, 0) FROM feeds WHERE id = ?", feedID).Scan(&isFreshRSSFeed)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +129,9 @@ func (db *DB) ToggleFavoriteWithSync(id int64) (*SyncRequest, error) {
 	var url string
 	var feedID int64
 	err := db.QueryRow("SELECT is_favorite, url, feed_id FROM articles WHERE id = ?", id).Scan(&isFav, &url, &feedID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +150,9 @@ func (db *DB) ToggleFavoriteWithSync(id int64) (*SyncRequest, error) {
 	// Check if this article belongs to a FreshRSS feed
 	var isFreshRSSFeed bool
 	err = db.QueryRow("SELECT COALESCE(is_freshrss_source, 0) FROM feeds WHERE id = ?", feedID).Scan(&isFreshRSSFeed)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +201,9 @@ func (db *DB) GetArticleByURL(url string) (*Article, error) {
 		&freshRSSItemID,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +294,9 @@ func (db *DB) GetFreshRSSIDForArticle(articleID int64) (string, error) {
 	// Check if we have a stored FreshRSS ID
 	var freshRSSID sql.NullString
 	err := db.QueryRow("SELECT url FROM articles WHERE id = ?", articleID).Scan(&freshRSSID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}

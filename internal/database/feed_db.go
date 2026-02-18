@@ -297,6 +297,9 @@ func (db *DB) GetFeedByID(id int64) (*models.Feed, error) {
 	var link, category, imageURL, lastError, scriptPath, proxyURL, feedType, xpathItem, xpathItemTitle, xpathItemContent, xpathItemUri, xpathItemAuthor, xpathItemTimestamp, xpathItemTimeFormat, xpathItemThumbnail, xpathItemCategories, xpathItemUid, articleViewMode, autoExpandContent, emailAddress, emailIMAPServer, emailUsername, emailPassword, emailFolder, freshRSSStreamID sql.NullString
 	var lastUpdated sql.NullTime
 	if err := row.Scan(&f.ID, &f.Title, &f.URL, &link, &f.Description, &category, &imageURL, &f.Position, &lastUpdated, &lastError, &f.DiscoveryCompleted, &scriptPath, &f.HideFromTimeline, &proxyURL, &f.ProxyEnabled, &f.RefreshInterval, &f.IsImageMode, &feedType, &xpathItem, &xpathItemTitle, &xpathItemContent, &xpathItemUri, &xpathItemAuthor, &xpathItemTimestamp, &xpathItemTimeFormat, &xpathItemThumbnail, &xpathItemCategories, &xpathItemUid, &articleViewMode, &autoExpandContent, &emailAddress, &emailIMAPServer, &f.EmailIMAPPort, &emailUsername, &emailPassword, &emailFolder, &f.EmailLastUID, &f.IsFreshRSSSource, &freshRSSStreamID); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	f.Link = link.String

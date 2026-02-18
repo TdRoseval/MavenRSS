@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
+	"MrRSS/internal/utils/httputil"
+
 	"github.com/mmcdole/gofeed"
 )
+
+const maxRSSRetries = 2
 
 // RSSSource fetches feeds via standard HTTP RSS/Atom requests.
 type RSSSource struct {
@@ -17,9 +22,15 @@ type RSSSource struct {
 }
 
 // NewRSSSource creates a new RSS source.
-// Uses a default HTTP client with 30s timeout.
+// Uses a pooled HTTP client with 20s timeout.
 func NewRSSSource() *RSSSource {
-	client := &http.Client{Timeout: 30 * time.Second}
+	return NewRSSSourceWithProxy("")
+}
+
+// NewRSSSourceWithProxy creates a new RSS source with custom proxy.
+func NewRSSSourceWithProxy(proxyURL string) *RSSSource {
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+	client := httputil.GetPooledUserAgentClient(proxyURL, 20*time.Second, userAgent)
 
 	parser := gofeed.NewParser()
 	parser.Client = client
@@ -46,19 +57,44 @@ func (s *RSSSource) Validate(config *Config) error {
 	return nil
 }
 
-// Fetch retrieves and parses the RSS/Atom feed from the URL.
+// Fetch retrieves and parses the RSS/Atom feed from the URL with retry support.
 func (s *RSSSource) Fetch(ctx context.Context, config *Config) (*gofeed.Feed, error) {
 	if err := s.Validate(config); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Use context-aware parsing if available
-	feed, err := s.parser.ParseURLWithContext(config.URL, ctx)
-	if err != nil {
+	var lastErr error
+	for attempt := 0; attempt < maxRSSRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		feed, err := s.parser.ParseURLWithContext(config.URL, ctx)
+		if err == nil {
+			return feed, nil
+		}
+
+		lastErr = err
+		errStr := fmt.Sprintf("%v", err)
+
+		if httputil.IsNetworkError(errStr) && attempt < maxRSSRetries-1 {
+			backoff := httputil.CalculateBackoffSimple(attempt)
+			log.Printf("[RSSSource] Network error on attempt %d/%d for %s, retrying in %v: %v",
+				attempt+1, maxRSSRetries, config.URL, backoff, err)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			continue
+		}
+
 		return nil, fmt.Errorf("failed to parse feed from %s: %w", config.URL, err)
 	}
 
-	return feed, nil
+	return nil, fmt.Errorf("all %d attempts failed, last error: %w", maxRSSRetries, lastErr)
 }
 
 // SetHTTPClient updates the HTTP client used for requests.

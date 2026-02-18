@@ -14,6 +14,11 @@ type Translator interface {
 	Translate(text, targetLang string) (string, error)
 }
 
+// ProxyRefresher defines an interface for refreshing proxy settings
+type ProxyRefresher interface {
+	InvalidateCache()
+}
+
 // DBInterface defines the minimal database interface needed for proxy settings
 type DBInterface interface {
 	GetSetting(key string) (string, error)
@@ -36,8 +41,17 @@ func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Cli
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
-	// Create HTTP client with or without proxy
-	return httputil.CreateHTTPClient(proxyURL, timeout)
+	// Get pooled HTTP client with or without proxy
+	return httputil.GetPooledAIHTTPClient(proxyURL, timeout), nil
+}
+
+// CreateHTTPClientWithProxyOption creates an HTTP client with optional global proxy control
+// If useGlobalProxy is false, no proxy will be used regardless of global settings
+func CreateHTTPClientWithProxyOption(db DBInterface, timeout time.Duration, useGlobalProxy bool) (*http.Client, error) {
+	if !useGlobalProxy {
+		return httputil.GetPooledAIHTTPClient("", timeout), nil
+	}
+	return CreateHTTPClientWithProxy(db, timeout)
 }
 
 // MockTranslator is a simple translator for demonstration

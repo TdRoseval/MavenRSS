@@ -7,9 +7,13 @@ import FeedList from './FeedList.vue';
 
 interface Props {
   isOpen?: boolean;
+  isMobile?: boolean;
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  isOpen: true,
+  isMobile: false,
+});
 
 const emit = defineEmits<{
   toggle: [];
@@ -107,14 +111,17 @@ function toggleActivityBar() {
 <template>
   <div
     class="compact-sidebar-wrapper flex h-full relative"
-    :class="{ 'width-collapsed': isActivityBarCollapsed }"
+    :class="{ 
+      'width-collapsed': isActivityBarCollapsed,
+      'mobile-sidebar': isMobile 
+    }"
   >
     <!-- Shared container for ActivityBar and Edge Toggle -->
-    <div class="sidebar-toggle-container">
-      <!-- Edge Toggle Button (visible when ActivityBar is collapsed) -->
+    <div class="sidebar-toggle-container" :class="{ 'mobile-toggle-container': isMobile }">
+      <!-- Edge Toggle Button (visible when ActivityBar is collapsed) - Hidden on mobile -->
       <Transition name="edge-toggle-fade">
         <button
-          v-if="isActivityBarCollapsed"
+          v-if="isActivityBarCollapsed && !isMobile"
           class="edge-toggle-button flex items-center justify-center text-text-secondary hover:text-accent hover:bg-bg-secondary transition-all"
           :title="t('sidebar.activity.expandActivityBar')"
           @click="toggleActivityBar"
@@ -126,7 +133,8 @@ function toggleActivityBar() {
       <!-- Smart Activity Bar (Left) -->
       <ActivityBar
         ref="activityBarRef"
-        :is-collapsed="isActivityBarCollapsed"
+        :is-collapsed="isMobile ? false : isActivityBarCollapsed"
+        :is-mobile="isMobile"
         @add-feed="emitShowAddFeed"
         @settings="emitShowSettings"
         @toggle-feed-drawer="handleToggleFeedList"
@@ -156,10 +164,10 @@ function toggleActivityBar() {
       </div>
     </Transition>
 
-    <!-- Overlay for mobile -->
+    <!-- Overlay for mobile (hidden when using App.vue overlay) -->
     <Transition name="overlay-fade">
       <div
-        v-if="isOpen && isFeedListExpanded"
+        v-if="isOpen && isFeedListExpanded && !isMobile"
         class="fixed inset-0 bg-black/50 z-20 md:hidden"
         @click="emit('toggle')"
       ></div>
@@ -178,6 +186,10 @@ function toggleActivityBar() {
   /* Smooth width transition between collapsed/expanded states */
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: width;
+}
+
+.compact-sidebar-wrapper.mobile-sidebar {
+  z-index: 60 !important;
 }
 
 /* Container for both ActivityBar and Edge Toggle - uses absolute positioning */
@@ -355,5 +367,30 @@ function toggleActivityBar() {
 .overlay-fade-enter-to,
 .overlay-fade-leave-from {
   opacity: 1;
+}
+
+/* Mobile sidebar styles - full screen overlay */
+.mobile-sidebar {
+  position: fixed !important;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100% !important;
+  max-width: 280px;
+  z-index: 60 !important;
+  background-color: var(--color-bg-primary);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+}
+
+.mobile-toggle-container {
+  width: 44px !important;
+  min-width: 44px !important;
+}
+
+@media (max-width: 767px) {
+  .mobile-toggle-container {
+    width: 44px !important;
+    min-width: 44px !important;
+  }
 }
 </style>

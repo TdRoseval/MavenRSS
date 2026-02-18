@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
 // CustomTranslator implements a fully customizable HTTP-based translation service
@@ -34,10 +36,11 @@ type CustomTranslatorConfig struct {
 // NewCustomTranslator creates a new custom translator with the given configuration
 // db is optional - if nil, no proxy will be used
 func NewCustomTranslator(config *CustomTranslatorConfig) *CustomTranslator {
+	client := httputil.GetPooledHTTPClient("", time.Duration(config.Timeout)*time.Second)
 	return &CustomTranslator{
-		config: config,
-		client: &http.Client{Timeout: time.Duration(config.Timeout) * time.Second},
-		db:     nil,
+		config:         config,
+		client:         client,
+		db:             nil,
 	}
 }
 
@@ -45,8 +48,7 @@ func NewCustomTranslator(config *CustomTranslatorConfig) *CustomTranslator {
 func NewCustomTranslatorWithDB(config *CustomTranslatorConfig, db DBInterface) *CustomTranslator {
 	client, err := CreateHTTPClientWithProxy(db, time.Duration(config.Timeout)*time.Second)
 	if err != nil {
-		// Fallback to default client if proxy creation fails
-		client = &http.Client{Timeout: time.Duration(config.Timeout) * time.Second}
+		client = httputil.GetPooledHTTPClient("", time.Duration(config.Timeout)*time.Second)
 	}
 	return &CustomTranslator{
 		config:         config,
@@ -54,6 +56,18 @@ func NewCustomTranslatorWithDB(config *CustomTranslatorConfig, db DBInterface) *
 		db:             db,
 		cachedMappings: config.LangCodeMapping,
 	}
+}
+
+func (t *CustomTranslator) RefreshProxy() {
+	if t.db == nil || t.config == nil {
+		return
+	}
+
+	client, err := CreateHTTPClientWithProxy(t.db, time.Duration(t.config.Timeout)*time.Second)
+	if err != nil {
+		client = httputil.GetPooledHTTPClient("", time.Duration(t.config.Timeout)*time.Second)
+	}
+	t.client = client
 }
 
 // Translate translates text using the configured custom API

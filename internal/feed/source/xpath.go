@@ -5,13 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"MrRSS/internal/utils/httputil"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/mmcdole/gofeed"
 )
+
+const maxXPathRetries = 3
 
 // XPathSource fetches content from web pages using XPath/CSS selectors.
 type XPathSource struct {
@@ -20,10 +25,14 @@ type XPathSource struct {
 
 // NewXPathSource creates a new XPath source.
 func NewXPathSource() *XPathSource {
+	return NewXPathSourceWithProxy("")
+}
+
+// NewXPathSourceWithProxy creates a new XPath source with custom proxy.
+func NewXPathSourceWithProxy(proxyURL string) *XPathSource {
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	return &XPathSource{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client: httputil.GetPooledUserAgentClient(proxyURL, 20*time.Second, userAgent),
 	}
 }
 
@@ -53,29 +62,62 @@ func (x *XPathSource) SetHTTPClient(client *http.Client) {
 	}
 }
 
-// Fetch retrieves content from the URL and extracts items using selectors.
+// Fetch retrieves content from the URL and extracts items using selectors with retry support.
 func (x *XPathSource) Fetch(ctx context.Context, config *Config) (*gofeed.Feed, error) {
 	if err := x.Validate(config); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Build request
+	var lastErr error
+	for attempt := 0; attempt < maxXPathRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		feed, err := x.doFetch(ctx, config)
+		if err == nil {
+			return feed, nil
+		}
+
+		lastErr = err
+		errStr := fmt.Sprintf("%v", err)
+
+		if httputil.IsNetworkError(errStr) && attempt < maxXPathRetries-1 {
+			backoff := httputil.CalculateBackoffSimple(attempt)
+			log.Printf("[XPathSource] Network error on attempt %d/%d for %s, retrying in %v: %v",
+				attempt+1, maxXPathRetries, config.URL, backoff, err)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			continue
+		}
+
+		return nil, fmt.Errorf("failed to fetch page: %w", err)
+	}
+
+	return nil, fmt.Errorf("all %d attempts failed, last error: %w", maxXPathRetries, lastErr)
+}
+
+// doFetch performs the actual fetch without retries
+func (x *XPathSource) doFetch(ctx context.Context, config *Config) (*gofeed.Feed, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", config.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set default user agent
 	if config.UserAgent != "" {
 		req.Header.Set("User-Agent", config.UserAgent)
 	} else {
 		req.Header.Set("User-Agent", "MrRSS/1.0")
 	}
 
-	// Execute request
 	resp, err := x.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch page: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -83,13 +125,11 @@ func (x *XPathSource) Fetch(ctx context.Context, config *Config) (*gofeed.Feed, 
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	// Parse HTML
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTML: %w", err)
 	}
 
-	// Extract items
 	feed := x.extractFeed(doc, config)
 	return feed, nil
 }

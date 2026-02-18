@@ -1,3 +1,5 @@
+//go:build !server
+
 package update
 
 import (
@@ -102,15 +104,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
-	client, err := httputil.CreateHTTPClient(proxyURL, 30*time.Second)
-	if err != nil {
-		log.Printf("Error creating HTTP client: %v", err)
-		response.JSON(w, map[string]interface{}{
-			"current_version": currentVersion,
-			"error":           "Failed to create HTTP client",
-		})
-		return
-	}
+	client := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
 
 	resp, err := client.Get(githubAPI)
 	if err != nil {

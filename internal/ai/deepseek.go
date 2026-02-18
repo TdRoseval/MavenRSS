@@ -154,34 +154,18 @@ func (h *DeepSeekHandler) ParseResponse(body []byte) (ResponseResult, error) {
 
 // ValidateResponse checks if the response is valid
 func (h *DeepSeekHandler) ValidateResponse(statusCode int, body []byte) error {
-	var response struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	switch statusCode {
+	case 200:
+		return nil
+	case 401, 403:
+		return fmt.Errorf("authentication failed - check API key")
+	case 404:
+		return fmt.Errorf("model not found")
+	case 400:
+		return fmt.Errorf("bad request - check parameters")
+	default:
+		return fmt.Errorf("DeepSeek API returned status %d: %s", statusCode, string(body))
 	}
-
-	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("invalid JSON response: %w", err)
-	}
-
-	if response.Error.Message != "" {
-		return fmt.Errorf("API error: %s", response.Error.Message)
-	}
-
-	if len(response.Choices) == 0 {
-		return fmt.Errorf("no choices in response")
-	}
-
-	if response.Choices[0].Message.Content == "" {
-		return fmt.Errorf("empty content in response")
-	}
-
-	return nil
 }
 
 // FormatEndpoint formats the API endpoint URL

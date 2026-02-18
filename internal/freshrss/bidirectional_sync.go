@@ -31,8 +31,13 @@ type BidirectionalSyncService struct {
 
 // NewBidirectionalSyncService creates a new bidirectional sync service
 func NewBidirectionalSyncService(serverURL, username, password string, db *database.DB) *BidirectionalSyncService {
+	return NewBidirectionalSyncServiceWithProxy(serverURL, username, password, "", db)
+}
+
+// NewBidirectionalSyncServiceWithProxy creates a new bidirectional sync service with proxy support
+func NewBidirectionalSyncServiceWithProxy(serverURL, username, password, proxyURL string, db *database.DB) *BidirectionalSyncService {
 	return &BidirectionalSyncService{
-		client: NewClient(serverURL, username, password),
+		client: NewClientWithProxy(serverURL, username, password, proxyURL),
 		db:     db,
 	}
 }

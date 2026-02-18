@@ -1,13 +1,14 @@
 package network
 
 import (
-	"net/http"
 	"testing"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
 func TestCalculateSpeedLevel(t *testing.T) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := httputil.GetPooledHTTPClient("", 10*time.Second)
 	d := NewDetector(client)
 
 	tests := []struct {

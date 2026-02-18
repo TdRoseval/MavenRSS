@@ -47,26 +47,11 @@ func NewFetcher(db *database.DB) *Fetcher {
 		executor = NewScriptExecutor(scriptsDir)
 	}
 
-	// Create HTTP client for feed parsing with proper User-Agent
-	// This is critical because many RSS servers block requests without a proper User-Agent
-	httpClient, err := httputil.CreateHTTPClientWithUserAgent(
-		"",
-		30*time.Second,
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-	)
-	if err != nil {
-		// Fallback to default client if proxy setup fails
-		log.Printf("Warning: Failed to create HTTP client with User-Agent: %v, using default client", err)
-		httpClient = &http.Client{Timeout: 30 * time.Second}
-	}
-
-	// Create parser with custom HTTP client to support localhost and other endpoints
+	// Create parser without fixed HTTP client - we'll create fresh clients with latest proxy config each time
 	parser := gofeed.NewParser()
-	parser.Client = httpClient
 
-	// Create high priority parser with shorter timeout for content fetching
+	// Create high priority parser without fixed HTTP client
 	highPriorityParser := gofeed.NewParser()
-	highPriorityParser.Client = httpClient
 
 	fetcher := &Fetcher{
 		db:                db,
@@ -127,7 +112,20 @@ func (f *Fetcher) transformRSSHubURL(url string) (string, error) {
 	apiKey, _ := f.db.GetEncryptedSetting("rsshub_api_key")
 
 	route := rsshub.ExtractRoute(url)
-	client := rsshub.NewClient(endpoint, apiKey)
+
+	// Build proxy URL if enabled
+	var proxyURL string
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := f.db.GetSetting("proxy_type")
+		proxyHost, _ := f.db.GetSetting("proxy_host")
+		proxyPort, _ := f.db.GetSetting("proxy_port")
+		proxyUsername, _ := f.db.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := f.db.GetEncryptedSetting("proxy_password")
+		proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	client := rsshub.NewClientWithProxy(endpoint, apiKey, proxyURL)
 	return client.BuildURL(route), nil
 }
 
@@ -184,13 +182,10 @@ func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 	}
 	// If ProxyEnabled=false, proxyURL remains empty (no proxy)
 
-	// Create HTTP client with browser-like headers to bypass Cloudflare and anti-bot protections
+	// Use pooled client with browser-like headers to bypass Cloudflare and anti-bot protections
 	// This is critical for RSSHub feeds and other services with anti-bot protection
-	return httputil.CreateHTTPClientWithUserAgent(
-		proxyURL,
-		30*time.Second,
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-	)
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+	return httputil.GetPooledUserAgentClient(proxyURL, httputil.DefaultRSSFetchTimeout, userAgent), nil
 }
 
 func (f *Fetcher) FetchAll(ctx context.Context) {

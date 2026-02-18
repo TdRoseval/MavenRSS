@@ -5,6 +5,7 @@ import i18n, { locale } from './i18n';
 import './style.css';
 import App from './App.vue';
 import { setCachedServerMode } from './utils/serverMode';
+import { register as registerServiceWorker } from './utils/serviceWorker';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -24,15 +25,29 @@ app.use(pinia);
 app.use(i18n);
 app.use(PhosphorIcons);
 
-// Initialize language setting before mounting
-async function initializeApp() {
+// Mount app immediately for fast initial render
+app.mount('#app');
+
+// Register Service Worker for offline caching (only in production-like environments)
+if (import.meta.env.PROD || window.location.hostname !== 'localhost') {
+  registerServiceWorker({
+    onSuccess: () => {
+      console.log('[ServiceWorker] Service Worker registered successfully');
+    },
+    onUpdate: () => {
+      console.log('[ServiceWorker] New content available, please refresh');
+    }
+  });
+}
+
+// Initialize settings and language in the background (non-blocking)
+async function initializeSettings() {
   try {
     const res = await fetch('/api/settings');
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
 
-    // Get response text first to debug JSON parsing issues
     const text = await res.text();
     let data;
 
@@ -41,7 +56,6 @@ async function initializeApp() {
     } catch (jsonError) {
       console.error('JSON parse error:', jsonError);
       console.error('Response text (first 500 chars):', text.substring(0, 500));
-      // Use default empty object if JSON is invalid
       data = {};
     }
 
@@ -49,7 +63,6 @@ async function initializeApp() {
       locale.value = data.language;
     }
 
-    // Also check server mode and cache it for future use
     try {
       const versionRes = await fetch('/api/version');
       if (versionRes.ok) {
@@ -59,16 +72,9 @@ async function initializeApp() {
     } catch (e) {
       console.error('Failed to cache server mode:', e);
     }
-
-    // Start FreshRSS status polling if enabled
-    // Note: Don't use store here - it will be initialized after mount
-    // Store initialization will handle FreshRSS polling in App.vue
   } catch (e) {
     console.error('Error loading language setting:', e);
   }
-
-  app.mount('#app');
 }
 
-// Initialize and mount
-initializeApp();
+initializeSettings();

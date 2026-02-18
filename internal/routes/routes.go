@@ -17,6 +17,8 @@ type Config struct {
 	EnableRecovery bool
 	// EnableCORS enables CORS middleware (useful for server mode)
 	EnableCORS bool
+	// EnableCompression enables gzip/brotli compression
+	EnableCompression bool
 	// CORSOrigins specifies allowed origins for CORS
 	CORSOrigins []string
 }
@@ -24,20 +26,22 @@ type Config struct {
 // DefaultConfig returns the default route configuration.
 func DefaultConfig() Config {
 	return Config{
-		EnableLogging:  false,
-		EnableRecovery: true,
-		EnableCORS:     false,
-		CORSOrigins:    []string{"*"},
+		EnableLogging:     false,
+		EnableRecovery:    true,
+		EnableCORS:        false,
+		EnableCompression: false,
+		CORSOrigins:       []string{"*"},
 	}
 }
 
 // ServerConfig returns a configuration suitable for server mode.
 func ServerConfig() Config {
 	return Config{
-		EnableLogging:  true,
-		EnableRecovery: true,
-		EnableCORS:     true,
-		CORSOrigins:    []string{"*"},
+		EnableLogging:     true,
+		EnableRecovery:    true,
+		EnableCORS:        true,
+		EnableCompression: true,
+		CORSOrigins:       []string{"*"},
 	}
 }
 
@@ -49,13 +53,6 @@ func RegisterAPIRoutes(mux *http.ServeMux, h *core.Handler) {
 
 // RegisterAPIRoutesWithConfig registers all API routes with the specified configuration.
 func RegisterAPIRoutesWithConfig(mux *http.ServeMux, h *core.Handler, cfg Config) {
-	// Create a wrapper mux with middleware applied
-	wrappedMux := WrapWithMiddleware(mux, cfg)
-	
-	// We need to replace the original mux's ServeMux with the wrapped one
-	// But since we can't directly do that, we register all routes to the original mux
-	// and apply middleware when we create the HTTP server in main.go/main-core.go
-	
 	// Register all route groups
 	registerFeedRoutes(mux, h)
 	registerArticleRoutes(mux, h)
@@ -85,6 +82,10 @@ func WrapWithMiddleware(handler http.Handler, cfg Config) http.Handler {
 			MaxAge:         86400,
 		}
 		middlewares = append(middlewares, middleware.CORSWithConfig(corsConfig))
+	}
+
+	if cfg.EnableCompression {
+		middlewares = append(middlewares, middleware.Compress())
 	}
 
 	return middleware.Apply(handler, middlewares...)

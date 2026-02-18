@@ -10,6 +10,7 @@ import (
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/rsshub"
+	"MrRSS/internal/utils/httputil"
 	"MrRSS/internal/utils/urlutil"
 )
 
@@ -141,6 +142,10 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
+	if feed == nil {
+		response.Error(w, nil, http.StatusNotFound)
+		return
+	}
 	if err := h.DB.UpdateFeed(feed.ID, feed.Title, feed.URL, feed.Category, feed.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, feed.Type, feed.XPathItem, feed.XPathItemTitle, feed.XPathItemContent, feed.XPathItemUri, feed.XPathItemAuthor, feed.XPathItemTimestamp, feed.XPathItemTimeFormat, feed.XPathItemThumbnail, feed.XPathItemCategories, feed.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, feed.EmailAddress, feed.EmailIMAPServer, feed.EmailUsername, feed.EmailPassword, feed.EmailFolder, feed.EmailIMAPPort); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -261,7 +266,20 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		// Skip validation if API key is empty (public rsshub.app instance with Cloudflare protection)
 		if apiKey != "" {
 			route := rsshub.ExtractRoute(req.URL)
-			client := rsshub.NewClient(endpoint, apiKey)
+
+			// Build proxy URL if enabled
+			var proxyURL string
+			proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+			if proxyEnabled == "true" {
+				proxyType, _ := h.DB.GetSetting("proxy_type")
+				proxyHost, _ := h.DB.GetSetting("proxy_host")
+				proxyPort, _ := h.DB.GetSetting("proxy_port")
+				proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+				proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+				proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			}
+
+			client := rsshub.NewClientWithProxy(endpoint, apiKey, proxyURL)
 			if err := client.ValidateRoute(route); err != nil {
 				response.Error(w, err, http.StatusBadRequest)
 				return
@@ -294,6 +312,10 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		currentFeed, err := h.DB.GetFeedByID(req.ID)
 		if err != nil {
 			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+		if currentFeed == nil {
+			response.Error(w, nil, http.StatusNotFound)
 			return
 		}
 
@@ -394,7 +416,11 @@ func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 
 	feed, err := h.DB.GetFeedByID(id)
 	if err != nil {
-		response.Error(w, err, http.StatusNotFound)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if feed == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 

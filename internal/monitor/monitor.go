@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 	"MrRSS/internal/version"
 )
 
@@ -68,11 +69,9 @@ func NewMonitorClient(apiURL, appID string) *MonitorClient {
 		apiURL:   apiURL,
 		appID:    appID,
 		deviceID: getOrCreateDeviceID(),
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-		devMode: devMode,
-		enabled: enabled,
+		client:   httputil.GetPooledHTTPClient("", 10*time.Second),
+		devMode:  devMode,
+		enabled:  enabled,
 	}
 }
 

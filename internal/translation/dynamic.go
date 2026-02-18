@@ -154,6 +154,15 @@ func (t *DynamicTranslator) InvalidateCache() {
 	t.cachedProviderName = ""
 }
 
+// RefreshProxy 刷新翻译器的代理设置
+// 当全局代理设置更改时调用此方法，以使新的代理配置生效
+func (t *DynamicTranslator) RefreshProxy() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cachedProvider = nil
+	t.cachedProviderName = ""
+}
+
 // SetProfileProvider sets the AI profile provider for translation
 func (t *DynamicTranslator) SetProfileProvider(profileProvider *ai.ProfileProvider) {
 	t.mu.Lock()

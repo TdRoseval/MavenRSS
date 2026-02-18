@@ -2,7 +2,12 @@
 import { useI18n } from 'vue-i18n';
 import { PhArchive, PhFolders, PhInfo } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
-import { NestedSettingsContainer, SubSettingItem, InputControl, TipBox } from '@/components/settings';
+import {
+  NestedSettingsContainer,
+  SubSettingItem,
+  InputControl,
+  TipBox,
+} from '@/components/settings';
 import { checkServerMode } from '@/utils/serverMode';
 import { ref, onMounted } from 'vue';
 
@@ -65,7 +70,12 @@ onMounted(async () => {
         {{ t('setting.plugins.obsidian.serverModeTitle', 'Server Mode') }}
       </template>
       <p class="text-xs sm:text-sm">
-        {{ t('setting.plugins.obsidian.serverModeDescription', 'In server mode, articles will be downloaded as Markdown files instead of being written directly to the vault. You can then manually import them into your Obsidian vault.') }}
+        {{
+          t(
+            'setting.plugins.obsidian.serverModeDescription',
+            'In server mode, articles will be downloaded as Markdown files instead of being written directly to the vault. You can then manually import them into your Obsidian vault.'
+          )
+        }}
       </p>
     </TipBox>
 

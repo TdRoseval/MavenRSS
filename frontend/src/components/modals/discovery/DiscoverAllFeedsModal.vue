@@ -80,7 +80,7 @@ watch(
 </script>
 
 <template>
-  <BaseModal v-if="show" size="4xl" :z-index="70" @close="close">
+  <BaseModal v-if="show" size="4xl" :z-index="110" @close="close">
     <!-- Custom Header with gradient background -->
     <template #header>
       <div

@@ -10,6 +10,7 @@ import (
 	"MrRSS/internal/freshrss"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/httputil"
 )
 
 // HandleGetUnreadCounts returns unread counts for all feeds.
@@ -370,12 +371,12 @@ func HandleMarkRelativeToArticle(h *core.Handler, w http.ResponseWriter, r *http
 	article, err := h.DB.GetArticleByID(id)
 	if err != nil {
 		log.Printf("[HandleMarkRelativeToArticle] Error getting article: %v", err)
-		response.Error(w, err, http.StatusNotFound)
+		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	if article == nil {
-		response.Error(w, err, http.StatusNotFound)
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 
@@ -412,8 +413,20 @@ func performImmediateBulkSync(h *core.Handler, syncReqs []database.SyncRequest) 
 		return
 	}
 
-	// Create sync service
-	syncService := freshrss.NewBidirectionalSyncService(serverURL, username, password, h.DB)
+	// Build proxy URL if enabled
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSetting("proxy_type")
+		proxyHost, _ := h.DB.GetSetting("proxy_host")
+		proxyPort, _ := h.DB.GetSetting("proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyURL = buildProxyURLForBulk(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	// Create sync service with proxy support
+	syncService := freshrss.NewBidirectionalSyncServiceWithProxy(serverURL, username, password, proxyURL, h.DB)
 
 	// Perform immediate sync for each article
 	ctx := context.Background()
@@ -430,4 +443,8 @@ func performImmediateBulkSync(h *core.Handler, syncReqs []database.SyncRequest) 
 		}
 	}
 	log.Printf("[Bulk Sync] Completed: %d/%d articles synced successfully", successCount, len(syncReqs))
+}
+
+func buildProxyURLForBulk(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 }

@@ -3,8 +3,10 @@ import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
+import { useAppStore } from '@/stores/app';
 
 const { t } = useI18n();
+const store = useAppStore();
 
 const emit = defineEmits<{
   search: [articles: Article[]];
@@ -28,10 +30,26 @@ async function performAISearch() {
   errorMessage.value = '';
 
   try {
+    // Build request body with search query and current filters
+    const requestBody: any = {
+      query: searchQuery.value.trim()
+    };
+    
+    // Add current filter parameters if they exist
+    if (store.currentFilter) {
+      requestBody.filter = store.currentFilter;
+    }
+    if (store.currentFeedId) {
+      requestBody.feed_id = store.currentFeedId;
+    }
+    if (store.currentCategory !== null) {
+      requestBody.category = store.currentCategory;
+    }
+
     const response = await fetch('/api/ai/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: searchQuery.value.trim() }),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await response.json();

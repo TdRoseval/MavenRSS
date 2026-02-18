@@ -3,7 +3,6 @@ package ai
 import (
 	"strconv"
 
-	"MrRSS/internal/config"
 	"MrRSS/internal/models"
 )
 
@@ -53,7 +52,13 @@ func (p *ProfileProvider) GetProfileForFeature(feature FeatureType) (*models.AIP
 	}
 
 	// Fallback to default profile
-	return p.db.GetDefaultAIProfile()
+	profile, err := p.db.GetDefaultAIProfile()
+	if err != nil {
+		// If GetDefaultAIProfile returns an error (like sql.ErrNoRows), just return nil, nil
+		// so that the caller can fall back to legacy settings
+		return nil, nil
+	}
+	return profile, nil
 }
 
 // getSettingKeyForFeature returns the settings key for a feature's AI profile
@@ -76,18 +81,9 @@ func (p *ProfileProvider) getSettingKeyForFeature(feature FeatureType) string {
 // This is a convenience method that combines profile lookup with config creation
 func (p *ProfileProvider) GetConfigForFeature(feature FeatureType) (*ClientConfig, error) {
 	profile, err := p.GetProfileForFeature(feature)
-	if err != nil {
-		return nil, err
-	}
-
-	if profile == nil {
-		// No profile configured, return defaults
-		defaults := config.Get()
-		return &ClientConfig{
-			APIKey:   "",
-			Endpoint: defaults.AIEndpoint,
-			Model:    defaults.AIModel,
-		}, nil
+	if err != nil || profile == nil {
+		// No profile configured or error occurred, return nil so caller can fallback
+		return nil, nil
 	}
 
 	cfg := &ClientConfig{
@@ -100,6 +96,17 @@ func (p *ProfileProvider) GetConfigForFeature(feature FeatureType) (*ClientConfi
 	return cfg, nil
 }
 
+// UseGlobalProxyForFeature returns whether the profile for a feature should use global proxy
+// Returns true by default if no profile is configured
+func (p *ProfileProvider) UseGlobalProxyForFeature(feature FeatureType) bool {
+	profile, err := p.GetProfileForFeature(feature)
+	if err != nil || profile == nil {
+		// Default to using global proxy when no profile is configured
+		return true
+	}
+	return profile.UseGlobalProxy
+}
+
 // HasProfileConfigured checks if a specific profile is configured for a feature
 func (p *ProfileProvider) HasProfileConfigured(feature FeatureType) bool {
 	settingKey := p.getSettingKeyForFeature(feature)
@@ -108,5 +115,10 @@ func (p *ProfileProvider) HasProfileConfigured(feature FeatureType) bool {
 		return false
 	}
 	profileID, err := strconv.ParseInt(profileIDStr, 10, 64)
-	return err == nil && profileID > 0
+	if err != nil || profileID <= 0 {
+		return false
+	}
+	// Verify the profile actually exists
+	profile, err := p.db.GetAIProfile(profileID)
+	return err == nil && profile != nil
 }

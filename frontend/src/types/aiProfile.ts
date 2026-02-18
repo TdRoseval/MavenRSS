@@ -10,6 +10,7 @@ export interface AIProfile {
   model: string;
   custom_headers: string; // JSON string of key-value pairs
   is_default: boolean;
+  use_global_proxy: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +32,7 @@ export interface AIProfileFormData {
   model: string;
   custom_headers: string;
   is_default: boolean;
+  use_global_proxy: boolean;
 }
 
 // Default values for a new profile
@@ -41,4 +43,5 @@ export const defaultAIProfileFormData: AIProfileFormData = {
   model: 'gpt-4o-mini',
   custom_headers: '',
   is_default: false,
+  use_global_proxy: true,
 };

@@ -13,11 +13,15 @@ import (
 	"MrRSS/internal/config"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/utils/httputil"
 )
 
 // AISearchRequest represents the request for AI-powered search
 type AISearchRequest struct {
-	Query string `json:"query"`
+	Query    string `json:"query"`
+	Filter   string `json:"filter,omitempty"`
+	FeedID   *int   `json:"feed_id,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 // AISearchResponse represents the response from AI search
@@ -105,7 +109,7 @@ Output: {"required":["Python","web框架","web framework"],"optional":["Django",
 }
 
 // buildSearchSQL builds the SQL query from search terms with relevance scoring
-func buildSearchSQL(terms *SearchTerms, limit int) string {
+func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int, category string) string {
 	if terms == nil || (len(terms.Required) == 0 && len(terms.Patterns) == 0) {
 		return ""
 	}
@@ -177,6 +181,35 @@ func buildSearchSQL(terms *SearchTerms, limit int) string {
 
 	// Build full query with LEFT JOIN to article_contents for content search
 	whereClause := strings.Join(requiredConditions, " OR ")
+	
+	// Add filter conditions
+	var additionalConditions []string
+	additionalConditions = append(additionalConditions, "a.is_hidden = 0")
+	
+	if feedID != nil {
+		additionalConditions = append(additionalConditions, fmt.Sprintf("a.feed_id = %d", *feedID))
+	}
+	
+	if category != "" {
+		// Handle nested categories
+		additionalConditions = append(additionalConditions, fmt.Sprintf("(f.category = '%s' OR f.category LIKE '%s/%%')", strings.ReplaceAll(category, "'", "''"), strings.ReplaceAll(category, "'", "''")))
+	}
+	
+	// Add filter-specific conditions
+	switch filter {
+	case "unread":
+		additionalConditions = append(additionalConditions, "a.is_read = 0")
+	case "favorites":
+		additionalConditions = append(additionalConditions, "a.is_favorite = 1")
+	case "readLater":
+		additionalConditions = append(additionalConditions, "a.is_read_later = 1")
+	case "imageGallery":
+		additionalConditions = append(additionalConditions, "a.image_url != ''")
+	}
+	
+	fullWhereClause := strings.Join(additionalConditions, " AND ")
+	fullWhereClause = fmt.Sprintf("%s AND (%s)", fullWhereClause, whereClause)
+
 	query := fmt.Sprintf(`
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url,
 			   a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later,
@@ -185,10 +218,10 @@ func buildSearchSQL(terms *SearchTerms, limit int) string {
 		FROM articles a
 		JOIN feeds f ON a.feed_id = f.id
 		LEFT JOIN article_contents c ON a.id = c.article_id
-		WHERE a.is_hidden = 0 AND (%s)
+		WHERE %s
 		ORDER BY relevance_score DESC, a.published_at DESC
 		LIMIT %d
-	`, relevanceScore, whereClause, limit)
+	`, relevanceScore, fullWhereClause, limit)
 
 	return query
 }
@@ -232,13 +265,15 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Get AI settings - try ProfileProvider first
 	var apiKey, endpoint, model string
+	var useGlobalProxy bool = true
 	if h.AIProfileProvider != nil {
 		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureSearch)
 		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "") {
 			apiKey = cfg.APIKey
 			endpoint = cfg.Endpoint
 			model = cfg.Model
-			log.Printf("[AI Search] Using AI profile for search (endpoint: %s, model: %s)", endpoint, model)
+			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureSearch)
+			log.Printf("[AI Search] Using AI profile for search (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
 		}
 	}
 
@@ -269,7 +304,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create AI client
-	httpClient, err := createHTTPClientWithProxy(h)
+	httpClient, err := createAIHTTPClientWithProxyForSearch(h, useGlobalProxy)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,
@@ -277,7 +312,6 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	httpClient.Timeout = 30 * time.Second
 
 	clientConfig := ai.ClientConfig{
 		APIKey:   apiKey,
@@ -287,9 +321,12 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
 
-	// Get expanded search terms from AI
+	// Get expanded search terms from AI using Messages format for better compatibility
 	systemPrompt := buildAISearchPrompt()
-	aiResponse, err := client.Request(systemPrompt, req.Query)
+	messages := []map[string]string{
+		{"role": "user", "content": systemPrompt + "\n\n" + req.Query},
+	}
+	aiResponse, err := client.RequestWithMessages(messages)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,
@@ -298,10 +335,10 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[AI Search] AI response: %s", aiResponse)
+	log.Printf("[AI Search] AI response: %s", aiResponse.Content)
 
 	// Parse search terms from AI response
-	searchTerms, err := parseSearchTermsAdvanced(aiResponse)
+	searchTerms, err := parseSearchTermsAdvanced(aiResponse.Content)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,
@@ -318,7 +355,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	log.Printf("[AI Search] Required: %v, Optional: %v, Patterns: %v", searchTerms.Required, searchTerms.Optional, searchTerms.Patterns)
 
 	// Build and execute search query
-	searchSQL := buildSearchSQL(searchTerms, 100)
+	searchSQL := buildSearchSQL(searchTerms, 100, req.Filter, req.FeedID, req.Category)
 	log.Printf("[AI Search] SQL query:\n%s", searchSQL)
 
 	// Execute search
@@ -364,4 +401,26 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		SearchTerms: strings.Join(allTerms, ", "),
 		TotalCount:  len(articles),
 	})
+}
+
+func createAIHTTPClientWithProxyForSearch(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+	var proxyURL string
+
+	if useGlobalProxy {
+		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSetting("proxy_type")
+			proxyHost, _ := h.DB.GetSetting("proxy_host")
+			proxyPort, _ := h.DB.GetSetting("proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			proxyURL = buildProxyURLForSearch(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	}
+
+	return httputil.GetPooledAIHTTPClient(proxyURL, 30*time.Second), nil
+}
+
+func buildProxyURLForSearch(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 }

@@ -10,7 +10,7 @@ const BASE_Z_INDEX = 50;
 const Z_INDEX_INCREMENT = 10;
 
 // Special z-index for large modals like SettingsModal
-export const LARGE_MODAL_Z_INDEX = 40;
+export const LARGE_MODAL_Z_INDEX = 80;
 
 // Get the next available z-index
 function getNextZIndex(baseZIndex?: number): number {

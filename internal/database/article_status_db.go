@@ -1,5 +1,7 @@
 package database
 
+import "database/sql"
+
 // MarkArticleRead marks an article as read or unread.
 // When marking as read, also removes from read later list.
 func (db *DB) MarkArticleRead(id int64, read bool) error {
@@ -21,6 +23,9 @@ func (db *DB) ToggleFavorite(id int64) error {
 	// First get current state
 	var isFav bool
 	err := db.QueryRow("SELECT is_favorite FROM articles WHERE id = ?", id).Scan(&isFav)
+	if err == sql.ErrNoRows {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -41,6 +46,9 @@ func (db *DB) ToggleArticleHidden(id int64) error {
 	// First get current state
 	var isHidden bool
 	err := db.QueryRow("SELECT is_hidden FROM articles WHERE id = ?", id).Scan(&isHidden)
+	if err == sql.ErrNoRows {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -62,6 +70,9 @@ func (db *DB) ToggleReadLater(id int64) error {
 	// First get current state
 	var isReadLater bool
 	err := db.QueryRow("SELECT is_read_later FROM articles WHERE id = ?", id).Scan(&isReadLater)
+	if err == sql.ErrNoRows {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

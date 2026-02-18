@@ -2,6 +2,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 )
@@ -34,6 +35,7 @@ type RequestConfig struct {
 	TopP                float64                // Top-p sampling
 	TopK                int                    // Top-k sampling (Gemini/Ollama)
 	Seed                int                    // Seed for reproducible outputs
+	Context             context.Context        // Context for cancellation
 }
 
 // ResponseResult holds the result from an AI API call

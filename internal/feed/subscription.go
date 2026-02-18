@@ -61,7 +61,19 @@ func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTit
 	}
 	apiKey, _ := f.db.GetEncryptedSetting("rsshub_api_key")
 
-	client := rsshub.NewClient(endpoint, apiKey)
+	// Build proxy URL if enabled
+	var proxyURL string
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := f.db.GetSetting("proxy_type")
+		proxyHost, _ := f.db.GetSetting("proxy_host")
+		proxyPort, _ := f.db.GetSetting("proxy_port")
+		proxyUsername, _ := f.db.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := f.db.GetEncryptedSetting("proxy_password")
+		proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	client := rsshub.NewClientWithProxy(endpoint, apiKey, proxyURL)
 
 	// Skip validation if API key is empty (public rsshub.app instance)
 	if apiKey != "" {
@@ -81,12 +93,18 @@ func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTit
 
 	utils.DebugLog("AddRSSHubSubscription: Creating feed with URL: %s", url)
 
+	// Mark feed as using proxy if global proxy is enabled
+	// This ensures RSSHub feeds use the configured proxy during refresh
+	useProxy := proxyEnabled == "true"
+
 	feed := &models.Feed{
-		Title:       title,
-		URL:         url,
-		Link:        client.BuildURL(route), // Store the actual RSSHub URL as link
-		Description: fmt.Sprintf("RSSHub route: %s", route),
-		Category:    category,
+		Title:        title,
+		URL:          url,
+		Link:         client.BuildURL(route), // Store the actual RSSHub URL as link
+		Description:  fmt.Sprintf("RSSHub route: %s", route),
+		Category:     category,
+		ProxyEnabled: useProxy,
+		ProxyURL:     proxyURL,
 	}
 
 	return f.db.AddFeed(feed)
@@ -112,7 +130,7 @@ func sanitizeFeedXML(xmlContent string) string {
 }
 
 // fetchAndSanitizeFeed fetches feed content and sanitizes it before parsing
-func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feedURL string) (string, error) {
+func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, feedURL string) (string, error) {
 	debugTimer := NewDebugTimer(fmt.Sprintf("FetchSanitize-%s", feedURL), shouldEnableDebugLogging(feedURL))
 	defer debugTimer.End()
 
@@ -120,7 +138,7 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feedURL string) (str
 
 	// Use the feed's HTTP client to fetch content
 	debugTimer.LogWithTime("Getting HTTP client")
-	httpClient, err := f.getHTTPClient(models.Feed{URL: feedURL})
+	httpClient, err := f.getHTTPClient(*feed)
 	if err != nil {
 		debugTimer.LogWithTime("Failed to create HTTP client: %v", err)
 		return "", fmt.Errorf("failed to create HTTP client: %w", err)
@@ -185,18 +203,27 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feedURL string) (str
 func (f *Fetcher) AddSubscription(url string, category string, customTitle string) (int64, error) {
 	utils.DebugLog("AddSubscription: Starting to add feed from URL: %s", url)
 
-	// Try fetching and sanitizing the feed first
-	ctx := context.Background()
-	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, url)
+	// Try fetching and sanitizing the feed first with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), httputil.DefaultRSSFetchTimeout)
+	defer cancel()
+
+	// Create tempFeed with global proxy settings if enabled
+	tempFeed := &models.Feed{URL: url}
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		tempFeed.ProxyEnabled = true
+	}
+	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, tempFeed, url)
 	if err != nil {
 		utils.DebugLog("AddSubscription: Failed to fetch feed for %s: %v", url, err)
 		// Fall through to standard parsing which might handle it differently
 	} else {
 		// Try parsing the sanitized XML
 		parser := gofeed.NewParser()
-		// Use the same HTTP client if available (for proxy settings, etc.)
-		if gofeedParser, ok := f.fp.(*gofeed.Parser); ok {
-			parser.Client = gofeedParser.Client
+		// Use fresh HTTP client with latest proxy settings
+		httpClient, err := f.getHTTPClient(*tempFeed)
+		if err == nil {
+			parser.Client = httpClient
 		}
 		parsedFeed, parseErr := parser.ParseString(cleanedXML)
 		if parseErr == nil {
@@ -225,9 +252,15 @@ func (f *Fetcher) AddSubscription(url string, category string, customTitle strin
 		utils.DebugLog("AddSubscription: Parsing sanitized feed failed: %v", parseErr)
 	}
 
-	// Fallback: Try standard parsing (for backward compatibility)
+	// Fallback: Try standard parsing (for backward compatibility) with fresh client
 	utils.DebugLog("AddSubscription: Attempting standard RSS parsing for URL: %s", url)
-	parsedFeed, err := f.fp.ParseURL(url)
+	// Create a fresh parser with latest proxy configuration
+	freshParser := gofeed.NewParser()
+	httpClient, err := f.getHTTPClient(*tempFeed)
+	if err == nil {
+		freshParser.Client = httpClient
+	}
+	parsedFeed, err := freshParser.ParseURLWithContext(url, ctx)
 	if err != nil {
 		utils.DebugLog("AddSubscription: Standard RSS parsing failed for %s: %v", url, err)
 
@@ -353,16 +386,20 @@ func (f *Fetcher) AddXPathSubscription(url string, category string, customTitle 
 		}
 	}
 
-	// Test fetch the URL to ensure it's accessible before adding
-	httpClient, err := httputil.CreateHTTPClient("", 30*time.Second)
-	if err != nil {
-		return 0, &XPathError{
-			Operation: "fetch",
-			URL:       url,
-			Details:   "Failed to create HTTP client",
-			Err:       err,
-		}
+	// Build proxy URL from global settings if enabled
+	var proxyURL string
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := f.db.GetSetting("proxy_type")
+		proxyHost, _ := f.db.GetSetting("proxy_host")
+		proxyPort, _ := f.db.GetSetting("proxy_port")
+		proxyUsername, _ := f.db.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ := f.db.GetEncryptedSetting("proxy_password")
+		proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
+
+	// Test fetch the URL to ensure it's accessible before adding
+	httpClient := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
 
 	resp, err := httpClient.Get(url)
 	if err != nil {
@@ -480,7 +517,25 @@ func (f *Fetcher) ParseFeed(ctx context.Context, url string) (*gofeed.Feed, erro
 	if err != nil {
 		return nil, err
 	}
-	return f.fp.ParseURLWithContext(actualURL, ctx)
+
+	// Use fetchAndSanitizeFeed to ensure proper HTTP client (with proxy) is used
+	tempFeed := &models.Feed{URL: actualURL}
+	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	if proxyEnabled == "true" {
+		tempFeed.ProxyEnabled = true
+	}
+	cleanedXML, err := f.fetchAndSanitizeFeed(ctx, tempFeed, actualURL)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the sanitized XML
+	parser := gofeed.NewParser()
+	httpClient, err := f.getHTTPClient(*tempFeed)
+	if err == nil {
+		parser.Client = httpClient
+	}
+	return parser.ParseString(cleanedXML)
 }
 
 // ParseFeedWithScript parses an RSS feed, using a custom script or XPath if specified.
@@ -590,7 +645,7 @@ func (f *Fetcher) parseFeedWithFeedInternal(ctx context.Context, feed *models.Fe
 	// Try fetching and sanitizing the feed first to handle file:// URLs in atom:link
 	debugTimer.LogWithTime("About to call fetchAndSanitizeFeed")
 	utils.DebugLog("parseFeedWithFeedInternal: Attempting to fetch and sanitize feed for %s", actualURL)
-	cleanedXML, sanitizeErr := f.fetchAndSanitizeFeed(fetchCtx, actualURL)
+	cleanedXML, sanitizeErr := f.fetchAndSanitizeFeed(fetchCtx, feed, actualURL)
 	debugTimer.LogWithTime("fetchAndSanitizeFeed completed, err=%v", sanitizeErr)
 
 	if sanitizeErr == nil {
@@ -619,11 +674,19 @@ func (f *Fetcher) parseFeedWithFeedInternal(ctx context.Context, feed *models.Fe
 		utils.DebugLog("parseFeedWithFeedInternal: Sanitization failed: %v", sanitizeErr)
 	}
 
-	// Fallback: Try standard parsing first
+	// Fallback: Try standard parsing first with fresh HTTP client (latest proxy config)
 	debugTimer.Stage("Standard parsing via ParseURLWithContext")
-	debugTimer.LogWithTime("About to call ParseURLWithContext")
+	debugTimer.LogWithTime("About to call ParseURLWithContext with fresh client")
 	utils.DebugLog("parseFeedWithFeedInternal: Attempting standard RSS parsing for %s", actualURL)
-	parsedFeed, err := f.fp.ParseURLWithContext(actualURL, fetchCtx)
+
+	// Create a fresh parser with latest proxy configuration for this request
+	freshParser := gofeed.NewParser()
+	httpClient, err := f.getHTTPClient(*feed)
+	if err == nil {
+		freshParser.Client = httpClient
+	}
+
+	parsedFeed, err := freshParser.ParseURLWithContext(actualURL, fetchCtx)
 	debugTimer.LogWithTime("ParseURLWithContext completed, err=%v", err)
 	if err != nil {
 		utils.DebugLog("parseFeedWithFeedInternal: Standard RSS parsing failed: %v", err)
@@ -682,15 +745,11 @@ func (f *Fetcher) parseFeedWithXPath(_ context.Context, feed *models.Feed) (*gof
 		}
 	}
 
-	// Fetch the content
-	httpClient, err := httputil.CreateHTTPClient("", 30*time.Second)
+	// Fetch the content with proper proxy configuration
+	httpClient, err := f.getHTTPClient(*feed)
 	if err != nil {
-		return nil, &XPathError{
-			Operation: "fetch",
-			URL:       feed.URL,
-			Details:   "Failed to create HTTP client",
-			Err:       err,
-		}
+		// Fallback to default client if getHTTPClient fails
+		httpClient = httputil.GetPooledHTTPClient("", 30*time.Second)
 	}
 	resp, err := httpClient.Get(feed.URL)
 	if err != nil {

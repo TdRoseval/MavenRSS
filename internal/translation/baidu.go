@@ -6,13 +6,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"net/url"
 	"time"
+
+	"MrRSS/internal/utils/httputil"
 )
 
-// BaiduTranslator implements translation using the Baidu Translate API.
 type BaiduTranslator struct {
 	AppID     string
 	SecretKey string
@@ -20,23 +22,19 @@ type BaiduTranslator struct {
 	db        DBInterface
 }
 
-// NewBaiduTranslator creates a new Baidu translator with the given credentials.
-// db is optional - if nil, no proxy will be used
 func NewBaiduTranslator(appID, secretKey string) *BaiduTranslator {
 	return &BaiduTranslator{
 		AppID:     appID,
 		SecretKey: secretKey,
-		client:    &http.Client{Timeout: 10 * time.Second},
+		client:    httputil.GetPooledHTTPClient("", 30*time.Second),
 		db:        nil,
 	}
 }
 
-// NewBaiduTranslatorWithDB creates a new Baidu translator with database for proxy support
 func NewBaiduTranslatorWithDB(appID, secretKey string, db DBInterface) *BaiduTranslator {
-	client, err := CreateHTTPClientWithProxy(db, 10*time.Second)
+	client, err := CreateHTTPClientWithProxy(db, 30*time.Second)
 	if err != nil {
-		// Fallback to default client if proxy creation fails
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = httputil.GetPooledHTTPClient("", 30*time.Second)
 	}
 	return &BaiduTranslator{
 		AppID:     appID,
@@ -46,30 +44,35 @@ func NewBaiduTranslatorWithDB(appID, secretKey string, db DBInterface) *BaiduTra
 	}
 }
 
-// Translate translates text to the target language using Baidu Translate API.
+func (t *BaiduTranslator) RefreshProxy() {
+	if t.db == nil {
+		return
+	}
+
+	client, err := CreateHTTPClientWithProxy(t.db, 30*time.Second)
+	if err != nil {
+		client = httputil.GetPooledHTTPClient("", 30*time.Second)
+	}
+	t.client = client
+}
+
 func (t *BaiduTranslator) Translate(text, targetLang string) (string, error) {
 	if text == "" {
 		return "", nil
 	}
 
-	// Baidu API uses different language codes
 	baiduLang := mapToBaiduLang(targetLang)
 
-	// Generate cryptographically secure random salt
 	n, err := rand.Int(rand.Reader, big.NewInt(1000000000))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate salt: %w", err)
 	}
 	salt := n.String()
 
-	// Generate sign: md5(appid+q+salt+key)
-	// Note: MD5 is used here because it's required by the Baidu Translate API specification.
-	// This is not for security purposes but for API signature verification.
 	signStr := t.AppID + text + salt + t.SecretKey
 	hash := md5.Sum([]byte(signStr))
 	sign := hex.EncodeToString(hash[:])
 
-	// Build request URL
 	apiURL := "https://fanyi-api.baidu.com/api/trans/vip/translate"
 	data := url.Values{}
 	data.Set("q", text)
@@ -78,16 +81,6 @@ func (t *BaiduTranslator) Translate(text, targetLang string) (string, error) {
 	data.Set("appid", t.AppID)
 	data.Set("salt", salt)
 	data.Set("sign", sign)
-
-	resp, err := t.client.PostForm(apiURL, data)
-	if err != nil {
-		return "", fmt.Errorf("baidu api request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("baidu api returned status: %d", resp.StatusCode)
-	}
 
 	var result struct {
 		ErrorCode   string `json:"error_code"`
@@ -98,8 +91,35 @@ func (t *BaiduTranslator) Translate(text, targetLang string) (string, error) {
 		} `json:"trans_result"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode baidu response: %w", err)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err := t.client.PostForm(apiURL, data)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < 2 {
+				log.Printf("[Baidu] Network error on attempt %d/3, retrying: %v", attempt+1, err)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+			return "", fmt.Errorf("baidu api request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("baidu api returned status: %d", resp.StatusCode)
+			if resp.StatusCode >= 500 && attempt < 2 {
+				log.Printf("[Baidu] Server error on attempt %d/3, retrying", attempt+1)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+				continue
+			}
+			return "", lastErr
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", fmt.Errorf("failed to decode baidu response: %w", err)
+		}
+
+		break
 	}
 
 	if result.ErrorCode != "" && result.ErrorCode != "52000" {
@@ -113,7 +133,6 @@ func (t *BaiduTranslator) Translate(text, targetLang string) (string, error) {
 	return "", fmt.Errorf("no translation found in baidu response")
 }
 
-// mapToBaiduLang maps standard language codes to Baidu's language codes.
 func mapToBaiduLang(lang string) string {
 	langMap := map[string]string{
 		"en":    "en",

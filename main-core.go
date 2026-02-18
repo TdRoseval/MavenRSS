@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"MrRSS/internal/ai"
+	"MrRSS/internal/crypto"
 	"MrRSS/internal/database"
 	"MrRSS/internal/feed"
 	handlers "MrRSS/internal/handlers/core"
@@ -26,6 +27,7 @@ import (
 	"MrRSS/internal/routes"
 	"MrRSS/internal/translation"
 	"MrRSS/internal/utils/fileutil"
+	"MrRSS/internal/utils/httputil"
 
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -114,6 +116,78 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 	return sr.ResponseWriter.Write(b)
 }
 
+// cachedStaticHandler adds caching headers and ETag support for static files
+type cachedStaticHandler struct {
+	handler http.Handler
+	fs      fs.FS
+}
+
+func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// First check if the file actually exists
+	filePath := strings.TrimPrefix(r.URL.Path, "/")
+	if filePath == "" {
+		filePath = "index.html"
+	}
+	
+	// Try to open the file to verify existence and get info
+	file, err := h.fs.Open(filePath)
+	fileExists := err == nil
+	
+	var fileInfo fs.FileInfo
+	if fileExists {
+		fileInfo, _ = file.Stat()
+		file.Close()
+	}
+	
+	// Only set caching headers and ETag if file exists
+	if fileExists {
+		// Set security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		
+		// index.html should never be cached for long - it references versioned assets
+		if filePath == "index.html" || r.URL.Path == "/" {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		} else if strings.Contains(r.URL.Path, "/assets/") {
+			// Versioned assets can be cached forever
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if strings.HasSuffix(filePath, ".css") || strings.HasSuffix(filePath, ".js") {
+			// Other static assets with short cache
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		} else if strings.HasSuffix(filePath, ".jpg") || strings.HasSuffix(filePath, ".jpeg") || 
+			strings.HasSuffix(filePath, ".png") || strings.HasSuffix(filePath, ".gif") || 
+			strings.HasSuffix(filePath, ".svg") || strings.HasSuffix(filePath, ".webp") {
+			// Images - longer cache
+			w.Header().Set("Cache-Control", "public, max-age=604800")
+		} else if strings.HasSuffix(filePath, ".woff") || strings.HasSuffix(filePath, ".woff2") || 
+			strings.HasSuffix(filePath, ".ttf") || strings.HasSuffix(filePath, ".otf") {
+			// Fonts - cache forever
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Default cache
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
+
+		// Add ETag support using file modification time and size
+		if fileInfo != nil {
+			etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().Unix(), fileInfo.Size())
+			if match := r.Header.Get("If-None-Match"); match != "" {
+				if match == etag && !(filePath == "index.html" || r.URL.Path == "/") {
+					w.WriteHeader(http.StatusNotModified)
+					return
+				}
+			}
+			w.Header().Set("ETag", etag)
+			w.Header().Set("Last-Modified", fileInfo.ModTime().UTC().Format(http.TimeFormat))
+		}
+	}
+
+	h.handler.ServeHTTP(w, r)
+}
+
 func main() {
 	// Parse flags
 	flag.BoolFunc("server", "Run in headless server mode", func(s string) error {
@@ -167,6 +241,13 @@ func main() {
 	}
 	debugLog("Database path: %s", dbPath)
 
+	// Set crypto key directory to data directory for server mode
+	dataDir, err := fileutil.GetDataDir()
+	if err == nil {
+		crypto.SetServerModeKeyDir(dataDir)
+		log.Printf("Encryption key directory: %s", dataDir)
+	}
+
 	// Initialize database
 	log.Println("Initializing Database...")
 	db, err := database.NewDB(dbPath)
@@ -212,11 +293,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Create a caching file server
 	fileServer := http.FileServer(http.FS(frontendFS))
+	cachedFileServer := &cachedStaticHandler{handler: fileServer, fs: frontendFS}
 
 	combinedHandler := &CombinedHandler{
 		apiMux:     apiMux,
-		fileServer: fileServer,
+		fileServer: cachedFileServer,
 	}
 
 	// Wrap the combined handler with server middleware
@@ -232,9 +315,23 @@ func main() {
 	go h.StartBackgroundScheduler(bgCtx)
 
 	// Start Network Speed Detection (optional but good to have)
+	// Run asynchronously in background - don't block server startup
 	go func() {
-		log.Println("Detecting network speed...")
-		detector := network.NewDetector(&http.Client{Timeout: 10 * time.Second})
+		log.Println("Detecting network speed in background...")
+
+		var proxyURL string
+		proxyEnabled, _ := db.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := db.GetSetting("proxy_type")
+			proxyHost, _ := db.GetSetting("proxy_host")
+			proxyPort, _ := db.GetSetting("proxy_port")
+			proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+
+		httpClient := httputil.GetPooledHTTPClient(proxyURL, 10*time.Second)
+		detector := network.NewDetector(httpClient)
 		detectCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
@@ -242,7 +339,12 @@ func main() {
 		if result.DetectionSuccess {
 			db.SetSetting("network_speed", string(result.SpeedLevel))
 			db.SetSetting("network_bandwidth_mbps", fmt.Sprintf("%.2f", result.BandwidthMbps))
-			log.Printf("Network detection complete: %s", result.SpeedLevel)
+			db.SetSetting("network_latency_ms", strconv.FormatInt(result.LatencyMs, 10))
+			db.SetSetting("max_concurrent_refreshes", strconv.Itoa(result.MaxConcurrency))
+			db.SetSetting("last_network_test", result.DetectionTime.Format(time.RFC3339))
+			log.Printf("Network detection complete: %s (%.2f Mbps, %d ms latency)", result.SpeedLevel, result.BandwidthMbps, result.LatencyMs)
+		} else {
+			log.Printf("Network detection failed: %s", result.ErrorMessage)
 		}
 	}()
 

@@ -70,7 +70,12 @@ onMounted(async () => {
         {{ t('setting.plugins.notion.serverModeTitle', 'Server Mode') }}
       </template>
       <p class="text-xs sm:text-sm">
-        {{ t('setting.plugins.notion.serverModeDescription', 'In server mode, articles will be downloaded as Markdown files instead of being synced directly to Notion. You can then manually import them into your Notion workspace.') }}
+        {{
+          t(
+            'setting.plugins.notion.serverModeDescription',
+            'In server mode, articles will be downloaded as Markdown files instead of being synced directly to Notion. You can then manually import them into your Notion workspace.'
+          )
+        }}
       </p>
     </TipBox>
 

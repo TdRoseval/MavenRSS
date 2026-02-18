@@ -10,6 +10,7 @@ import (
 	"MrRSS/internal/feed"
 	"MrRSS/internal/statistics"
 	"MrRSS/internal/translation"
+	"MrRSS/internal/utils/httputil"
 )
 
 // Registry is the central service registry that manages all application services.
@@ -51,7 +52,8 @@ func (r *Registry) initialize() {
 		r.aiTracker = ai.NewUsageTracker(r.db)
 	}
 	if r.discoveryService == nil {
-		r.discoveryService = discovery.NewService()
+		proxyURL := r.buildProxyURL()
+		r.discoveryService = discovery.NewServiceWithProxy(proxyURL)
 	}
 	if r.contentCache == nil {
 		r.contentCache = cache.NewContentCache(100, 30*60) // 100 articles, 30 minutes
@@ -67,6 +69,22 @@ func (r *Registry) initialize() {
 	r.translationSvc = NewTranslationService(r.translator, r.aiTracker)
 	r.aiSvc = NewAIService(r, r.db)
 	r.discoverySvc = NewDiscoveryServiceWrapper(r.discoveryService)
+}
+
+// buildProxyURL builds proxy URL from database settings
+func (r *Registry) buildProxyURL() string {
+	proxyEnabled, _ := r.db.GetSetting("proxy_enabled")
+	if proxyEnabled != "true" {
+		return ""
+	}
+
+	proxyType, _ := r.db.GetSetting("proxy_type")
+	proxyHost, _ := r.db.GetSetting("proxy_host")
+	proxyPort, _ := r.db.GetSetting("proxy_port")
+	proxyUsername, _ := r.db.GetEncryptedSetting("proxy_username")
+	proxyPassword, _ := r.db.GetEncryptedSetting("proxy_password")
+
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 }
 
 // Article returns the article service

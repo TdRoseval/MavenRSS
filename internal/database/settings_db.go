@@ -1,6 +1,8 @@
 package database
 
 import (
+	"database/sql"
+
 	"MrRSS/internal/crypto"
 	"fmt"
 	"log"
@@ -11,6 +13,9 @@ func (db *DB) GetSetting(key string) (string, error) {
 	db.WaitForReady()
 	var value string
 	err := db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}
