@@ -1,20 +1,22 @@
-name: Docker Temporary Build
+name: Docker Image Build
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       use_china_mirror:
         description: "Use China mirror (DockerfileCN.server)"
         type: boolean
-        default: true
+        default: false
       push_to_registry:
         description: "Push to GitHub Container Registry"
         type: boolean
-        default: false
+        default: true
       image_tag:
-        description: "Image tag (default: temp-build)"
+        description: "Image tag (default: latest)"
         required: false
         type: string
-        default: "temp-build"
+        default: "latest"
 
 permissions:
   contents: read
