@@ -66,9 +66,9 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_to_registry }}
           tags: |
-            ${{ inputs.push_to_registry && format('ghcr.io/{0}/mrrss:{1}', steps.repo-owner.outputs.owner, inputs.image_tag) || '' }}
+            ${{ inputs.push_to_registry && format('ghcr.io/{0}/mavenrss:{1}', steps.repo-owner.outputs.owner, inputs.image_tag) || '' }}
           labels: |
-            org.opencontainers.image.title=MrRSS
+            org.opencontainers.image.title=MavenRSS
             org.opencontainers.image.description=A modern, privacy-focused RSS reader
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
