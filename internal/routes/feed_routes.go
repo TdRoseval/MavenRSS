@@ -10,48 +10,54 @@ import (
 	filter_category "MrRSS/internal/handlers/filter_category"
 	rsshubHandler "MrRSS/internal/handlers/rsshub"
 	taghandlers "MrRSS/internal/handlers/tags"
+	"MrRSS/internal/middleware"
 )
 
 // registerFeedRoutes registers all feed-related routes
-func registerFeedRoutes(mux *http.ServeMux, h *core.Handler) {
-	mux.HandleFunc("/api/feeds", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleFeeds(h, w, r) })
-	mux.HandleFunc("/api/feeds/add", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleAddFeed(h, w, r) })
-	mux.HandleFunc("/api/feeds/delete", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleDeleteFeed(h, w, r) })
-	mux.HandleFunc("/api/feeds/update", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleUpdateFeed(h, w, r) })
-	mux.HandleFunc("/api/feeds/refresh", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleRefreshFeed(h, w, r) })
-	mux.HandleFunc("/api/feeds/reorder", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleReorderFeed(h, w, r) })
-	mux.HandleFunc("/api/feeds/test-imap", func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleTestIMAPConnection(h, w, r) })
+func registerFeedRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
+	var authMiddleware middleware.Middleware
+	if cfg.EnableAuth && cfg.JWTManager != nil {
+		authMiddleware = middleware.AuthMiddleware(cfg.JWTManager)
+	}
+
+	registerProtectedRoute(mux, "/api/feeds", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleFeeds(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/add", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleAddFeed(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/delete", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleDeleteFeed(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/update", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleUpdateFeed(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/refresh", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleRefreshFeed(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/reorder", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleReorderFeed(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/test-imap", authMiddleware, func(w http.ResponseWriter, r *http.Request) { feedhandlers.HandleTestIMAPConnection(h, w, r) })
 
 	// Discovery routes
-	mux.HandleFunc("/api/feeds/discover", func(w http.ResponseWriter, r *http.Request) { discovery.HandleDiscoverBlogs(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover-all", func(w http.ResponseWriter, r *http.Request) { discovery.HandleDiscoverAllFeeds(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover/start", func(w http.ResponseWriter, r *http.Request) { discovery.HandleStartSingleDiscovery(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover/progress", func(w http.ResponseWriter, r *http.Request) { discovery.HandleGetSingleDiscoveryProgress(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover/clear", func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearSingleDiscovery(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover-all/start", func(w http.ResponseWriter, r *http.Request) { discovery.HandleStartBatchDiscovery(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover-all/progress", func(w http.ResponseWriter, r *http.Request) { discovery.HandleGetBatchDiscoveryProgress(h, w, r) })
-	mux.HandleFunc("/api/feeds/discover-all/clear", func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearBatchDiscovery(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleDiscoverBlogs(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover-all", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleDiscoverAllFeeds(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover/start", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleStartSingleDiscovery(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover/progress", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleGetSingleDiscoveryProgress(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover/clear", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearSingleDiscovery(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover-all/start", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleStartBatchDiscovery(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover-all/progress", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleGetBatchDiscoveryProgress(h, w, r) })
+	registerProtectedRoute(mux, "/api/feeds/discover-all/clear", authMiddleware, func(w http.ResponseWriter, r *http.Request) { discovery.HandleClearBatchDiscovery(h, w, r) })
 
 	// Tag routes
-	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTags(h, w, r) })
-	mux.HandleFunc("/api/tags/update", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagUpdate(h, w, r) })
-	mux.HandleFunc("/api/tags/delete", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagDelete(h, w, r) })
-	mux.HandleFunc("/api/tags/reorder", func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagReorder(h, w, r) })
+	registerProtectedRoute(mux, "/api/tags", authMiddleware, func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTags(h, w, r) })
+	registerProtectedRoute(mux, "/api/tags/update", authMiddleware, func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagUpdate(h, w, r) })
+	registerProtectedRoute(mux, "/api/tags/delete", authMiddleware, func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagDelete(h, w, r) })
+	registerProtectedRoute(mux, "/api/tags/reorder", authMiddleware, func(w http.ResponseWriter, r *http.Request) { taghandlers.HandleTagReorder(h, w, r) })
 
 	// Saved filters routes
-	mux.HandleFunc("/api/saved-filters", func(w http.ResponseWriter, r *http.Request) {
+	registerProtectedRoute(mux, "/api/saved-filters", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
 		filter_category.HandleSavedFilters(h, w, r)
 	})
-	mux.HandleFunc("/api/saved-filters/reorder", func(w http.ResponseWriter, r *http.Request) {
+	registerProtectedRoute(mux, "/api/saved-filters/reorder", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
 		filter_category.HandleReorderSavedFilters(h, w, r)
 	})
-	mux.HandleFunc("/api/saved-filters/filter", func(w http.ResponseWriter, r *http.Request) {
+	registerProtectedRoute(mux, "/api/saved-filters/filter", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
 		filter_category.HandleSavedFilter(h, w, r)
 	})
 
 	// RSSHub routes
-	mux.HandleFunc("/api/rsshub/add", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleAddFeed(h, w, r) })
-	mux.HandleFunc("/api/rsshub/test-connection", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleTestConnection(h, w, r) })
-	mux.HandleFunc("/api/rsshub/validate-route", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleValidateRoute(h, w, r) })
-	mux.HandleFunc("/api/rsshub/transform-url", func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleTransformURL(h, w, r) })
+	registerProtectedRoute(mux, "/api/rsshub/add", authMiddleware, func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleAddFeed(h, w, r) })
+	registerProtectedRoute(mux, "/api/rsshub/test-connection", authMiddleware, func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleTestConnection(h, w, r) })
+	registerProtectedRoute(mux, "/api/rsshub/validate-route", authMiddleware, func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleValidateRoute(h, w, r) })
+	registerProtectedRoute(mux, "/api/rsshub/transform-url", authMiddleware, func(w http.ResponseWriter, r *http.Request) { rsshubHandler.HandleTransformURL(h, w, r) })
 }

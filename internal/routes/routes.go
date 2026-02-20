@@ -5,6 +5,7 @@ package routes
 import (
 	"net/http"
 
+	"MrRSS/internal/auth"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/middleware"
 )
@@ -21,6 +22,10 @@ type Config struct {
 	EnableCompression bool
 	// CORSOrigins specifies allowed origins for CORS
 	CORSOrigins []string
+	// EnableAuth enables authentication middleware
+	EnableAuth bool
+	// JWTManager is the JWT manager for authentication
+	JWTManager *auth.JWTManager
 }
 
 // DefaultConfig returns the default route configuration.
@@ -30,18 +35,22 @@ func DefaultConfig() Config {
 		EnableRecovery:    true,
 		EnableCORS:        false,
 		EnableCompression: false,
+		EnableAuth:        false,
 		CORSOrigins:       []string{"*"},
+		JWTManager:        nil,
 	}
 }
 
 // ServerConfig returns a configuration suitable for server mode.
-func ServerConfig() Config {
+func ServerConfig(jwtManager *auth.JWTManager) Config {
 	return Config{
 		EnableLogging:     true,
 		EnableRecovery:    true,
 		EnableCORS:        true,
 		EnableCompression: true,
+		EnableAuth:        true,
 		CORSOrigins:       []string{"*"},
+		JWTManager:        jwtManager,
 	}
 }
 
@@ -54,11 +63,11 @@ func RegisterAPIRoutes(mux *http.ServeMux, h *core.Handler) {
 // RegisterAPIRoutesWithConfig registers all API routes with the specified configuration.
 func RegisterAPIRoutesWithConfig(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	// Register all route groups
-	registerFeedRoutes(mux, h)
-	registerArticleRoutes(mux, h)
-	registerAIRoutes(mux, h)
-	registerSettingsRoutes(mux, h)
-	registerOtherRoutes(mux, h)
+	registerFeedRoutes(mux, h, cfg)
+	registerArticleRoutes(mux, h, cfg)
+	registerAIRoutes(mux, h, cfg)
+	registerSettingsRoutes(mux, h, cfg)
+	registerOtherRoutes(mux, h, cfg)
 }
 
 // WrapWithMiddleware wraps an http.Handler with the standard middleware chain.

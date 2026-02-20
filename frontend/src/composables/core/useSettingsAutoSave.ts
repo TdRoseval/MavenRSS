@@ -7,6 +7,8 @@ import { useAppStore } from '@/stores/app';
 import type { SettingsData } from '@/types/settings';
 import { settingsDefaults } from '@/config/defaults';
 import { buildAutoSavePayload } from './useSettings.generated';
+import { authPost } from '@/utils/authFetch';
+import { saveLanguage } from '@/i18n';
 
 export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => SettingsData)) {
   const { locale } = useI18n();
@@ -96,6 +98,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
       // Always apply basic settings immediately (theme, language, etc.)
       // even if validation fails - these don't require API keys
       locale.value = settingsRef.value.language;
+      saveLanguage(settingsRef.value.language as any);
       store.setTheme(settingsRef.value.theme as 'light' | 'dark' | 'auto');
       store.startAutoRefresh(settingsRef.value.update_interval);
 
@@ -116,15 +119,11 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
       // for valid values at runtime and fail gracefully if settings are incomplete/invalid.
 
       // Save to backend using generated payload (alphabetically sorted)
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildAutoSavePayload(settingsRef)),
-      });
+      await authPost('/api/settings', buildAutoSavePayload(settingsRef));
 
       // Clear and re-translate if translation settings changed
       if (translationChanged) {
-        await fetch('/api/articles/clear-translations', { method: 'POST' });
+        await authPost('/api/articles/clear-translations');
         // Update tracking
         prevTranslationSettings.value = {
           enabled: settingsRef.value.translation_enabled,

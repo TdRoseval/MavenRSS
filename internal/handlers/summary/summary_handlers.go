@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
 	"MrRSS/internal/ai"
 	"MrRSS/internal/handlers/core"
@@ -11,6 +12,48 @@ import (
 	"MrRSS/internal/summary"
 	"MrRSS/internal/utils/textutil"
 )
+
+// isAILimitReached checks if the AI usage limit is reached for a specific user
+func isAILimitReached(h *core.Handler, userID int64) bool {
+	usageStr, err := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	if err != nil {
+		return false
+	}
+	usage, _ := strconv.ParseInt(usageStr, 10, 64)
+
+	userLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_limit")
+	hardLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_hard_limit")
+
+	userLimit, _ := strconv.ParseInt(userLimitStr, 10, 64)
+	hardLimit, _ := strconv.ParseInt(hardLimitStr, 10, 64)
+
+	effectiveLimit := int64(0)
+	if userLimit > 0 && hardLimit > 0 {
+		effectiveLimit = min(userLimit, hardLimit)
+	} else if userLimit > 0 {
+		effectiveLimit = userLimit
+	} else if hardLimit > 0 {
+		effectiveLimit = hardLimit
+	}
+
+	if effectiveLimit == 0 {
+		return false
+	}
+
+	return usage >= effectiveLimit
+}
+
+// addAIUsage adds tokens to the AI usage counter for a specific user
+func addAIUsage(h *core.Handler, userID int64, tokens int64) {
+	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
+	newUsage := currentUsage + tokens
+	if userID > 0 {
+		h.DB.SetSettingForUser(userID, "ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+	} else {
+		h.DB.SetSetting("ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+	}
+}
 
 // HandleSummarizeArticle generates a summary for an article's content.
 // @Summary      Summarize article
@@ -28,6 +71,8 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
 		ArticleID int64  `json:"article_id"`
@@ -90,7 +135,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	// Get summary provider from settings (with default)
-	provider, err := h.DB.GetSetting("summary_provider")
+	provider, err := h.DB.GetSettingWithFallback(userID, "summary_provider")
 	if err != nil || provider == "" {
 		provider = "local" // Default to local algorithm
 	}
@@ -101,7 +146,7 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	if provider == "ai" {
 		// Check if AI usage limit is reached - fallback to local if so
-		if h.AITracker.IsLimitReached() {
+		if isAILimitReached(h, userID) {
 			log.Printf("AI usage limit reached, falling back to local summarization")
 			limitReached = true
 			summarizer := summary.NewSummarizer()
@@ -128,9 +173,9 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 			// Fallback to global settings if ProfileProvider not available or no profile configured
 			if apiKey == "" && endpoint == "" {
-				apiKey, _ = h.DB.GetEncryptedSetting("ai_api_key")
-				endpoint, _ = h.DB.GetSetting("ai_endpoint")
-				model, _ = h.DB.GetSetting("ai_model")
+				apiKey, _ = h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
+				endpoint, _ = h.DB.GetSettingWithFallback(userID, "ai_endpoint")
+				model, _ = h.DB.GetSettingWithFallback(userID, "ai_model")
 				// Use global proxy by default for global settings
 				useGlobalProxy = true
 				log.Printf("Using global AI settings for summarization (API key: %s)", func() string {
@@ -141,9 +186,9 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 				}())
 			}
 
-			systemPrompt, _ := h.DB.GetSetting("ai_summary_prompt")
-			customHeaders, _ := h.DB.GetSetting("ai_custom_headers")
-			language, _ := h.DB.GetSetting("language")
+			systemPrompt, _ := h.DB.GetSettingWithFallback(userID, "ai_summary_prompt")
+			customHeaders, _ := h.DB.GetSettingWithFallback(userID, "ai_custom_headers")
+			language, _ := h.DB.GetSettingWithFallback(userID, "language")
 
 			aiSummarizer := summary.NewAISummarizerWithDB(apiKey, endpoint, model, h.DB, useGlobalProxy)
 			if systemPrompt != "" {
@@ -165,7 +210,10 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 			} else {
 				result = aiResult
 				// Track AI usage only on success
-				h.AITracker.TrackSummary(content, result.Summary)
+				inputTokens := ai.EstimateTokens(content)
+				outputTokens := ai.EstimateTokens(result.Summary)
+				totalTokens := inputTokens + outputTokens
+				addAIUsage(h, userID, totalTokens)
 				// Track statistics
 				_ = h.DB.IncrementStat("ai_summary")
 			}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app';
+import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, type Ref } from 'vue';
 import {
@@ -29,9 +30,11 @@ import { parseSettingsData } from '@/composables/core/useSettings.generated';
 import { openInBrowser } from '@/utils/browser';
 import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
 import { apiClient } from '@/utils/apiClient';
+import { authFetch } from '@/utils/authFetch';
 import type { Article } from '@/types/models';
 
 const store = useAppStore();
+const authStore = useAuthStore();
 const { t } = useI18n();
 const { settings } = useSettings();
 
@@ -247,8 +250,11 @@ onMounted(() => {
 });
 
 async function loadArticleListSettings() {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
   try {
-    const res = await fetch('/api/settings');
+    const res = await authFetch('/api/settings');
     const data = await res.json();
     defaultViewMode.value = data.default_view_mode || 'original';
     settings.value = parseSettingsData(data);
@@ -376,8 +382,11 @@ function onShowPreviewImagesChanged(e: Event): void {
 }
 
 function onLayoutModeChanged(): void {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
   // Force a re-fetch of settings to update the reactive settings object
-  fetch('/api/settings')
+  authFetch('/api/settings')
     .then((res) => res.json())
     .then((data) => {
       settings.value = parseSettingsData(data);
@@ -386,8 +395,11 @@ function onLayoutModeChanged(): void {
 }
 
 function onSettingsLoaded(): void {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
   // Load initial settings when App.vue has loaded them
-  fetch('/api/settings')
+  authFetch('/api/settings')
     .then((res) => res.json())
     .then((data) => {
       settings.value = parseSettingsData(data);
@@ -397,11 +409,15 @@ function onSettingsLoaded(): void {
 }
 
 function onRefreshArticles(): void {
-  store.fetchArticles();
+  if (authStore.isAuthenticated) {
+    store.fetchArticles();
+  }
 }
 
 function onToggleFilter(): void {
-  showFilterModal.value = !showFilterModal.value;
+  if (authStore.isAuthenticated) {
+    showFilterModal.value = !showFilterModal.value;
+  }
 }
 
 // Show tooltip when hovering over refresh button
@@ -416,6 +432,9 @@ function onRefreshTooltipHide(): void {
 
 // Article selection and interaction
 function selectArticle(article: Article): void {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
   // Check if we should open in browser based on feed or global settings
   const feed = store.feeds.find((f) => f.id === article.feed_id);
   let openInBrowserMode = false;

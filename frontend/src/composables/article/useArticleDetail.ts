@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
 import type { Article, Feed } from '@/types/models';
 import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
+import { authFetch, authFetchJson, authPost } from '@/utils/authFetch';
 
 type ViewMode = 'original' | 'rendered' | 'external';
 type RenderAction = 'showContent' | 'showOriginal' | null;
@@ -88,9 +89,7 @@ export function useArticleDetail() {
     if (!article.is_read) {
       article.is_read = true;
       try {
-        await fetch(`/api/articles/read?id=${article.id}&read=true`, {
-          method: 'POST',
-        });
+        await authPost(`/api/articles/read?id=${article.id}&read=true`);
         store.fetchUnreadCounts();
       } catch (e) {
         console.error('Error marking as read:', e);
@@ -217,16 +216,14 @@ export function useArticleDetail() {
     if (!article.value) return;
     const newState = !article.value.is_read;
     article.value.is_read = newState;
-    fetch(`/api/articles/read?id=${article.value.id}&read=${newState}`, {
-      method: 'POST',
-    });
+    authPost(`/api/articles/read?id=${article.value.id}&read=${newState}`);
   }
 
   function toggleFavorite() {
     if (!article.value) return;
     const newState = !article.value.is_favorite;
     article.value.is_favorite = newState;
-    fetch(`/api/articles/favorite?id=${article.value.id}`, { method: 'POST' });
+    authPost(`/api/articles/favorite?id=${article.value.id}`);
   }
 
   async function toggleReadLater() {
@@ -238,7 +235,7 @@ export function useArticleDetail() {
       article.value.is_read = false;
     }
     try {
-      await fetch(`/api/articles/toggle-read-later?id=${article.value.id}`, { method: 'POST' });
+      await authPost(`/api/articles/toggle-read-later?id=${article.value.id}`);
       store.fetchUnreadCounts();
     } catch (e) {
       console.error('Error toggling read later:', e);
@@ -284,34 +281,27 @@ export function useArticleDetail() {
     currentArticleId.value = article.value.id; // Track which article we're loading
 
     try {
-      const res = await fetch(`/api/articles/content?id=${article.value.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        let content = data.content || '';
+      const data = await authFetchJson(`/api/articles/content?id=${article.value.id}`);
+      let content = data.content || '';
 
-        // Proxy images if media cache is enabled
-        const cacheEnabled = await isMediaCacheEnabled();
-        if (cacheEnabled && content) {
-          // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
-          const feedUrl = data.feed_url || article.value.url;
-          content = proxyImagesInHtml(content, feedUrl);
-        }
+      // Proxy images if media cache is enabled
+      const cacheEnabled = await isMediaCacheEnabled();
+      if (cacheEnabled && content) {
+        // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
+        const feedUrl = data.feed_url || article.value.url;
+        content = proxyImagesInHtml(content, feedUrl);
+      }
 
-        articleContent.value = content;
+      articleContent.value = content;
 
-        // Only show loading animation for non-cached content
-        if (!data.cached) {
-          // Content was fetched from feed, show loading and trigger watch
-          isLoadingContent.value = true;
-          await nextTick(); // Ensure content is rendered first
-          isLoadingContent.value = false;
-        }
-        // If cached, we don't touch isLoadingContent at all - no animation!
-      } else {
-        console.error('Failed to fetch article content');
-        articleContent.value = '';
+      // Only show loading animation for non-cached content
+      if (!data.cached) {
+        // Content was fetched from feed, show loading and trigger watch
+        isLoadingContent.value = true;
+        await nextTick(); // Ensure content is rendered first
         isLoadingContent.value = false;
       }
+      // If cached, we don't touch isLoadingContent at all - no animation!
     } catch (e) {
       console.error('Error fetching article content:', e);
       articleContent.value = '';
@@ -694,7 +684,7 @@ export function useArticleDetail() {
     try {
       window.showToast(t('setting.plugins.obsidian.exporting'), 'info');
 
-      const response = await fetch('/api/articles/export/obsidian', {
+      const response = await authFetch('/api/articles/export/obsidian', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -709,12 +699,15 @@ export function useArticleDetail() {
 
       // Check if it's a file download (server mode)
       const contentType = response.headers.get('Content-Type');
-      if (contentType?.includes('text/markdown') || contentType?.includes('application/octet-stream')) {
+      if (
+        contentType?.includes('text/markdown') ||
+        contentType?.includes('application/octet-stream')
+      ) {
         // Handle file download
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        
+
         // Get filename from Content-Disposition or use default
         let filename = 'article.md';
         const contentDisposition = response.headers.get('Content-Disposition');
@@ -724,14 +717,14 @@ export function useArticleDetail() {
             filename = filenameMatch[1];
           }
         }
-        
+
         link.href = url;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        
+
         window.showToast(t('setting.plugins.obsidian.exported'), 'success');
       } else {
         // Handle JSON response (desktop mode)
@@ -755,7 +748,7 @@ export function useArticleDetail() {
     try {
       window.showToast(t('setting.plugins.notion.exporting'), 'info');
 
-      const response = await fetch('/api/articles/export/notion', {
+      const response = await authFetch('/api/articles/export/notion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -770,12 +763,15 @@ export function useArticleDetail() {
 
       // Check if it's a file download (server mode)
       const contentType = response.headers.get('Content-Type');
-      if (contentType?.includes('text/markdown') || contentType?.includes('application/octet-stream')) {
+      if (
+        contentType?.includes('text/markdown') ||
+        contentType?.includes('application/octet-stream')
+      ) {
         // Handle file download (server mode)
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        
+
         // Get filename from Content-Disposition or use default
         let filename = 'article.md';
         const contentDisposition = response.headers.get('Content-Disposition');
@@ -785,14 +781,14 @@ export function useArticleDetail() {
             filename = filenameMatch[1];
           }
         }
-        
+
         link.href = url;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        
+
         window.showToast(t('setting.plugins.notion.exported'), 'success');
       } else {
         // Handle JSON response (desktop mode)
@@ -825,7 +821,7 @@ export function useArticleDetail() {
     // Mark as read when rendering content
     if (!article.value.is_read) {
       article.value.is_read = true;
-      fetch(`/api/articles/read?id=${article.value.id}&read=true`, { method: 'POST' });
+      authPost(`/api/articles/read?id=${article.value.id}&read=true`);
     }
 
     if (action === 'showContent') {
@@ -890,8 +886,7 @@ export function useArticleDetail() {
 
     // Load default view mode from settings
     try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
+      const data = await authFetchJson('/api/settings');
       defaultViewMode.value = data.default_view_mode || 'original';
     } catch (e) {
       console.error('Error loading settings:', e);

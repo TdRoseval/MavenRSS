@@ -16,7 +16,9 @@ export function register(config?: ServiceWorkerConfig) {
     if (isLocalhost) {
       checkValidServiceWorker(swUrl, config);
       navigator.serviceWorker.ready.then(() => {
-        console.log('[ServiceWorker] This web app is being served cache-first by a service worker.');
+        console.log(
+          '[ServiceWorker] This web app is being served cache-first by a service worker.'
+        );
       });
     } else {
       registerValidSW(swUrl, config);
@@ -36,7 +38,9 @@ function registerValidSW(swUrl: string, config?: ServiceWorkerConfig) {
         installingWorker.onstatechange = () => {
           if (installingWorker.state === 'installed') {
             if (navigator.serviceWorker.controller) {
-              console.log('[ServiceWorker] New content is available and will be used when all tabs for this page are closed.');
+              console.log(
+                '[ServiceWorker] New content is available and will be used when all tabs for this page are closed.'
+              );
               if (config && config.onUpdate) {
                 config.onUpdate(registration);
               }
@@ -59,7 +63,10 @@ function checkValidServiceWorker(swUrl: string, config?: ServiceWorkerConfig) {
   fetch(swUrl, { headers: { 'Service-Worker': 'script' } })
     .then((response) => {
       const contentType = response.headers.get('content-type');
-      if (response.status === 404 || (contentType != null && contentType.indexOf('javascript') === -1)) {
+      if (
+        response.status === 404 ||
+        (contentType != null && contentType.indexOf('javascript') === -1)
+      ) {
         navigator.serviceWorker.ready.then((registration) => {
           registration.unregister().then(() => {
             window.location.reload();

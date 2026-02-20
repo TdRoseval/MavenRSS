@@ -8,6 +8,7 @@ import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 import { openInBrowser } from '@/utils/browser';
 import { checkServerMode } from '@/utils/serverMode';
+import { authFetch } from '@/utils/authFetch';
 
 const { t, locale } = useI18n();
 const { fetchSettings } = useSettings();
@@ -58,7 +59,7 @@ const handleFileUpload = async () => {
         formData.append('file', file);
 
         try {
-          const response = await fetch('/api/custom-css/upload', {
+          const response = await authFetch('/api/custom-css/upload', {
             method: 'POST',
             body: formData,
           });
@@ -95,7 +96,7 @@ const handleFileUpload = async () => {
     }
 
     // Desktop mode: use dialog
-    const response = await fetch('/api/custom-css/upload-dialog', {
+    const response = await authFetch('/api/custom-css/upload-dialog', {
       method: 'POST',
     });
 
@@ -147,7 +148,7 @@ const handleDeleteCSS = async () => {
   try {
     console.log('Deleting custom CSS...');
 
-    const response = await fetch('/api/custom-css/delete', {
+    const response = await authFetch('/api/custom-css/delete', {
       method: 'POST',
     });
 

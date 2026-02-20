@@ -1,6 +1,7 @@
 import { ref, computed, onUnmounted, type Ref } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
+import { authFetch, authFetchJson, authPost } from '@/utils/authFetch';
 
 export interface DiscoveredFeed {
   name: string;
@@ -79,19 +80,10 @@ export function useDiscoverAllFeeds() {
 
     try {
       // Clear any previous discovery state
-      await fetch('/api/feeds/discover-all/clear', { method: 'POST' });
+      await authPost('/api/feeds/discover-all/clear');
 
       // Start batch discovery in background
-      const startResponse = await fetch('/api/feeds/discover-all/start', {
-        method: 'POST',
-      });
-
-      if (!startResponse.ok) {
-        const errorText = await startResponse.text();
-        throw new Error(errorText || 'Failed to start batch discovery');
-      }
-
-      const startResult = (await startResponse.json()) as StartResult;
+      const startResult = await authPost('/api/feeds/discover-all/start');
 
       // Check if already complete (all feeds discovered)
       if (startResult.status === 'complete') {
@@ -105,12 +97,7 @@ export function useDiscoverAllFeeds() {
       // Start polling for progress
       pollInterval = setInterval(async () => {
         try {
-          const progressResponse = await fetch('/api/feeds/discover-all/progress');
-          if (!progressResponse.ok) {
-            throw new Error('Failed to get progress');
-          }
-
-          const state = (await progressResponse.json()) as ProgressState;
+          const state = await authFetchJson('/api/feeds/discover-all/progress');
 
           // Update progress display
           if (state.progress) {
@@ -179,7 +166,7 @@ export function useDiscoverAllFeeds() {
             await store.fetchFeeds();
 
             // Clear the discovery state
-            await fetch('/api/feeds/discover-all/clear', { method: 'POST' });
+            await authPost('/api/feeds/discover-all/clear');
           }
         } catch (pollError) {
           console.error('Polling error:', pollError);
@@ -229,14 +216,10 @@ export function useDiscoverAllFeeds() {
 
     for (const index of selectedFeeds.value) {
       const feed = discoveredFeeds.value[index];
-      const promise = fetch('/api/feeds/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: feed.rss_feed,
-          category: '',
-          title: feed.name,
-        }),
+      const promise = authPost('/api/feeds/add', {
+        url: feed.rss_feed,
+        category: '',
+        title: feed.name,
       });
       subscribePromises.push(promise);
     }
@@ -268,7 +251,7 @@ export function useDiscoverAllFeeds() {
       pollInterval = null;
     }
     // Clear discovery state on server
-    fetch('/api/feeds/discover-all/clear', { method: 'POST' }).catch(() => {});
+    authPost('/api/feeds/discover-all/clear').catch(() => {});
   }
 
   // Cleanup on unmount

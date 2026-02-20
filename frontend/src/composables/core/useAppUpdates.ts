@@ -3,6 +3,7 @@
  */
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { authFetchJson, authPost } from '@/utils/authFetch';
 import type { UpdateInfo, DownloadResponse, InstallResponse } from '@/types/settings';
 
 export function useAppUpdates() {
@@ -23,32 +24,27 @@ export function useAppUpdates() {
     updateInfo.value = null;
 
     try {
-      const res = await fetch('/api/check-updates');
-      if (res.ok) {
-        const data = await res.json();
-        updateInfo.value = data;
+      const data = await authFetchJson<UpdateInfo>('/api/check-updates');
+      updateInfo.value = data;
 
-        if (data.server_mode) {
-          // Server mode - auto-update is not available, silently skip
-          // Don't show any toast in server mode
-          return;
-        }
+      if (data.server_mode) {
+        // Server mode - auto-update is not available, silently skip
+        // Don't show any toast in server mode
+        return;
+      }
 
-        if (data.error) {
-          // Handle different error types with specific messages
-          if (data.error === 'network_error') {
-            window.showToast(t('common.errors.networkErrorCheckingUpdates'), 'error');
-          } else {
-            window.showToast(t('common.errors.errorCheckingUpdates'), 'error');
-          }
-        } else if (data.has_update) {
-          window.showToast(t('setting.update.updateAvailable'), 'info');
-        } else if (!silent) {
-          // Only show "up to date" toast if not in silent mode
-          window.showToast(t('setting.update.upToDate'), 'success');
+      if (data.error) {
+        // Handle different error types with specific messages
+        if (data.error === 'network_error') {
+          window.showToast(t('common.errors.networkErrorCheckingUpdates'), 'error');
+        } else {
+          window.showToast(t('common.errors.errorCheckingUpdates'), 'error');
         }
-      } else {
-        window.showToast(t('common.errors.errorCheckingUpdates'), 'error');
+      } else if (data.has_update) {
+        window.showToast(t('setting.update.updateAvailable'), 'info');
+      } else if (!silent) {
+        // Only show "up to date" toast if not in silent mode
+        window.showToast(t('setting.update.upToDate'), 'success');
       }
     } catch (e) {
       console.error('Error checking updates:', e);
@@ -90,24 +86,13 @@ export function useAppUpdates() {
 
     try {
       // Download the update
-      const downloadRes = await fetch('/api/download-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          download_url: updateInfo.value.download_url,
-          asset_name: updateInfo.value.asset_name,
-        }),
+      const downloadData = await authPost<DownloadResponse>('/api/download-update', {
+        download_url: updateInfo.value.download_url,
+        asset_name: updateInfo.value.asset_name,
       });
 
       clearInterval(progressInterval);
 
-      if (!downloadRes.ok) {
-        const errorText = await downloadRes.text();
-        console.error('Download error:', errorText);
-        throw new Error('DOWNLOAD_ERROR: ' + errorText);
-      }
-
-      const downloadData = (await downloadRes.json()) as DownloadResponse;
       if (!downloadData.success || !downloadData.file_path) {
         throw new Error('DOWNLOAD_ERROR: Invalid response from server');
       }
@@ -125,21 +110,10 @@ export function useAppUpdates() {
       installingUpdate.value = true;
       window.showToast(t('setting.update.installingUpdate'), 'info');
 
-      const installRes = await fetch('/api/install-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_path: downloadData.file_path,
-        }),
+      const installData = await authPost<InstallResponse>('/api/install-update', {
+        file_path: downloadData.file_path,
       });
 
-      if (!installRes.ok) {
-        const errorText = await installRes.text();
-        console.error('Install error:', errorText);
-        throw new Error('INSTALL_ERROR: ' + errorText);
-      }
-
-      const installData = (await installRes.json()) as InstallResponse;
       if (!installData.success) {
         throw new Error('INSTALL_ERROR: Installation failed');
       }

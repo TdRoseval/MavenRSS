@@ -94,34 +94,34 @@ func (f *Fetcher) GetCleanupManager() *CleanupManager {
 }
 
 // transformRSSHubURL converts rsshub:// route to full URL
-func (f *Fetcher) transformRSSHubURL(url string) (string, error) {
+func (f *Fetcher) transformRSSHubURL(url string, userID int64) (string, error) {
 	if !rsshub.IsRSSHubURL(url) {
 		return url, nil
 	}
 
 	// Check if RSSHub is enabled
-	enabledStr, _ := f.db.GetSetting("rsshub_enabled")
+	enabledStr, _ := f.db.GetSettingWithFallback(userID, "rsshub_enabled")
 	if enabledStr != "true" {
 		return "", fmt.Errorf("RSSHub integration is disabled. Please enable it in settings")
 	}
 
-	endpoint, _ := f.db.GetSetting("rsshub_endpoint")
+	endpoint, _ := f.db.GetSettingWithFallback(userID, "rsshub_endpoint")
 	if endpoint == "" {
 		endpoint = "https://rsshub.app"
 	}
-	apiKey, _ := f.db.GetEncryptedSetting("rsshub_api_key")
+	apiKey, _ := f.db.GetEncryptedSettingWithFallback(userID, "rsshub_api_key")
 
 	route := rsshub.ExtractRoute(url)
 
-	// Build proxy URL if enabled
+	// Build proxy URL if global proxy is enabled
 	var proxyURL string
-	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	proxyEnabled, _ := f.db.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := f.db.GetSetting("proxy_type")
-		proxyHost, _ := f.db.GetSetting("proxy_host")
-		proxyPort, _ := f.db.GetSetting("proxy_port")
-		proxyUsername, _ := f.db.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := f.db.GetEncryptedSetting("proxy_password")
+		proxyType, _ := f.db.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := f.db.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := f.db.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := f.db.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := f.db.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
@@ -157,30 +157,28 @@ func (f *Fetcher) getConcurrencyLimit() int {
 
 // getHTTPClient returns an HTTP client configured with proxy if needed
 // Proxy precedence (highest to lowest):
-// 1. Feed custom proxy (ProxyEnabled=true, ProxyURL != "")
-// 2. Global proxy (ProxyEnabled=true, ProxyURL == "", global proxy_enabled=true)
-// 3. No proxy (ProxyEnabled=false or no global proxy)
+// 1. Feed custom proxy (ProxyURL != "") - use custom proxy
+// 2. User proxy - use if enabled (优先用户设置，回退全局)
 func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 	var proxyURL string
+	userID := feed.UserID
 
-	// Check feed-level proxy settings
-	if feed.ProxyEnabled && feed.ProxyURL != "" {
-		// Feed has custom proxy configured - highest priority
+	// First, check if feed has custom proxy
+	if feed.ProxyURL != "" {
+		// Use custom proxy - highest priority
 		proxyURL = feed.ProxyURL
-	} else if feed.ProxyEnabled {
-		// Feed requests to use global proxy
-		proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
-		if proxyEnabled == "true" {
-			// Build global proxy URL from settings (use encrypted methods for credentials)
-			proxyType, _ := f.db.GetSetting("proxy_type")
-			proxyHost, _ := f.db.GetSetting("proxy_host")
-			proxyPort, _ := f.db.GetSetting("proxy_port")
-			proxyUsername, _ := f.db.GetEncryptedSetting("proxy_username")
-			proxyPassword, _ := f.db.GetEncryptedSetting("proxy_password")
+	} else {
+		// No custom proxy - check user's proxy settings (优先用户设置，回退全局)
+		globalProxyEnabled, _ := f.db.GetSettingWithFallback(userID, "proxy_enabled")
+		if globalProxyEnabled == "true" {
+			proxyType, _ := f.db.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := f.db.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := f.db.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := f.db.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := f.db.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		}
 	}
-	// If ProxyEnabled=false, proxyURL remains empty (no proxy)
 
 	// Use pooled client with browser-like headers to bypass Cloudflare and anti-bot protections
 	// This is critical for RSSHub feeds and other services with anti-bot protection

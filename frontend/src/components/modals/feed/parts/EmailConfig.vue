@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhGlobe, PhCheckCircle, PhXCircle, PhSpinner } from '@phosphor-icons/vue';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   mode: 'add' | 'edit';
@@ -102,7 +103,7 @@ async function testConnection() {
   };
 
   try {
-    const response = await fetch('/api/feeds/test-imap', {
+    const response = await authFetch('/api/feeds/test-imap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),

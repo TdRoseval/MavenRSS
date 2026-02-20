@@ -176,10 +176,11 @@ func Parse(r io.Reader) ([]models.Feed, error) {
 				}
 
 				feeds = append(feeds, models.Feed{
-					Title:    title,
-					URL:      xmlURL,
-					Category: feedCategory,
-					Tags:     tags,
+					Title:        title,
+					URL:          xmlURL,
+					Category:     feedCategory,
+					Tags:         tags,
+					ProxyEnabled: true,
 					// XPath support
 					Type:                o.Type,
 					XPathItem:           o.XPathItem,
@@ -260,8 +261,9 @@ func fallbackParse(content []byte) []models.Feed {
 		}
 
 		feeds = append(feeds, models.Feed{
-			Title: title,
-			URL:   xmlURL,
+			Title:        title,
+			URL:          xmlURL,
+			ProxyEnabled: true,
 		})
 	}
 

@@ -18,6 +18,7 @@ import {
 import AIProfileSelector from './AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
+import { authDelete } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -50,18 +51,8 @@ async function clearAllChatSessions() {
 
   isDeleting.value = true;
   try {
-    const response = await fetch('/api/ai/chat/sessions/delete-all', {
-      method: 'DELETE',
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      window.showToast(t('setting.ai.clearAllChatsSuccess', { count: data.count || 0 }), 'success');
-    } else {
-      const errorText = await response.text();
-      console.error('Server error:', response.status, errorText);
-      window.showToast(t('setting.ai.clearAllChatsFailed'), 'error');
-    }
+    const data = await authDelete('/api/ai/chat/sessions/delete-all');
+    window.showToast(t('setting.ai.clearAllChatsSuccess', { count: data.count || 0 }), 'success');
   } catch (error) {
     console.error('Failed to clear chat sessions:', error);
     window.showToast(t('setting.ai.clearAllChatsFailed'), 'error');

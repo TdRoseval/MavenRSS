@@ -9,6 +9,7 @@ import (
 
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/models"
 	"MrRSS/internal/rsshub"
 	"MrRSS/internal/utils/httputil"
 	"MrRSS/internal/utils/urlutil"
@@ -24,7 +25,14 @@ import (
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /feeds [get]
 func HandleFeeds(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	feeds, err := h.DB.GetFeeds()
+	userID, ok := core.GetUserIDFromRequest(r)
+	var feeds []models.Feed
+	var err error
+	if ok {
+		feeds, err = h.DB.GetFeedsForUser(userID)
+	} else {
+		feeds, err = h.DB.GetFeeds()
+	}
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -54,6 +62,12 @@ func HandleFeeds(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /feeds/add [post]
 func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	var req struct {
 		URL              string `json:"url"`
 		Category         string `json:"category"`
@@ -104,10 +118,10 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		feedURL = "email://" + req.EmailAddress
 	}
 
-	// Check if feed with this URL already exists (excluding FreshRSS feeds)
+	// Check if feed with this URL already exists (excluding FreshRSS feeds) for this user
 	var existingID int64
 	var existingIsFreshRSS bool
-	err := h.DB.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE url = ?", feedURL).Scan(&existingID, &existingIsFreshRSS)
+	err := h.DB.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE user_id = ? AND url = ?", userID, feedURL).Scan(&existingID, &existingIsFreshRSS)
 	if err == nil && !existingIsFreshRSS {
 		// Feed exists and is not a FreshRSS feed - return conflict error
 		response.Error(w, err, http.StatusConflict)
@@ -115,38 +129,76 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var feedID int64
-	if req.ScriptPath != "" {
-		// Add feed using custom script
-		feedID, err = h.Fetcher.AddScriptSubscription(req.ScriptPath, req.Category, req.Title)
-	} else if req.XPathItem != "" {
-		// Add feed using XPath
-		feedID, err = h.Fetcher.AddXPathSubscription(req.URL, req.Category, req.Title, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid)
-	} else if req.Type == "email" {
-		// Add feed as email newsletter subscription
-		feedID, err = h.Fetcher.AddEmailSubscription(req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.Category, req.Title, req.EmailFolder, req.EmailIMAPPort)
+	
+	// Get user proxy settings as fallback
+	var userProxyURL string
+	proxyEnabled := req.ProxyEnabled
+	if proxyEnabled {
+		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabledStr == "true" {
+			proxyEnabled = true
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
 	} else {
-		// Add feed using URL
-		feedID, err = h.Fetcher.AddSubscription(req.URL, req.Category, req.Title)
+		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabledStr == "true" {
+			proxyEnabled = true
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	}
+	
+	// Use request proxy URL if provided, otherwise use user proxy settings
+	finalProxyURL := req.ProxyURL
+	if finalProxyURL == "" && userProxyURL != "" {
+		finalProxyURL = userProxyURL
+	}
+	
+	// First, create a basic feed with user_id
+	feed := &models.Feed{
+		Title:               req.Title,
+		URL:                 feedURL,
+		Category:            req.Category,
+		ScriptPath:          req.ScriptPath,
+		HideFromTimeline:    req.HideFromTimeline,
+		ProxyURL:            finalProxyURL,
+		ProxyEnabled:        proxyEnabled,
+		RefreshInterval:     req.RefreshInterval,
+		IsImageMode:         req.IsImageMode,
+		Type:                req.Type,
+		XPathItem:           req.XPathItem,
+		XPathItemTitle:      req.XPathItemTitle,
+		XPathItemContent:    req.XPathItemContent,
+		XPathItemUri:        req.XPathItemUri,
+		XPathItemAuthor:     req.XPathItemAuthor,
+		XPathItemTimestamp:  req.XPathItemTimestamp,
+		XPathItemTimeFormat: req.XPathItemTimeFormat,
+		XPathItemThumbnail:  req.XPathItemThumbnail,
+		XPathItemCategories: req.XPathItemCategories,
+		XPathItemUid:        req.XPathItemUid,
+		ArticleViewMode:     req.ArticleViewMode,
+		AutoExpandContent:   req.AutoExpandContent,
+		EmailAddress:        req.EmailAddress,
+		EmailIMAPServer:     req.EmailIMAPServer,
+		EmailIMAPPort:       req.EmailIMAPPort,
+		EmailUsername:       req.EmailUsername,
+		EmailPassword:       req.EmailPassword,
+		EmailFolder:         req.EmailFolder,
+		UserID:              userID,
 	}
 
+	// Add feed using AddFeedForUser
+	feedID, err = h.DB.AddFeedForUser(userID, feed)
 	if err != nil {
-		response.Error(w, err, http.StatusInternalServerError)
-		return
-	}
-
-	// Update all feed settings
-	feed, err := h.DB.GetFeedByID(feedID)
-	if err != nil {
-		// Log the error but don't fail the request - feed was created successfully
-		// The settings can be set later via edit
-		response.Error(w, err, http.StatusInternalServerError)
-		return
-	}
-	if feed == nil {
-		response.Error(w, nil, http.StatusNotFound)
-		return
-	}
-	if err := h.DB.UpdateFeed(feed.ID, feed.Title, feed.URL, feed.Category, feed.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, feed.Type, feed.XPathItem, feed.XPathItemTitle, feed.XPathItemContent, feed.XPathItemUri, feed.XPathItemAuthor, feed.XPathItemTimestamp, feed.XPathItemTimeFormat, feed.XPathItemThumbnail, feed.XPathItemCategories, feed.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, feed.EmailAddress, feed.EmailIMAPServer, feed.EmailUsername, feed.EmailPassword, feed.EmailFolder, feed.EmailIMAPPort); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -161,8 +213,8 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Immediately fetch articles for the newly added feed in background
 	go func() {
-		feed, err := h.DB.GetFeedByID(feedID)
-		if err != nil {
+		feed, err := h.DB.GetFeedByIDForUser(userID, feedID)
+		if err != nil || feed == nil {
 			return
 		}
 		// Use manual refresh (queue head) for newly added feed
@@ -183,8 +235,26 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /feeds/delete [post]
 func HandleDeleteFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
+
+	// Verify that the feed belongs to this user
+	feed, err := h.DB.GetFeedByIDForUser(userID, id)
+	if err != nil {
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if feed == nil {
+		response.Error(w, nil, http.StatusNotFound)
+		return
+	}
+
 	if err := h.DB.DeleteFeed(id); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -205,6 +275,12 @@ func HandleDeleteFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /feeds/update [post]
 func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	var req struct {
 		ID               int64  `json:"id"`
 		Title            string `json:"title"`
@@ -248,20 +324,31 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Normalize the URL to ensure it has a protocol
 	req.URL = urlutil.NormalizeFeedURL(req.URL)
 
+	// Verify that the feed belongs to this user
+	currentFeed, err := h.DB.GetFeedByIDForUser(userID, req.ID)
+	if err != nil {
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if currentFeed == nil {
+		response.Error(w, nil, http.StatusNotFound)
+		return
+	}
+
 	// Validate RSSHub URL if provided
 	if req.URL != "" && rsshub.IsRSSHubURL(req.URL) {
 		// Check if RSSHub is enabled
-		enabledStr, _ := h.DB.GetSetting("rsshub_enabled")
+		enabledStr, _ := h.DB.GetSettingForUser(userID, "rsshub_enabled")
 		if enabledStr != "true" {
 			response.Error(w, nil, http.StatusBadRequest)
 			return
 		}
 
-		endpoint, _ := h.DB.GetSetting("rsshub_endpoint")
+		endpoint, _ := h.DB.GetSettingForUser(userID, "rsshub_endpoint")
 		if endpoint == "" {
 			endpoint = "https://rsshub.app"
 		}
-		apiKey, _ := h.DB.GetEncryptedSetting("rsshub_api_key")
+		apiKey, _ := h.DB.GetEncryptedSettingForUser(userID, "rsshub_api_key")
 
 		// Skip validation if API key is empty (public rsshub.app instance with Cloudflare protection)
 		if apiKey != "" {
@@ -269,13 +356,13 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 			// Build proxy URL if enabled
 			var proxyURL string
-			proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+			proxyEnabled, _ := h.DB.GetSettingForUser(userID, "proxy_enabled")
 			if proxyEnabled == "true" {
-				proxyType, _ := h.DB.GetSetting("proxy_type")
-				proxyHost, _ := h.DB.GetSetting("proxy_host")
-				proxyPort, _ := h.DB.GetSetting("proxy_port")
-				proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-				proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+				proxyType, _ := h.DB.GetSettingForUser(userID, "proxy_type")
+				proxyHost, _ := h.DB.GetSettingForUser(userID, "proxy_host")
+				proxyPort, _ := h.DB.GetSettingForUser(userID, "proxy_port")
+				proxyUsername, _ := h.DB.GetEncryptedSettingForUser(userID, "proxy_username")
+				proxyPassword, _ := h.DB.GetEncryptedSettingForUser(userID, "proxy_password")
 				proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 			}
 
@@ -295,10 +382,10 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		feedURL = "email://" + req.EmailAddress
 	}
 
-	// Check if another feed with this URL already exists (excluding FreshRSS feeds and current feed)
+	// Check if another feed with this URL already exists (excluding FreshRSS feeds and current feed) for this user
 	var existingID int64
 	var existingIsFreshRSS bool
-	err := h.DB.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE url = ? AND id != ?", feedURL, req.ID).Scan(&existingID, &existingIsFreshRSS)
+	err = h.DB.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE user_id = ? AND url = ? AND id != ?", userID, feedURL, req.ID).Scan(&existingID, &existingIsFreshRSS)
 	if err == nil && !existingIsFreshRSS {
 		// Another feed exists with this URL and is not a FreshRSS feed - return conflict error
 		response.Error(w, err, http.StatusConflict)
@@ -308,19 +395,8 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// If title is empty, fetch the default title from the feed
 	finalTitle := req.Title
 	if finalTitle == "" {
-		// Get current feed to determine its type
-		currentFeed, err := h.DB.GetFeedByID(req.ID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		if currentFeed == nil {
-			response.Error(w, nil, http.StatusNotFound)
-			return
-		}
-
 		// Fetch default title based on feed type
-		if req.ScriptPath != "" || (currentFeed != nil && currentFeed.ScriptPath != "") {
+		if req.ScriptPath != "" || currentFeed.ScriptPath != "" {
 			// Script-based feed
 			scriptPathToUse := req.ScriptPath
 			if scriptPathToUse == "" {
@@ -334,26 +410,26 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			} else {
 				finalTitle = scriptPathToUse
 			}
-		} else if req.XPathItem != "" || (currentFeed != nil && currentFeed.XPathItem != "") {
+		} else if req.XPathItem != "" || currentFeed.XPathItem != "" {
 			// XPath-based feed: use default title
 			finalTitle = "XPath Feed"
-		} else if req.Type == "email" || (currentFeed != nil && currentFeed.Type == "email") {
+		} else if req.Type == "email" || currentFeed.Type == "email" {
 			// Email-based feed: use email address as title
 			emailAddr := req.EmailAddress
-			if emailAddr == "" && currentFeed != nil {
+			if emailAddr == "" {
 				emailAddr = currentFeed.EmailAddress
 			}
 			finalTitle = emailAddr
 		} else {
 			// URL-based feed: fetch and parse to get title
 			urlToFetch := req.URL
-			if urlToFetch == "" && currentFeed != nil {
+			if urlToFetch == "" {
 				urlToFetch = currentFeed.URL
 			}
 			if urlToFetch != "" {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				parsedFeed, err := h.Fetcher.ParseFeed(ctx, urlToFetch)
+				parsedFeed, err := h.Fetcher.ParseFeedWithUserID(ctx, urlToFetch, userID)
 				if err == nil && parsedFeed.Title != "" {
 					finalTitle = parsedFeed.Title
 				} else {
@@ -364,7 +440,40 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, req.ProxyURL, req.ProxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.EmailIMAPPort); err != nil {
+	// Get user proxy settings as fallback
+	var userProxyURL string
+	proxyEnabled := req.ProxyEnabled
+	if proxyEnabled {
+		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabledStr == "true" {
+			proxyEnabled = true
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	} else {
+		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabledStr == "true" {
+			proxyEnabled = true
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	}
+	
+	// Use request proxy URL if provided, otherwise use user proxy settings
+	finalProxyURL := req.ProxyURL
+	if finalProxyURL == "" && userProxyURL != "" {
+		finalProxyURL = userProxyURL
+	}
+	
+	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, finalProxyURL, proxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.EmailIMAPPort); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -379,8 +488,8 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Immediately fetch articles for the updated feed in background
 	go func() {
-		feed, err := h.DB.GetFeedByID(req.ID)
-		if err != nil {
+		feed, err := h.DB.GetFeedByIDForUser(userID, req.ID)
+		if err != nil || feed == nil {
 			return
 		}
 		// Use manual refresh (queue head) for updated feed
@@ -407,6 +516,12 @@ func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -414,7 +529,7 @@ func HandleRefreshFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	feed, err := h.DB.GetFeedByID(id)
+	feed, err := h.DB.GetFeedByIDForUser(userID, id)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -448,6 +563,12 @@ func HandleReorderFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	var req struct {
 		FeedID   int64  `json:"feed_id"`
 		Category string `json:"category"`
@@ -455,6 +576,17 @@ func HandleReorderFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	// Verify that the feed belongs to this user
+	feed, err := h.DB.GetFeedByIDForUser(userID, req.FeedID)
+	if err != nil {
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+	if feed == nil {
+		response.Error(w, nil, http.StatusNotFound)
 		return
 	}
 

@@ -3,6 +3,7 @@
  * This is a shared singleton that caches the setting value to avoid duplicate API calls
  */
 import { ref, readonly } from 'vue';
+import { authFetchJson } from '@/utils/authFetch';
 
 // Shared state across all component instances
 const showPreviewImages = ref(true);
@@ -17,13 +18,11 @@ export function useShowPreviewImages() {
     if (isInitialized) return;
 
     try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
+      const data = await authFetchJson<any>('/api/settings');
       showPreviewImages.value = data.show_article_preview_images === 'true';
       isInitialized = true;
     } catch (e) {
       console.error('Error loading show preview images setting:', e);
-      // Default to true on error
       showPreviewImages.value = true;
       isInitialized = true;
     }

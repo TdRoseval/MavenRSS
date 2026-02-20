@@ -13,6 +13,13 @@ type SettingsProvider interface {
 	GetEncryptedSetting(key string) (string, error)
 }
 
+// SettingsProviderWithFallback is an optional extension for settings providers that support user settings with fallback
+type SettingsProviderWithFallback interface {
+	SettingsProvider
+	GetSettingWithFallback(userID int64, key string) (string, error)
+	GetEncryptedSettingWithFallback(userID int64, key string) (string, error)
+}
+
 // CacheProvider is an interface for translation caching
 type CacheProvider interface {
 	GetCachedTranslation(sourceTextHash, targetLang, provider string) (string, bool, error)

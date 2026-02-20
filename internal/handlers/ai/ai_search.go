@@ -18,10 +18,10 @@ import (
 
 // AISearchRequest represents the request for AI-powered search
 type AISearchRequest struct {
-	Query    string `json:"query"`
-	Filter   string `json:"filter,omitempty"`
-	FeedID   *int   `json:"feed_id,omitempty"`
-	Category string `json:"category,omitempty"`
+	Query    string  `json:"query"`
+	Filter   string  `json:"filter,omitempty"`
+	FeedID   *int64  `json:"feed_id,omitempty"`
+	Category string  `json:"category,omitempty"`
 }
 
 // AISearchResponse represents the response from AI search
@@ -109,7 +109,7 @@ Output: {"required":["Python","web框架","web framework"],"optional":["Django",
 }
 
 // buildSearchSQL builds the SQL query from search terms with relevance scoring
-func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int, category string) string {
+func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64, category string) string {
 	if terms == nil || (len(terms.Required) == 0 && len(terms.Patterns) == 0) {
 		return ""
 	}
@@ -243,6 +243,8 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Parse request
 	var req AISearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -279,9 +281,9 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Fallback to global settings if no profile configured
 	if endpoint == "" {
-		apiKey, _ = h.DB.GetEncryptedSetting("ai_api_key")
-		endpoint, _ = h.DB.GetSetting("ai_endpoint")
-		model, _ = h.DB.GetSetting("ai_model")
+		apiKey, _ = h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
+		endpoint, _ = h.DB.GetSettingWithFallback(userID, "ai_endpoint")
+		model, _ = h.DB.GetSettingWithFallback(userID, "ai_model")
 
 		// Use defaults if not set
 		defaults := config.Get()
@@ -291,7 +293,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		if model == "" {
 			model = defaults.AIModel
 		}
-		log.Printf("[AI Search] Using global AI settings for search (endpoint: %s, model: %s)", endpoint, model)
+		log.Printf("[AI Search] Using AI settings for search (endpoint: %s, model: %s)", endpoint, model)
 	}
 
 	// Validate AI configuration
@@ -304,7 +306,7 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create AI client
-	httpClient, err := createAIHTTPClientWithProxyForSearch(h, useGlobalProxy)
+	httpClient, err := createAIHTTPClientWithProxyForSearch(h, useGlobalProxy, userID)
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,
@@ -403,17 +405,17 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func createAIHTTPClientWithProxyForSearch(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+func createAIHTTPClientWithProxyForSearch(h *core.Handler, useGlobalProxy bool, userID int64) (*http.Client, error) {
 	var proxyURL string
 
 	if useGlobalProxy {
-		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 		if proxyEnabled == "true" {
-			proxyType, _ := h.DB.GetSetting("proxy_type")
-			proxyHost, _ := h.DB.GetSetting("proxy_host")
-			proxyPort, _ := h.DB.GetSetting("proxy_port")
-			proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-			proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			proxyURL = buildProxyURLForSearch(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		}
 	}

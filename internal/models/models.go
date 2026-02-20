@@ -4,6 +4,7 @@ import "time"
 
 type Feed struct {
 	ID                 int64     `json:"id"`
+	UserID             int64     `json:"user_id"`
 	Title              string    `json:"title"`
 	URL                string    `json:"url"`
 	Link               string    `json:"link"` // Website homepage link
@@ -55,6 +56,7 @@ type Feed struct {
 
 type Article struct {
 	ID                    int64     `json:"id"`
+	UserID                int64     `json:"user_id"`
 	FeedID                int64     `json:"feed_id"`
 	Title                 string    `json:"title"`
 	URL                   string    `json:"url"`
@@ -78,6 +80,7 @@ type Article struct {
 // SavedFilter represents a user-saved article filter
 type SavedFilter struct {
 	ID         int64     `json:"id"`
+	UserID     int64     `json:"user_id"`
 	Name       string    `json:"name"`
 	Conditions string    `json:"conditions"` // JSON string of FilterCondition[]
 	Position   int       `json:"position"`
@@ -88,6 +91,7 @@ type SavedFilter struct {
 // Tag represents a user-defined tag for organizing feeds
 type Tag struct {
 	ID       int64  `json:"id"`
+	UserID   int64  `json:"user_id"`
 	Name     string `json:"name"`
 	Color    string `json:"color"`
 	Position int    `json:"position"`
@@ -95,14 +99,15 @@ type Tag struct {
 
 // AIProfile represents an AI configuration profile
 type AIProfile struct {
-	ID            int64     `json:"id"`
-	Name          string    `json:"name"`
-	APIKey        string    `json:"api_key,omitempty"` // Hidden in responses, only sent when needed
-	Endpoint      string    `json:"endpoint"`
-	Model         string    `json:"model"`
-	CustomHeaders string    `json:"custom_headers"` // JSON string of key-value pairs
-	IsDefault     bool      `json:"is_default"`     // Default profile for new features
-	UseGlobalProxy bool     `json:"use_global_proxy"` // Whether to use global proxy settings
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             int64     `json:"id"`
+	UserID         int64     `json:"user_id"`
+	Name           string    `json:"name"`
+	APIKey         string    `json:"api_key,omitempty"` // Hidden in responses, only sent when needed
+	Endpoint       string    `json:"endpoint"`
+	Model          string    `json:"model"`
+	CustomHeaders  string    `json:"custom_headers"`   // JSON string of key-value pairs
+	IsDefault      bool      `json:"is_default"`       // Default profile for new features
+	UseGlobalProxy bool      `json:"use_global_proxy"` // Whether to use global proxy settings
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }

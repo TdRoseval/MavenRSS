@@ -24,6 +24,12 @@ import (
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles [get]
 func HandleArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	filter := r.URL.Query().Get("filter")
 	feedIDStr := r.URL.Query().Get("feed_id")
 	pageStr := r.URL.Query().Get("page")
@@ -59,10 +65,10 @@ func HandleArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * limit
 
 	// Get show_hidden_articles setting
-	showHiddenStr, _ := h.DB.GetSetting("show_hidden_articles")
+	showHiddenStr, _ := h.DB.GetSettingForUser(userID, "show_hidden_articles")
 	showHidden := showHiddenStr == "true"
 
-	articles, err := h.DB.GetArticles(filter, feedID, category, showHidden, limit, offset)
+	articles, err := h.DB.GetArticlesForUser(userID, filter, feedID, category, showHidden, limit, offset)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -151,6 +157,12 @@ func HandleToggleReadLater(h *core.Handler, w http.ResponseWriter, r *http.Reque
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/image-gallery [get]
 func HandleImageGalleryArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
 	feedIDStr := r.URL.Query().Get("feed_id")
@@ -186,13 +198,13 @@ func HandleImageGalleryArticles(h *core.Handler, w http.ResponseWriter, r *http.
 	offset := (page - 1) * limit
 
 	// Get show_hidden_articles setting
-	showHiddenStr, _ := h.DB.GetSetting("show_hidden_articles")
+	showHiddenStr, _ := h.DB.GetSettingForUser(userID, "show_hidden_articles")
 	showHidden := showHiddenStr == "true"
 
 	// Parse only_unread parameter
 	onlyUnread := onlyUnreadStr == "true"
 
-	articles, err := h.DB.GetImageGalleryArticles(feedID, category, showHidden, onlyUnread, limit, offset)
+	articles, err := h.DB.GetImageGalleryArticlesForUser(userID, feedID, category, showHidden, onlyUnread, limit, offset)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return

@@ -10,6 +10,7 @@ import {
   InputControl,
   TipBox,
 } from '@/components/settings';
+import { authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 const store = useAppStore();
@@ -59,18 +60,10 @@ async function testConnection() {
   isTesting.value = true;
 
   try {
-    const response = await fetch('/api/rsshub/test-connection', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        endpoint: props.settings.rsshub_endpoint,
-        api_key: props.settings.rsshub_api_key,
-      }),
+    const result = await authPost('/api/rsshub/test-connection', {
+      endpoint: props.settings.rsshub_endpoint,
+      api_key: props.settings.rsshub_api_key,
     });
-
-    const result = await response.json();
 
     if (result.success) {
       window.showToast(t('setting.rsshub.connectionSuccessful'), 'success');

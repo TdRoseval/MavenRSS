@@ -9,16 +9,23 @@ import (
 	chat "MrRSS/internal/handlers/chat"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
+	"MrRSS/internal/middleware"
 )
 
 // registerAIRoutes registers all AI-related routes
-func registerAIRoutes(mux *http.ServeMux, h *core.Handler) {
+func registerAIRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
+	var authMiddleware middleware.Middleware
+	if cfg.EnableAuth && cfg.JWTManager != nil {
+		authMiddleware = middleware.AuthMiddleware(cfg.JWTManager)
+	}
+
 	// AI Chat
-	mux.HandleFunc("/api/ai-chat", func(w http.ResponseWriter, r *http.Request) { chat.HandleAIChat(h, w, r) })
-	mux.HandleFunc("/api/ai/chat/sessions/delete-all", func(w http.ResponseWriter, r *http.Request) { chat.HandleDeleteAllSessions(h, w, r) })
-	mux.HandleFunc("/api/ai/chat/sessions", func(w http.ResponseWriter, r *http.Request) { chat.HandleListSessions(h, w, r) })
-	mux.HandleFunc("/api/ai/chat/session/create", func(w http.ResponseWriter, r *http.Request) { chat.HandleCreateSession(h, w, r) })
-	mux.HandleFunc("/api/ai/chat/session", func(w http.ResponseWriter, r *http.Request) {
+	registerProtectedRoute(mux, "/api/ai-chat", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleAIChat(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai-chat/stream", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleAIChatStream(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/chat/sessions/delete-all", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleDeleteAllSessions(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/chat/sessions", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleListSessions(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/chat/session/create", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleCreateSession(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/chat/session", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			chat.HandleGetSession(h, w, r)
@@ -30,18 +37,18 @@ func registerAIRoutes(mux *http.ServeMux, h *core.Handler) {
 			response.Error(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
 		}
 	})
-	mux.HandleFunc("/api/ai/chat/messages", func(w http.ResponseWriter, r *http.Request) { chat.HandleListMessages(h, w, r) })
-	mux.HandleFunc("/api/ai/chat/message/delete", func(w http.ResponseWriter, r *http.Request) { chat.HandleDeleteMessage(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/chat/messages", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleListMessages(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/chat/message/delete", authMiddleware, func(w http.ResponseWriter, r *http.Request) { chat.HandleDeleteMessage(h, w, r) })
 
 	// AI testing and search
-	mux.HandleFunc("/api/ai/test", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAIConfig(h, w, r) })
-	mux.HandleFunc("/api/ai/test/info", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleGetAITestInfo(h, w, r) })
-	mux.HandleFunc("/api/ai/search", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleAISearch(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/test", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAIConfig(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/test/info", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleGetAITestInfo(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/search", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleAISearch(h, w, r) })
 
 	// AI Profiles
-	mux.HandleFunc("/api/ai/profiles/test-all", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAllAIProfiles(h, w, r) })
-	mux.HandleFunc("/api/ai/profiles/test-config", func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAIProfileConfig(h, w, r) })
-	mux.HandleFunc("/api/ai/profiles", func(w http.ResponseWriter, r *http.Request) {
+	registerProtectedRoute(mux, "/api/ai/profiles/test-all", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAllAIProfiles(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/profiles/test-config", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAIProfileConfig(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/profiles", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			aihandlers.HandleListAIProfiles(h, w, r)
@@ -51,7 +58,7 @@ func registerAIRoutes(mux *http.ServeMux, h *core.Handler) {
 			response.Error(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
 		}
 	})
-	mux.HandleFunc("/api/ai/profiles/", func(w http.ResponseWriter, r *http.Request) {
+	registerProtectedRoute(mux, "/api/ai/profiles/", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
 		// Handle routes like /api/ai/profiles/:id, /api/ai/profiles/:id/test, /api/ai/profiles/:id/default
 		path := r.URL.Path
 		if strings.HasSuffix(path, "/test") {

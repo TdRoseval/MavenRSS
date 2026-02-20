@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
+import { authFetchJson, authPost } from '@/utils/authFetch';
 
 interface TranslationSettings {
   enabled: boolean;
@@ -21,8 +22,7 @@ export function useArticleTranslation() {
   // Load translation settings
   async function loadTranslationSettings(): Promise<void> {
     try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
+      const data = await authFetchJson<any>('/api/settings');
       translationSettings.value = {
         enabled: data.translation_enabled === 'true',
         targetLang: data.target_language || 'en',
@@ -96,25 +96,15 @@ export function useArticleTranslation() {
         target_language: translationSettings.value.targetLang,
       };
 
-      const res = await fetch('/api/articles/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
+      const data = await authPost('/api/articles/translate', requestBody);
 
-      if (res.ok) {
-        const data = await res.json();
+      // Update the article in the store
+      // Backend returns translated_title even when skipped (returns original title)
+      article.translated_title = data.translated_title;
 
-        // Update the article in the store
-        // Backend returns translated_title even when skipped (returns original title)
-        article.translated_title = data.translated_title;
-
-        // Show notification if AI limit was reached
-        if (data.limit_reached) {
-          window.showToast(t('article.translation.aiLimitReached'), 'warning');
-        }
-      } else {
-        window.showToast(t('common.errors.translatingTitle'), 'error');
+      // Show notification if AI limit was reached
+      if (data.limit_reached) {
+        window.showToast(t('article.translation.aiLimitReached'), 'warning');
       }
     } catch {
       window.showToast(t('common.errors.translating'), 'error');

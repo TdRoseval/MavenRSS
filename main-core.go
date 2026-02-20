@@ -19,10 +19,13 @@ import (
 	"time"
 
 	"MrRSS/internal/ai"
+	"MrRSS/internal/auth"
 	"MrRSS/internal/crypto"
 	"MrRSS/internal/database"
 	"MrRSS/internal/feed"
+	auth_handlers "MrRSS/internal/handlers/auth"
 	handlers "MrRSS/internal/handlers/core"
+	"MrRSS/internal/models"
 	"MrRSS/internal/network"
 	"MrRSS/internal/routes"
 	"MrRSS/internal/translation"
@@ -72,16 +75,16 @@ func (h *CombinedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.apiMux.ServeHTTP(w, r)
 		return
 	}
-	
+
 	// Use a custom response writer to capture 404s
 	recorder := &statusRecorder{
 		ResponseWriter: w,
 		status:         200,
 	}
-	
+
 	// Try to serve the file
 	h.fileServer.ServeHTTP(recorder, r)
-	
+
 	// If it was a 404 and not an API route, serve index.html
 	if recorder.status == http.StatusNotFound && !strings.HasPrefix(r.URL.Path, "/api/") {
 		// Read index.html from embedded FS
@@ -90,7 +93,7 @@ func (h *CombinedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		w.Write(indexContent)
@@ -128,24 +131,24 @@ func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if filePath == "" {
 		filePath = "index.html"
 	}
-	
+
 	// Try to open the file to verify existence and get info
 	file, err := h.fs.Open(filePath)
 	fileExists := err == nil
-	
+
 	var fileInfo fs.FileInfo
 	if fileExists {
 		fileInfo, _ = file.Stat()
 		file.Close()
 	}
-	
+
 	// Only set caching headers and ETag if file exists
 	if fileExists {
 		// Set security headers
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		
+
 		// index.html should never be cached for long - it references versioned assets
 		if filePath == "index.html" || r.URL.Path == "/" {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -157,12 +160,12 @@ func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		} else if strings.HasSuffix(filePath, ".css") || strings.HasSuffix(filePath, ".js") {
 			// Other static assets with short cache
 			w.Header().Set("Cache-Control", "public, max-age=86400")
-		} else if strings.HasSuffix(filePath, ".jpg") || strings.HasSuffix(filePath, ".jpeg") || 
-			strings.HasSuffix(filePath, ".png") || strings.HasSuffix(filePath, ".gif") || 
+		} else if strings.HasSuffix(filePath, ".jpg") || strings.HasSuffix(filePath, ".jpeg") ||
+			strings.HasSuffix(filePath, ".png") || strings.HasSuffix(filePath, ".gif") ||
 			strings.HasSuffix(filePath, ".svg") || strings.HasSuffix(filePath, ".webp") {
 			// Images - longer cache
 			w.Header().Set("Cache-Control", "public, max-age=604800")
-		} else if strings.HasSuffix(filePath, ".woff") || strings.HasSuffix(filePath, ".woff2") || 
+		} else if strings.HasSuffix(filePath, ".woff") || strings.HasSuffix(filePath, ".woff2") ||
 			strings.HasSuffix(filePath, ".ttf") || strings.HasSuffix(filePath, ".otf") {
 			// Fonts - cache forever
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -264,6 +267,93 @@ func main() {
 	}
 	log.Println("Database initialized successfully")
 
+	jwtSecret := os.Getenv("MRRSS_JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "default-jwt-secret-key-please-change-in-production"
+		log.Println("Warning: Using default JWT secret. Set MRRSS_JWT_SECRET environment variable for production.")
+	}
+	jwtManager := auth.NewJWTManager(jwtSecret)
+
+	authHandler := auth_handlers.NewHandler(db, jwtSecret)
+
+	adminUsername := os.Getenv("MRRSS_ADMIN_USERNAME")
+	adminEmail := os.Getenv("MRRSS_ADMIN_EMAIL")
+	adminPassword := os.Getenv("MRRSS_ADMIN_PASSWORD")
+	if adminUsername == "" {
+		adminUsername = "admin"
+	}
+	if adminEmail == "" {
+		adminEmail = "admin@example.com"
+	}
+	if adminPassword == "" {
+		adminPassword = "admin123"
+		log.Println("Warning: Using default admin password. Set MRRSS_ADMIN_PASSWORD environment variable.")
+	}
+	_, err = db.GetUserByUsername(adminUsername)
+	if err != nil {
+		hashedPassword, err := auth.HashPassword(adminPassword)
+		if err == nil {
+			adminUser := &models.User{
+				Username:     adminUsername,
+				Email:        adminEmail,
+				PasswordHash: hashedPassword,
+				Role:         models.RoleAdmin,
+				Status:       "active",
+			}
+			userID, err := db.CreateUser(adminUser)
+			if err == nil {
+				adminQuota := &models.UserQuota{
+					UserID:           userID,
+					MaxFeeds:         10000,
+					MaxArticles:      10000000,
+					MaxAICallsPerDay: 10000,
+					MaxStorageMB:     10000,
+				}
+				db.CreateUserQuota(adminQuota)
+				log.Printf("Admin user created: %s (password: %s)", adminUsername, adminPassword)
+			}
+		}
+	}
+
+	// Create template user if not exists
+	templateUsername := os.Getenv("MRRSS_TEMPLATE_USERNAME")
+	templateEmail := os.Getenv("MRRSS_TEMPLATE_EMAIL")
+	templatePassword := os.Getenv("MRRSS_TEMPLATE_PASSWORD")
+	if templateUsername == "" {
+		templateUsername = "template"
+	}
+	if templateEmail == "" {
+		templateEmail = "template@example.com"
+	}
+	if templatePassword == "" {
+		templatePassword = "template"
+	}
+	_, err = db.GetUserByUsername(templateUsername)
+	if err != nil {
+		hashedPassword, err := auth.HashPassword(templatePassword)
+		if err == nil {
+			templateUser := &models.User{
+				Username:     templateUsername,
+				Email:        templateEmail,
+				PasswordHash: hashedPassword,
+				Role:         models.RoleTemplate,
+				Status:       "active",
+			}
+			userID, err := db.CreateUser(templateUser)
+			if err == nil {
+				templateQuota := &models.UserQuota{
+					UserID:           userID,
+					MaxFeeds:         1000,
+					MaxArticles:      1000000,
+					MaxAICallsPerDay: 1000,
+					MaxStorageMB:     5000,
+				}
+				db.CreateUserQuota(templateQuota)
+				log.Printf("Template user created: %s (password: %s)", templateUsername, templatePassword)
+			}
+		}
+	}
+
 	// Initialize AI profile provider
 	profileProvider := ai.NewProfileProvider(db)
 	translator := translation.NewDynamicTranslatorWithCache(db, db)
@@ -275,7 +365,8 @@ func main() {
 	// API Routes
 	log.Println("Setting up API routes...")
 	apiMux := http.NewServeMux()
-	routes.RegisterAPIRoutesWithConfig(apiMux, h, routes.ServerConfig())
+	routes.RegisterAPIRoutesWithConfig(apiMux, h, routes.ServerConfig(jwtManager))
+	routes.RegisterAuthRoutes(apiMux, authHandler, jwtManager)
 
 	// Swagger Documentation - Serve swagger.json file
 	apiMux.HandleFunc("/docs/SERVER_MODE/swagger.json", func(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +394,7 @@ func main() {
 	}
 
 	// Wrap the combined handler with server middleware
-	wrappedHandler := routes.WrapWithMiddleware(combinedHandler, routes.ServerConfig())
+	wrappedHandler := routes.WrapWithMiddleware(combinedHandler, routes.ServerConfig(jwtManager))
 
 	log.Printf("Starting in headless server mode on http://%s:%s", *host, *port)
 

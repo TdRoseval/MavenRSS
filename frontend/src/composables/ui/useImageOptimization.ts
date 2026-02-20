@@ -42,7 +42,10 @@ export function useImageOptimization() {
     observer.observe(element);
   };
 
-  const getOptimizedImageUrl = (url: string, options?: { width?: number; height?: number; quality?: number }): string => {
+  const getOptimizedImageUrl = (
+    url: string,
+    options?: { width?: number; height?: number; quality?: number }
+  ): string => {
     return url;
   };
 
@@ -50,6 +53,6 @@ export function useImageOptimization() {
     loadImage,
     observeImage,
     getOptimizedImageUrl,
-    isIntersectionObserverSupported
+    isIntersectionObserverSupported,
   };
 }

@@ -150,6 +150,8 @@ func (d *Detector) DetectSpeed(ctx context.Context) DetectionResult {
 func (d *Detector) testAllLatency(ctx context.Context) []URLTestResult {
 	results := make([]URLTestResult, 0, len(d.testURLs))
 
+	log.Printf("[NetworkDetector] Starting latency tests with %d URLs", len(d.testURLs))
+
 	for _, testInfo := range d.testURLs {
 		result := URLTestResult{
 			URL:        testInfo.URL,
@@ -168,6 +170,7 @@ func (d *Detector) testAllLatency(ctx context.Context) []URLTestResult {
 			default:
 			}
 
+			log.Printf("[NetworkDetector] Testing latency for %s (attempt %d)", testInfo.URL, attempt+1)
 			start := time.Now()
 			req, err := http.NewRequestWithContext(ctx, "HEAD", testInfo.URL, nil)
 			if err != nil {

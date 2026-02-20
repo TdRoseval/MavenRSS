@@ -185,6 +185,8 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get URL from query parameter (support both direct and base64-encoded)
 	mediaURL := r.URL.Query().Get("url")
 	mediaURLBase64 := r.URL.Query().Get("url_b64")
@@ -217,9 +219,9 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if media cache is enabled
-	mediaCacheEnabled, _ := h.DB.GetSetting("media_cache_enabled")
-	mediaProxyFallback, _ := h.DB.GetSetting("media_proxy_fallback")
+	// Check if media cache is enabled (优先用户设置，回退全局)
+	mediaCacheEnabled, _ := h.DB.GetSettingWithFallback(userID, "media_cache_enabled")
+	mediaProxyFallback, _ := h.DB.GetSettingWithFallback(userID, "media_proxy_fallback")
 
 	// Check if force_cache parameter is set (for image mode feeds)
 	forceCache := r.URL.Query().Get("force_cache") == "true"
@@ -251,15 +253,15 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build proxy URL from global settings for media cache
+	// Build proxy URL from user settings for media cache (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSetting("proxy_type")
-		proxyHost, _ := h.DB.GetSetting("proxy_host")
-		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
@@ -406,6 +408,8 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	const maxWebpageSize = 10 * 1024 * 1024 // 10MB limit for webpages
 
 	// Get URL from query parameter (support both direct and base64-encoded)
@@ -437,15 +441,15 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Build proxy URL from global settings for webpage proxy
+	// Build proxy URL from user settings for webpage proxy (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSetting("proxy_type")
-		proxyHost, _ := h.DB.GetSetting("proxy_host")
-		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
@@ -1638,6 +1642,8 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get URL from query parameter (support both direct and base64-encoded)
 	resourceURL := r.URL.Query().Get("url")
 	resourceURLBase64 := r.URL.Query().Get("url_b64")
@@ -1696,15 +1702,15 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Build proxy URL if enabled
+	// Build proxy URL from user settings (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSetting("proxy_type")
-		proxyHost, _ := h.DB.GetSetting("proxy_host")
-		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 

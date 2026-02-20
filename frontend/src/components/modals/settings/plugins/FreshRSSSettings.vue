@@ -5,6 +5,7 @@ import { PhLink, PhUser, PhKey, PhArrowClockwise, PhCloudCheck } from '@phosphor
 import type { SettingsData } from '@/types/settings';
 import { useAppStore } from '@/stores/app';
 import { NestedSettingsContainer, SubSettingItem, InputControl } from '@/components/settings';
+import { authGet, authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -43,11 +44,8 @@ let statusPollInterval: ReturnType<typeof setInterval> | null = null;
 // Fetch sync status
 async function fetchSyncStatus() {
   try {
-    const response = await fetch('/api/freshrss/status');
-    if (response.ok) {
-      const data = await response.json();
-      syncStatus.value = data;
-    }
+    const data = await authGet('/api/freshrss/status');
+    syncStatus.value = data;
   } catch (error) {
     console.error('Failed to fetch sync status:', error);
   }
@@ -82,19 +80,9 @@ async function syncNow() {
   isSyncing.value = true;
 
   try {
-    const response = await fetch('/api/freshrss/sync', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      window.showToast(t('setting.freshrss.syncStarted'), 'success');
-      // Sync status polling will detect completion and refresh data automatically
-    } else {
-      throw new Error(t('setting.freshrss.syncFailed'));
-    }
+    await authPost('/api/freshrss/sync');
+    window.showToast(t('setting.freshrss.syncStarted'), 'success');
+    // Sync status polling will detect completion and refresh data automatically
   } catch (error) {
     window.showToast(
       error instanceof Error ? error.message : t('setting.freshrss.syncFailed'),

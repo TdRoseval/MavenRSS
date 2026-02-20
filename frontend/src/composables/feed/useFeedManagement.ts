@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { useAppStore } from '@/stores/app';
 import type { Feed } from '@/types/models';
 import { checkServerMode } from '@/utils/serverMode';
+import { authFetch, authPost } from '@/utils/authFetch';
 
 export function useFeedManagement() {
   const { t } = useI18n();
@@ -31,7 +32,7 @@ export function useFeedManagement() {
           formData.append('file', file);
 
           try {
-            const response = await fetch('/api/opml/import', {
+            const response = await authFetch('/api/opml/import', {
               method: 'POST',
               body: formData,
             });
@@ -48,6 +49,7 @@ export function useFeedManagement() {
               'success'
             );
             store.fetchFeeds();
+            store.fetchArticles();
             store.pollProgress();
           } catch (error) {
             console.error('OPML import error:', error);
@@ -61,17 +63,7 @@ export function useFeedManagement() {
 
       // Desktop mode: use dialog
       console.log('Starting OPML import dialog...');
-      const response = await fetch('/api/opml/import-dialog', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        // Handle HTTP error responses
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'Import failed');
-      }
-
-      const result = await response.json();
+      const result = await authPost('/api/opml/import-dialog');
 
       if (result.status === 'cancelled') {
         console.log('OPML import cancelled by user');
@@ -82,6 +74,7 @@ export function useFeedManagement() {
         console.log('OPML import successful:', result);
         window.showToast(t('modal.feed.feedAddedSuccess'), 'success');
         store.fetchFeeds();
+        store.fetchArticles();
         // Start polling for progress as the backend is now fetching articles for imported feeds
         store.pollProgress();
       } else {
@@ -102,30 +95,27 @@ export function useFeedManagement() {
       const serverMode = await checkServerMode();
 
       if (serverMode) {
-        // Server mode: direct download
+        // Server mode: use authenticated fetch to download
+        const response = await authFetch('/api/opml/export');
+        if (!response.ok) {
+          throw new Error('Export failed');
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = '/api/opml/export';
+        link.href = url;
         link.download = 'subscriptions.opml';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
         window.showToast(t('modal.opml.exportSuccess'), 'success');
         return;
       }
 
       // Desktop mode: use dialog
       console.log('Starting OPML export dialog...');
-      const response = await fetch('/api/opml/export-dialog', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        // Handle HTTP error responses
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'Export failed');
-      }
-
-      const result = await response.json();
+      const result = await authPost('/api/opml/export-dialog');
 
       if (result.status === 'cancelled') {
         console.log('OPML export cancelled by user');
@@ -159,14 +149,9 @@ export function useFeedManagement() {
     if (!confirmed) return;
 
     try {
-      const res = await fetch('/api/articles/cleanup', { method: 'POST' });
-      if (res.ok) {
-        const result = await res.json();
-        window.showToast(t('modal.feed.articlesDeleted', { count: result.deleted }), 'success');
-        store.fetchArticles();
-      } else {
-        window.showToast(t('common.errors.cleaningDatabase'), 'error');
-      }
+      const result = await authPost('/api/articles/cleanup');
+      window.showToast(t('modal.feed.articlesDeleted', { count: result.deleted }), 'success');
+      store.fetchArticles();
     } catch (e) {
       console.error('Error cleaning database:', e);
       window.showToast(t('common.errors.cleaningDatabase'), 'error');
@@ -200,7 +185,7 @@ export function useFeedManagement() {
     });
     if (!confirmed) return;
 
-    await fetch(`/api/feeds/delete?id=${id}`, { method: 'POST' });
+    await authPost(`/api/feeds/delete?id=${id}`);
     store.fetchFeeds();
     window.showToast(t('modal.feed.feedDeletedSuccess'), 'success');
   }
@@ -218,9 +203,7 @@ export function useFeedManagement() {
     });
     if (!confirmed) return;
 
-    const promises = selectedIds.map((id: number) =>
-      fetch(`/api/feeds/delete?id=${id}`, { method: 'POST' })
-    );
+    const promises = selectedIds.map((id: number) => authPost(`/api/feeds/delete?id=${id}`));
     await Promise.all(promises);
     store.fetchFeeds();
     window.showToast(t('modal.feed.feedsDeletedSuccess'), 'success');
@@ -282,36 +265,32 @@ export function useFeedManagement() {
     const promises = selectedIds.map((id: number) => {
       const feed = store.feeds.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
-      return fetch('/api/feeds/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: feed.id,
-          title: feed.title,
-          url: feed.url,
-          category: newCategory,
-          is_image_mode: feed.is_image_mode,
-          website_url: feed.website_url,
-          image_url: feed.image_url,
-          script_path: feed.script_path,
-          hide_from_timeline: feed.hide_from_timeline,
-          proxy_url: feed.proxy_url,
-          proxy_enabled: feed.proxy_enabled,
-          refresh_interval: feed.refresh_interval,
-          type: feed.type,
-          xpath_item: feed.xpath_item,
-          xpath_item_title: feed.xpath_item_title,
-          xpath_item_content: feed.xpath_item_content,
-          xpath_item_uri: feed.xpath_item_uri,
-          xpath_item_author: feed.xpath_item_author,
-          xpath_item_timestamp: feed.xpath_item_timestamp,
-          xpath_item_time_format: feed.xpath_item_time_format,
-          xpath_item_thumbnail: feed.xpath_item_thumbnail,
-          xpath_item_categories: feed.xpath_item_categories,
-          xpath_item_uid: feed.xpath_item_uid,
-          article_view_mode: feed.article_view_mode,
-          auto_expand_content: feed.auto_expand_content,
-        }),
+      return authPost('/api/feeds/update', {
+        id: feed.id,
+        title: feed.title,
+        url: feed.url,
+        category: newCategory,
+        is_image_mode: feed.is_image_mode,
+        website_url: feed.website_url,
+        image_url: feed.image_url,
+        script_path: feed.script_path,
+        hide_from_timeline: feed.hide_from_timeline,
+        proxy_url: feed.proxy_url,
+        proxy_enabled: feed.proxy_enabled,
+        refresh_interval: feed.refresh_interval,
+        type: feed.type,
+        xpath_item: feed.xpath_item,
+        xpath_item_title: feed.xpath_item_title,
+        xpath_item_content: feed.xpath_item_content,
+        xpath_item_uri: feed.xpath_item_uri,
+        xpath_item_author: feed.xpath_item_author,
+        xpath_item_timestamp: feed.xpath_item_timestamp,
+        xpath_item_time_format: feed.xpath_item_time_format,
+        xpath_item_thumbnail: feed.xpath_item_thumbnail,
+        xpath_item_categories: feed.xpath_item_categories,
+        xpath_item_uid: feed.xpath_item_uid,
+        article_view_mode: feed.article_view_mode,
+        auto_expand_content: feed.auto_expand_content,
       });
     });
 
@@ -336,37 +315,33 @@ export function useFeedManagement() {
       // Merge with new tags (avoid duplicates)
       const mergedTagIds = Array.from(new Set([...existingTagIds, ...tagIds]));
 
-      return fetch('/api/feeds/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: feed.id,
-          title: feed.title,
-          url: feed.url,
-          category: feed.category,
-          is_image_mode: feed.is_image_mode,
-          website_url: feed.website_url,
-          image_url: feed.image_url,
-          script_path: feed.script_path,
-          hide_from_timeline: feed.hide_from_timeline,
-          proxy_url: feed.proxy_url,
-          proxy_enabled: feed.proxy_enabled,
-          refresh_interval: feed.refresh_interval,
-          type: feed.type,
-          xpath_item: feed.xpath_item,
-          xpath_item_title: feed.xpath_item_title,
-          xpath_item_content: feed.xpath_item_content,
-          xpath_item_uri: feed.xpath_item_uri,
-          xpath_item_author: feed.xpath_item_author,
-          xpath_item_timestamp: feed.xpath_item_timestamp,
-          xpath_item_time_format: feed.xpath_item_time_format,
-          xpath_item_thumbnail: feed.xpath_item_thumbnail,
-          xpath_item_categories: feed.xpath_item_categories,
-          xpath_item_uid: feed.xpath_item_uid,
-          article_view_mode: feed.article_view_mode,
-          auto_expand_content: feed.auto_expand_content,
-          tags: mergedTagIds,
-        }),
+      return authPost('/api/feeds/update', {
+        id: feed.id,
+        title: feed.title,
+        url: feed.url,
+        category: feed.category,
+        is_image_mode: feed.is_image_mode,
+        website_url: feed.website_url,
+        image_url: feed.image_url,
+        script_path: feed.script_path,
+        hide_from_timeline: feed.hide_from_timeline,
+        proxy_url: feed.proxy_url,
+        proxy_enabled: feed.proxy_enabled,
+        refresh_interval: feed.refresh_interval,
+        type: feed.type,
+        xpath_item: feed.xpath_item,
+        xpath_item_title: feed.xpath_item_title,
+        xpath_item_content: feed.xpath_item_content,
+        xpath_item_uri: feed.xpath_item_uri,
+        xpath_item_author: feed.xpath_item_author,
+        xpath_item_timestamp: feed.xpath_item_timestamp,
+        xpath_item_time_format: feed.xpath_item_time_format,
+        xpath_item_thumbnail: feed.xpath_item_thumbnail,
+        xpath_item_categories: feed.xpath_item_categories,
+        xpath_item_uid: feed.xpath_item_uid,
+        article_view_mode: feed.article_view_mode,
+        auto_expand_content: feed.auto_expand_content,
+        tags: mergedTagIds,
       });
     });
 
@@ -408,36 +383,32 @@ export function useFeedManagement() {
       const feed = store.feeds!.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
 
-      return fetch('/api/feeds/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: feed.id,
-          title: feed.title,
-          url: feed.url,
-          category: feed.category,
-          is_image_mode: true,
-          website_url: feed.website_url,
-          image_url: feed.image_url,
-          script_path: feed.script_path,
-          hide_from_timeline: feed.hide_from_timeline,
-          proxy_url: feed.proxy_url,
-          proxy_enabled: feed.proxy_enabled,
-          refresh_interval: feed.refresh_interval,
-          type: feed.type,
-          xpath_item: feed.xpath_item,
-          xpath_item_title: feed.xpath_item_title,
-          xpath_item_content: feed.xpath_item_content,
-          xpath_item_uri: feed.xpath_item_uri,
-          xpath_item_author: feed.xpath_item_author,
-          xpath_item_timestamp: feed.xpath_item_timestamp,
-          xpath_item_time_format: feed.xpath_item_time_format,
-          xpath_item_thumbnail: feed.xpath_item_thumbnail,
-          xpath_item_categories: feed.xpath_item_categories,
-          xpath_item_uid: feed.xpath_item_uid,
-          article_view_mode: feed.article_view_mode,
-          auto_expand_content: feed.auto_expand_content,
-        }),
+      return authPost('/api/feeds/update', {
+        id: feed.id,
+        title: feed.title,
+        url: feed.url,
+        category: feed.category,
+        is_image_mode: true,
+        website_url: feed.website_url,
+        image_url: feed.image_url,
+        script_path: feed.script_path,
+        hide_from_timeline: feed.hide_from_timeline,
+        proxy_url: feed.proxy_url,
+        proxy_enabled: feed.proxy_enabled,
+        refresh_interval: feed.refresh_interval,
+        type: feed.type,
+        xpath_item: feed.xpath_item,
+        xpath_item_title: feed.xpath_item_title,
+        xpath_item_content: feed.xpath_item_content,
+        xpath_item_uri: feed.xpath_item_uri,
+        xpath_item_author: feed.xpath_item_author,
+        xpath_item_timestamp: feed.xpath_item_timestamp,
+        xpath_item_time_format: feed.xpath_item_time_format,
+        xpath_item_thumbnail: feed.xpath_item_thumbnail,
+        xpath_item_categories: feed.xpath_item_categories,
+        xpath_item_uid: feed.xpath_item_uid,
+        article_view_mode: feed.article_view_mode,
+        auto_expand_content: feed.auto_expand_content,
       });
     });
 
@@ -465,36 +436,32 @@ export function useFeedManagement() {
       const feed = store.feeds!.find((f: Feed) => f.id === id);
       if (!feed) return Promise.resolve();
 
-      return fetch('/api/feeds/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: feed.id,
-          title: feed.title,
-          url: feed.url,
-          category: feed.category,
-          is_image_mode: false,
-          website_url: feed.website_url,
-          image_url: feed.image_url,
-          script_path: feed.script_path,
-          hide_from_timeline: feed.hide_from_timeline,
-          proxy_url: feed.proxy_url,
-          proxy_enabled: feed.proxy_enabled,
-          refresh_interval: feed.refresh_interval,
-          type: feed.type,
-          xpath_item: feed.xpath_item,
-          xpath_item_title: feed.xpath_item_title,
-          xpath_item_content: feed.xpath_item_content,
-          xpath_item_uri: feed.xpath_item_uri,
-          xpath_item_author: feed.xpath_item_author,
-          xpath_item_timestamp: feed.xpath_item_timestamp,
-          xpath_item_time_format: feed.xpath_item_time_format,
-          xpath_item_thumbnail: feed.xpath_item_thumbnail,
-          xpath_item_categories: feed.xpath_item_categories,
-          xpath_item_uid: feed.xpath_item_uid,
-          article_view_mode: feed.article_view_mode,
-          auto_expand_content: feed.auto_expand_content,
-        }),
+      return authPost('/api/feeds/update', {
+        id: feed.id,
+        title: feed.title,
+        url: feed.url,
+        category: feed.category,
+        is_image_mode: false,
+        website_url: feed.website_url,
+        image_url: feed.image_url,
+        script_path: feed.script_path,
+        hide_from_timeline: feed.hide_from_timeline,
+        proxy_url: feed.proxy_url,
+        proxy_enabled: feed.proxy_enabled,
+        refresh_interval: feed.refresh_interval,
+        type: feed.type,
+        xpath_item: feed.xpath_item,
+        xpath_item_title: feed.xpath_item_title,
+        xpath_item_content: feed.xpath_item_content,
+        xpath_item_uri: feed.xpath_item_uri,
+        xpath_item_author: feed.xpath_item_author,
+        xpath_item_timestamp: feed.xpath_item_timestamp,
+        xpath_item_time_format: feed.xpath_item_time_format,
+        xpath_item_thumbnail: feed.xpath_item_thumbnail,
+        xpath_item_categories: feed.xpath_item_categories,
+        xpath_item_uid: feed.xpath_item_uid,
+        article_view_mode: feed.article_view_mode,
+        auto_expand_content: feed.auto_expand_content,
       });
     });
 

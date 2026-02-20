@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -82,18 +83,55 @@ func HandleDetectNetwork(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
-	proxyType, _ := h.DB.GetSetting("proxy_type")
-	proxyHost, _ := h.DB.GetSetting("proxy_host")
-	proxyPort, _ := h.DB.GetSetting("proxy_port")
-	proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-	proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+	userID, ok := core.GetUserIDFromRequest(r)
+
+	var proxyEnabled, proxyType, proxyHost, proxyPort string
+	var proxyUsername, proxyPassword string
+
+	if ok {
+		proxyEnabled, _ = h.DB.GetSettingForUser(userID, "proxy_enabled")
+		proxyType, _ = h.DB.GetSettingForUser(userID, "proxy_type")
+		proxyHost, _ = h.DB.GetSettingForUser(userID, "proxy_host")
+		proxyPort, _ = h.DB.GetSettingForUser(userID, "proxy_port")
+		proxyUsername, _ = h.DB.GetEncryptedSettingForUser(userID, "proxy_username")
+		proxyPassword, _ = h.DB.GetEncryptedSettingForUser(userID, "proxy_password")
+
+		// Fall back to global settings if user settings are empty
+		if proxyEnabled == "" {
+			proxyEnabled, _ = h.DB.GetSetting("proxy_enabled")
+		}
+		if proxyType == "" {
+			proxyType, _ = h.DB.GetSetting("proxy_type")
+		}
+		if proxyHost == "" {
+			proxyHost, _ = h.DB.GetSetting("proxy_host")
+		}
+		if proxyPort == "" {
+			proxyPort, _ = h.DB.GetSetting("proxy_port")
+		}
+		if proxyUsername == "" {
+			proxyUsername, _ = h.DB.GetEncryptedSetting("proxy_username")
+		}
+		if proxyPassword == "" {
+			proxyPassword, _ = h.DB.GetEncryptedSetting("proxy_password")
+		}
+	} else {
+		proxyEnabled, _ = h.DB.GetSetting("proxy_enabled")
+		proxyType, _ = h.DB.GetSetting("proxy_type")
+		proxyHost, _ = h.DB.GetSetting("proxy_host")
+		proxyPort, _ = h.DB.GetSetting("proxy_port")
+		proxyUsername, _ = h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ = h.DB.GetEncryptedSetting("proxy_password")
+	}
 
 	var httpClient *http.Client
+	var proxyURL string
 	if proxyEnabled == "true" {
-		proxyURL := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		log.Printf("[NetworkDetect] Proxy enabled, userID=%v, using proxy URL: %s", userID, proxyURL)
 		httpClient = httputil.GetPooledHTTPClient(proxyURL, 10*time.Second)
 	} else {
+		log.Printf("[NetworkDetect] Proxy disabled, userID=%v, using direct connection", userID)
 		httpClient = httputil.GetPooledHTTPClient("", 10*time.Second)
 	}
 
@@ -180,7 +218,47 @@ func HandleTestProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	userID, ok := core.GetUserIDFromRequest(r)
+
+	var proxyEnabled, proxyType, proxyHost, proxyPort string
+	var proxyUsername, proxyPassword string
+
+	if ok {
+		proxyEnabled, _ = h.DB.GetSettingForUser(userID, "proxy_enabled")
+		proxyType, _ = h.DB.GetSettingForUser(userID, "proxy_type")
+		proxyHost, _ = h.DB.GetSettingForUser(userID, "proxy_host")
+		proxyPort, _ = h.DB.GetSettingForUser(userID, "proxy_port")
+		proxyUsername, _ = h.DB.GetEncryptedSettingForUser(userID, "proxy_username")
+		proxyPassword, _ = h.DB.GetEncryptedSettingForUser(userID, "proxy_password")
+
+		// Fall back to global settings if user settings are empty
+		if proxyEnabled == "" {
+			proxyEnabled, _ = h.DB.GetSetting("proxy_enabled")
+		}
+		if proxyType == "" {
+			proxyType, _ = h.DB.GetSetting("proxy_type")
+		}
+		if proxyHost == "" {
+			proxyHost, _ = h.DB.GetSetting("proxy_host")
+		}
+		if proxyPort == "" {
+			proxyPort, _ = h.DB.GetSetting("proxy_port")
+		}
+		if proxyUsername == "" {
+			proxyUsername, _ = h.DB.GetEncryptedSetting("proxy_username")
+		}
+		if proxyPassword == "" {
+			proxyPassword, _ = h.DB.GetEncryptedSetting("proxy_password")
+		}
+	} else {
+		proxyEnabled, _ = h.DB.GetSetting("proxy_enabled")
+		proxyType, _ = h.DB.GetSetting("proxy_type")
+		proxyHost, _ = h.DB.GetSetting("proxy_host")
+		proxyPort, _ = h.DB.GetSetting("proxy_port")
+		proxyUsername, _ = h.DB.GetEncryptedSetting("proxy_username")
+		proxyPassword, _ = h.DB.GetEncryptedSetting("proxy_password")
+	}
+
 	if proxyEnabled != "true" {
 		response.JSON(w, httputil.ProxyTestResult{
 			Success:      false,
@@ -189,12 +267,6 @@ func HandleTestProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	proxyType, _ := h.DB.GetSetting("proxy_type")
-	proxyHost, _ := h.DB.GetSetting("proxy_host")
-	proxyPort, _ := h.DB.GetSetting("proxy_port")
-	proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-	proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
 
 	proxyURL := httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 

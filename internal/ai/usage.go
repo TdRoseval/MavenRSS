@@ -92,6 +92,18 @@ func (t *UsageTracker) GetUsageLimit() (int64, error) {
 	return strconv.ParseInt(limitStr, 10, 64)
 }
 
+// GetHardLimit returns the hard usage limit (0 = unlimited).
+func (t *UsageTracker) GetHardLimit() (int64, error) {
+	limitStr, err := t.settings.GetSetting("ai_usage_hard_limit")
+	if err != nil {
+		return 0, err
+	}
+	if limitStr == "" {
+		return 0, nil
+	}
+	return strconv.ParseInt(limitStr, 10, 64)
+}
+
 // IsLimitReached checks if the usage limit has been reached.
 func (t *UsageTracker) IsLimitReached() bool {
 	usage, err := t.GetCurrentUsage()
@@ -99,17 +111,34 @@ func (t *UsageTracker) IsLimitReached() bool {
 		return false
 	}
 
-	limit, err := t.GetUsageLimit()
+	// Check user limit
+	userLimit, err := t.GetUsageLimit()
 	if err != nil {
 		return false
 	}
 
-	// 0 means unlimited
-	if limit == 0 {
+	// Check hard limit
+	hardLimit, err := t.GetHardLimit()
+	if err != nil {
 		return false
 	}
 
-	return usage >= limit
+	// Determine the effective limit (take the smaller of user limit and hard limit if both are set)
+	effectiveLimit := int64(0)
+	if userLimit > 0 && hardLimit > 0 {
+		effectiveLimit = min(userLimit, hardLimit)
+	} else if userLimit > 0 {
+		effectiveLimit = userLimit
+	} else if hardLimit > 0 {
+		effectiveLimit = hardLimit
+	}
+
+	// If no limit is set (both 0), then unlimited
+	if effectiveLimit == 0 {
+		return false
+	}
+
+	return usage >= effectiveLimit
 }
 
 // AddUsage adds tokens to the usage counter.
