@@ -20,13 +20,13 @@ import (
 
 // ProfileRequest represents the request body for creating/updating an AI profile
 type ProfileRequest struct {
-	Name          string `json:"name"`
-	APIKey        string `json:"api_key"`
-	Endpoint      string `json:"endpoint"`
-	Model         string `json:"model"`
-	CustomHeaders string `json:"custom_headers"`
-	IsDefault     bool   `json:"is_default"`
-	UseGlobalProxy bool `json:"use_global_proxy"`
+	Name           string `json:"name"`
+	APIKey         string `json:"api_key"`
+	Endpoint       string `json:"endpoint"`
+	Model          string `json:"model"`
+	CustomHeaders  string `json:"custom_headers"`
+	IsDefault      bool   `json:"is_default"`
+	UseGlobalProxy bool   `json:"use_global_proxy"`
 }
 
 // ProfileTestRequest represents the request body for testing a configuration without saving
@@ -62,7 +62,13 @@ func HandleListAIProfiles(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	profiles, err := h.DB.GetAllAIProfilesWithoutKeys()
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
+	profiles, err := h.DB.GetAllAIProfilesWithoutKeysForUser(userID)
 	if err != nil {
 		log.Printf("Error listing AI profiles: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -93,6 +99,12 @@ func HandleGetAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID from path
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/ai/profiles/")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -101,7 +113,7 @@ func HandleGetAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	profile, err := h.DB.GetAIProfile(id)
+	profile, err := h.DB.GetAIProfileForUser(userID, id)
 	if err != nil {
 		log.Printf("Error getting AI profile: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -140,6 +152,12 @@ func HandleCreateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	var req ProfileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, err, http.StatusBadRequest)
@@ -161,12 +179,13 @@ func HandleCreateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	profile := &models.AIProfile{
-		Name:          req.Name,
-		APIKey:        req.APIKey,
-		Endpoint:      req.Endpoint,
-		Model:         req.Model,
-		CustomHeaders: req.CustomHeaders,
-		IsDefault:     req.IsDefault,
+		UserID:         userID,
+		Name:           req.Name,
+		APIKey:         req.APIKey,
+		Endpoint:       req.Endpoint,
+		Model:          req.Model,
+		CustomHeaders:  req.CustomHeaders,
+		IsDefault:      req.IsDefault,
 		UseGlobalProxy: req.UseGlobalProxy,
 	}
 
@@ -203,6 +222,12 @@ func HandleUpdateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID from path
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/ai/profiles/")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -212,7 +237,7 @@ func HandleUpdateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Check if profile exists
-	existing, err := h.DB.GetAIProfile(id)
+	existing, err := h.DB.GetAIProfileForUser(userID, id)
 	if err != nil {
 		log.Printf("Error getting AI profile: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -250,13 +275,14 @@ func HandleUpdateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	profile := &models.AIProfile{
-		ID:            id,
-		Name:          req.Name,
-		APIKey:        apiKey,
-		Endpoint:      req.Endpoint,
-		Model:         req.Model,
-		CustomHeaders: req.CustomHeaders,
-		IsDefault:     req.IsDefault,
+		ID:             id,
+		UserID:         userID,
+		Name:           req.Name,
+		APIKey:         apiKey,
+		Endpoint:       req.Endpoint,
+		Model:          req.Model,
+		CustomHeaders:  req.CustomHeaders,
+		IsDefault:      req.IsDefault,
 		UseGlobalProxy: req.UseGlobalProxy,
 	}
 
@@ -285,6 +311,12 @@ func HandleDeleteAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID from path
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/ai/profiles/")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -293,7 +325,7 @@ func HandleDeleteAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.DB.DeleteAIProfile(id); err != nil {
+	if err := h.DB.DeleteAIProfileForUser(userID, id); err != nil {
 		log.Printf("Error deleting AI profile: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -317,6 +349,12 @@ func HandleSetDefaultAIProfile(h *core.Handler, w http.ResponseWriter, r *http.R
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID from path - handle both formats
 	path := r.URL.Path
 	path = strings.TrimPrefix(path, "/api/ai/profiles/")
@@ -327,7 +365,7 @@ func HandleSetDefaultAIProfile(h *core.Handler, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if err := h.DB.SetDefaultAIProfile(id); err != nil {
+	if err := h.DB.SetDefaultAIProfileForUser(userID, id); err != nil {
 		log.Printf("Error setting default AI profile: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -353,6 +391,12 @@ func HandleTestAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID from path
 	path := r.URL.Path
 	path = strings.TrimPrefix(path, "/api/ai/profiles/")
@@ -363,7 +407,7 @@ func HandleTestAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	profile, err := h.DB.GetAIProfile(id)
+	profile, err := h.DB.GetAIProfileForUser(userID, id)
 	if err != nil {
 		log.Printf("Error getting AI profile: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -374,7 +418,7 @@ func HandleTestAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result := testAIProfileConnection(h, profile)
+	result := testAIProfileConnection(h, profile, userID)
 	response.JSON(w, result)
 }
 
@@ -392,7 +436,13 @@ func HandleTestAllAIProfiles(h *core.Handler, w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	profiles, err := h.DB.GetAllAIProfiles()
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
+	profiles, err := h.DB.GetAllAIProfilesForUser(userID)
 	if err != nil {
 		log.Printf("Error listing AI profiles: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -412,7 +462,7 @@ func HandleTestAllAIProfiles(h *core.Handler, w http.ResponseWriter, r *http.Req
 		wg.Add(1)
 		go func(idx int, p models.AIProfile) {
 			defer wg.Done()
-			results[idx] = testAIProfileConnection(h, &p)
+			results[idx] = testAIProfileConnection(h, &p, userID)
 		}(i, profile)
 	}
 
@@ -437,6 +487,12 @@ func HandleTestAIProfileConfig(h *core.Handler, w http.ResponseWriter, r *http.R
 		return
 	}
 
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, fmt.Errorf("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
 	var req ProfileTestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, err, http.StatusBadRequest)
@@ -453,12 +509,12 @@ func HandleTestAIProfileConfig(h *core.Handler, w http.ResponseWriter, r *http.R
 		CustomHeaders: req.CustomHeaders,
 	}
 
-	result := testAIProfileConnection(h, tempProfile)
+	result := testAIProfileConnection(h, tempProfile, userID)
 	response.JSON(w, result)
 }
 
 // testAIProfileConnection tests a single AI profile
-func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) ProfileTestResult {
+func testAIProfileConnection(h *core.Handler, profile *models.AIProfile, userID int64) ProfileTestResult {
 	result := ProfileTestResult{
 		ProfileID:   profile.ID,
 		ProfileName: profile.Name,
@@ -503,7 +559,7 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 	}
 
 	// Create HTTP client with proxy support if configured
-	httpClient, err := createHTTPClientWithProxyForProfile(h, profile.UseGlobalProxy)
+	httpClient, err := createHTTPClientWithProxyForProfile(h, profile.UseGlobalProxy, userID)
 	if err != nil {
 		result.ConnectionSuccess = false
 		result.ModelAvailable = false
@@ -543,17 +599,17 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile) Profile
 }
 
 // createHTTPClientWithProxyForProfile creates an HTTP client with global proxy settings
-func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool) (*http.Client, error) {
+func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool, userID int64) (*http.Client, error) {
 	var proxyURL string
 
 	if useGlobalProxy {
-		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 		if proxyEnabled == "true" {
-			proxyType, _ := h.DB.GetSetting("proxy_type")
-			proxyHost, _ := h.DB.GetSetting("proxy_host")
-			proxyPort, _ := h.DB.GetSetting("proxy_port")
-			proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-			proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			proxyURL = buildProxyURLForProfile(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		}
 	}

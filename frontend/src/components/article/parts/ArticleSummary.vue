@@ -12,6 +12,7 @@ import {
   PhCopy,
 } from '@phosphor-icons/vue';
 import { useI18n } from 'vue-i18n';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   summaryResult: {
@@ -135,7 +136,7 @@ async function handleSummaryLinkClick(event: MouseEvent) {
     event.stopPropagation();
 
     try {
-      const response = await fetch('/api/browser/open', {
+      const response = await authFetch('/api/browser/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: anchor.href }),

@@ -39,6 +39,8 @@ func HandleListSessions(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get article_id from query parameter
 	articleIDStr := r.URL.Query().Get("article_id")
 	if articleIDStr == "" {
@@ -52,7 +54,7 @@ func HandleListSessions(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sessions, err := h.DB.GetChatSessionsByArticle(articleID)
+	sessions, err := h.DB.GetChatSessionsByArticle(userID, articleID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -78,6 +80,8 @@ func HandleCreateSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, err, http.StatusBadRequest)
@@ -95,7 +99,7 @@ func HandleCreateSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		title = "New Chat"
 	}
 
-	sessionID, err := h.DB.CreateChatSession(req.ArticleID, title)
+	sessionID, err := h.DB.CreateChatSession(userID, req.ArticleID, title)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return

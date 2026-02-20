@@ -190,13 +190,13 @@ export const useAppStore = defineStore('app', () => {
     try {
       const params: Record<string, any> = {
         page: page.value,
-        limit: limit
+        limit: limit,
       };
       if (currentFilter.value) params.filter = currentFilter.value;
       if (currentFeedId.value) params.feed_id = currentFeedId.value;
       if (currentCategory.value !== null) params.category = currentCategory.value;
-      
-      const data: Article[] = await apiClient.get<Article[]>('/articles', params) || [];
+
+      const data: Article[] = (await apiClient.get<Article[]>('/articles', params)) || [];
 
       if (data.length < limit) {
         hasMore.value = false;

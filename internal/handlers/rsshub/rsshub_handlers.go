@@ -29,6 +29,8 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	var req struct {
 		Route    string `json:"route"`
 		Category string `json:"category"`
@@ -47,7 +49,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add RSSHub subscription using specialized handler
-	feedID, err := h.Fetcher.AddRSSHubSubscription(req.Route, req.Category, req.Title)
+	feedID, err := h.Fetcher.AddRSSHubSubscriptionWithUserID(req.Route, req.Category, req.Title, userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -76,6 +78,8 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	var req struct {
 		Endpoint string `json:"endpoint"`
 		APIKey   string `json:"api_key"`
@@ -98,15 +102,15 @@ func HandleTestConnection(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Build proxy URL if enabled
+	// Build proxy URL if enabled (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSetting("proxy_type")
-		proxyHost, _ := h.DB.GetSetting("proxy_host")
-		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
@@ -144,6 +148,8 @@ func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	var req struct {
 		Route string `json:"route"`
 	}
@@ -158,22 +164,22 @@ func HandleValidateRoute(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get RSSHub settings
-	endpoint, _ := h.DB.GetSetting("rsshub_endpoint")
+	// Get RSSHub settings (优先用户设置，回退全局)
+	endpoint, _ := h.DB.GetSettingWithFallback(userID, "rsshub_endpoint")
 	if endpoint == "" {
 		endpoint = "https://rsshub.app"
 	}
-	apiKey, _ := h.DB.GetEncryptedSetting("rsshub_api_key")
+	apiKey, _ := h.DB.GetEncryptedSettingWithFallback(userID, "rsshub_api_key")
 
-	// Build proxy URL if enabled
+	// Build proxy URL if enabled (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSetting("proxy_type")
-		proxyHost, _ := h.DB.GetSetting("proxy_host")
-		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
@@ -211,6 +217,8 @@ func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	var req struct {
 		URL string `json:"url"`
 	}
@@ -233,29 +241,29 @@ func HandleTransformURL(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Check if RSSHub is enabled
-	enabledStr, _ := h.DB.GetSetting("rsshub_enabled")
+	// Check if RSSHub is enabled (优先用户设置，回退全局)
+	enabledStr, _ := h.DB.GetSettingWithFallback(userID, "rsshub_enabled")
 	if enabledStr != "true" {
 		response.Error(w, fmt.Errorf("RSSHub integration is disabled"), http.StatusBadRequest)
 		return
 	}
 
-	// Get RSSHub settings
-	endpoint, _ := h.DB.GetSetting("rsshub_endpoint")
+	// Get RSSHub settings (优先用户设置，回退全局)
+	endpoint, _ := h.DB.GetSettingWithFallback(userID, "rsshub_endpoint")
 	if endpoint == "" {
 		endpoint = "https://rsshub.app"
 	}
-	apiKey, _ := h.DB.GetEncryptedSetting("rsshub_api_key")
+	apiKey, _ := h.DB.GetEncryptedSettingWithFallback(userID, "rsshub_api_key")
 
-	// Build proxy URL if enabled
+	// Build proxy URL if enabled (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSetting("proxy_type")
-		proxyHost, _ := h.DB.GetSetting("proxy_host")
-		proxyPort, _ := h.DB.GetSetting("proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 

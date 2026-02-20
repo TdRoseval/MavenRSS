@@ -24,6 +24,10 @@ func runMigrations(db *sql.DB) error {
 	// Migration: Add video_url column for YouTube video support
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN video_url TEXT DEFAULT ''`)
 
+	// Migration: Fix articles.user_id - update articles to have correct user_id from their feeds
+	// This is needed because articles were created without user_id set correctly
+	_, _ = db.Exec(`UPDATE articles SET user_id = (SELECT feeds.user_id FROM feeds WHERE feeds.id = articles.feed_id) WHERE articles.user_id = 0`)
+
 	// Migration: Add XPath support fields to feeds table
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN type TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN xpath_item TEXT DEFAULT ''`)

@@ -1,6 +1,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { openInBrowser } from '@/utils/browser';
+import { authPost } from '@/utils/authFetch';
 
 export interface KeyboardShortcuts {
   nextArticle: string;
@@ -105,7 +106,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     // Mark as read
     if (!article.is_read) {
       article.is_read = true;
-      fetch(`/api/articles/read?id=${article.id}&read=true`, { method: 'POST' })
+      authPost(`/api/articles/read?id=${article.id}&read=true`)
         .then(() => store.fetchUnreadCounts())
         .catch((e) => console.error('Error marking as read:', e));
     }
@@ -125,7 +126,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     const newState = !article.is_read;
     article.is_read = newState;
-    fetch(`/api/articles/read?id=${article.id}&read=${newState}`, { method: 'POST' })
+    authPost(`/api/articles/read?id=${article.id}&read=${newState}`)
       .then(() => store.fetchUnreadCounts())
       .catch((e) => {
         console.error('Error toggling read:', e);
@@ -139,7 +140,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     const newState = !article.is_favorite;
     article.is_favorite = newState;
-    fetch(`/api/articles/favorite?id=${article.id}`, { method: 'POST' }).catch((e) => {
+    authPost(`/api/articles/favorite?id=${article.id}`).catch((e) => {
       console.error('Error toggling favorite:', e);
       article.is_favorite = !newState;
     });
@@ -155,7 +156,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     if (newState) {
       article.is_read = false;
     }
-    fetch(`/api/articles/toggle-read-later?id=${article.id}`, { method: 'POST' })
+    authPost(`/api/articles/toggle-read-later?id=${article.id}`)
       .then(() => store.fetchUnreadCounts())
       .catch((e) => {
         console.error('Error toggling read later:', e);

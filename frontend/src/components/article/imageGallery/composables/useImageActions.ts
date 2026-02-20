@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
 import type { Article } from '@/types/models';
 import type { ImageActionsReturn } from '../types';
+import { authPost } from '@/utils/authFetch';
 
 /**
  * Composable for image and article actions (download, copy, favorite, etc.)
@@ -22,14 +23,10 @@ export function useImageActions(): ImageActionsReturn {
       event.stopPropagation();
     }
     try {
-      const res = await fetch(`/api/articles/favorite?id=${article.id}`, {
-        method: 'POST',
-      });
-      if (res.ok) {
-        article.is_favorite = !article.is_favorite;
-        // Update filter counts after toggling favorite status
-        await store.fetchFilterCounts();
-      }
+      await authPost(`/api/articles/favorite?id=${article.id}`);
+      article.is_favorite = !article.is_favorite;
+      // Update filter counts after toggling favorite status
+      await store.fetchFilterCounts();
     } catch (e) {
       console.error('Failed to toggle favorite:', e);
     }
@@ -41,15 +38,11 @@ export function useImageActions(): ImageActionsReturn {
    */
   async function markAsRead(article: Article): Promise<void> {
     try {
-      const res = await fetch(`/api/articles/read?id=${article.id}&read=true`, {
-        method: 'POST',
-      });
-      if (res.ok) {
-        article.is_read = true;
-        // Update unread counts after marking as read
-        await store.fetchUnreadCounts();
-        await store.fetchFilterCounts();
-      }
+      await authPost(`/api/articles/read?id=${article.id}&read=true`);
+      article.is_read = true;
+      // Update unread counts after marking as read
+      await store.fetchUnreadCounts();
+      await store.fetchFilterCounts();
     } catch (e) {
       console.error('Failed to mark as read:', e);
     }
@@ -63,9 +56,7 @@ export function useImageActions(): ImageActionsReturn {
     const newState = !article.is_read;
     article.is_read = newState;
     try {
-      await fetch(`/api/articles/read?id=${article.id}&read=${newState}`, {
-        method: 'POST',
-      });
+      await authPost(`/api/articles/read?id=${article.id}&read=${newState}`);
       // Update unread counts after toggling read status
       await store.fetchUnreadCounts();
       await store.fetchFilterCounts();

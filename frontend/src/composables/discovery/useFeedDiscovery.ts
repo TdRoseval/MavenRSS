@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Feed } from '@/types/models';
 import type { DiscoveredFeed, ProgressCounts, ProgressState } from '@/types/discovery';
+import { authFetch, authPost, authFetchJson } from '@/utils/authFetch';
 
 export function useFeedDiscovery(feed: Feed) {
   const { t } = useI18n();
@@ -43,10 +44,10 @@ export function useFeedDiscovery(feed: Feed) {
       }
 
       // Clear any previous discovery state
-      await fetch('/api/feeds/discover/clear', { method: 'POST' });
+      await authPost('/api/feeds/discover/clear');
 
       // Start discovery in background
-      const startResponse = await fetch('/api/feeds/discover/start', {
+      const startResponse = await authFetch('/api/feeds/discover/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ feed_id: feed.id }),
@@ -60,7 +61,7 @@ export function useFeedDiscovery(feed: Feed) {
       // Start polling for progress
       pollInterval = setInterval(async () => {
         try {
-          const progressResponse = await fetch('/api/feeds/discover/progress');
+          const progressResponse = await authFetch('/api/feeds/discover/progress');
           if (!progressResponse.ok) {
             throw new Error('Failed to get progress');
           }
@@ -124,7 +125,7 @@ export function useFeedDiscovery(feed: Feed) {
             progressDetail.value = '';
 
             // Clear the discovery state
-            await fetch('/api/feeds/discover/clear', { method: 'POST' });
+            await authPost('/api/feeds/discover/clear');
           }
         } catch (pollError) {
           console.error('Polling error:', pollError);
@@ -150,7 +151,7 @@ export function useFeedDiscovery(feed: Feed) {
       pollInterval = null;
     }
     // Clear discovery state on server
-    fetch('/api/feeds/discover/clear', { method: 'POST' }).catch(() => {});
+    authPost('/api/feeds/discover/clear').catch(() => {});
   }
 
   return {

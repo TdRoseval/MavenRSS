@@ -27,6 +27,7 @@ import {
 import AIProfileSelector from '@/components/modals/settings/ai/AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
+import { authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -106,18 +107,10 @@ async function clearTranslationCache() {
 
   isClearingCache.value = true;
   try {
-    const response = await fetch('/api/articles/clear-translations', {
-      method: 'POST',
-    });
-
-    if (response.ok) {
-      window.showToast(t('setting.content.clearTranslationCacheSuccess'), 'success');
-      // Refresh article list to show updated translations
-      window.dispatchEvent(new CustomEvent('refresh-articles'));
-    } else {
-      console.error('Server error:', response.status);
-      window.showToast(t('setting.content.clearTranslationCacheFailed'), 'error');
-    }
+    await authPost('/api/articles/clear-translations');
+    window.showToast(t('setting.content.clearTranslationCacheSuccess'), 'success');
+    // Refresh article list to show updated translations
+    window.dispatchEvent(new CustomEvent('refresh-articles'));
   } catch (error) {
     console.error('Failed to clear translation cache:', error);
     window.showToast(t('setting.content.clearTranslationCacheFailed'), 'error');

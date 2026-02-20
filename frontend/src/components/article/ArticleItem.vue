@@ -7,8 +7,10 @@ import { formatDate as formatDateUtil } from '@/utils/date';
 import { getProxiedMediaUrl, isMediaCacheEnabled } from '@/utils/mediaProxy';
 import { useShowPreviewImages } from '@/composables/ui/useShowPreviewImages';
 import { useAppStore } from '@/stores/app';
+import { useAuthStore } from '@/stores/auth';
 import { useSettings } from '@/composables/core/useSettings';
 import { imageCache } from '@/utils/imageCache';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   article: Article;
@@ -28,6 +30,7 @@ const { t, locale } = useI18n();
 const { showPreviewImages } = useShowPreviewImages();
 const { settings } = useSettings();
 const store = useAppStore();
+const authStore = useAuthStore();
 
 // Compact mode setting (layout_mode === 'compact')
 const compactMode = computed(() => {
@@ -39,7 +42,10 @@ let handleLayoutModeChange: (() => void) | null = null;
 
 // Function to load layout mode settings
 function loadLayoutModeSettings() {
-  fetch('/api/settings')
+  if (!authStore.isAuthenticated) {
+    return;
+  }
+  authFetch('/api/settings')
     .then((res) => res.json())
     .then((data) => {
       settings.value = {
@@ -218,10 +224,10 @@ function handleMouseLeave() {
 }
 
 async function markAsRead() {
-  if (props.article.is_read) return;
+  if (!authStore.isAuthenticated || props.article.is_read) return;
 
   try {
-    await fetch(`/api/articles/read?id=${props.article.id}&read=true`, {
+    await authFetch(`/api/articles/read?id=${props.article.id}&read=true`, {
       method: 'POST',
     });
     // Emit event to parent to update article state
@@ -234,8 +240,9 @@ async function markAsRead() {
 }
 
 async function loadSettings() {
+  if (!authStore.isAuthenticated) return;
   try {
-    const res = await fetch('/api/settings');
+    const res = await authFetch('/api/settings');
     const data = await res.json();
     hoverMarkAsRead.value = data.hover_mark_as_read === 'true';
   } catch (e) {

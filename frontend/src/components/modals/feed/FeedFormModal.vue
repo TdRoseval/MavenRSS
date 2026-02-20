@@ -14,6 +14,7 @@ import EmailConfig from './parts/EmailConfig.vue';
 import CategorySelector from './parts/CategorySelector.vue';
 import TagSelector from './parts/TagSelector.vue';
 import AdvancedSettings from './parts/AdvancedSettings.vue';
+import { authFetchJson, authFetch } from '@/utils/authFetch';
 
 interface Props {
   mode: 'add' | 'edit';
@@ -188,7 +189,7 @@ async function submit() {
 
       try {
         // Use the specialized RSSHub add endpoint
-        const rsshubResp = await fetch('/api/rsshub/add', {
+        const rsshubResp = await authFetch('/api/rsshub/add', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -224,7 +225,7 @@ async function submit() {
     }
 
     const endpoint = props.mode === 'add' ? '/api/feeds/add' : '/api/feeds/update';
-    const res = await fetch(endpoint, {
+    const res = await authFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

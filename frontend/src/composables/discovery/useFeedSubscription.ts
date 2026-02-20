@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { useAppStore } from '@/stores/app';
 import type { Feed } from '@/types/models';
 import type { DiscoveredFeed } from '@/types/discovery';
+import { authPost } from '@/utils/authFetch';
 
 export function useFeedSubscription(feed: Feed, discoveredFeeds: Ref<DiscoveredFeed[]>) {
   const { t } = useI18n();
@@ -41,14 +42,10 @@ export function useFeedSubscription(feed: Feed, discoveredFeeds: Ref<DiscoveredF
 
     for (const index of selectedFeeds.value) {
       const discoveredFeed = discoveredFeeds.value[index];
-      const promise = fetch('/api/feeds/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: discoveredFeed.rss_feed,
-          category: feed.category || '',
-          title: discoveredFeed.name,
-        }),
+      const promise = authPost('/api/feeds/add', {
+        url: discoveredFeed.rss_feed,
+        category: feed.category || '',
+        title: discoveredFeed.name,
       });
       subscribePromises.push(promise);
     }

@@ -27,6 +27,13 @@ import (
 func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	log.Printf("HandleOPMLImport: ContentLength: %d", r.ContentLength)
 
+	// Get user ID from request
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	// Parse multipart form
 	err := r.ParseMultipartForm(32 << 20) // 32MB max
 	if err != nil {
@@ -67,6 +74,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Import feeds
 	imported := 0
 	for _, feed := range feeds {
+		feed.UserID = userID
 		_, err := h.DB.AddFeed(&feed)
 		if err != nil {
 			log.Printf("Error importing feed %s: %v", feed.URL, err)

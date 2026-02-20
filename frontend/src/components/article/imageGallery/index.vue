@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
+import { authGet } from '@/utils/authFetch';
 
 // Import composables
 import { useImageGalleryData } from './composables/useImageGalleryData';
@@ -140,23 +141,16 @@ async function openImage(article: Article): Promise<void> {
  */
 async function fetchArticleImages(article: Article): Promise<void> {
   try {
-    const res = await fetch(`/api/articles/extract-images?id=${article.id}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.images && Array.isArray(data.images) && data.images.length > 0) {
-        allImages.value = data.images;
-        // Find the index of the article's main image
-        currentImageIndex.value = data.images.findIndex((img: string) => img === article.image_url);
-        if (currentImageIndex.value < 0) {
-          currentImageIndex.value = 0;
-        }
-      } else {
-        // Fallback to just the article's main image
-        allImages.value = [article.image_url || ''];
+    const data = await authGet<any>(`/api/articles/extract-images?id=${article.id}`);
+    if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+      allImages.value = data.images;
+      // Find the index of the article's main image
+      currentImageIndex.value = data.images.findIndex((img: string) => img === article.image_url);
+      if (currentImageIndex.value < 0) {
         currentImageIndex.value = 0;
       }
     } else {
-      // Fallback on error
+      // Fallback to just the article's main image
       allImages.value = [article.image_url || ''];
       currentImageIndex.value = 0;
     }

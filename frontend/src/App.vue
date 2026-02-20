@@ -1,38 +1,62 @@
 <script setup lang="ts">
 import { useAppStore } from './stores/app';
+import { useAuthStore } from './stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
+import { saveLanguage } from './i18n';
 import Sidebar from './components/sidebar/Sidebar.vue';
 import ArticleList from './components/article/ArticleList.vue';
 import ArticleDetail from './components/article/ArticleDetail.vue';
 import ImageGalleryView from './components/article/imageGallery/index.vue';
 import Toast from './components/common/Toast.vue';
+import LoginPage from './components/auth/LoginPage.vue';
+import AdminUserManagement from './components/auth/AdminUserManagement.vue';
 import { useNotifications } from './composables/ui/useNotifications';
 import { useKeyboardShortcuts } from './composables/ui/useKeyboardShortcuts';
 import { useContextMenu } from './composables/ui/useContextMenu';
 import { useResizablePanels } from './composables/ui/useResizablePanels';
 import { useWindowState } from './composables/core/useWindowState';
 import { useAppUpdates } from './composables/core/useAppUpdates';
+import { apiClient } from './utils/apiClient';
+import { authFetchJson } from './utils/authFetch';
 import type { Feed } from './types/models';
 
-const AddFeedModal = defineAsyncComponent(() => import('./components/modals/feed/AddFeedModal.vue'));
-const EditFeedModal = defineAsyncComponent(() => import('./components/modals/feed/EditFeedModal.vue'));
+const AddFeedModal = defineAsyncComponent(
+  () => import('./components/modals/feed/AddFeedModal.vue')
+);
+const EditFeedModal = defineAsyncComponent(
+  () => import('./components/modals/feed/EditFeedModal.vue')
+);
 const SettingsModal = defineAsyncComponent(() => import('./components/modals/SettingsModal.vue'));
-const DiscoverFeedsModal = defineAsyncComponent(() => import('./components/modals/discovery/DiscoverFeedsModal.vue'));
-const UpdateAvailableDialog = defineAsyncComponent(() => import('./components/modals/update/UpdateAvailableDialog.vue'));
+const DiscoverFeedsModal = defineAsyncComponent(
+  () => import('./components/modals/discovery/DiscoverFeedsModal.vue')
+);
+const UpdateAvailableDialog = defineAsyncComponent(
+  () => import('./components/modals/update/UpdateAvailableDialog.vue')
+);
 const ContextMenu = defineAsyncComponent(() => import('./components/common/ContextMenu.vue'));
-const ConfirmDialog = defineAsyncComponent(() => import('./components/modals/common/ConfirmDialog.vue'));
-const InputDialog = defineAsyncComponent(() => import('./components/modals/common/InputDialog.vue'));
-const MultiSelectDialog = defineAsyncComponent(() => import('./components/modals/common/MultiSelectDialog.vue'));
+const ConfirmDialog = defineAsyncComponent(
+  () => import('./components/modals/common/ConfirmDialog.vue')
+);
+const InputDialog = defineAsyncComponent(
+  () => import('./components/modals/common/InputDialog.vue')
+);
+const MultiSelectDialog = defineAsyncComponent(
+  () => import('./components/modals/common/MultiSelectDialog.vue')
+);
 
 const store = useAppStore();
-const { t } = useI18n();
+const authStore = useAuthStore();
+const { t, locale } = useI18n();
+
+const isAdmin = computed(() => authStore.user?.role === 'admin');
 
 const showAddFeed = ref(false);
 const showEditFeed = ref(false);
 const feedToEdit = ref<Feed | null>(null);
 const showSettings = ref(false);
 const showDiscoverBlogs = ref(false);
+const showUserManagement = ref(false);
 const feedToDiscover = ref<Feed | null>(null);
 const isSidebarOpen = ref(true);
 
@@ -124,6 +148,9 @@ const { shortcuts } = useKeyboardShortcuts({
 });
 
 onMounted(() => {
+  // Load authentication state from storage
+  authStore.loadFromStorage();
+
   // Install global notification handlers
   installGlobalHandlers();
 
@@ -134,48 +161,49 @@ onMounted(() => {
   isMobile.value = checkIsMobile();
   window.addEventListener('resize', handleResize);
 
-  // Load settings in the background without blocking
-  loadInitialSettings();
+  // If user is authenticated, load settings and data
+  if (authStore.isAuthenticated) {
+    loadInitialSettings();
 
-  // Check for updates on startup (silent mode - don't show toast if up to date)
-  setTimeout(async () => {
-    try {
-      await checkForUpdates(true);
-
-      if (updateInfo.value && updateInfo.value.has_update) {
-        showUpdateDialog.value = true;
-      }
-    } catch (e) {
-      console.error('Error checking for updates:', e);
-    }
-  }, 3000);
-
-  // Load feeds and articles in background
-  setTimeout(() => {
-    store.fetchFeeds();
-    store.fetchArticles();
-
+    // Check for updates on startup (silent mode - don't show toast if up to date)
     setTimeout(async () => {
       try {
-        const progressRes = await fetch('/api/progress');
-        const progressData = await progressRes.json();
+        await checkForUpdates(true);
 
-        if (progressData.is_running) {
-          store.refreshProgress = {
-            ...store.refreshProgress,
-            isRunning: true,
-            pool_task_count: progressData.pool_task_count,
-            article_click_count: progressData.article_click_count,
-            queue_task_count: progressData.queue_task_count,
-          };
-          store.pollProgress();
-          return;
+        if (updateInfo.value && updateInfo.value.has_update) {
+          showUpdateDialog.value = true;
         }
       } catch (e) {
-        console.error('Error checking initial refresh progress:', e);
+        console.error('Error checking for updates:', e);
       }
-    }, 500);
-  }, 100);
+    }, 3000);
+
+    // Load feeds and articles in background
+    setTimeout(() => {
+      store.fetchFeeds();
+      store.fetchArticles();
+
+      setTimeout(async () => {
+        try {
+          const progressData = await authFetchJson('/api/progress');
+
+          if (progressData.is_running) {
+            store.refreshProgress = {
+              ...store.refreshProgress,
+              isRunning: true,
+              pool_task_count: progressData.pool_task_count,
+              article_click_count: progressData.article_click_count,
+              queue_task_count: progressData.queue_task_count,
+            };
+            store.pollProgress();
+            return;
+          }
+        } catch (e) {
+          console.error('Error checking initial refresh progress:', e);
+        }
+      }, 500);
+    }, 100);
+  }
 });
 
 async function loadInitialSettings() {
@@ -183,8 +211,7 @@ async function loadInitialSettings() {
   let lastGlobalRefresh = '';
 
   try {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
+    const data = await apiClient.get<any>('/settings');
 
     const layoutMode = data.layout_mode || 'normal';
     const isCompactModeLayout = layoutMode === 'compact';
@@ -196,6 +223,11 @@ async function loadInitialSettings() {
 
     if (data.theme) {
       store.setTheme(data.theme);
+    }
+
+    if (data.language) {
+      locale.value = data.language;
+      saveLanguage(data.language);
     }
 
     if (data.update_interval) {
@@ -218,8 +250,7 @@ async function loadInitialSettings() {
 
     let latestLastGlobalRefresh = lastGlobalRefresh;
     try {
-      const settingsRes = await fetch('/api/settings');
-      const settingsData = await settingsRes.json();
+      const settingsData = await apiClient.get<any>('/settings');
       if (settingsData.last_global_refresh) {
         latestLastGlobalRefresh = settingsData.last_global_refresh;
       }
@@ -304,6 +335,20 @@ function onFeedUpdated(): void {
   // Refresh articles to immediately apply hide_from_timeline changes
   store.fetchArticles();
 }
+
+function onLogin(): void {
+  // After login, load settings and data
+  loadInitialSettings();
+  store.fetchFeeds();
+  store.fetchArticles();
+}
+
+// Listen for user management event
+window.addEventListener('show-user-management', () => {
+  if (isAdmin.value) {
+    showUserManagement.value = true;
+  }
+});
 </script>
 
 <template>
@@ -315,160 +360,185 @@ function onFeedUpdated(): void {
       '--article-list-width': articleListWidth + 'px',
     }"
   >
-    <!-- Mobile: Slide-out Sidebar -->
-    <Transition name="sidebar-slide">
-      <Sidebar
-        v-if="isMobile ? isSidebarOpen : true"
-        :is-open="isSidebarOpen"
-        :is-mobile="isMobile"
-        @toggle="toggleSidebar"
-      />
-    </Transition>
+    <!-- Show Login Page if not authenticated -->
+    <LoginPage v-if="!authStore.isAuthenticated" @login="onLogin" />
 
-    <!-- Mobile overlay -->
-    <Transition name="overlay-fade">
-      <div
-        v-if="isMobile && isSidebarOpen"
-        class="fixed inset-0 bg-black/50 z-40 md:hidden"
-        @click="toggleSidebar"
-      ></div>
-    </Transition>
-
-    <!-- Mobile main content area -->
-    <div v-if="isMobile" class="flex-1 flex flex-col h-full overflow-hidden relative">
-      <!-- Mobile: Article List View (always rendered, but hidden when in detail view) -->
-      <div
-        :class="[
-          'absolute inset-0 z-10 transition-opacity duration-200',
-          mobileView === 'list' ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'
-        ]"
-      >
-        <ArticleList
-          ref="articleListRef"
-          :is-mobile="isMobile"
-          :is-sidebar-open="isSidebarOpen"
-          @toggle-sidebar="toggleSidebar"
-          @select-article="openArticleOnMobile"
-        />
-      </div>
-
-      <!-- Mobile: Article Detail View (always rendered, but hidden when in list view) -->
-      <div
-        :class="[
-          'absolute inset-0 z-20 transition-transform duration-300',
-          mobileView === 'detail' ? 'translate-x-0' : 'translate-x-full'
-        ]"
-      >
-        <ArticleDetail
-          :is-mobile="isMobile"
-          @close="closeArticleOnMobile"
-        />
-      </div>
-    </div>
-
-    <!-- Desktop: Original layout -->
+    <!-- Show Main Application if authenticated -->
     <template v-else>
-      <!-- Show ImageGalleryView when in image gallery mode -->
-      <template v-if="isImageGalleryMode">
-        <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
-      </template>
+      <!-- Mobile: Slide-out Sidebar -->
+      <Transition name="sidebar-slide">
+        <Sidebar
+          v-if="isMobile ? isSidebarOpen : true"
+          :is-open="isSidebarOpen"
+          :is-mobile="isMobile"
+          @toggle="toggleSidebar"
+          @open-user-management="showUserManagement = true"
+        />
+      </Transition>
 
-      <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
+      <!-- Mobile overlay -->
+      <Transition name="overlay-fade">
+        <div
+          v-if="isMobile && isSidebarOpen"
+          class="fixed inset-0 bg-black/50 z-40 md:hidden"
+          @click="toggleSidebar"
+        ></div>
+      </Transition>
+
+      <!-- Mobile main content area -->
+      <div v-if="isMobile" class="flex-1 flex flex-col h-full overflow-hidden relative">
+        <!-- Mobile: Article List View (always rendered, but hidden when in detail view) -->
+        <div
+          :class="[
+            'absolute inset-0 z-10 transition-opacity duration-200',
+            mobileView === 'list'
+              ? 'opacity-100 visible'
+              : 'opacity-0 invisible pointer-events-none',
+          ]"
+        >
+          <ArticleList
+            ref="articleListRef"
+            :is-mobile="isMobile"
+            :is-sidebar-open="isSidebarOpen"
+            @toggle-sidebar="toggleSidebar"
+            @select-article="openArticleOnMobile"
+          />
+        </div>
+
+        <!-- Mobile: Article Detail View (always rendered, but hidden when in list view) -->
+        <div
+          :class="[
+            'absolute inset-0 z-20 transition-transform duration-300',
+            mobileView === 'detail' ? 'translate-x-0' : 'translate-x-full',
+          ]"
+        >
+          <ArticleDetail :is-mobile="isMobile" @close="closeArticleOnMobile" />
+        </div>
+      </div>
+
+      <!-- Desktop: Original layout -->
       <template v-else>
-        <ArticleList ref="articleListRef" :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+        <!-- Show ImageGalleryView when in image gallery mode -->
+        <template v-if="isImageGalleryMode">
+          <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+        </template>
 
-        <!-- Hide resizer and ArticleDetail when in card mode -->
-        <template v-if="!isCardMode">
-          <div class="resizer hidden md:block" @mousedown="startResizeArticleList"></div>
+        <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
+        <template v-else>
+          <ArticleList
+            ref="articleListRef"
+            :is-sidebar-open="isSidebarOpen"
+            @toggle-sidebar="toggleSidebar"
+          />
 
-          <ArticleDetail />
+          <!-- Hide resizer and ArticleDetail when in card mode -->
+          <template v-if="!isCardMode">
+            <div class="resizer hidden md:block" @mousedown="startResizeArticleList"></div>
+
+            <ArticleDetail />
+          </template>
         </template>
       </template>
-    </template>
 
-    <AddFeedModal v-if="showAddFeed" @close="showAddFeed = false" @added="onFeedAdded" />
-    <EditFeedModal
-      v-if="showEditFeed && feedToEdit"
-      :feed="feedToEdit"
-      @close="showEditFeed = false"
-      @updated="onFeedUpdated"
-    />
-    <SettingsModal v-if="showSettings" @close="showSettings = false" />
-    <DiscoverFeedsModal
-      v-if="showDiscoverBlogs && feedToDiscover"
-      :feed="feedToDiscover"
-      :show="showDiscoverBlogs"
-      @close="showDiscoverBlogs = false"
-    />
-
-    <UpdateAvailableDialog
-      v-if="showUpdateDialog && updateInfo"
-      :update-info="updateInfo"
-      :downloading-update="downloadingUpdate"
-      :installing-update="installingUpdate"
-      :download-progress="downloadProgress"
-      @close="showUpdateDialog = false"
-      @update="downloadAndInstallUpdate"
-    />
-
-    <ContextMenu
-      v-if="contextMenu.show"
-      :x="contextMenu.x"
-      :y="contextMenu.y"
-      :items="contextMenu.items"
-      @close="contextMenu.show = false"
-      @action="handleContextMenuAction"
-    />
-
-    <!-- Global Notification System -->
-    <ConfirmDialog
-      v-if="confirmDialog"
-      :title="confirmDialog.title"
-      :message="confirmDialog.message"
-      :confirm-text="confirmDialog.confirmText"
-      :cancel-text="confirmDialog.cancelText"
-      :is-danger="confirmDialog.isDanger"
-      @confirm="confirmDialog.onConfirm"
-      @cancel="confirmDialog.onCancel"
-      @close="confirmDialog = null"
-    />
-
-    <InputDialog
-      v-if="inputDialog"
-      :title="inputDialog.title"
-      :message="inputDialog.message"
-      :placeholder="inputDialog.placeholder"
-      :default-value="inputDialog.defaultValue"
-      :confirm-text="inputDialog.confirmText"
-      :cancel-text="inputDialog.cancelText"
-      :suggestions="inputDialog.suggestions"
-      @confirm="inputDialog.onConfirm"
-      @cancel="inputDialog.onCancel"
-      @close="inputDialog = null"
-    />
-
-    <MultiSelectDialog
-      v-if="multiSelectDialog"
-      :title="multiSelectDialog.title"
-      :message="multiSelectDialog.message"
-      :options="multiSelectDialog.options"
-      :confirm-text="multiSelectDialog.confirmText"
-      :cancel-text="multiSelectDialog.cancelText"
-      @confirm="multiSelectDialog.onConfirm"
-      @cancel="multiSelectDialog.onCancel"
-      @close="multiSelectDialog = null"
-    />
-
-    <div class="toast-container">
-      <Toast
-        v-for="toast in toasts"
-        :key="toast.id"
-        :message="toast.message"
-        :type="toast.type"
-        :duration="toast.duration"
-        @close="removeToast(toast.id)"
+      <AddFeedModal v-if="showAddFeed" @close="showAddFeed = false" @added="onFeedAdded" />
+      <EditFeedModal
+        v-if="showEditFeed && feedToEdit"
+        :feed="feedToEdit"
+        @close="showEditFeed = false"
+        @updated="onFeedUpdated"
       />
-    </div>
+      <SettingsModal v-if="showSettings" @close="showSettings = false" />
+      <DiscoverFeedsModal
+        v-if="showDiscoverBlogs && feedToDiscover"
+        :feed="feedToDiscover"
+        :show="showDiscoverBlogs"
+        @close="showDiscoverBlogs = false"
+      />
+
+      <UpdateAvailableDialog
+        v-if="showUpdateDialog && updateInfo"
+        :update-info="updateInfo"
+        :downloading-update="downloadingUpdate"
+        :installing-update="installingUpdate"
+        :download-progress="downloadProgress"
+        @close="showUpdateDialog = false"
+        @update="downloadAndInstallUpdate"
+      />
+
+      <ContextMenu
+        v-if="contextMenu.show"
+        :x="contextMenu.x"
+        :y="contextMenu.y"
+        :items="contextMenu.items"
+        @close="contextMenu.show = false"
+        @action="handleContextMenuAction"
+      />
+
+      <!-- User Management Modal for Admin -->
+      <div
+        v-if="showUserManagement && isAdmin"
+        class="user-management-overlay"
+        @click.self="showUserManagement = false"
+      >
+        <div class="user-management-modal">
+          <div class="modal-header">
+            <h2>{{ t('admin.title') }}</h2>
+            <button class="close-btn" @click="showUserManagement = false">&times;</button>
+          </div>
+          <AdminUserManagement />
+        </div>
+      </div>
+
+      <!-- Global Notification System -->
+      <ConfirmDialog
+        v-if="confirmDialog"
+        :title="confirmDialog.title"
+        :message="confirmDialog.message"
+        :confirm-text="confirmDialog.confirmText"
+        :cancel-text="confirmDialog.cancelText"
+        :is-danger="confirmDialog.isDanger"
+        @confirm="confirmDialog.onConfirm"
+        @cancel="confirmDialog.onCancel"
+        @close="confirmDialog = null"
+      />
+
+      <InputDialog
+        v-if="inputDialog"
+        :title="inputDialog.title"
+        :message="inputDialog.message"
+        :placeholder="inputDialog.placeholder"
+        :default-value="inputDialog.defaultValue"
+        :confirm-text="inputDialog.confirmText"
+        :cancel-text="inputDialog.cancelText"
+        :suggestions="inputDialog.suggestions"
+        @confirm="inputDialog.onConfirm"
+        @cancel="inputDialog.onCancel"
+        @close="inputDialog = null"
+      />
+
+      <MultiSelectDialog
+        v-if="multiSelectDialog"
+        :title="multiSelectDialog.title"
+        :message="multiSelectDialog.message"
+        :options="multiSelectDialog.options"
+        :confirm-text="multiSelectDialog.confirmText"
+        :cancel-text="multiSelectDialog.cancelText"
+        @confirm="multiSelectDialog.onConfirm"
+        @cancel="multiSelectDialog.onCancel"
+        @close="multiSelectDialog = null"
+      />
+
+      <div class="toast-container">
+        <Toast
+          v-for="toast in toasts"
+          :key="toast.id"
+          :message="toast.message"
+          :type="toast.type"
+          :duration="toast.duration"
+          @close="removeToast(toast.id)"
+        />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -478,7 +548,7 @@ function onFeedUpdated(): void {
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 60;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -542,6 +612,59 @@ function onFeedUpdated(): void {
 /* Mobile mode adjustments */
 .mobile-mode .resizer {
   display: none;
+}
+
+/* User Management Modal Styles */
+.user-management-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.user-management-modal {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: #333;
 }
 
 /* Global styles if needed */

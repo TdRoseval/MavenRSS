@@ -16,6 +16,16 @@ func NewOpenAIHandler() *OpenAIHandler {
 	return &OpenAIHandler{}
 }
 
+// BuildStreamRequest builds an OpenAI-compatible API request for streaming
+func (h *OpenAIHandler) BuildStreamRequest(config RequestConfig) (map[string]interface{}, error) {
+	request, err := h.BuildRequest(config)
+	if err != nil {
+		return nil, err
+	}
+	request["stream"] = true
+	return request, nil
+}
+
 // BuildRequest builds an OpenAI-compatible API request
 func (h *OpenAIHandler) BuildRequest(config RequestConfig) (map[string]interface{}, error) {
 	request := map[string]interface{}{
@@ -174,4 +184,48 @@ func IsOpenAIError(errorMessage string) bool {
 	}
 
 	return false
+}
+
+// ParseStreamChunk parses a single chunk from an OpenAI streaming response
+func (h *OpenAIHandler) ParseStreamChunk(line string) StreamChunk {
+	line = strings.TrimSpace(line)
+	
+	if line == "" {
+		return StreamChunk{}
+	}
+	
+	if line == "data: [DONE]" {
+		return StreamChunk{Done: true}
+	}
+	
+	if !strings.HasPrefix(line, "data: ") {
+		return StreamChunk{}
+	}
+	
+	data := strings.TrimPrefix(line, "data: ")
+	
+	var chunk struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return StreamChunk{Error: fmt.Errorf("failed to parse stream chunk: %w", err)}
+	}
+	
+	if len(chunk.Choices) == 0 {
+		return StreamChunk{}
+	}
+	
+	choice := chunk.Choices[0]
+	done := choice.FinishReason != ""
+	
+	return StreamChunk{
+		Content: choice.Delta.Content,
+		Done:    done,
+	}
 }

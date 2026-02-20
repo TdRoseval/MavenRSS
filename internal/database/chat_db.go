@@ -27,10 +27,10 @@ type ChatMessage struct {
 }
 
 // CreateChatSession creates a new chat session for an article
-func (db *DB) CreateChatSession(articleID int64, title string) (int64, error) {
+func (db *DB) CreateChatSession(userID, articleID int64, title string) (int64, error) {
 	result, err := db.Exec(
-		`INSERT INTO chat_sessions (article_id, title, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-		articleID, title,
+		`INSERT INTO chat_sessions (user_id, article_id, title, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		userID, articleID, title,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create chat session: %w", err)
@@ -61,14 +61,14 @@ func (db *DB) GetChatSession(sessionID int64) (*ChatSession, error) {
 }
 
 // GetChatSessionsByArticle retrieves all chat sessions for an article, ordered by updated_at desc
-func (db *DB) GetChatSessionsByArticle(articleID int64) ([]ChatSession, error) {
+func (db *DB) GetChatSessionsByArticle(userID, articleID int64) ([]ChatSession, error) {
 	rows, err := db.Query(`
 		SELECT id, article_id, title, created_at, updated_at,
 		       (SELECT COUNT(*) FROM chat_messages WHERE session_id = chat_sessions.id) as message_count
 		FROM chat_sessions
-		WHERE article_id = ?
+		WHERE user_id = ? AND article_id = ?
 		ORDER BY updated_at DESC
-	`, articleID)
+	`, userID, articleID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chat sessions: %w", err)
 	}

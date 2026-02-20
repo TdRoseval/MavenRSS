@@ -5,6 +5,7 @@ import { PhNetwork, PhArrowClockwise } from '@phosphor-icons/vue';
 import { SettingGroup, StatusBoxGroup, TipBox } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { NetworkInfo } from '@/types/settings';
+import { authGet, authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -22,11 +23,8 @@ const errorMessage = ref('');
 
 async function loadNetworkInfo() {
   try {
-    const response = await fetch('/api/network/info');
-    if (response.ok) {
-      const data = await response.json();
-      networkInfo.value = data;
-    }
+    const data = await authGet('/api/network/info');
+    networkInfo.value = data;
   } catch (error) {
     console.error('Failed to load network info:', error);
   }
@@ -37,21 +35,13 @@ async function detectNetwork() {
   errorMessage.value = '';
 
   try {
-    const response = await fetch('/api/network/detect', {
-      method: 'POST',
-    });
+    const data = await authPost('/api/network/detect');
+    networkInfo.value = data;
 
-    if (response.ok) {
-      const data = await response.json();
-      networkInfo.value = data;
-
-      if (!data.detection_success) {
-        errorMessage.value = t('setting.network.detectionFailed');
-      } else {
-        window.showToast(t('setting.network.detectionComplete'), 'success');
-      }
-    } else {
+    if (!data.detection_success) {
       errorMessage.value = t('setting.network.detectionFailed');
+    } else {
+      window.showToast(t('setting.network.detectionComplete'), 'success');
     }
   } catch (error) {
     console.error('Network detection error:', error);

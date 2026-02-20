@@ -26,12 +26,11 @@ import {
   PhPuzzlePiece,
   PhKeyboard,
   PhChartBar,
-  PhInfo,
+  PhUserCircle,
 } from '@phosphor-icons/vue';
 import type { TabName } from '@/types/settings';
 import type { ThemePreference } from '@/stores/app';
 import { useSettings } from '@/composables/core/useSettings';
-import { useAppUpdates } from '@/composables/core/useAppUpdates';
 import { useFeedManagement } from '@/composables/feed/useFeedManagement';
 import { useModalClose, LARGE_MODAL_Z_INDEX } from '@/composables/ui/useModalClose';
 
@@ -43,15 +42,6 @@ const { zIndex: modalZIndex } = useModalClose(() => emit('close'), LARGE_MODAL_Z
 
 // Use composables
 const { settings, fetchSettings, applySettings } = useSettings();
-const {
-  updateInfo,
-  checkingUpdates,
-  downloadingUpdate,
-  installingUpdate,
-  downloadProgress,
-  checkForUpdates: handleCheckUpdates,
-  downloadAndInstallUpdate: handleDownloadInstallUpdate,
-} = useAppUpdates();
 const {
   handleImportOPML,
   handleExportOPML,
@@ -111,7 +101,9 @@ function handleDiscoverAll() {
 
       <div class="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
         <!-- Mobile Tab Navigation - Horizontal Scroll -->
-        <div class="md:hidden w-full border-b border-border bg-bg-secondary shrink-0 overflow-x-auto">
+        <div
+          class="md:hidden w-full border-b border-border bg-bg-secondary shrink-0 overflow-x-auto"
+        >
           <nav class="flex whitespace-nowrap p-2 gap-1">
             <button
               :class="['mobile-tab-btn', activeTab === 'general' ? 'active' : '']"
@@ -177,13 +169,15 @@ function handleDiscoverAll() {
               :class="['mobile-tab-btn', activeTab === 'about' ? 'active' : '']"
               @click="activeTab = 'about'"
             >
-              <PhInfo :size="18" />
+              <PhUserCircle :size="18" />
             </button>
           </nav>
         </div>
 
         <!-- Sidebar Navigation - Desktop -->
-        <div class="hidden md:block w-48 sm:w-56 border-r border-border bg-bg-secondary shrink-0 overflow-y-scroll">
+        <div
+          class="hidden md:block w-48 sm:w-56 border-r border-border bg-bg-secondary shrink-0 overflow-y-scroll"
+        >
           <nav class="p-2 space-y-1">
             <button
               :class="['sidebar-tab-btn', activeTab === 'general' ? 'active' : '']"
@@ -259,8 +253,8 @@ function handleDiscoverAll() {
               :class="['sidebar-tab-btn', activeTab === 'about' ? 'active' : '']"
               @click="activeTab = 'about'"
             >
-              <PhInfo :size="22" />
-              <span>{{ t('setting.tab.about') }}</span>
+              <PhUserCircle :size="22" />
+              <span>{{ t('auth.userInfo.title') }}</span>
             </button>
           </nav>
         </div>
@@ -336,16 +330,7 @@ function handleDiscoverAll() {
 
           <StatisticsTab v-if="activeTab === 'statistics'" />
 
-          <AboutTab
-            v-if="activeTab === 'about'"
-            :update-info="updateInfo"
-            :checking-updates="checkingUpdates"
-            :downloading-update="downloadingUpdate"
-            :installing-update="installingUpdate"
-            :download-progress="downloadProgress"
-            @check-updates="handleCheckUpdates"
-            @download-install-update="handleDownloadInstallUpdate"
-          />
+          <AboutTab v-if="activeTab === 'about'" />
         </div>
       </div>
     </div>

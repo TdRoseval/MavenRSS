@@ -92,6 +92,7 @@ func (f *Fetcher) processArticles(feed models.Feed, items []*gofeed.Item) []*Art
 		}
 
 		article := &models.Article{
+			UserID:                feed.UserID,
 			FeedID:                feed.ID,
 			Title:                 title,
 			URL:                   item.Link,

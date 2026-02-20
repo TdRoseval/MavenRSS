@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 import { useAppStore } from '@/stores/app';
+import { authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 const store = useAppStore();
@@ -32,9 +33,9 @@ async function performAISearch() {
   try {
     // Build request body with search query and current filters
     const requestBody: any = {
-      query: searchQuery.value.trim()
+      query: searchQuery.value.trim(),
     };
-    
+
     // Add current filter parameters if they exist
     if (store.currentFilter) {
       requestBody.filter = store.currentFilter;
@@ -46,13 +47,7 @@ async function performAISearch() {
       requestBody.category = store.currentCategory;
     }
 
-    const response = await fetch('/api/ai/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.json();
+    const data = await authPost<any>('/api/ai/search', requestBody);
 
     if (!data.success) {
       errorMessage.value = data.error || t('aiSearch.searchFailed');
@@ -61,7 +56,7 @@ async function performAISearch() {
     }
 
     // Convert response to Article format
-    const articles: Article[] = data.articles.map((item: Record<string, unknown>) => ({
+    const articles: Article[] = (data.articles || []).map((item: Record<string, unknown>) => ({
       id: item.id as number,
       feed_id: item.feed_id as number,
       title: item.title as string,

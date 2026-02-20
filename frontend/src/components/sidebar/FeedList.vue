@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useAppStore } from '@/stores/app';
+import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { useDragDrop } from '@/composables/ui/useDragDrop';
 import { useSidebar } from '@/composables/core/useSidebar';
@@ -34,6 +35,7 @@ const emit = defineEmits<{
 }>();
 
 const store = useAppStore();
+const authStore = useAuthStore();
 const { t } = useI18n();
 const { settings, fetchSettings } = useSettings();
 
@@ -128,11 +130,13 @@ const compactMode = computed(() => {
 
 // Initialize settings on mount
 onMounted(async () => {
-  try {
-    await fetchSettings();
-    await fetchSavedFilters();
-  } catch (e) {
-    console.error('Error loading settings in FeedList:', e);
+  if (authStore.isAuthenticated) {
+    try {
+      await fetchSettings();
+      await fetchSavedFilters();
+    } catch (e) {
+      console.error('Error loading settings in FeedList:', e);
+    }
   }
 
   // Listen for layout mode changes
@@ -141,6 +145,9 @@ onMounted(async () => {
 
 // Handle layout mode changes
 function handleLayoutModeChange() {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
   fetchSettings().catch((e) => {
     console.error('Error re-fetching settings after layout mode change:', e);
   });

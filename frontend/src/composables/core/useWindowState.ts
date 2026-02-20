@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from 'vue';
 import { checkServerMode } from '@/utils/serverMode';
+import { authFetchJson, authPost } from '@/utils/authFetch';
 
 interface WindowState {
   x: number;
@@ -39,13 +40,7 @@ export function useWindowState() {
 
       isRestoringState = true;
 
-      const response = await fetch('/api/window/state');
-      if (!response.ok) {
-        console.warn('Failed to load window state');
-        return;
-      }
-
-      await response.json();
+      await authFetchJson('/api/window/state');
     } catch (error) {
       // Log fetch errors during state restoration for debugging
       console.debug('Failed to restore window state:', error);
@@ -96,11 +91,7 @@ export function useWindowState() {
         state.width <= 4000 &&
         state.height <= 3000
       ) {
-        await fetch('/api/window/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(state),
-        });
+        await authPost('/api/window/save', state);
       }
     } catch (error) {
       // Log save errors for debugging (non-critical functionality)

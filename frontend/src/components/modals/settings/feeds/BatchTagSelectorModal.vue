@@ -6,6 +6,7 @@ import { PhX, PhPlus } from '@phosphor-icons/vue';
 import BaseModal from '@/components/common/BaseModal.vue';
 import ModalFooter from '@/components/common/ModalFooter.vue';
 import TagFormModal from '../tags/TagFormModal.vue';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   show: boolean;
@@ -60,7 +61,7 @@ function closeNewTagModal() {
 
 async function handleSaveTag(name: string, color: string) {
   try {
-    const res = await fetch('/api/tags', {
+    const res = await authFetch('/api/tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color }),

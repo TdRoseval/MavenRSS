@@ -18,8 +18,8 @@ func (db *DB) SaveArticle(article *models.Article) error {
 
 	// Generate unique_id for deduplication
 	uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
-	query := `INSERT OR IGNORE INTO articles (feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := db.Exec(query, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
+	query := `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := db.Exec(query, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
 	return err
 }
 
@@ -51,7 +51,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO articles (feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 
 		// Generate unique_id for deduplication
 		uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
-		_, err := stmt.ExecContext(ctx, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
+		_, err := stmt.ExecContext(ctx, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
 		if err != nil {
 			log.Println("Error saving article in batch:", err)
 			// Continue even if one fails
@@ -80,6 +80,11 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 // GetArticles retrieves articles with filtering, pagination, and sorting.
 // Optimized to filter feeds first for category queries, reducing JOIN overhead.
 func (db *DB) GetArticles(filter string, feedID int64, category string, showHidden bool, limit, offset int) ([]models.Article, error) {
+	return db.GetArticlesForUser(0, filter, feedID, category, showHidden, limit, offset)
+}
+
+// GetArticlesForUser retrieves articles with filtering, pagination, and sorting for a specific user.
+func (db *DB) GetArticlesForUser(userID int64, filter string, feedID int64, category string, showHidden bool, limit, offset int) ([]models.Article, error) {
 	db.WaitForReady()
 
 	// Optimization: For category queries, first get the feed IDs, then query articles
@@ -93,11 +98,12 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 
 		if category == "\x00" {
 			// Special value "\x00" means explicit uncategorized filtering
-			categoryQuery = "SELECT id FROM feeds WHERE category IS NULL OR category = ''"
+			categoryQuery = "SELECT id FROM feeds WHERE user_id = ? AND (category IS NULL OR category = '')"
+			categoryArgs = []interface{}{userID}
 		} else {
 			// Simple prefix match for category hierarchy
-			categoryQuery = "SELECT id FROM feeds WHERE category = ? OR category LIKE ?"
-			categoryArgs = []interface{}{category, category + "/%"}
+			categoryQuery = "SELECT id FROM feeds WHERE user_id = ? AND (category = ? OR category LIKE ?)"
+			categoryArgs = []interface{}{userID, category, category + "/%"}
 		}
 
 		rows, err := db.Query(categoryQuery, categoryArgs...)
@@ -131,6 +137,12 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 	`
 	var args []interface{}
 	whereClauses := []string{}
+
+	// Always filter by user_id
+	if userID > 0 {
+		whereClauses = append(whereClauses, "a.user_id = ?")
+		args = append(args, userID)
+	}
 
 	// Always filter hidden articles unless showHidden is true
 	if !showHidden {
@@ -218,6 +230,11 @@ func (db *DB) GetArticles(filter string, feedID int64, category string, showHidd
 // GetArticleByID retrieves a single article by its ID.
 // This is more efficient than GetArticles when you only need one article.
 func (db *DB) GetArticleByID(id int64) (*models.Article, error) {
+	return db.GetArticleByIDForUser(0, id)
+}
+
+// GetArticleByIDForUser retrieves a single article by its ID for a specific user.
+func (db *DB) GetArticleByIDForUser(userID int64, id int64) (*models.Article, error) {
 	db.WaitForReady()
 	query := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url, a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later, a.translated_title, a.summary, a.freshrss_item_id, f.title, a.author
@@ -225,7 +242,12 @@ func (db *DB) GetArticleByID(id int64) (*models.Article, error) {
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.id = ?
 	`
-	row := db.QueryRow(query, id)
+	args := []interface{}{id}
+	if userID > 0 {
+		query += " AND a.user_id = ?"
+		args = append(args, userID)
+	}
+	row := db.QueryRow(query, args...)
 
 	var a models.Article
 	var imageURL, audioURL, videoURL, translatedTitle, summary, freshrssItemID, feedTitle, author sql.NullString

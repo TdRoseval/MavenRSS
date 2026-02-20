@@ -275,6 +275,7 @@ const en: TranslationMessages = {
       or: 'or',
       orTry: 'Or try',
       progress: 'Progress: ',
+      unlimited: 'Unlimited',
     },
     warning: {
       isInDevelopment:
@@ -521,7 +522,8 @@ const en: TranslationMessages = {
       aiCustomHeadersRemove: 'Remove',
       aiCustomHeadersValue: 'Header Value',
       useGlobalProxy: 'Use Global Proxy',
-      useGlobalProxyDesc: 'Use global proxy settings when calling AI (requires proxy to be enabled in Network settings)',
+      useGlobalProxyDesc:
+        'Use global proxy settings when calling AI (requires proxy to be enabled in Network settings)',
       aiEndpoint: 'API Endpoint',
       aiSearchEnabled: 'AI Search',
       aiSearchEnabledDesc: 'Use AI to intelligently search articles with keyword expansion',
@@ -741,7 +743,8 @@ const en: TranslationMessages = {
       scriptDoc: 'View Documentation',
       scriptsFolder: 'Open Scripts Folder',
       scriptsFolderOpened: 'Scripts folder opened',
-      scriptsFolderNotAvailable: 'Opening scripts folder is not available in server mode. Please access it directly on the server.',
+      scriptsFolderNotAvailable:
+        'Opening scripts folder is not available in server mode. Please access it directly on the server.',
       scriptsNotFound: 'No scripts found in the scripts folder.',
       selectScript: 'Select Script',
       selectScriptPlaceholder: 'Select a script...',
@@ -1050,7 +1053,8 @@ const en: TranslationMessages = {
       noInstallerAvailable:
         'No installer available for your platform. Please download manually from',
       notNow: 'Not Now',
-      serverModeNoAutoUpdate: 'Auto-update is not available in server mode. Please update manually.',
+      serverModeNoAutoUpdate:
+        'Auto-update is not available in server mode. Please update manually.',
       updateAvailable: 'Update available',
       updateFailed: 'Last update failed',
       updateNow: 'Update Now',
@@ -1133,6 +1137,90 @@ const en: TranslationMessages = {
   // Top-level keys (used without namespace)
   // Only appName should remain as top-level key
   appName: 'MrRSS',
+
+  login: {
+    welcome: 'Welcome back',
+    login: 'Login',
+    register: 'Register',
+    username: 'Username',
+    password: 'Password',
+    confirmPassword: 'Confirm Password',
+    email: 'Email',
+    rememberMe: 'Remember me',
+    autoLogin: 'Auto login',
+    noAccount: "Don't have an account?",
+    hasAccount: 'Already have an account?',
+    loginButton: 'Login',
+    registerButton: 'Register',
+    loggingIn: 'Logging in...',
+    registering: 'Registering...',
+  },
+
+  auth: {
+    userInfo: {
+      title: 'Account Information',
+      username: 'Username',
+      email: 'Email',
+      viewAccountInfo: 'View Account Info',
+      readonlyHint: 'This information is read-only. Contact an administrator if you need to make changes.',
+    },
+  },
+
+  admin: {
+    title: 'User Management',
+    pendingRegistrations: 'Pending Registrations',
+    noPendingRegistrations: 'No pending registrations',
+    userList: 'User List',
+    noUsers: 'No users',
+    editUser: 'Edit User',
+    quota: 'Quota',
+    delete: 'Delete',
+    username: 'Username',
+    email: 'Email',
+    role: 'Role',
+    status: 'Status',
+    inherited: 'Inherited',
+    createdAt: 'Created At',
+    actions: 'Actions',
+    approve: 'Approve',
+    reject: 'Reject',
+    edit: 'Edit',
+    save: 'Save',
+    cancel: 'Cancel',
+    templateUser: 'Template User',
+    createTemplateUser: 'Create Template User',
+    noTemplateUser: 'Template user not created yet',
+    templateUserInfo: 'Template User Info',
+    maxFeeds: 'Max Feeds',
+    maxArticles: 'Max Articles',
+    maxAICallsPerDay: 'Max AI Calls Per Day',
+    maxStorageMB: 'Max Storage (MB)',
+    used: 'Used',
+    of: 'of',
+    roles: {
+      user: 'User',
+      admin: 'Admin',
+      template: 'Template User',
+    },
+    statuses: {
+      active: 'Active',
+      pending: 'Pending',
+      suspended: 'Suspended',
+    },
+    yes: 'Yes',
+    no: 'No',
+    confirmDelete: 'Are you sure you want to delete this user?',
+    createTemplate: 'Create Template User',
+    approveFailed: 'Failed to approve registration',
+    rejectFailed: 'Failed to reject registration',
+    saveFailed: 'Failed to save user',
+    deleteFailed: 'Failed to delete user',
+    getQuotaFailed: 'Failed to get quota',
+    saveQuotaFailed: 'Failed to save quota',
+    createTemplateFailed: 'Failed to create template user',
+    logout: 'Logout',
+    confirmLogout: 'Are you sure you want to logout?',
+  },
 };
 
 export default en;

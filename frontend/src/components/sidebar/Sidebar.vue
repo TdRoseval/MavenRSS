@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   toggle: [];
+  'open-user-management': [];
 }>();
 
 const { t } = useI18n();
@@ -111,9 +112,9 @@ function toggleActivityBar() {
 <template>
   <div
     class="compact-sidebar-wrapper flex h-full relative"
-    :class="{ 
+    :class="{
       'width-collapsed': isActivityBarCollapsed,
-      'mobile-sidebar': isMobile 
+      'mobile-sidebar': isMobile,
     }"
   >
     <!-- Shared container for ActivityBar and Edge Toggle -->
@@ -140,6 +141,7 @@ function toggleActivityBar() {
         @toggle-feed-drawer="handleToggleFeedList"
         @toggle-activity-bar="toggleActivityBar"
         @ready="handleActivityBarReady"
+        @open-user-management="emit('open-user-management')"
       />
     </div>
 

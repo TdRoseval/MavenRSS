@@ -36,45 +36,21 @@ if (import.meta.env.PROD || window.location.hostname !== 'localhost') {
     },
     onUpdate: () => {
       console.log('[ServiceWorker] New content available, please refresh');
-    }
+    },
   });
 }
 
-// Initialize settings and language in the background (non-blocking)
-async function initializeSettings() {
+// Initialize server mode in the background (non-blocking)
+async function initializeServerMode() {
   try {
-    const res = await fetch('/api/settings');
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    }
-
-    const text = await res.text();
-    let data;
-
-    try {
-      data = JSON.parse(text);
-    } catch (jsonError) {
-      console.error('JSON parse error:', jsonError);
-      console.error('Response text (first 500 chars):', text.substring(0, 500));
-      data = {};
-    }
-
-    if (data.language) {
-      locale.value = data.language;
-    }
-
-    try {
-      const versionRes = await fetch('/api/version');
-      if (versionRes.ok) {
-        const versionData = await versionRes.json();
-        setCachedServerMode(versionData.server_mode === 'true');
-      }
-    } catch (e) {
-      console.error('Failed to cache server mode:', e);
+    const versionRes = await fetch('/api/version');
+    if (versionRes.ok) {
+      const versionData = await versionRes.json();
+      setCachedServerMode(versionData.server_mode === 'true');
     }
   } catch (e) {
-    console.error('Error loading language setting:', e);
+    console.error('Failed to cache server mode:', e);
   }
 }
 
-initializeSettings();
+initializeServerMode();

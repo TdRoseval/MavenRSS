@@ -1,6 +1,14 @@
 import { ref, computed } from 'vue';
 import type { AIProfile, AIProfileTestResult, AIProfileFormData } from '@/types/aiProfile';
 import { defaultAIProfileFormData } from '@/types/aiProfile';
+import {
+  authFetch,
+  authFetchJson,
+  authGet,
+  authPost,
+  authPut,
+  authDelete,
+} from '@/utils/authFetch';
 
 // Shared state for AI profiles
 const profiles = ref<AIProfile[]>([]);
@@ -21,11 +29,7 @@ export function useAIProfiles() {
     error.value = null;
 
     try {
-      const response = await fetch('/api/ai/profiles');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch profiles: ${response.status}`);
-      }
-      profiles.value = await response.json();
+      profiles.value = await authGet<AIProfile[]>('/api/ai/profiles');
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch profiles';
       console.error('Error fetching AI profiles:', e);
@@ -37,12 +41,7 @@ export function useAIProfiles() {
   // Get a single profile by ID (with full details including masked API key)
   async function getProfile(id: number): Promise<AIProfile | null> {
     try {
-      const response = await fetch(`/api/ai/profiles/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error(`Failed to get profile: ${response.status}`);
-      }
-      return await response.json();
+      return await authGet<AIProfile>(`/api/ai/profiles/${id}`);
     } catch (e) {
       console.error('Error getting AI profile:', e);
       return null;
@@ -52,19 +51,8 @@ export function useAIProfiles() {
   // Create a new profile
   async function createProfile(data: AIProfileFormData): Promise<AIProfile | null> {
     try {
-      const response = await fetch('/api/ai/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Failed to create profile: ${response.status}`);
-      }
-
-      const newProfile = await response.json();
-      await fetchProfiles(); // Refresh the list
+      const newProfile = await authPost<AIProfile>('/api/ai/profiles', data);
+      await fetchProfiles();
       return newProfile;
     } catch (e) {
       console.error('Error creating AI profile:', e);
@@ -75,19 +63,8 @@ export function useAIProfiles() {
   // Update an existing profile
   async function updateProfile(id: number, data: AIProfileFormData): Promise<AIProfile | null> {
     try {
-      const response = await fetch(`/api/ai/profiles/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Failed to update profile: ${response.status}`);
-      }
-
-      const updatedProfile = await response.json();
-      await fetchProfiles(); // Refresh the list
+      const updatedProfile = await authPut<AIProfile>(`/api/ai/profiles/${id}`, data);
+      await fetchProfiles();
       return updatedProfile;
     } catch (e) {
       console.error('Error updating AI profile:', e);
@@ -98,15 +75,8 @@ export function useAIProfiles() {
   // Delete a profile
   async function deleteProfile(id: number): Promise<boolean> {
     try {
-      const response = await fetch(`/api/ai/profiles/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete profile: ${response.status}`);
-      }
-
-      await fetchProfiles(); // Refresh the list
+      await authDelete(`/api/ai/profiles/${id}`);
+      await fetchProfiles();
       return true;
     } catch (e) {
       console.error('Error deleting AI profile:', e);
@@ -117,15 +87,8 @@ export function useAIProfiles() {
   // Set a profile as default
   async function setDefaultProfile(id: number): Promise<boolean> {
     try {
-      const response = await fetch(`/api/ai/profiles/${id}/default`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to set default profile: ${response.status}`);
-      }
-
-      await fetchProfiles(); // Refresh the list
+      await authPost(`/api/ai/profiles/${id}/default`);
+      await fetchProfiles();
       return true;
     } catch (e) {
       console.error('Error setting default AI profile:', e);
@@ -136,15 +99,7 @@ export function useAIProfiles() {
   // Test a single profile
   async function testProfile(id: number): Promise<AIProfileTestResult | null> {
     try {
-      const response = await fetch(`/api/ai/profiles/${id}/test`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to test profile: ${response.status}`);
-      }
-
-      return await response.json();
+      return await authPost<AIProfileTestResult>(`/api/ai/profiles/${id}/test`);
     } catch (e) {
       console.error('Error testing AI profile:', e);
       return null;
@@ -159,17 +114,7 @@ export function useAIProfiles() {
     custom_headers: string;
   }): Promise<AIProfileTestResult | null> {
     try {
-      const response = await fetch('/api/ai/profiles/test-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to test config: ${response.status}`);
-      }
-
-      return await response.json();
+      return await authPost<AIProfileTestResult>('/api/ai/profiles/test-config', config);
     } catch (e) {
       console.error('Error testing AI config:', e);
       return null;
@@ -179,15 +124,7 @@ export function useAIProfiles() {
   // Test all profiles
   async function testAllProfiles(): Promise<AIProfileTestResult[]> {
     try {
-      const response = await fetch('/api/ai/profiles/test-all', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to test profiles: ${response.status}`);
-      }
-
-      return await response.json();
+      return await authPost<AIProfileTestResult[]>('/api/ai/profiles/test-all');
     } catch (e) {
       console.error('Error testing AI profiles:', e);
       return [];
