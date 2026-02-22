@@ -51,12 +51,16 @@ function updateSetting(key: keyof SettingsData, value: any) {
 
 const isInherited = computed(() => props.settings._has_inherited === true);
 
-const displayDeeplApiKey = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.deepl_api_key) : props.settings.deepl_api_key
+const displayDeeplApiKey = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.deepl_api_key)
+    : props.settings.deepl_api_key
 );
 
-const displayBaiduSecretKey = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.baidu_secret_key) : props.settings.baidu_secret_key
+const displayBaiduSecretKey = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.baidu_secret_key)
+    : props.settings.baidu_secret_key
 );
 
 const isClearingCache = ref(false);

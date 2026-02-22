@@ -36,12 +36,16 @@ function updateSetting(key: keyof SettingsData, value: any) {
 
 const isInherited = computed(() => props.settings._has_inherited === true);
 
-const displayNotionApiKey = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.notion_api_key) : props.settings.notion_api_key
+const displayNotionApiKey = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.notion_api_key)
+    : props.settings.notion_api_key
 );
 
-const displayNotionPageId = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.notion_page_id, 8) : props.settings.notion_page_id
+const displayNotionPageId = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.notion_page_id, 8)
+    : props.settings.notion_page_id
 );
 
 onMounted(async () => {

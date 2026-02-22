@@ -35,12 +35,16 @@ function updateSetting(key: keyof SettingsData, value: any) {
 
 const isInherited = computed(() => props.settings._has_inherited === true);
 
-const displayRSSHubEndpoint = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.rsshub_endpoint, 8) : props.settings.rsshub_endpoint
+const displayRSSHubEndpoint = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.rsshub_endpoint, 8)
+    : props.settings.rsshub_endpoint
 );
 
-const displayRSSHubApiKey = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.rsshub_api_key) : props.settings.rsshub_api_key
+const displayRSSHubApiKey = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.rsshub_api_key)
+    : props.settings.rsshub_api_key
 );
 
 const isTesting = ref(false);

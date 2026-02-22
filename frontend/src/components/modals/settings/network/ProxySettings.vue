@@ -52,11 +52,15 @@ const displayProxyPort = computed(() =>
 );
 
 const displayProxyUsername = computed(() =>
-  isInherited.value ? maskSensitiveValue(props.settings.proxy_username) : props.settings.proxy_username
+  isInherited.value
+    ? maskSensitiveValue(props.settings.proxy_username)
+    : props.settings.proxy_username
 );
 
 const displayProxyPassword = computed(() =>
-  isInherited.value ? maskSensitiveValue(props.settings.proxy_password) : props.settings.proxy_password
+  isInherited.value
+    ? maskSensitiveValue(props.settings.proxy_password)
+    : props.settings.proxy_password
 );
 </script>
 

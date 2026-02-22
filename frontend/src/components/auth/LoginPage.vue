@@ -99,7 +99,7 @@ import { authApi } from '@/utils/authApi';
 const { t } = useI18n();
 
 const emit = defineEmits<{
-  (e: 'login'): void;
+  login: [];
 }>();
 
 const authStore = useAuthStore();
@@ -161,8 +161,8 @@ async function handleSubmit() {
         formData.password = '';
       }, 2000);
     }
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'An error occurred';
+  } catch {
+    error.value = 'An error occurred';
   } finally {
     loading.value = false;
   }

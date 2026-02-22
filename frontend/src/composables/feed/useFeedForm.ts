@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n';
 import type { Feed } from '@/types/models';
 import { useAppStore } from '@/stores/app';
 import { checkServerMode } from '@/utils/serverMode';
-import { authFetchJson, authPost } from '@/utils/authFetch';
+import { authFetchJson, authPost, authFetch } from '@/utils/authFetch';
 
 export type FeedType = 'url' | 'script' | 'xpath' | 'email';
 export type ProxyMode = 'global' | 'custom' | 'none';

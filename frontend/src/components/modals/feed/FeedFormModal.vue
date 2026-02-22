@@ -14,7 +14,7 @@ import EmailConfig from './parts/EmailConfig.vue';
 import CategorySelector from './parts/CategorySelector.vue';
 import TagSelector from './parts/TagSelector.vue';
 import AdvancedSettings from './parts/AdvancedSettings.vue';
-import { authFetchJson, authFetch } from '@/utils/authFetch';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   mode: 'add' | 'edit';

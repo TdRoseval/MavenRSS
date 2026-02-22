@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhNewspaper, PhCaretLeft, PhCaretRight, PhX } from '@phosphor-icons/vue';
+import { PhNewspaper, PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue';
 import { useArticleDetail } from '@/composables/article/useArticleDetail';
 import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';

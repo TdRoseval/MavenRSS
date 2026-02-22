@@ -38,7 +38,7 @@ async function handleInheritTemplate() {
        <div style="color: #dc2626; font-weight: 700;">• 所有用户设置</div>
        <div style="margin-top: 8px;">确定要继续吗？</div>`
     : t('auth.userInfo.inheritTemplateConfirm');
-  
+
   const confirmed = await window.showConfirm({
     title: t('auth.userInfo.inheritTemplate'),
     message: message,
@@ -58,7 +58,7 @@ async function handleInheritTemplate() {
 
     store.fetchFeeds();
     store.fetchArticles();
-    
+
     // Directly refresh settings to show the inherited AI configuration
     await fetchSettings();
   } catch (e) {
@@ -141,8 +141,8 @@ onMounted(() => {
               isLoading
                 ? t('auth.userInfo.inheritTemplateLoading')
                 : authStore.user?.has_inherited
-                ? '重新继承模板'
-                : t('auth.userInfo.inheritTemplate')
+                  ? '重新继承模板'
+                  : t('auth.userInfo.inheritTemplate')
             }}
           </button>
         </div>
