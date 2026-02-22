@@ -172,11 +172,18 @@ async function handleSubmit() {
 <style scoped>
 .login-container {
   min-height: 100vh;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 20px;
+  z-index: 1;
 }
 
 .login-card {
@@ -355,5 +362,102 @@ async function handleSubmit() {
 
 .link-button:hover {
   text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .login-container {
+    padding: 16px;
+  }
+
+  .login-card {
+    padding: 28px 20px;
+    max-width: 100%;
+  }
+
+  .login-header {
+    margin-bottom: 24px;
+  }
+
+  .login-header h1 {
+    font-size: 26px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+  }
+
+  .tabs {
+    margin-bottom: 20px;
+  }
+
+  .tabs button {
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+
+  .login-form {
+    gap: 18px;
+  }
+
+  .form-group label {
+    font-size: 15px;
+  }
+
+  .form-group input {
+    padding: 14px 16px;
+    font-size: 16px;
+  }
+
+  .error-message,
+  .success-message {
+    font-size: 14px;
+    padding: 14px;
+  }
+
+  .submit-button {
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  .login-footer {
+    margin-top: 22px;
+  }
+
+  .login-footer p {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .link-button {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 360px) {
+  .login-card {
+    padding: 24px 16px;
+  }
+
+  .login-header h1 {
+    font-size: 24px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .tabs button {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .form-group input {
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+
+  .submit-button {
+    padding: 14px;
+  }
 }
 </style>
