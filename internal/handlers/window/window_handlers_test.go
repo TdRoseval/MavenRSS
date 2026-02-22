@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"MrRSS/internal/database"
-	corepkg "MrRSS/internal/handlers/core"
+	"MavenRSS/internal/database"
+	corepkg "MavenRSS/internal/handlers/core"
 )
 
 func setupDB(t *testing.T) *database.DB {

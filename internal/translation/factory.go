@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"MrRSS/internal/ai"
+	"MavenRSS/internal/ai"
 )
 
 // Factory 翻译提供商工厂

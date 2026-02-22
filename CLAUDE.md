@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MrRSS is a modern, cross-platform desktop RSS reader built with **Wails v3** (Go backend + Vue.js frontend). It prioritizes privacy, user experience, and performance with features like auto-translation, smart feed discovery, and AI-powered summarization.
+MavenRSS is a modern, cross-platform desktop RSS reader built with **Wails v3** (Go backend + Vue.js frontend). It prioritizes privacy, user experience, and performance with features like auto-translation, smart feed discovery, and AI-powered summarization.
 
 ## Development Commands
 
@@ -130,7 +130,7 @@ pre-commit run --all-files
 ### Key Directories
 
 ```plaintext
-MrRSS/
+MavenRSS/
 ├── main.go                    # Desktop application entry point
 ├── main-core.go               # Headless server entry point
 ├── internal/                  # Go backend packages
@@ -248,7 +248,7 @@ Important: The database uses SQLite with WAL mode for better concurrency.
 ### Build Commands
 - Development: `wails3 dev`
 - Production Build: `wails3 build`
-- Important: MrRSS uses HTTP API, not Wails bindings
+- Important: MavenRSS uses HTTP API, not Wails bindings
 
 ### Store Access
 - `const store = useAppStore()`

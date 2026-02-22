@@ -11,7 +11,7 @@ We release patches for security vulnerabilities in the following versions:
 
 ## Reporting a Vulnerability
 
-We take the security of MrRSS seriously. If you believe you have found a security vulnerability, please report it to us as described below.
+We take the security of MavenRSS seriously. If you believe you have found a security vulnerability, please report it to us as described below.
 
 ### Please Do NOT
 
@@ -38,7 +38,7 @@ We take the security of MrRSS seriously. If you believe you have found a securit
 
 ## Security Best Practices
 
-When using MrRSS:
+When using MavenRSS:
 
 ### For Users
 
@@ -58,7 +58,7 @@ When using MrRSS:
 
 ## Security Features
 
-MrRSS implements the following security features:
+MavenRSS implements the following security features:
 
 ### Data Storage
 
@@ -115,4 +115,4 @@ For security-related questions that are not vulnerabilities:
 
 ---
 
-Thank you for helping keep MrRSS and its users safe!
+Thank you for helping keep MavenRSS and its users safe!

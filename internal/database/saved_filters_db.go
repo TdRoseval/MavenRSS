@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 // GetSavedFilters retrieves all saved filters ordered by position

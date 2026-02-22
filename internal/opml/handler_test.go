@@ -1,7 +1,7 @@
 package opml
 
 import (
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 	"strings"
 	"testing"
 )

@@ -1,5 +1,5 @@
 /**
- * Clipboard utilities for MrRSS
+ * Clipboard utilities for MavenRSS
  * Uses Wails v3 native Clipboard API with browser fallback
  */
 

@@ -3,8 +3,8 @@ package core
 import (
 	"net/http"
 
-	"MrRSS/internal/auth"
-	"MrRSS/internal/middleware"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/middleware"
 )
 
 // GetUserIDFromRequest extracts the user ID from the request context

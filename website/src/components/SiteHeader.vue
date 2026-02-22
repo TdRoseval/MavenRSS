@@ -42,18 +42,18 @@ onUnmounted(() => {
     <div class="header-container">
       <!-- Logo -->
       <a href="#" class="header-logo">
-        <img src="../../assets/logo.svg" alt="MrRSS Logo" width="36" height="36" />
-        <span class="logo-text">MrRSS</span>
+        <img src="../../assets/logo.svg" alt="MavenRSS Logo" width="36" height="36" />
+        <span class="logo-text">MavenRSS</span>
       </a>
 
       <!-- Navigation -->
       <nav class="header-nav">
         <a href="#features" class="nav-link">Features</a>
         <a href="#download" class="nav-link">Download</a>
-        <a href="https://github.com/WCY-dt/MrRSS/blob/main/README.md" class="nav-link"
+        <a href="https://github.com/WCY-dt/MavenRSS/blob/main/README.md" class="nav-link"
           >Documentation</a
         >
-        <a href="https://github.com/WCY-dt/MrRSS" target="_blank" class="nav-link">GitHub</a>
+        <a href="https://github.com/WCY-dt/MavenRSS" target="_blank" class="nav-link">GitHub</a>
       </nav>
 
       <!-- CTA Button -->
@@ -78,7 +78,7 @@ onUnmounted(() => {
         <a href="#features" class="mobile-nav-link" @click="closeMobileMenu">Features</a>
         <a href="#download" class="mobile-nav-link" @click="closeMobileMenu">Download</a>
         <a href="#" class="mobile-nav-link" @click="closeMobileMenu">Documentation</a>
-        <a href="https://github.com/mrrss/app" target="_blank" class="mobile-nav-link">GitHub</a>
+        <a href="https://github.com/mavenrss/app" target="_blank" class="mobile-nav-link">GitHub</a>
         <a href="#download" class="mobile-cta" @click="closeMobileMenu">Get Started</a>
       </nav>
     </div>

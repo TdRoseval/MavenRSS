@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/textutil"
 )
 
 // CreateSessionRequest represents the request to create a new chat session

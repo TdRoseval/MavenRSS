@@ -196,7 +196,7 @@ func generateConfigGo(schema *SettingsSchema) error {
 		switchCases = append(switchCases, caseStmt, "\t\treturn "+returnValue)
 	}
 
-	tmpl := `// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+	tmpl := `// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Package config provides centralized default values for settings.
 // The defaults are loaded from config/defaults.json which is shared between
@@ -261,7 +261,7 @@ func generateSettingsKeysGo(schema *SettingsSchema) error {
 		keyStrings = append(keyStrings, fmt.Sprintf("\"%s\"", key))
 	}
 
-	tmpl := `// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+	tmpl := `// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Package config provides settings keys for database initialization
 // CODE GENERATED - DO NOT EDIT MANUALLY
@@ -300,7 +300,7 @@ func generateSettingsBaseGo(schema *SettingsSchema) error {
 package settings
 
 import (
-	"MrRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/core"
 )
 
 // SettingDef defines a single setting's metadata
@@ -390,7 +390,7 @@ func generateFrontendTypes(schema *SettingsSchema) error {
 		fields = append(fields, fmt.Sprintf("  %s: %s;", key, tsType))
 	}
 
-	tmpl := `// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+	tmpl := `// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Auto-generated settings types
 // CODE GENERATED - DO NOT EDIT MANUALLY
@@ -448,7 +448,7 @@ func generateFrontendComposable(schema *SettingsSchema) error {
 		}
 	}
 
-	tmpl := `// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+	tmpl := `// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Auto-generated settings composable helpers
 // CODE GENERATED - DO NOT EDIT MANUALLY

@@ -694,7 +694,7 @@ const en: TranslationMessages = {
         headers: 'HTTP Headers',
         headersDesc: 'Custom HTTP headers',
         langMapping: 'Language Code Mapping',
-        langMappingDesc: 'Map MrRSS language codes to API-specific codes',
+        langMappingDesc: 'Map MavenRSS language codes to API-specific codes',
         method: 'HTTP Method',
         methodDesc: 'HTTP method for the API request',
         responsePath: 'Response Path',
@@ -818,7 +818,7 @@ const en: TranslationMessages = {
       languageDesc: 'Select interface language',
       light: 'Light',
       startupOnBoot: 'Start on System Boot',
-      startupOnBootDesc: 'Automatically start MrRSS when the computer starts',
+      startupOnBootDesc: 'Automatically start MavenRSS when the computer starts',
       theme: 'Theme',
       themeDesc: 'Choose the preferred color scheme',
     },
@@ -1136,7 +1136,7 @@ const en: TranslationMessages = {
 
   // Top-level keys (used without namespace)
   // Only appName should remain as top-level key
-  appName: 'MrRSS',
+  appName: 'MavenRSS',
 
   login: {
     welcome: 'Welcome back',

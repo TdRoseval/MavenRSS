@@ -203,7 +203,7 @@ defineExpose({
       class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative z-30"
     >
       <div class="mb-6">
-        <img :src="LogoSvg" alt="MrRSS" class="w-6 h-6" />
+        <img :src="LogoSvg" alt="MavenRSS" class="w-6 h-6" />
       </div>
 
       <div class="w-8 h-px bg-border mb-3"></div>

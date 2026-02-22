@@ -1,10 +1,10 @@
-# GitHub Copilot Instructions for MrRSS
+# GitHub Copilot Instructions for MavenRSS
 
 > **Documentation**: [AGENTS.md](../AGENTS.md) | [Architecture](../docs/ARCHITECTURE.md) | [Code Patterns](../docs/CODE_PATTERNS.md) | [Testing](../docs/TESTING.md) | [Build Requirements](../docs/BUILD_REQUIREMENTS.md)
 
 ## Project Context
 
-MrRSS is a modern, privacy-focused, cross-platform desktop RSS reader built with Wails (Go + Vue.js).
+MavenRSS is a modern, privacy-focused, cross-platform desktop RSS reader built with Wails (Go + Vue.js).
 
 **Core Principles**: Privacy-first, cross-platform, modern UI, high performance, accessible
 
@@ -356,7 +356,7 @@ scheduleCleanup := func(filePath string, delay time.Duration) {
 
 - Development: `wails3 dev`
 - Production Build: `wails3 build`
-- Important: MrRSS uses HTTP API, not Wails bindings
+- Important: MavenRSS uses HTTP API, not Wails bindings
 
 **Store Access**:
 

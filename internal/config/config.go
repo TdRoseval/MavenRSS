@@ -1,4 +1,4 @@
-// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Package config provides centralized default values for settings.
 // The defaults are loaded from config/defaults.json which is shared between

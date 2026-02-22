@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"MrRSS/internal/auth"
+	"MavenRSS/internal/auth"
 )
 
 type contextKey string

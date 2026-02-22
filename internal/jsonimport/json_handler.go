@@ -1,7 +1,7 @@
 package jsonimport
 
 import (
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 	"encoding/json"
 	"errors"
 	"io"

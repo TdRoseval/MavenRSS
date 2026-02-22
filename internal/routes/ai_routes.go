@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	aihandlers "MrRSS/internal/handlers/ai"
-	chat "MrRSS/internal/handlers/chat"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/middleware"
+	aihandlers "MavenRSS/internal/handlers/ai"
+	chat "MavenRSS/internal/handlers/chat"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/middleware"
 )
 
 // registerAIRoutes registers all AI-related routes

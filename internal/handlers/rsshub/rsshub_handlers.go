@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/rsshub"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // HandleAddFeed adds a new RSSHub feed subscription

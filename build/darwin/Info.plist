@@ -4,11 +4,11 @@
         <key>CFBundlePackageType</key>
             <string>APPL</string>
         <key>CFBundleName</key>
-            <string>MrRSS</string>
+            <string>MavenRSS</string>
         <key>CFBundleExecutable</key>
-            <string>MrRSS</string>
+            <string>MavenRSS</string>
         <key>CFBundleIdentifier</key>
-            <string>com.mrrss.app</string>
+            <string>com.mavenrss.app</string>
         <key>CFBundleVersion</key>
             <string>1.3.20</string>
         <key>CFBundleGetInfoString</key>
@@ -32,18 +32,18 @@
 
         <!-- Apple Events Usage - Required for opening browser -->
         <key>NSAppleEventsUsageDescription</key>
-        <string>MrRSS needs permission to open articles in your default web browser and execute custom feed scripts.</string>
+        <string>MavenRSS needs permission to open articles in your default web browser and execute custom feed scripts.</string>
 
         <!-- Network Access - Required for fetching RSS feeds -->
         <key>NSNetworkUsageDescription</key>
-        <string>MrRSS requires network access to fetch RSS feeds and update content.</string>
+        <string>MavenRSS requires network access to fetch RSS feeds and update content.</string>
 
         <!-- File Access - Required for OPML imports/exports -->
         <key>NSDocumentsFolderUsageDescription</key>
-        <string>MrRSS needs access to Documents folder to import and export OPML feed lists.</string>
+        <string>MavenRSS needs access to Documents folder to import and export OPML feed lists.</string>
 
         <key>NSDownloadsFolderUsageDescription</key>
-        <string>MrRSS needs access to Downloads folder to import feed lists and save exported content.</string>
+        <string>MavenRSS needs access to Downloads folder to import feed lists and save exported content.</string>
 
         <!-- ============================================================ -->
         <!-- App Sandbox Configuration                                     -->

@@ -1,6 +1,6 @@
 # Wails v3 Build System Guide
 
-This document describes how to build and package MrRSS using the Wails v3 build system with Task runner.
+This document describes how to build and package MavenRSS using the Wails v3 build system with Task runner.
 
 ## Prerequisites
 
@@ -314,6 +314,6 @@ npm run build
 
 For issues:
 
-1. Check [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
+1. Check [GitHub Issues](https://github.com/WCY-dt/MavenRSS/issues)
 2. Review [Build Requirements](../docs/BUILD_REQUIREMENTS.md)
 3. Check [Wails Discord](https://discord.gg/wails)

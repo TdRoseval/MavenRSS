@@ -20,16 +20,16 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/database"
-	"MrRSS/internal/feed"
-	handlers "MrRSS/internal/handlers/core"
-	"MrRSS/internal/monitor"
-	"MrRSS/internal/network"
-	"MrRSS/internal/routes"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/fileutil"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/feed"
+	handlers "MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/monitor"
+	"MavenRSS/internal/network"
+	"MavenRSS/internal/routes"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/fileutil"
+	"MavenRSS/internal/utils/httputil"
 )
 
 var debugLogging = os.Getenv("MRRSS_DEBUG") != ""
@@ -210,7 +210,7 @@ func main() {
 
 	// Create new Wails v3 application
 	app := application.New(application.Options{
-		Name:        "MrRSS",
+		Name:        "MavenRSS",
 		Description: "A modern, privacy-focused RSS reader",
 		LogLevel:    slog.LevelError,
 		Assets: application.AssetOptions{
@@ -226,7 +226,7 @@ func main() {
 				return nil
 			}
 			return &application.SingleInstanceOptions{
-				UniqueID:      "com.mrrss.app",
+				UniqueID:      "com.mavenrss.app",
 				EncryptionKey: encryptionKey,
 				OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
 					log.Printf("Second instance detected, bringing window to front")
@@ -327,8 +327,8 @@ func main() {
 
 	// Create main window options
 	windowOptions := application.WebviewWindowOptions{
-		Name:             "MrRSS-main-window",
-		Title:            "MrRSS",
+		Name:             "MavenRSS-main-window",
+		Title:            "MavenRSS",
 		Width:            windowWidth,
 		Height:           windowHeight,
 		URL:              "/",
@@ -395,11 +395,11 @@ func main() {
 		var showLabel, refreshLabel, quitLabel string
 		switch lang {
 		case "zh-CN", "zh", "zh-cn":
-			showLabel = "显示 MrRSS"
+			showLabel = "显示 MavenRSS"
 			refreshLabel = "立即刷新"
 			quitLabel = "退出"
 		default:
-			showLabel = "Show MrRSS"
+			showLabel = "Show MavenRSS"
 			refreshLabel = "Refresh now"
 			quitLabel = "Quit"
 		}
@@ -587,7 +587,7 @@ func main() {
 	// Report app startup to analytics (non-blocking)
 	go func() {
 		time.Sleep(2 * time.Second) // Small delay to ensure app starts smoothly
-		monitorClient := monitor.NewMonitorClient("https://cf-monitor-api.ch3nyang.workers.dev", "mrrss")
+		monitorClient := monitor.NewMonitorClient("https://cf-monitor-api.ch3nyang.workers.dev", "mavenrss")
 		_ = monitorClient.ReportAppStart(context.Background())
 	}()
 

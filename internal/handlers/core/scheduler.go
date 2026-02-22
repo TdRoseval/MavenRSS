@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"MrRSS/internal/cache"
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/fileutil"
+	"MavenRSS/internal/cache"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/fileutil"
 )
 
 // StartBackgroundScheduler starts the background scheduler for auto-updates and cleanup.

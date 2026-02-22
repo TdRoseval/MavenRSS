@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
 )
 
 // HandleSavedFilters handles CRUD operations for saved filters

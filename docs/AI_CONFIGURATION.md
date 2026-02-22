@@ -1,10 +1,10 @@
 # AI Configuration Guide
 
-MrRSS supports AI-powered features including translation, summarization, and chat. This guide explains how to configure different AI services.
+MavenRSS supports AI-powered features including translation, summarization, and chat. This guide explains how to configure different AI services.
 
 ## Supported AI Services
 
-MrRSS works with any OpenAI-compatible API service and Ollama for local models.
+MavenRSS works with any OpenAI-compatible API service and Ollama for local models.
 
 ## Configuration Steps
 

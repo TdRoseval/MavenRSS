@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 func (db *DB) CreateUser(user *models.User) (int64, error) {

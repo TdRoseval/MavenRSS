@@ -14,9 +14,9 @@ import (
 	"github.com/emersion/go-imap/client"
 	"github.com/mmcdole/gofeed"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
-	"MrRSS/internal/version"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/version"
 )
 
 // EmailFetcher handles fetching and parsing newsletter emails
@@ -158,9 +158,9 @@ func (ef *EmailFetcher) sendIMAPID(c *client.Client) error {
 
 	// Send client identification
 	clientID := id.ID{
-		id.FieldName:    "MrRSS",
+		id.FieldName:    "MavenRSS",
 		id.FieldVersion: version.Version,
-		id.FieldVendor:  "MrRSS",
+		id.FieldVendor:  "MavenRSS",
 		id.FieldOS:      runtime.GOOS,
 	}
 

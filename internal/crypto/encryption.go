@@ -25,7 +25,7 @@ const (
 	// Salt size for key derivation
 	saltSize = 16
 	// Version marker to identify encrypted values (prevents false positives in IsEncrypted)
-	versionMarker = "MrRSS-v1:"
+	versionMarker = "MavenRSS-v1:"
 )
 
 var (

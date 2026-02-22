@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/version"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/version"
 )
 
 // HandleVersion returns the current application version.

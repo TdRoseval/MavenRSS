@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
 )
 
 // HandleGetWindowState returns empty state in server mode.

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/textutil"
 
 	"github.com/mmcdole/gofeed"
 )

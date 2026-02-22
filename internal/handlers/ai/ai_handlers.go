@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/config"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/httputil"
 )
 
 type TestResult struct {

@@ -1,19 +1,19 @@
 package routes
 
 import (
-	"MrRSS/internal/handlers/article"
-	browser "MrRSS/internal/handlers/browser"
-	"MrRSS/internal/handlers/core"
-	customcss "MrRSS/internal/handlers/custom_css"
-	freshrssHandler "MrRSS/internal/handlers/freshrss"
-	media "MrRSS/internal/handlers/media"
-	networkhandlers "MrRSS/internal/handlers/network"
-	opml "MrRSS/internal/handlers/opml"
-	rules "MrRSS/internal/handlers/rules"
-	script "MrRSS/internal/handlers/script"
-	update "MrRSS/internal/handlers/update"
-	window "MrRSS/internal/handlers/window"
-	"MrRSS/internal/middleware"
+	"MavenRSS/internal/handlers/article"
+	browser "MavenRSS/internal/handlers/browser"
+	"MavenRSS/internal/handlers/core"
+	customcss "MavenRSS/internal/handlers/custom_css"
+	freshrssHandler "MavenRSS/internal/handlers/freshrss"
+	media "MavenRSS/internal/handlers/media"
+	networkhandlers "MavenRSS/internal/handlers/network"
+	opml "MavenRSS/internal/handlers/opml"
+	rules "MavenRSS/internal/handlers/rules"
+	script "MavenRSS/internal/handlers/script"
+	update "MavenRSS/internal/handlers/update"
+	window "MavenRSS/internal/handlers/window"
+	"MavenRSS/internal/middleware"
 	"net/http"
 )
 

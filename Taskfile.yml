@@ -10,7 +10,7 @@ includes:
   # android: ./build/android/Taskfile.yml
 
 vars:
-  APP_NAME: "MrRSS"
+  APP_NAME: "MavenRSS"
   BIN_DIR: "build/bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 5173}}'
 
@@ -50,9 +50,9 @@ tasks:
   docker:build:server:
     summary: Builds the server version Docker image
     cmds:
-      - docker build -f Dockerfile.server -t mrrss-server:latest .
+      - docker build -f Dockerfile.server -t mavenrss-server:latest .
 
   docker:run:server:
     summary: Runs the server version in Docker
     cmds:
-      - docker run -p 1234:1234 -v {{.PWD}}/data:/app/data mrrss-server:latest
+      - docker run -p 1234:1234 -v {{.PWD}}/data:/app/data mavenrss-server:latest

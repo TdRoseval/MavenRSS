@@ -3,7 +3,7 @@ package database
 import (
 	"fmt"
 
-	"MrRSS/internal/config"
+	"MavenRSS/internal/config"
 
 	_ "modernc.org/sqlite"
 )

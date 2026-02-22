@@ -1,4 +1,4 @@
-module MrRSS
+module MavenRSS
 
 go 1.25.0
 

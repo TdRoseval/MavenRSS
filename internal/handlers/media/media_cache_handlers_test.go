@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/handlers/core"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/handlers/core"
 )
 
 func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
@@ -40,7 +40,7 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 	}
 
 	// Get the cache directory
-	cacheDir := filepath.Join(tmp, "MrRSS", "media_cache")
+	cacheDir := filepath.Join(tmp, "MavenRSS", "media_cache")
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		t.Fatalf("Failed to create cache dir: %v", err)
 	}

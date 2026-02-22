@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 // AddFeed adds a new feed or updates an existing one.

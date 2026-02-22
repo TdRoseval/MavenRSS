@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // ClientConfig holds the configuration for the AI client

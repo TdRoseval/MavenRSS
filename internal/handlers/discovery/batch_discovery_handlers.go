@@ -6,10 +6,10 @@ import (
 	"log"
 	"net/http"
 
-	"MrRSS/internal/discovery"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/discovery"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
 )
 
 // HandleDiscoverAllFeeds discovers feeds from all subscriptions that haven't been discovered yet.

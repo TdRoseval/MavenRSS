@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/rules"
-	"MrRSS/internal/utils"
-	"MrRSS/internal/utils/fileutil"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/rsshub"
+	"MavenRSS/internal/rules"
+	"MavenRSS/internal/utils"
+	"MavenRSS/internal/utils/fileutil"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/mmcdole/gofeed"
 )

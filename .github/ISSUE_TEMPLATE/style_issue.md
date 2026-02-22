@@ -54,7 +54,7 @@ If you have examples of similar styling from other applications that you like, p
 ## Environment
 
 - **OS**: [e.g., Windows 11, macOS 14, Ubuntu 22.04]
-- **MrRSS Version**: [e.g., 1.1.0]
+- **MavenRSS Version**: [e.g., 1.1.0]
 - **Theme**: [e.g., Light, Dark]
 - **Language**: [e.g., English, 中文]
 - **Display Scale**: [e.g., 100%, 125%, 150%]

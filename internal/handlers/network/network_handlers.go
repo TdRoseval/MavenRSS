@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/network"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/network"
+	"MavenRSS/internal/utils/httputil"
 )
 
 type StoredTestResult struct {

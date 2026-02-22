@@ -1,4 +1,4 @@
-// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Package config provides settings keys for database initialization
 // CODE GENERATED - DO NOT EDIT MANUALLY

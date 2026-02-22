@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 func TestDatabaseInitialization(t *testing.T) {

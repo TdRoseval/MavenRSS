@@ -8,7 +8,7 @@ interface AuthResponse {
 }
 
 /**
- * API Client for making HTTP requests to the MrRSS backend
+ * API Client for making HTTP requests to the MavenRSS backend
  * Provides consistent error handling, loading state management, and user feedback
  */
 export class ApiClient {

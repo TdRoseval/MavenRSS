@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/auth"
-	"MrRSS/internal/middleware"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/middleware"
+	"MavenRSS/internal/models"
 )
 
 func (h *Handler) GetPendingRegistrations(w http.ResponseWriter, r *http.Request) {

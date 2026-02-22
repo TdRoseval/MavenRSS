@@ -3,7 +3,7 @@ package discovery
 import (
 	"net/http"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/mmcdole/gofeed"
 )

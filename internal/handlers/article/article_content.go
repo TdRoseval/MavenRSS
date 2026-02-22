@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/feed"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
+	"MavenRSS/internal/feed"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
 )
 
 // HandleGetArticleContent fetches the article content from RSS feed dynamically.

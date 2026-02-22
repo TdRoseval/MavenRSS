@@ -1,6 +1,6 @@
-# MrRSS 性能优化指南
+# MavenRSS 性能优化指南
 
-本文档记录了 MrRSS 项目的性能优化策略和实施细节。
+本文档记录了 MavenRSS 项目的性能优化策略和实施细节。
 
 ## 已实施的优化
 
@@ -194,8 +194,8 @@ npm run build
 
 ### 服务器模式启动
 ```bash
-go build -tags server -o mrrss-server
-./mrrss-server --host 0.0.0.0 --port 1234
+go build -tags server -o mavenrss-server
+./mavenrss-server --host 0.0.0.0 --port 1234
 ```
 
 ### Docker 部署

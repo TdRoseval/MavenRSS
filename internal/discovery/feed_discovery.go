@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/PuerkitoBio/goquery"
 )

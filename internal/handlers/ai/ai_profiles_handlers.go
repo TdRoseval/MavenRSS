@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // ProfileRequest represents the request body for creating/updating an AI profile

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"MrRSS/internal/auth"
-	"MrRSS/internal/handlers/core"
-	settings "MrRSS/internal/handlers/settings"
-	stathandlers "MrRSS/internal/handlers/statistics"
-	"MrRSS/internal/middleware"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/handlers/core"
+	settings "MavenRSS/internal/handlers/settings"
+	stathandlers "MavenRSS/internal/handlers/statistics"
+	"MavenRSS/internal/middleware"
 )
 
 // registerSettingsRoutes registers all settings-related routes

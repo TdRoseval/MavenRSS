@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/urlutil"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/urlutil"
 )
 
 // SaveArticle saves a single article to the database.

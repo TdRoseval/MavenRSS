@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"MrRSS/internal/auth"
-	auth_handlers "MrRSS/internal/handlers/auth"
-	"MrRSS/internal/middleware"
+	"MavenRSS/internal/auth"
+	auth_handlers "MavenRSS/internal/handlers/auth"
+	"MavenRSS/internal/middleware"
 )
 
 func RegisterAuthRoutes(mux *http.ServeMux, authHandler *auth_handlers.Handler, jwtManager *auth.JWTManager) {

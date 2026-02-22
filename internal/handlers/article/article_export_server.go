@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
 )
 
 // HandleExportToObsidian exports an article to Obsidian in server mode.

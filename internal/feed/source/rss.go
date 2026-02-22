@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/mmcdole/gofeed"
 )
