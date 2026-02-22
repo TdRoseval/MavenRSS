@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhWall,
@@ -23,6 +24,7 @@ import {
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
+import { maskSensitiveValue } from '@/utils/settingsEncryption';
 
 const { t } = useI18n();
 
@@ -42,6 +44,20 @@ function updateSetting(key: keyof SettingsData, value: any) {
     [key]: value,
   });
 }
+
+const isInherited = computed(() => props.settings._has_inherited === true);
+
+const displayProxyPort = computed(() =>
+  isInherited.value ? maskSensitiveValue(props.settings.proxy_port) : props.settings.proxy_port
+);
+
+const displayProxyUsername = computed(() =>
+  isInherited.value ? maskSensitiveValue(props.settings.proxy_username) : props.settings.proxy_username
+);
+
+const displayProxyPassword = computed(() =>
+  isInherited.value ? maskSensitiveValue(props.settings.proxy_password) : props.settings.proxy_password
+);
 </script>
 
 <template>
@@ -101,11 +117,12 @@ function updateSetting(key: keyof SettingsData, value: any) {
         required
       >
         <InputControl
-          :model-value="props.settings.proxy_port"
+          :model-value="displayProxyPort"
           :placeholder="t('setting.network.proxyPortPlaceholder')"
           :error="props.settings.proxy_enabled && !props.settings.proxy_port?.trim()"
           width="sm"
           class="text-center"
+          :disabled="isInherited"
           @update:model-value="updateSetting('proxy_port', $event)"
         />
       </SubSettingItem>
@@ -117,9 +134,10 @@ function updateSetting(key: keyof SettingsData, value: any) {
         :description="t('setting.network.proxyUsernameDesc')"
       >
         <InputControl
-          :model-value="props.settings.proxy_username"
+          :model-value="displayProxyUsername"
           :placeholder="t('setting.network.proxyUsernamePlaceholder')"
           width="md"
+          :disabled="isInherited"
           @update:model-value="updateSetting('proxy_username', $event)"
         />
       </SubSettingItem>
@@ -131,10 +149,11 @@ function updateSetting(key: keyof SettingsData, value: any) {
         :description="t('setting.network.proxyPasswordDesc')"
       >
         <InputControl
-          :model-value="props.settings.proxy_password"
-          type="password"
+          :model-value="displayProxyPassword"
+          :type="isInherited ? 'text' : 'password'"
           :placeholder="t('setting.network.proxyPasswordPlaceholder')"
           width="md"
+          :disabled="isInherited"
           @update:model-value="updateSetting('proxy_password', $event)"
         />
       </SubSettingItem>

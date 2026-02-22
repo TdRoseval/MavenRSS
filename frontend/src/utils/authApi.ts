@@ -93,8 +93,16 @@ export const authApi = {
   },
 
   admin: {
-    async getPendingRegistrations(): Promise<PendingRegistration[]> {
-      return request('/admin/pending-registrations');
+    async getPendingRegistrations(
+      page: number = 1,
+      pageSize: number = 20
+    ): Promise<{
+      registrations: PendingRegistration[];
+      total: number;
+      page: number;
+      page_size: number;
+    }> {
+      return request(`/admin/pending-registrations?page=${page}&page_size=${pageSize}`);
     },
 
     async approveRegistration(
@@ -113,8 +121,11 @@ export const authApi = {
       });
     },
 
-    async getUsers(): Promise<User[]> {
-      return request('/admin/users');
+    async getUsers(
+      page: number = 1,
+      pageSize: number = 20
+    ): Promise<{ users: User[]; total: number; page: number; page_size: number }> {
+      return request(`/admin/users?page=${page}&page_size=${pageSize}`);
     },
 
     async getUser(id: number): Promise<User> {
@@ -146,7 +157,10 @@ export const authApi = {
       data: Partial<{
         max_feeds: number;
         max_articles: number;
-        max_ai_calls_per_day: number;
+        max_ai_tokens: number;
+        max_ai_concurrency: number;
+        max_feed_fetch_concurrency: number;
+        max_db_query_concurrency: number;
         max_storage_mb: number;
       }>
     ): Promise<UserQuota> {

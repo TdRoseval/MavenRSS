@@ -8,11 +8,6 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
-const (
-	MaxConcurrentRSSChecks  = 8
-	MaxConcurrentPathChecks = 5
-)
-
 type ProgressCallback func(progress Progress)
 
 type Progress struct {

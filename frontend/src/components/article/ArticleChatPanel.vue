@@ -78,7 +78,9 @@ onMounted(async () => {
 
 async function loadSessions() {
   try {
-    sessions.value = await authGet<ChatSession[]>(`/api/ai/chat/sessions?article_id=${props.article.id}`);
+    sessions.value = await authGet<ChatSession[]>(
+      `/api/ai/chat/sessions?article_id=${props.article.id}`
+    );
   } catch (e) {
     console.error('Failed to load sessions:', e);
   }
@@ -86,7 +88,9 @@ async function loadSessions() {
 
 async function selectSession(sessionId: number) {
   try {
-    const loadedMessages = await authGet<ChatMessage[]>(`/api/ai/chat/messages?session_id=${sessionId}`);
+    const loadedMessages = await authGet<ChatMessage[]>(
+      `/api/ai/chat/messages?session_id=${sessionId}`
+    );
     messages.value = loadedMessages;
     currentSessionId.value = sessionId;
     // Set isFirstMessage based on whether the session has any messages
@@ -149,7 +153,9 @@ function startEditSession(session: ChatSession, e: Event) {
 
 async function saveSessionTitle(sessionId: number) {
   try {
-    await authPut(`/api/ai/chat/session?session_id=${sessionId}`, { title: editingSessionTitle.value });
+    await authPut(`/api/ai/chat/session?session_id=${sessionId}`, {
+      title: editingSessionTitle.value,
+    });
 
     const session = sessions.value.find((s) => s.id === sessionId);
     if (session) {
@@ -276,7 +282,7 @@ async function sendMessage() {
         console.log('Stream done, total chunks:', chunkCount);
         break;
       }
-      
+
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split('\n');
@@ -284,22 +290,22 @@ async function sendMessage() {
 
       for (const line of lines) {
         const trimmed = line.trim();
-        
+
         if (trimmed.startsWith('event: ')) {
           eventName = trimmed.slice(7);
           console.log('Received event:', eventName);
           continue;
         }
-        
+
         if (!trimmed.startsWith('data: ')) continue;
-        
+
         const dataStr = trimmed.slice(6);
         if (!dataStr) continue;
 
         try {
           const data = JSON.parse(dataStr);
           console.log('Received data:', data);
-          
+
           if (eventName === 'done' || data.done) {
             console.log('Stream completed, final data:', data);
             if (data.response) {
@@ -506,10 +512,7 @@ const currentSessionTitle = computed(() => {
                 <div class="whitespace-pre-wrap">{{ msg.thinking }}</div>
               </div>
               <!-- Message content with pre-rendered HTML from backend -->
-              <div
-                v-if="msg.role === 'assistant'"
-                class="prose prose-sm max-w-none"
-              >
+              <div v-if="msg.role === 'assistant'" class="prose prose-sm max-w-none">
                 <div v-if="msg.html" v-html="msg.html"></div>
                 <div v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
               </div>

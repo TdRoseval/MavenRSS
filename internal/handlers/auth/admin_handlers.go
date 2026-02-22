@@ -3,6 +3,8 @@ package auth
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -12,7 +14,21 @@ import (
 )
 
 func (h *Handler) GetPendingRegistrations(w http.ResponseWriter, r *http.Request) {
-	regs, err := h.db.ListPendingRegistrations()
+	page := 1
+	pageSize := 20
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := r.URL.Query().Get("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 {
+			pageSize = parsed
+		}
+	}
+
+	regs, total, err := h.db.ListPendingRegistrationsPaginated(page, pageSize)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to fetch pending registrations")
 		return
@@ -22,7 +38,12 @@ func (h *Handler) GetPendingRegistrations(w http.ResponseWriter, r *http.Request
 		reg.PasswordHash = ""
 	}
 
-	jsonResponse(w, http.StatusOK, regs)
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"registrations": regs,
+		"total":         total,
+		"page":          page,
+		"page_size":     pageSize,
+	})
 }
 
 type ApproveRequest struct {
@@ -57,11 +78,18 @@ func (h *Handler) ApproveRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quota := &models.UserQuota{
-		UserID:           userID,
-		MaxFeeds:         100,
-		MaxArticles:      100000,
-		MaxAICallsPerDay: 100,
-		MaxStorageMB:     500,
+		UserID:                   userID,
+		MaxFeeds:                 100,
+		MaxArticles:              100000,
+		MaxAITokens:              1000000,
+		MaxAIConcurrency:         5,
+		MaxFeedFetchConcurrency:  3,
+		MaxDBQueryConcurrency:    5,
+		MaxMediaCacheConcurrency: 5,
+		MaxRSSDiscoveryConcurrency: 8,
+		MaxRSSPathCheckConcurrency: 5,
+		MaxTranslationConcurrency: 3,
+		MaxStorageMB:             500,
 	}
 	_, err = h.db.CreateUserQuota(quota)
 	if err != nil {
@@ -100,7 +128,22 @@ func (h *Handler) RejectRegistration(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.db.ListUsers()
+	page := 1
+	pageSize := 20
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+
+	if ps := r.URL.Query().Get("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	users, total, err := h.db.ListUsersPaginated(page, pageSize)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to fetch users")
 		return
@@ -110,7 +153,12 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		user.PasswordHash = ""
 	}
 
-	jsonResponse(w, http.StatusOK, users)
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"users":     users,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -195,12 +243,6 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.db.DeleteUserSessions(id)
-	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "failed to delete user sessions")
-		return
-	}
-
 	err = h.db.DeleteUser(id)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to delete user")
@@ -234,10 +276,17 @@ func (h *Handler) GetUserQuota(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateQuotaRequest struct {
-	MaxFeeds         int   `json:"max_feeds"`
-	MaxArticles      int64 `json:"max_articles"`
-	MaxAICallsPerDay int   `json:"max_ai_calls_per_day"`
-	MaxStorageMB     int   `json:"max_storage_mb"`
+	MaxFeeds                   int   `json:"max_feeds"`
+	MaxArticles                int64 `json:"max_articles"`
+	MaxAITokens                int64 `json:"max_ai_tokens"`
+	MaxAIConcurrency           int   `json:"max_ai_concurrency"`
+	MaxFeedFetchConcurrency    int   `json:"max_feed_fetch_concurrency"`
+	MaxDBQueryConcurrency      int   `json:"max_db_query_concurrency"`
+	MaxMediaCacheConcurrency   int   `json:"max_media_cache_concurrency"`
+	MaxRSSDiscoveryConcurrency int   `json:"max_rss_discovery_concurrency"`
+	MaxRSSPathCheckConcurrency int  `json:"max_rss_path_check_concurrency"`
+	MaxTranslationConcurrency  int   `json:"max_translation_concurrency"`
+	MaxStorageMB               int   `json:"max_storage_mb"`
 }
 
 func (h *Handler) UpdateUserQuota(w http.ResponseWriter, r *http.Request) {
@@ -270,9 +319,31 @@ func (h *Handler) UpdateUserQuota(w http.ResponseWriter, r *http.Request) {
 	if req.MaxArticles > 0 {
 		quota.MaxArticles = req.MaxArticles
 	}
-	if req.MaxAICallsPerDay > 0 {
-		quota.MaxAICallsPerDay = req.MaxAICallsPerDay
+	if req.MaxAITokens > 0 {
+		quota.MaxAITokens = req.MaxAITokens
 	}
+	if req.MaxAIConcurrency > 0 {
+		quota.MaxAIConcurrency = req.MaxAIConcurrency
+	}
+	if req.MaxFeedFetchConcurrency > 0 {
+		quota.MaxFeedFetchConcurrency = req.MaxFeedFetchConcurrency
+	}
+	if req.MaxDBQueryConcurrency > 0 {
+		quota.MaxDBQueryConcurrency = req.MaxDBQueryConcurrency
+	}
+	if req.MaxMediaCacheConcurrency > 0 {
+		quota.MaxMediaCacheConcurrency = req.MaxMediaCacheConcurrency
+	}
+	if req.MaxRSSDiscoveryConcurrency > 0 {
+		quota.MaxRSSDiscoveryConcurrency = req.MaxRSSDiscoveryConcurrency
+	}
+	if req.MaxRSSPathCheckConcurrency > 0 {
+		quota.MaxRSSPathCheckConcurrency = req.MaxRSSPathCheckConcurrency
+	}
+	if req.MaxTranslationConcurrency > 0 {
+		quota.MaxTranslationConcurrency = req.MaxTranslationConcurrency
+	}
+	oldMaxStorageMB := quota.MaxStorageMB
 	if req.MaxStorageMB > 0 {
 		quota.MaxStorageMB = req.MaxStorageMB
 	}
@@ -281,6 +352,21 @@ func (h *Handler) UpdateUserQuota(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to update quota")
 		return
+	}
+
+	// If storage quota was lowered, auto-adjust user's max_cache_size_mb setting
+	if req.MaxStorageMB > 0 && req.MaxStorageMB < oldMaxStorageMB {
+		log.Printf("[UpdateQuota] Storage quota lowered from %d to %d, checking user settings...", oldMaxStorageMB, req.MaxStorageMB)
+		currentVal, err := h.db.GetSettingForUser(id, "max_cache_size_mb")
+		if err == nil && currentVal != "" {
+			var currentSize int
+			if _, err = fmt.Sscanf(currentVal, "%d", &currentSize); err == nil {
+				if currentSize > req.MaxStorageMB {
+					log.Printf("[UpdateQuota] Auto-adjusting user %d's max_cache_size_mb from %d to %d", id, currentSize, req.MaxStorageMB)
+					_ = h.db.SetSettingForUser(id, "max_cache_size_mb", fmt.Sprintf("%d", req.MaxStorageMB))
+				}
+			}
+		}
 	}
 
 	jsonResponse(w, http.StatusOK, quota)
@@ -323,11 +409,18 @@ func (h *Handler) CreateTemplateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quota := &models.UserQuota{
-		UserID:           userID,
-		MaxFeeds:         1000,
-		MaxArticles:      1000000,
-		MaxAICallsPerDay: 1000,
-		MaxStorageMB:     5000,
+		UserID:                   userID,
+		MaxFeeds:                 1000,
+		MaxArticles:              1000000,
+		MaxAITokens:              10000000,
+		MaxAIConcurrency:         20,
+		MaxFeedFetchConcurrency:  10,
+		MaxDBQueryConcurrency:    10,
+		MaxMediaCacheConcurrency: 10,
+		MaxRSSDiscoveryConcurrency: 16,
+		MaxRSSPathCheckConcurrency: 10,
+		MaxTranslationConcurrency: 10,
+		MaxStorageMB:             5000,
 	}
 	_, err = h.db.CreateUserQuota(quota)
 	if err != nil {
@@ -380,11 +473,6 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.HasInherited {
-		jsonError(w, http.StatusBadRequest, "already inherited from template")
-		return
-	}
-
 	templateUser, err := h.db.GetTemplateUser()
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to get template user")
@@ -402,38 +490,142 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	// Copy feeds
-	query := `INSERT INTO feeds (user_id, title, url, link, description, category, image_url, last_updated, last_error)
-	          SELECT ?, title, url, link, description, category, image_url, last_updated, last_error
-	          FROM feeds WHERE user_id = ?`
-	_, err = tx.Exec(query, user.ID, templateUser.ID)
+	// Copy AI profiles first (since settings reference them)
+	var profileCount int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM ai_profiles WHERE user_id = ?`, templateUser.ID).Scan(&profileCount)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "failed to copy feeds")
-		return
+		profileCount = 0
+	}
+	
+	log.Printf("[InheritTemplate] Template user has %d AI profiles to copy", profileCount)
+	
+	var profileIDMap map[int64]int64
+	if profileCount > 0 {
+		profileIDMap, err = h.db.CopyAIProfiles(templateUser.ID, user.ID, tx)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "failed to copy AI profiles: "+err.Error())
+			return
+		}
+		log.Printf("[InheritTemplate] Copied %d AI profiles, ID map: %v", len(profileIDMap), profileIDMap)
+	}
+
+	// Copy feeds
+	var feedCount int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM feeds WHERE user_id = ?`, templateUser.ID).Scan(&feedCount)
+	if err != nil {
+		feedCount = 0
+	}
+	
+	if feedCount > 0 {
+		_, err = tx.Exec(`DELETE FROM feeds WHERE user_id = ?`, user.ID)
+		if err != nil {
+		}
+		
+		query := `INSERT INTO feeds (
+			user_id, title, url, link, description, category, image_url, 
+			script_path, hide_from_timeline, proxy_url, proxy_enabled, refresh_interval,
+			is_image_mode, type,
+			xpath_item, xpath_item_title, xpath_item_content, xpath_item_uri,
+			xpath_item_author, xpath_item_timestamp, xpath_item_time_format,
+			xpath_item_thumbnail, xpath_item_categories, xpath_item_uid,
+			article_view_mode, auto_expand_content,
+			email_address, email_imap_server, email_imap_port,
+			email_username, email_password, email_folder, email_last_uid,
+			is_freshrss_source, freshrss_stream_id,
+			position, last_updated, last_error
+		) SELECT 
+			?, title, url, link, description, category, image_url, 
+			script_path, hide_from_timeline, proxy_url, proxy_enabled, refresh_interval,
+			is_image_mode, type,
+			xpath_item, xpath_item_title, xpath_item_content, xpath_item_uri,
+			xpath_item_author, xpath_item_timestamp, xpath_item_time_format,
+			xpath_item_thumbnail, xpath_item_categories, xpath_item_uid,
+			article_view_mode, auto_expand_content,
+			email_address, email_imap_server, email_imap_port,
+			email_username, email_password, email_folder, email_last_uid,
+			is_freshrss_source, freshrss_stream_id,
+			position, last_updated, last_error
+		FROM feeds WHERE user_id = ?`
+		_, err = tx.Exec(query, user.ID, templateUser.ID)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "failed to copy feeds: "+err.Error())
+			return
+		}
 	}
 
 	// Copy settings (all settings including sensitive ones)
-	query = `INSERT INTO user_settings (user_id, key, value)
-	          SELECT ?, key, value
-	          FROM user_settings WHERE user_id = ?`
-	_, err = tx.Exec(query, user.ID, templateUser.ID)
+	var count int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM user_settings WHERE user_id = ?`, templateUser.ID).Scan(&count)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "failed to copy settings")
-		return
+		count = 0
+	}
+	
+	log.Printf("[InheritTemplate] Template user has %d settings to copy", count)
+	
+	if count > 0 {
+		err = h.db.CopyUserSettings(templateUser.ID, user.ID, tx)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "failed to copy settings: "+err.Error())
+			return
+		}
+		
+		// Update profile ID references in settings if we have a map
+		if profileIDMap != nil && len(profileIDMap) > 0 {
+			profileSettingKeys := []string{"ai_chat_profile_id", "ai_search_profile_id", "ai_summary_profile_id", "ai_translation_profile_id"}
+			for _, key := range profileSettingKeys {
+				var oldIDStr string
+				err = tx.QueryRow(`SELECT value FROM user_settings WHERE user_id = ? AND key = ?`, user.ID, key).Scan(&oldIDStr)
+				if err == nil && oldIDStr != "" {
+					var oldID int64
+					_, err = fmt.Sscanf(oldIDStr, "%d", &oldID)
+					if err == nil {
+						if newID, ok := profileIDMap[oldID]; ok {
+							newIDStr := fmt.Sprintf("%d", newID)
+							_, err = tx.Exec(`UPDATE user_settings SET value = ? WHERE user_id = ? AND key = ?`, newIDStr, user.ID, key)
+							log.Printf("[InheritTemplate] Updated %s from %d to %d", key, oldID, newID)
+						}
+					}
+				}
+			}
+		}
+		
+		var copiedCount int
+		err = tx.QueryRow(`SELECT COUNT(*) FROM user_settings WHERE user_id = ?`, user.ID).Scan(&copiedCount)
+		log.Printf("[InheritTemplate] Copied %d settings to user %d", copiedCount, user.ID)
+
+		// Auto-adjust user settings to not exceed admin quota
+		log.Printf("[InheritTemplate] Auto-adjusting user settings to not exceed admin quota...")
+		quota, qErr := h.db.GetUserQuota(user.ID)
+		if qErr == nil && quota != nil {
+			// Adjust max_cache_size_mb if needed
+			if quota.MaxStorageMB > 0 {
+				var currentVal string
+				err = tx.QueryRow(`SELECT value FROM user_settings WHERE user_id = ? AND key = ?`, user.ID, "max_cache_size_mb").Scan(&currentVal)
+				if err == nil && currentVal != "" {
+					var currentSize int
+					if _, err = fmt.Sscanf(currentVal, "%d", &currentSize); err == nil {
+						if currentSize > quota.MaxStorageMB {
+							log.Printf("[InheritTemplate] Adjusting max_cache_size_mb from %d to %d (quota limit)", currentSize, quota.MaxStorageMB)
+							_, err = tx.Exec(`UPDATE user_settings SET value = ? WHERE user_id = ? AND key = ?`, fmt.Sprintf("%d", quota.MaxStorageMB), user.ID, "max_cache_size_mb")
+						}
+					}
+				}
+			}
+		}
 	}
 
 	user.InheritedFrom = &templateUser.ID
 	user.HasInherited = true
-	query = `UPDATE users SET inherited_from = ?, has_inherited = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+	query := `UPDATE users SET inherited_from = ?, has_inherited = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err = tx.Exec(query, templateUser.ID, true, user.ID)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "failed to update user")
+		jsonError(w, http.StatusInternalServerError, "failed to update user: "+err.Error())
 		return
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "failed to commit transaction")
+		jsonError(w, http.StatusInternalServerError, "failed to commit transaction: "+err.Error())
 		return
 	}
 
@@ -461,7 +653,8 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templateUser, err := h.db.GetTemplateUser()
-	templateAvailable := templateUser != nil && !user.HasInherited
+	// Allow template available even if already inherited
+	templateAvailable := templateUser != nil
 
 	user.PasswordHash = ""
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
@@ -490,8 +683,9 @@ func (h *Handler) CheckTemplateAvailable(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Allow re-inheriting even if already inherited
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"available":    templateUser != nil && !user.HasInherited,
+		"available":    templateUser != nil,
 		"inherited":    user.HasInherited,
 		"has_template": templateUser != nil,
 	})

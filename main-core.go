@@ -270,7 +270,11 @@ func main() {
 	jwtSecret := os.Getenv("MRRSS_JWT_SECRET")
 	if jwtSecret == "" {
 		jwtSecret = "default-jwt-secret-key-please-change-in-production"
-		log.Println("Warning: Using default JWT secret. Set MRRSS_JWT_SECRET environment variable for production.")
+		log.Println("========================================")
+		log.Println("⚠️  SECURITY WARNING: Using default JWT secret!")
+		log.Println("⚠️  This is INSECURE for production use.")
+		log.Println("⚠️  Set MRRSS_JWT_SECRET environment variable with a strong secret.")
+		log.Println("========================================")
 	}
 	jwtManager := auth.NewJWTManager(jwtSecret)
 
@@ -287,7 +291,12 @@ func main() {
 	}
 	if adminPassword == "" {
 		adminPassword = "admin123"
-		log.Println("Warning: Using default admin password. Set MRRSS_ADMIN_PASSWORD environment variable.")
+		log.Println("========================================")
+		log.Println("⚠️  SECURITY WARNING: Using default admin password!")
+		log.Println("⚠️  Default credentials: admin / admin123")
+		log.Println("⚠️  This is EXTREMELY INSECURE!")
+		log.Println("⚠️  Set MRRSS_ADMIN_PASSWORD environment variable IMMEDIATELY!")
+		log.Println("========================================")
 	}
 	_, err = db.GetUserByUsername(adminUsername)
 	if err != nil {
@@ -303,11 +312,18 @@ func main() {
 			userID, err := db.CreateUser(adminUser)
 			if err == nil {
 				adminQuota := &models.UserQuota{
-					UserID:           userID,
-					MaxFeeds:         10000,
-					MaxArticles:      10000000,
-					MaxAICallsPerDay: 10000,
-					MaxStorageMB:     10000,
+					UserID:                   userID,
+					MaxFeeds:                 10000,
+					MaxArticles:              10000000,
+					MaxAITokens:              1000000000,
+					MaxAIConcurrency:         10,
+					MaxFeedFetchConcurrency:  20,
+					MaxDBQueryConcurrency:    10,
+					MaxMediaCacheConcurrency: 5,
+					MaxRSSDiscoveryConcurrency: 5,
+					MaxRSSPathCheckConcurrency: 3,
+					MaxTranslationConcurrency: 5,
+					MaxStorageMB:             10000,
 				}
 				db.CreateUserQuota(adminQuota)
 				log.Printf("Admin user created: %s (password: %s)", adminUsername, adminPassword)
@@ -342,11 +358,18 @@ func main() {
 			userID, err := db.CreateUser(templateUser)
 			if err == nil {
 				templateQuota := &models.UserQuota{
-					UserID:           userID,
-					MaxFeeds:         1000,
-					MaxArticles:      1000000,
-					MaxAICallsPerDay: 1000,
-					MaxStorageMB:     5000,
+					UserID:                   userID,
+					MaxFeeds:                 1000,
+					MaxArticles:              1000000,
+					MaxAITokens:              100000000,
+					MaxAIConcurrency:         5,
+					MaxFeedFetchConcurrency:  10,
+					MaxDBQueryConcurrency:    5,
+					MaxMediaCacheConcurrency: 3,
+					MaxRSSDiscoveryConcurrency: 3,
+					MaxRSSPathCheckConcurrency: 2,
+					MaxTranslationConcurrency: 3,
+					MaxStorageMB:             5000,
 				}
 				db.CreateUserQuota(templateQuota)
 				log.Printf("Template user created: %s (password: %s)", templateUsername, templatePassword)

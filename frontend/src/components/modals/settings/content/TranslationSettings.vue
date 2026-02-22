@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhGlobe,
@@ -28,6 +28,7 @@ import AIProfileSelector from '@/components/modals/settings/ai/AIProfileSelector
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 import { authPost } from '@/utils/authFetch';
+import { maskSensitiveValue } from '@/utils/settingsEncryption';
 
 const { t } = useI18n();
 
@@ -47,6 +48,16 @@ function updateSetting(key: keyof SettingsData, value: any) {
     [key]: value,
   });
 }
+
+const isInherited = computed(() => props.settings._has_inherited === true);
+
+const displayDeeplApiKey = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.deepl_api_key) : props.settings.deepl_api_key
+);
+
+const displayBaiduSecretKey = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.baidu_secret_key) : props.settings.baidu_secret_key
+);
 
 const isClearingCache = ref(false);
 const showCustomTemplates = ref(false);
@@ -197,8 +208,8 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
         :required="!settings.deepl_endpoint?.trim()"
       >
         <input
-          :value="settings.deepl_api_key"
-          type="password"
+          :value="displayDeeplApiKey"
+          :type="isInherited ? 'text' : 'password'"
           :placeholder="t('setting.content.deeplApiKeyPlaceholder')"
           :class="[
             'input-field w-32 sm:w-48 text-xs sm:text-sm',
@@ -208,6 +219,7 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
                 !settings.deepl_endpoint?.trim()
             ),
           ]"
+          :disabled="isInherited"
           @input="updateSetting('deepl_api_key', ($event.target as HTMLInputElement).value)"
         />
       </SubSettingItem>
@@ -257,8 +269,8 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
           required
         >
           <input
-            :value="settings.baidu_secret_key"
-            type="password"
+            :value="displayBaiduSecretKey"
+            :type="isInherited ? 'text' : 'password'"
             :placeholder="t('setting.content.baiduSecretKeyPlaceholder')"
             :class="[
               'input-field w-32 sm:w-48 text-xs sm:text-sm',
@@ -266,6 +278,7 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
                 settings.translation_provider === 'baidu' && !settings.baidu_secret_key?.trim()
               ),
             ]"
+            :disabled="isInherited"
             @input="updateSetting('baidu_secret_key', ($event.target as HTMLInputElement).value)"
           />
         </SubSettingItem>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhLink, PhUser, PhKey, PhArrowClockwise, PhCloudCheck } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
 import { useAppStore } from '@/stores/app';
 import { NestedSettingsContainer, SubSettingItem, InputControl } from '@/components/settings';
 import { authGet, authPost } from '@/utils/authFetch';
+import { maskSensitiveValue } from '@/utils/settingsEncryption';
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -27,6 +28,20 @@ function updateSetting(key: keyof SettingsData, value: any) {
     [key]: value,
   });
 }
+
+const isInherited = computed(() => props.settings._has_inherited === true);
+
+const displayFreshRSSServerUrl = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.freshrss_server_url, 12) : props.settings.freshrss_server_url
+);
+
+const displayFreshRSSUsername = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.freshrss_username) : props.settings.freshrss_username
+);
+
+const displayFreshRSSApiPassword = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.freshrss_api_password) : props.settings.freshrss_api_password
+);
 
 const isSyncing = ref(false);
 const syncStatus = ref<{
@@ -197,9 +212,10 @@ function formatSyncTime(timeStr: string | null): string {
     >
       <InputControl
         type="url"
-        :model-value="props.settings.freshrss_server_url"
+        :model-value="displayFreshRSSServerUrl"
         :placeholder="t('setting.freshrss.serverUrlPlaceholder')"
         width="md"
+        :disabled="isInherited"
         @update:model-value="updateSetting('freshrss_server_url', $event)"
       />
     </SubSettingItem>
@@ -212,9 +228,10 @@ function formatSyncTime(timeStr: string | null): string {
       required
     >
       <InputControl
-        :model-value="props.settings.freshrss_username"
+        :model-value="displayFreshRSSUsername"
         :placeholder="t('setting.freshrss.usernamePlaceholder')"
         width="md"
+        :disabled="isInherited"
         @update:model-value="updateSetting('freshrss_username', $event)"
       />
     </SubSettingItem>
@@ -226,10 +243,11 @@ function formatSyncTime(timeStr: string | null): string {
       :description="t('setting.freshrss.apiPasswordDesc')"
     >
       <InputControl
-        type="password"
-        :model-value="props.settings.freshrss_api_password"
+        :type="isInherited ? 'text' : 'password'"
+        :model-value="displayFreshRSSApiPassword"
         :placeholder="t('setting.freshrss.apiPasswordPlaceholder')"
         width="md"
+        :disabled="isInherited"
         @update:model-value="updateSetting('freshrss_api_password', $event)"
       />
     </SubSettingItem>

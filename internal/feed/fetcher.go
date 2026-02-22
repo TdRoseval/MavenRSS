@@ -158,7 +158,8 @@ func (f *Fetcher) getConcurrencyLimit() int {
 // getHTTPClient returns an HTTP client configured with proxy if needed
 // Proxy precedence (highest to lowest):
 // 1. Feed custom proxy (ProxyURL != "") - use custom proxy
-// 2. User proxy - use if enabled (优先用户设置，回退全局)
+// 2. Feed proxy_enabled is true - use user's global proxy settings
+// 3. Feed proxy_enabled is false - NO proxy, even if global proxy is enabled
 func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 	var proxyURL string
 	userID := feed.UserID
@@ -167,8 +168,8 @@ func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 	if feed.ProxyURL != "" {
 		// Use custom proxy - highest priority
 		proxyURL = feed.ProxyURL
-	} else {
-		// No custom proxy - check user's proxy settings (优先用户设置，回退全局)
+	} else if feed.ProxyEnabled {
+		// No custom proxy, but feed is set to use proxy - check user's global proxy settings
 		globalProxyEnabled, _ := f.db.GetSettingWithFallback(userID, "proxy_enabled")
 		if globalProxyEnabled == "true" {
 			proxyType, _ := f.db.GetSettingWithFallback(userID, "proxy_type")
@@ -179,6 +180,7 @@ func (f *Fetcher) getHTTPClient(feed models.Feed) (*http.Client, error) {
 			proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		}
 	}
+	// Else: feed.ProxyEnabled is false - use NO proxy at all
 
 	// Use pooled client with browser-like headers to bypass Cloudflare and anti-bot protections
 	// This is critical for RSSHub feeds and other services with anti-bot protection
@@ -254,6 +256,73 @@ func (f *Fetcher) FetchAll(ctx context.Context) {
 	f.taskManager.SetPoolCapacity(concurrency)
 
 	// Use task manager for global refresh (all feeds go to queue tail)
+	f.taskManager.AddGlobalRefresh(ctx, filteredFeeds)
+}
+
+// FetchAllForUser refreshes all feeds for a specific user
+func (f *Fetcher) FetchAllForUser(ctx context.Context, userID int64) {
+	// Get feeds for specific user
+	feeds, err := f.db.GetFeedsForUser(userID)
+	if err != nil {
+		log.Printf("Error getting feeds for user %d: %v", userID, err)
+		return
+	}
+
+	if len(feeds) == 0 {
+		log.Printf("No feeds to refresh for user %d", userID)
+		// Mark progress as completed since there's nothing to do
+		f.taskManager.MarkCompleted()
+		return
+	}
+
+	// Filter out FreshRSS feeds and never-refresh feeds
+	filteredFeeds := make([]models.Feed, 0, len(feeds))
+	freshRSSCount := 0
+	neverRefreshCount := 0
+	for _, feed := range feeds {
+		if feed.IsFreshRSSSource {
+			freshRSSCount++
+		} else if feed.RefreshInterval == -2 {
+			// Skip feeds with never refresh mode
+			neverRefreshCount++
+		} else {
+			filteredFeeds = append(filteredFeeds, feed)
+		}
+	}
+
+	// If all feeds are FreshRSS feeds or never-refresh feeds, no standard refresh needed
+	if len(filteredFeeds) == 0 {
+		if freshRSSCount > 0 && neverRefreshCount > 0 {
+			log.Printf("All feeds for user %d are either FreshRSS sources (%d) or never-refresh feeds (%d), skipping standard refresh", userID, freshRSSCount, neverRefreshCount)
+		} else if freshRSSCount > 0 {
+			log.Printf("All %d feeds for user %d are FreshRSS sources (refreshed via sync only), skipping standard refresh", freshRSSCount, userID)
+		} else {
+			log.Printf("All %d feeds for user %d are never-refresh feeds, skipping standard refresh", neverRefreshCount, userID)
+		}
+
+		// Update last global refresh time even if no standard feeds
+		newUpdateTime := time.Now().Format(time.RFC3339)
+		log.Printf("User %d refresh started (FreshRSS only), updating last_global_refresh to: %s", userID, newUpdateTime)
+		if err := f.db.SetSetting("last_global_refresh", newUpdateTime); err != nil {
+			log.Printf("ERROR: Failed to update last_global_refresh: %v", err)
+		}
+
+		// Mark progress as completed since there's nothing to do
+		f.taskManager.MarkCompleted()
+		return
+	}
+
+	if neverRefreshCount > 0 {
+		log.Printf("User %d refresh: %d feeds (skipped %d FreshRSS feeds, %d never-refresh feeds)", userID, len(filteredFeeds), freshRSSCount, neverRefreshCount)
+	} else {
+		log.Printf("User %d refresh: %d feeds (skipped %d FreshRSS feeds)", userID, len(filteredFeeds), freshRSSCount)
+	}
+
+	// Update task manager capacity based on network
+	concurrency := f.getConcurrencyLimit()
+	f.taskManager.SetPoolCapacity(concurrency)
+
+	// Use task manager for refresh (all feeds go to queue tail)
 	f.taskManager.AddGlobalRefresh(ctx, filteredFeeds)
 }
 

@@ -302,7 +302,7 @@ defineExpose({
         <div class="w-8 h-px bg-border my-2"></div>
 
         <button
-          v-if="!isMobile"
+          v-if="false && !isMobile"
           class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
           style="width: 44px; height: 44px"
           :title="t('sidebar.activity.collapseActivityBar')"

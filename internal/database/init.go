@@ -19,6 +19,9 @@ func (db *DB) Init() error {
 			return
 		}
 
+		// Enable foreign key constraints
+		_, _ = db.Exec(`PRAGMA foreign_keys = ON`)
+
 		if err = initSchema(db.DB); err != nil {
 			return
 		}

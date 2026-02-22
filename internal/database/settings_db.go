@@ -205,3 +205,76 @@ func (db *DB) SetEncryptedSettingForUser(userID int64, key, value string) error 
 	// Store the encrypted value
 	return db.SetSettingForUser(userID, key, encrypted)
 }
+
+// CopyUserSettings copies all user settings from one user to another.
+func (db *DB) CopyUserSettings(fromUserID, toUserID int64, tx *sql.Tx) error {
+	db.WaitForReady()
+	
+	// First delete any existing settings for the target user
+	_, err := tx.Exec(`DELETE FROM user_settings WHERE user_id = ?`, toUserID)
+	if err != nil {
+		return err
+	}
+	
+	// Query all settings from the source user, without selecting "key" by name
+	// Use SELECT * and scan by position
+	rows, err := tx.Query(`SELECT * FROM user_settings WHERE user_id = ?`, fromUserID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	
+	for rows.Next() {
+		// Create a slice to hold all values
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+		
+		err = rows.Scan(valuePtrs...)
+		if err != nil {
+			return err
+		}
+		
+		// Extract the values we need by position
+		// Column order: id, user_id, key, value, created_at, updated_at
+		settingKey := ""
+		settingValue := ""
+		
+		// Try to convert the values
+		for i, v := range values {
+			switch i {
+			case 2: // key column
+				if b, ok := v.([]byte); ok {
+					settingKey = string(b)
+				} else if s, ok := v.(string); ok {
+					settingKey = s
+				}
+			case 3: // value column
+				if b, ok := v.([]byte); ok {
+					settingValue = string(b)
+				} else if s, ok := v.(string); ok {
+					settingValue = s
+				}
+			}
+		}
+		
+		// If we have a key and value, insert it directly using the transaction
+		if settingKey != "" {
+			// Use INSERT OR REPLACE directly on the transaction
+			_, err = tx.Exec(`INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)`,
+				toUserID, settingKey, settingValue)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	
+	return rows.Err()
+}

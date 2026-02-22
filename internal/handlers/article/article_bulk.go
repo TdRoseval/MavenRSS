@@ -18,20 +18,23 @@ import (
 // @Description  Get total unread count and per-feed unread counts
 // @Tags         articles
 // @Accept       json
-// @Produce      json
+// @Produce       json
 // @Success      200  {object}  map[string]interface{}  "Unread counts (total + feed_counts map)"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/unread-counts [get]
 func HandleGetUnreadCounts(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get total unread count
-	totalCount, err := h.DB.GetTotalUnreadCount()
+	totalCount, err := h.DB.GetTotalUnreadCount(userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Get unread counts per feed
-	feedCounts, err := h.DB.GetUnreadCountsForAllFeeds()
+	feedCounts, err := h.DB.GetUnreadCountsForAllFeeds(userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -50,7 +53,7 @@ func HandleGetUnreadCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 // @Description  Get per-feed counts for different filter types (unread, favorites, read_later, images)
 // @Tags         articles
 // @Accept       json
-// @Produce      json
+// @Produce       json
 // @Success      200  {object}  map[string]interface{}  "Filter counts for all filter types"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/filter-counts [get]
@@ -60,8 +63,11 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Get user ID from context
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get unread counts per feed
-	unreadCounts, err := h.DB.GetUnreadCountsForAllFeeds()
+	unreadCounts, err := h.DB.GetUnreadCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting unread counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -69,7 +75,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get favorite counts per feed
-	favoriteCounts, err := h.DB.GetFavoriteCountsForAllFeeds()
+	favoriteCounts, err := h.DB.GetFavoriteCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting favorite counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -77,7 +83,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get favorite AND unread counts per feed
-	favoriteUnreadCounts, err := h.DB.GetFavoriteUnreadCountsForAllFeeds()
+	favoriteUnreadCounts, err := h.DB.GetFavoriteUnreadCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting favorite unread counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -85,7 +91,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get read_later counts per feed
-	readLaterCounts, err := h.DB.GetReadLaterCountsForAllFeeds()
+	readLaterCounts, err := h.DB.GetReadLaterCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting read_later counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -93,7 +99,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get read_later AND unread counts per feed
-	readLaterUnreadCounts, err := h.DB.GetReadLaterUnreadCountsForAllFeeds()
+	readLaterUnreadCounts, err := h.DB.GetReadLaterUnreadCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting read_later unread counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -101,7 +107,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get image mode counts per feed
-	imageCounts, err := h.DB.GetImageModeCountsForAllFeeds()
+	imageCounts, err := h.DB.GetImageModeCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting image counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -109,7 +115,7 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get image unread counts per feed
-	imageUnreadCounts, err := h.DB.GetImageUnreadCountsForAllFeeds()
+	imageUnreadCounts, err := h.DB.GetImageUnreadCountsForAllFeeds(userID)
 	if err != nil {
 		log.Printf("[HandleGetFilterCounts] ERROR getting image unread counts: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -209,20 +215,26 @@ func HandleClearReadLater(h *core.Handler, w http.ResponseWriter, r *http.Reques
 // @Success      200  {string}  string  "Refresh started successfully"
 // @Router       /articles/refresh [post]
 func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	// Mark progress as running before starting goroutine
-	// This ensures the frontend immediately sees is_running=true
-	taskManager := h.Fetcher.GetTaskManager()
-	taskManager.MarkRunning()
-
-	// Manual refresh - fetches all feeds in background
-	go h.Fetcher.FetchAll(context.Background())
+	// Get user ID from request
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		// Fall back to fetching all feeds if no user ID
+		taskManager := h.Fetcher.GetTaskManager()
+		taskManager.MarkRunning()
+		go h.Fetcher.FetchAll(context.Background())
+	} else {
+		// Fetch only feeds for this user
+		taskManager := h.Fetcher.GetTaskManager()
+		taskManager.MarkRunning()
+		go h.Fetcher.FetchAllForUser(context.Background(), userID)
+	}
 
 	// Return success response
 	response.JSON(w, map[string]string{"status": "refreshing"})
 }
 
 // HandleCleanupArticles triggers manual cleanup of articles.
-// This clears ALL articles and article contents, but keeps feeds and settings.
+// This clears ALL articles and article contents for the current user, but keeps feeds and settings.
 // @Summary      Cleanup all articles
 // @Description  Delete all articles and article contents (keeps feeds and settings)
 // @Tags         articles
@@ -237,9 +249,12 @@ func HandleCleanupArticles(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Manual cleanup: clear ALL articles and article contents, but keep feeds
+	// Get user ID from request
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	// Manual cleanup: clear articles and article contents for the current user, but keep feeds
 	// Step 1: Delete all article contents
-	contentCount, err := h.DB.CleanupAllArticleContents()
+	contentCount, err := h.DB.CleanupAllArticleContents(userID)
 	if err != nil {
 		log.Printf("Error cleaning up article contents: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -247,7 +262,7 @@ func HandleCleanupArticles(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	}
 
 	// Step 2: Delete all articles (but keep feeds and settings)
-	articleCount, err := h.DB.DeleteAllArticles()
+	articleCount, err := h.DB.DeleteAllArticles(userID)
 	if err != nil {
 		log.Printf("Error deleting all articles: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -278,7 +293,10 @@ func HandleCleanupArticleContent(h *core.Handler, w http.ResponseWriter, r *http
 		return
 	}
 
-	count, err := h.DB.CleanupAllArticleContents()
+	// Get user ID from request
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	count, err := h.DB.CleanupAllArticleContents(userID)
 	if err != nil {
 		log.Printf("Error cleaning up article content cache: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -307,7 +325,8 @@ func HandleGetArticleContentCacheInfo(h *core.Handler, w http.ResponseWriter, r 
 		return
 	}
 
-	count, err := h.DB.GetArticleContentCount()
+	userID, _ := core.GetUserIDFromRequest(r)
+	count, err := h.DB.GetArticleContentCount(userID)
 	if err != nil {
 		log.Printf("Error getting article content cache info: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)

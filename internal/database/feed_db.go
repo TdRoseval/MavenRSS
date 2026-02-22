@@ -19,6 +19,13 @@ func (db *DB) AddFeed(feed *models.Feed) (int64, error) {
 	var existingIsFreshRSS bool
 	err := db.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE url = ?", feed.URL).Scan(&existingID, &existingIsFreshRSS)
 
+	if err == sql.ErrNoRows && feed.UserID > 0 {
+		// New feed for a specific user, check quota
+		if ok, qErr := db.CheckFeedQuota(feed.UserID); !ok {
+			return 0, qErr
+		}
+	}
+
 	if err == sql.ErrNoRows {
 		// Feed doesn't exist, insert new
 		// Get next position in category if not specified
@@ -131,6 +138,13 @@ func (db *DB) AddFeedForUser(userID int64, feed *models.Feed) (int64, error) {
 	var existingID int64
 	var existingIsFreshRSS bool
 	err := db.QueryRow("SELECT id, is_freshrss_source FROM feeds WHERE user_id = ? AND url = ?", userID, feed.URL).Scan(&existingID, &existingIsFreshRSS)
+
+	if err == sql.ErrNoRows {
+		// New feed, check quota
+		if ok, qErr := db.CheckFeedQuota(userID); !ok {
+			return 0, qErr
+		}
+	}
 
 	if err == sql.ErrNoRows {
 		// Feed doesn't exist, insert new

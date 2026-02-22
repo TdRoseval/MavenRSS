@@ -16,10 +16,25 @@ import (
 func (db *DB) SaveArticle(article *models.Article) error {
 	db.WaitForReady()
 
-	// Generate unique_id for deduplication
+	// Check if article already exists
 	uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+	var existingID int64
+	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&existingID)
+	if err == nil {
+		// Article already exists, skip
+		return nil
+	}
+
+	// New article, check quota if user is specified
+	if article.UserID > 0 {
+		if ok, qErr := db.CheckArticleQuota(article.UserID, 1); !ok {
+			return qErr
+		}
+	}
+
+	// Generate unique_id for deduplication
 	query := `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := db.Exec(query, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
+	_, err = db.Exec(query, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
 	return err
 }
 
@@ -27,6 +42,39 @@ func (db *DB) SaveArticle(article *models.Article) error {
 // Includes progressive cleanup check to prevent database from exceeding size limit during refresh.
 func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) error {
 	db.WaitForReady()
+
+	// If no articles, return early
+	if len(articles) == 0 {
+		return nil
+	}
+
+	// Determine user ID (all articles should be for the same user)
+	var userID int64
+	for _, a := range articles {
+		if a.UserID > 0 {
+			userID = a.UserID
+			break
+		}
+	}
+
+	// Check quota first before processing
+	if userID > 0 {
+		var newArticlesCount int64
+		for _, article := range articles {
+			uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+			var existingID int64
+			err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&existingID)
+			if err != nil {
+				newArticlesCount++
+			}
+		}
+
+		if newArticlesCount > 0 {
+			if ok, qErr := db.CheckArticleQuota(userID, newArticlesCount); !ok {
+				return qErr
+			}
+		}
+	}
 
 	// Progressive cleanup: check if we need to clean up before saving
 	if len(articles) > 10 {

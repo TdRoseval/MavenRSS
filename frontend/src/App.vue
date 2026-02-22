@@ -497,6 +497,7 @@ window.addEventListener('show-user-management', () => {
         :confirm-text="confirmDialog.confirmText"
         :cancel-text="confirmDialog.cancelText"
         :is-danger="confirmDialog.isDanger"
+        :use-html="confirmDialog.useHtml"
         @confirm="confirmDialog.onConfirm"
         @cancel="confirmDialog.onCancel"
         @close="confirmDialog = null"
@@ -631,10 +632,10 @@ window.addEventListener('show-user-management', () => {
 .user-management-modal {
   background: white;
   border-radius: 8px;
-  width: 90%;
-  max-width: 1200px;
+  width: 95%;
+  max-width: 1400px;
   max-height: 90vh;
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
@@ -645,6 +646,10 @@ window.addEventListener('show-user-management', () => {
   align-items: center;
   padding: 20px;
   border-bottom: 1px solid #eee;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
 }
 
 .modal-header h2 {

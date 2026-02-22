@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"time"
 
 	"MrRSS/internal/auth"
 	auth_handlers "MrRSS/internal/handlers/auth"
@@ -11,8 +12,15 @@ import (
 func RegisterAuthRoutes(mux *http.ServeMux, authHandler *auth_handlers.Handler, jwtManager *auth.JWTManager) {
 	authMiddleware := middleware.AuthMiddleware(jwtManager)
 
-	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
-	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	strictRateLimitConfig := middleware.RateLimiterConfig{
+		RequestsPerSecond: 2,
+		BurstSize:         5,
+		CleanupInterval:   time.Minute,
+	}
+	strictRateLimiter := middleware.RateLimiter(strictRateLimitConfig)
+
+	mux.Handle("POST /api/auth/register", strictRateLimiter(http.HandlerFunc(authHandler.Register)))
+	mux.Handle("POST /api/auth/login", strictRateLimiter(http.HandlerFunc(authHandler.Login)))
 	mux.HandleFunc("POST /api/auth/refresh", authHandler.Refresh)
 	mux.HandleFunc("POST /api/auth/logout", authHandler.Logout)
 

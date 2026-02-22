@@ -466,3 +466,60 @@ func (db *DB) HasAPIKeySet(id int64) (bool, error) {
 	}
 	return apiKey != "", nil
 }
+
+// CopyAIProfiles copies all AI profiles from one user to another, and returns a map of old profile ID to new profile ID
+func (db *DB) CopyAIProfiles(fromUserID, toUserID int64, tx *sql.Tx) (map[int64]int64, error) {
+	idMap := make(map[int64]int64)
+	
+	// First delete any existing AI profiles for the target user
+	_, err := tx.Exec(`DELETE FROM ai_profiles WHERE user_id = ?`, toUserID)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Query all AI profiles from the source user
+	rows, err := tx.Query(`
+		SELECT id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		FROM ai_profiles WHERE user_id = ?`, fromUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	now := time.Now()
+	
+	for rows.Next() {
+		var oldID int64
+		var name, encryptedKey, endpoint, model, customHeaders string
+		var isDefault, useGlobalProxy bool
+		var createdAt, updatedAt time.Time
+		
+		err := rows.Scan(
+			&oldID, &name, &encryptedKey, &endpoint, &model, &customHeaders,
+			&isDefault, &useGlobalProxy, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Insert the profile for the new user
+		result, err := tx.Exec(`
+			INSERT INTO ai_profiles (user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			toUserID, name, encryptedKey, endpoint, model, customHeaders,
+			isDefault, useGlobalProxy, now, now,
+		)
+		if err != nil {
+			return nil, err
+		}
+		
+		newID, err := result.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		
+		idMap[oldID] = newID
+	}
+	
+	return idMap, rows.Err()
+}

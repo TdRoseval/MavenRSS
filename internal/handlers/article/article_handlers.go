@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"MrRSS/internal/feed"
 	"MrRSS/internal/handlers/core"
 	"MrRSS/internal/handlers/response"
 	"MrRSS/internal/models"
@@ -55,11 +56,21 @@ func GetFeedType(feed *models.Feed) string {
 // @Success      200  {object}  map[string]interface{}  "Progress information"
 // @Router       /progress [get]
 func HandleProgress(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	progress := h.Fetcher.GetProgressWithStats()
+	// Get user ID from request
+	userID, ok := core.GetUserIDFromRequest(r)
+
+	var progress interface{}
+	if ok {
+		progress = h.Fetcher.GetProgressWithStatsForUser(userID)
+	} else {
+		progress = h.Fetcher.GetProgressWithStats()
+	}
 
 	// Log for debugging
-	log.Printf("[HandleProgress] Returning progress: is_running=%v, pool=%d, queue=%d",
-		progress.IsRunning, progress.PoolTaskCount, progress.QueueTaskCount)
+	if p, ok := progress.(feed.ProgressWithStats); ok {
+		log.Printf("[HandleProgress] Returning progress: is_running=%v, pool=%d, queue=%d",
+			p.IsRunning, p.PoolTaskCount, p.QueueTaskCount)
+	}
 
 	response.JSON(w, progress)
 }
@@ -95,9 +106,15 @@ type QueueTaskInfo struct {
 // @Router       /progress/task-details [get]
 func HandleTaskDetails(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	tm := h.Fetcher.GetTaskManager()
+	userID, ok := core.GetUserIDFromRequest(r)
 
 	// Get pool tasks
-	poolTasksRaw := tm.GetPoolTasks()
+	var poolTasksRaw []feed.PoolTaskInfo
+	if ok {
+		poolTasksRaw = tm.GetPoolTasksForUser(userID)
+	} else {
+		poolTasksRaw = tm.GetPoolTasks()
+	}
 	poolTasks := make([]PoolTaskInfo, len(poolTasksRaw))
 	for i, task := range poolTasksRaw {
 		poolTasks[i] = PoolTaskInfo{
@@ -114,7 +131,12 @@ func HandleTaskDetails(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	})
 
 	// Get queue tasks (limit to first 3)
-	queueTasksRaw := tm.GetQueueTasks(3)
+	var queueTasksRaw []feed.QueueTaskInfo
+	if ok {
+		queueTasksRaw = tm.GetQueueTasksForUser(userID, 3)
+	} else {
+		queueTasksRaw = tm.GetQueueTasks(3)
+	}
 	queueTasks := make([]QueueTaskInfo, len(queueTasksRaw))
 	for i, task := range queueTasksRaw {
 		queueTasks[i] = QueueTaskInfo{
