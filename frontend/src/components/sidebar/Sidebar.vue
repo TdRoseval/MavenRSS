@@ -10,7 +10,7 @@ interface Props {
   isMobile?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   isOpen: true,
   isMobile: false,
 });

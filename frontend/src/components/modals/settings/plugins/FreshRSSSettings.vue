@@ -31,16 +31,22 @@ function updateSetting(key: keyof SettingsData, value: any) {
 
 const isInherited = computed(() => props.settings._has_inherited === true);
 
-const displayFreshRSSServerUrl = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.freshrss_server_url, 12) : props.settings.freshrss_server_url
+const displayFreshRSSServerUrl = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.freshrss_server_url, 12)
+    : props.settings.freshrss_server_url
 );
 
-const displayFreshRSSUsername = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.freshrss_username) : props.settings.freshrss_username
+const displayFreshRSSUsername = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.freshrss_username)
+    : props.settings.freshrss_username
 );
 
-const displayFreshRSSApiPassword = computed(() => 
-  isInherited.value ? maskSensitiveValue(props.settings.freshrss_api_password) : props.settings.freshrss_api_password
+const displayFreshRSSApiPassword = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.freshrss_api_password)
+    : props.settings.freshrss_api_password
 );
 
 const isSyncing = ref(false);

@@ -53,6 +53,7 @@ function handleClose() {
     <!-- Body -->
     <div class="p-3 sm:p-5">
       <p v-if="!useHtml" class="m-0 text-text-primary text-sm sm:text-base">{{ message }}</p>
+      <!-- eslint-disable-next-line vue/no-v-html -->
       <div v-else class="m-0 text-text-primary text-sm sm:text-base" v-html="message"></div>
     </div>
 

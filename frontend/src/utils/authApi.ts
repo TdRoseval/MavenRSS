@@ -21,7 +21,9 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
           Authorization: `Bearer ${authData.accessToken}`,
         };
       }
-    } catch {}
+    } catch {
+      // Ignore invalid token
+    }
   }
 
   const response = await fetch(`${API_BASE}${url}`, {
@@ -38,7 +40,9 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     try {
       const errorData = await response.json();
       errorMessage = errorData.error || errorMessage;
-    } catch {}
+    } catch {
+      // Ignore parsing error
+    }
     throw new Error(errorMessage);
   }
 
