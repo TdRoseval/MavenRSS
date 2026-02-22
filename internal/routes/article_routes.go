@@ -3,11 +3,11 @@ package routes
 import (
 	"net/http"
 
-	article "MrRSS/internal/handlers/article"
-	"MrRSS/internal/handlers/core"
-	summary "MrRSS/internal/handlers/summary"
-	translationhandlers "MrRSS/internal/handlers/translation"
-	"MrRSS/internal/middleware"
+	article "MavenRSS/internal/handlers/article"
+	"MavenRSS/internal/handlers/core"
+	summary "MavenRSS/internal/handlers/summary"
+	translationhandlers "MavenRSS/internal/handlers/translation"
+	"MavenRSS/internal/middleware"
 )
 
 // registerArticleRoutes registers all article-related routes

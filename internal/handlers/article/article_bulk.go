@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/freshrss"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/freshrss"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // HandleGetUnreadCounts returns unread counts for all feeds.

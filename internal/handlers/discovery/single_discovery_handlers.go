@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"MrRSS/internal/discovery"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
+	"MavenRSS/internal/discovery"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
 )
 
 // HandleDiscoverBlogs discovers blogs from a feed's friend links.

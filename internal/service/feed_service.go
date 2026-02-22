@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
 )
 
 // feedService implements FeedService interface

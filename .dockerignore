@@ -6,7 +6,7 @@
 build/
 *.exe
 *.exe~
-mrrss-test
+mavenrss-test
 
 # Development files
 .vscode/

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/config"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // AISummarizer implements summarization using OpenAI-compatible APIs (GPT, Claude, etc.).

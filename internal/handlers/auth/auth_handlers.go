@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"MrRSS/internal/auth"
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
 )
 
 type Handler struct {

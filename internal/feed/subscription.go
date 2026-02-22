@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/utils"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/rsshub"
+	"MavenRSS/internal/utils"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/antchfx/htmlquery"
 	"github.com/antchfx/xmlquery"

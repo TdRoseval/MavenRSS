@@ -1,6 +1,6 @@
-# MrRSS
+# MavenRSS
 
-<a href="https://trendshift.io/repositories/15731" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15731" alt="WCY-dt%2FMrRSS | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/15731" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15731" alt="WCY-dt%2FMavenRSS | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 ![Screenshot](imgs/og1.png)
 
@@ -8,7 +8,7 @@
    <strong>English</strong> | <a href="README_zh.md">简体中文</a>
 </p>
 
-[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MavenRSS/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
 [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -28,7 +28,7 @@
 
 #### Option 1: Download Pre-built Installer (Recommended)
 
-Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page.
+Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MavenRSS/releases/latest) page.
 
 <details>
 
@@ -38,15 +38,15 @@ Download the latest installer for your platform from the [Releases](https://gith
 
 **Standard Installation:**
 
-- **Windows:** `MrRSS-{version}-windows-amd64-installer.exe` / `MrRSS-{version}-windows-arm64-installer.exe`
-- **macOS:** `MrRSS-{version}-darwin-universal.dmg`
-- **Linux:** `MrRSS-{version}-linux-amd64.AppImage` / `MrRSS-{version}-linux-arm64.AppImage`
+- **Windows:** `MavenRSS-{version}-windows-amd64-installer.exe` / `MavenRSS-{version}-windows-arm64-installer.exe`
+- **macOS:** `MavenRSS-{version}-darwin-universal.dmg`
+- **Linux:** `MavenRSS-{version}-linux-amd64.AppImage` / `MavenRSS-{version}-linux-arm64.AppImage`
 
 **Portable Version** (no installation required, all data in one folder):
 
-- **Windows:** `MrRSS-{version}-windows-{arch}-portable.zip`
-- **Linux:** `MrRSS-{version}-linux-{arch}-portable.tar.gz`
-- **macOS:** `MrRSS-{version}-darwin-{arch}-portable.zip`
+- **Windows:** `MavenRSS-{version}-windows-{arch}-portable.zip`
+- **Linux:** `MavenRSS-{version}-linux-{arch}-portable.tar.gz`
+- **macOS:** `MavenRSS-{version}-darwin-{arch}-portable.zip`
 
 </div>
 
@@ -86,8 +86,8 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/WCY-dt/MrRSS.git
-   cd MrRSS
+   git clone https://github.com/WCY-dt/MavenRSS.git
+   cd MavenRSS
    ```
 
 2. **Install frontend dependencies**
@@ -121,9 +121,9 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 5. **Run the application**
 
-   - Windows: `build/bin/MrRSS.exe`
-   - macOS: `build/bin/MrRSS.app`
-   - Linux: `build/bin/MrRSS`
+   - Windows: `build/bin/MavenRSS.exe`
+   - macOS: `build/bin/MavenRSS.app`
+   - Linux: `build/bin/MavenRSS`
 
 </div>
 
@@ -139,9 +139,9 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 **Normal Mode** (default):
 
-- **Windows:** `%APPDATA%\MrRSS\` (e.g., `C:\Users\YourName\AppData\Roaming\MrRSS\`)
-- **macOS:** `~/Library/Application Support/MrRSS/`
-- **Linux:** `~/.local/share/MrRSS/`
+- **Windows:** `%APPDATA%\MavenRSS\` (e.g., `C:\Users\YourName\AppData\Roaming\MavenRSS\`)
+- **macOS:** `~/Library/Application Support/MavenRSS/`
+- **Linux:** `~/.local/share/MavenRSS/`
 
 **Portable Mode** (when `portable.txt` exists):
 
@@ -217,18 +217,18 @@ For server deployments and API integration, use the headless server version:
 
 ```bash
 # Using Docker (recommended)
-docker run -p 1234:1234 mrrss-server:latest
+docker run -p 1234:1234 mavenrss-server:latest
 
 # Or build from source
-go build -tags server -o mrrss-server .
-./mrrss-server
+go build -tags server -o mavenrss-server .
+./mavenrss-server
 ```
 
 Pre-built server images based on ghcr.io are also available:
 
 ```bash
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-amd64
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
+docker run -d -p 1234:1234 ghcr.io/wcy-dt/mavenrss:latest-amd64
+docker run -d -p 1234:1234 ghcr.io/wcy-dt/mavenrss:latest-arm64
 ```
 
 Please refer to the [Server Mode API Documentation](docs/SERVER_MODE/swagger.json) for a complete API reference.
@@ -269,14 +269,14 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 ## 📮 Contact & Support
 
-- **Issues**: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/WCY-dt/MrRSS/discussions)
-- **Repository**: [github.com/WCY-dt/MrRSS](https://github.com/WCY-dt/MrRSS)
+- **Issues**: [GitHub Issues](https://github.com/WCY-dt/MavenRSS/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/WCY-dt/MavenRSS/discussions)
+- **Repository**: [github.com/WCY-dt/MavenRSS](https://github.com/WCY-dt/MavenRSS)
 
 ---
 
 <div align="center">
-  <img src="imgs/sponsor.png" alt="Sponsor MrRSS"/>
-  <p>Made with ❤️ by the MrRSS Team</p>
+  <img src="imgs/sponsor.png" alt="Sponsor MavenRSS"/>
+  <p>Made with ❤️ by the MavenRSS Team</p>
   <p>⭐ Star us on GitHub if you find this project useful!</p>
 </div>

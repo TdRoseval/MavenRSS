@@ -1,20 +1,20 @@
-; MrRSS NSIS Installer Script
-; This script creates a Windows installer for MrRSS
+; MavenRSS NSIS Installer Script
+; This script creates a Windows installer for MavenRSS
 ;
-; IMPORTANT: This script creates a Windows installer for MrRSS
+; IMPORTANT: This script creates a Windows installer for MavenRSS
 ;
 ; To build:
 ;   makensis build/windows/installer.nsi
 ;
 ; All paths in this script are relative to the script directory.
 
-!define APP_NAME "MrRSS"
+!define APP_NAME "MavenRSS"
 !define APP_VERSION "1.3.20"
 !define APP_VERSION_NUMERIC "1.3.20.0"  ; NSIS requires X.X.X.X format
 !define APP_PUBLISHER "Ch3nyang"
-!define APP_URL "https://github.com/WCY-dt/MrRSS"
+!define APP_URL "https://github.com/WCY-dt/MavenRSS"
 !define APP_DESCRIPTION "A Modern, Cross-Platform Desktop RSS Reader"
-!define APP_EXE "MrRSS.exe"
+!define APP_EXE "MavenRSS.exe"
 
 ; Include Modern UI
 !include "MUI2.nsh"
@@ -22,7 +22,7 @@
 ; General Settings
 Name "${APP_NAME} ${APP_VERSION}"
 ; Output path relative to script directory
-OutFile "..\bin\MrRSS-${APP_VERSION}-windows-amd64-installer.exe"
+OutFile "..\bin\MavenRSS-${APP_VERSION}-windows-amd64-installer.exe"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "Software\${APP_NAME}" "Install_Dir"
 RequestExecutionLevel admin
@@ -114,5 +114,5 @@ Section "Uninstall"
     DeleteRegKey HKLM "Software\${APP_NAME}"
 
     ; Note: User data directory is NOT removed to preserve user data
-    ; Data location: %APPDATA%\MrRSS
+    ; Data location: %APPDATA%\MavenRSS
 SectionEnd

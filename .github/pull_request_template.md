@@ -45,7 +45,7 @@ Fixes #(issue)
 ### Test Configuration
 
 - **OS**:
-- **MrRSS Version**:
+- **MavenRSS Version**:
 - **Go Version**:
 - **Node Version**:
 

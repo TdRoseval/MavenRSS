@@ -3,9 +3,9 @@ package database_test
 import (
 	"testing"
 
-	"MrRSS/internal/config"
-	"MrRSS/internal/crypto"
-	dbpkg "MrRSS/internal/database"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/crypto"
+	dbpkg "MavenRSS/internal/database"
 )
 
 func setupTestDB(t *testing.T) *dbpkg.DB {

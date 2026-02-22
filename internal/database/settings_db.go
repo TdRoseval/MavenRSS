@@ -3,7 +3,7 @@ package database
 import (
 	"database/sql"
 
-	"MrRSS/internal/crypto"
+	"MavenRSS/internal/crypto"
 	"fmt"
 	"log"
 )

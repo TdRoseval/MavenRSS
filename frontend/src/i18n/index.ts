@@ -6,7 +6,7 @@ import en from './locales/en';
 import zh from './locales/zh';
 
 // LocalStorage key for language preference
-const LANGUAGE_STORAGE_KEY = 'mrrss_language';
+const LANGUAGE_STORAGE_KEY = 'mavenrss_language';
 
 // Load saved language from localStorage
 function getSavedLanguage(): SupportedLocale {

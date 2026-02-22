@@ -2,8 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { User } from '@/types/auth';
 
-const STORAGE_KEY = 'mrrss_auth';
-const REMEMBER_KEY = 'mrrss_remember';
+const STORAGE_KEY = 'mavenrss_auth';
+const REMEMBER_KEY = 'mavenrss_remember';
 
 interface AuthState {
   accessToken: string | null;

@@ -18,29 +18,29 @@ import (
 	"syscall"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/auth"
-	"MrRSS/internal/crypto"
-	"MrRSS/internal/database"
-	"MrRSS/internal/feed"
-	auth_handlers "MrRSS/internal/handlers/auth"
-	handlers "MrRSS/internal/handlers/core"
-	"MrRSS/internal/models"
-	"MrRSS/internal/network"
-	"MrRSS/internal/routes"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/fileutil"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/crypto"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/feed"
+	auth_handlers "MavenRSS/internal/handlers/auth"
+	handlers "MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/network"
+	"MavenRSS/internal/routes"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/fileutil"
+	"MavenRSS/internal/utils/httputil"
 
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-// @title           MrRSS API
+// @title           MavenRSS API
 // @version         1.3.20
-// @description     MrRSS is a modern, cross-platform desktop RSS reader with auto-translation, smart feed discovery, and AI-powered summarization.
+// @description     MavenRSS is a modern, cross-platform desktop RSS reader with auto-translation, smart feed discovery, and AI-powered summarization.
 
 // @contact.name   API Support
-// @contact.url    https://github.com/WCY-dt/MrRSS
+// @contact.url    https://github.com/WCY-dt/MavenRSS
 // @contact.email  mail@ch3nyang.top
 
 // @license.name  GPL-3.0

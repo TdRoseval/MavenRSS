@@ -1,13 +1,13 @@
-// Package routes provides centralized route registration for the MrRSS API.
+// Package routes provides centralized route registration for the MavenRSS API.
 // This eliminates code duplication between main.go and main-core.go.
 package routes
 
 import (
 	"net/http"
 
-	"MrRSS/internal/auth"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/middleware"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/middleware"
 )
 
 // Config contains options for route registration.

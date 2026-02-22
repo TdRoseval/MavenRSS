@@ -1,6 +1,6 @@
-# MrRSS
+# MavenRSS
 
-<a href="https://trendshift.io/repositories/15731" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15731" alt="WCY-dt%2FMrRSS | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/15731" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15731" alt="WCY-dt%2FMavenRSS | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 ![Screenshot](imgs/og1.png)
 
@@ -8,7 +8,7 @@
    <a href="README.md">English</a> | <strong>简体中文</strong>
 </p>
 
-[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MavenRSS/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
 [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -28,7 +28,7 @@
 
 #### 选项 1: 下载预构建安装包（推荐）
 
-从 [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) 页面下载适合您平台的最新安装包。
+从 [Releases](https://github.com/WCY-dt/MavenRSS/releases/latest) 页面下载适合您平台的最新安装包。
 
 <details>
 
@@ -38,15 +38,15 @@
 
 **标准安装版：**
 
-- **Windows:** `MrRSS-{version}-windows-amd64-installer.exe` / `MrRSS-{version}-windows-arm64-installer.exe`
-- **macOS:** `MrRSS-{version}-darwin-universal.dmg`
-- **Linux:** `MrRSS-{version}-linux-amd64.AppImage` / `MrRSS-{version}-linux-arm64.AppImage`
+- **Windows:** `MavenRSS-{version}-windows-amd64-installer.exe` / `MavenRSS-{version}-windows-arm64-installer.exe`
+- **macOS:** `MavenRSS-{version}-darwin-universal.dmg`
+- **Linux:** `MavenRSS-{version}-linux-amd64.AppImage` / `MavenRSS-{version}-linux-arm64.AppImage`
 
 **便携版**（无需安装，所有数据在一个文件夹内）：
 
-- **Windows:** `MrRSS-{version}-windows-{arch}-portable.zip`
-- **Linux:** `MrRSS-{version}-linux-{arch}-portable.tar.gz`
-- **macOS:** `MrRSS-{version}-darwin-{arch}-portable.zip`
+- **Windows:** `MavenRSS-{version}-windows-{arch}-portable.zip`
+- **Linux:** `MavenRSS-{version}-linux-{arch}-portable.tar.gz`
+- **macOS:** `MavenRSS-{version}-darwin-{arch}-portable.zip`
 
 </div>
 
@@ -86,8 +86,8 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 1. **克隆仓库**
 
    ```bash
-   git clone https://github.com/WCY-dt/MrRSS.git
-   cd MrRSS
+   git clone https://github.com/WCY-dt/MavenRSS.git
+   cd MavenRSS
    ```
 
 2. **安装前端依赖**
@@ -121,9 +121,9 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 5. **运行应用**
 
-   - Windows: `build/bin/MrRSS.exe`
-   - macOS: `build/bin/MrRSS.app`
-   - Linux: `build/bin/MrRSS`
+   - Windows: `build/bin/MavenRSS.exe`
+   - macOS: `build/bin/MavenRSS.app`
+   - Linux: `build/bin/MavenRSS`
 
 </div>
 
@@ -139,9 +139,9 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 **正常模式**（默认）：
 
-- **Windows:** `%APPDATA%\MrRSS\` (例如 `C:\Users\YourName\AppData\Roaming\MrRSS\`)
-- **macOS:** `~/Library/Application Support/MrRSS/`
-- **Linux:** `~/.local/share/MrRSS/`
+- **Windows:** `%APPDATA%\MavenRSS\` (例如 `C:\Users\YourName\AppData\Roaming\MavenRSS\`)
+- **macOS:** `~/Library/Application Support/MavenRSS/`
+- **Linux:** `~/.local/share/MavenRSS/`
 
 **便携模式**（当 `portable.txt` 文件存在时）：
 
@@ -217,18 +217,18 @@ make test
 
 ```bash
 # 使用 Docker（推荐）
-docker run -p 1234:1234 mrrss-server:latest
+docker run -p 1234:1234 mavenrss-server:latest
 
 # 或从源码构建
-go build -tags server -o mrrss-server .
-./mrrss-server
+go build -tags server -o mavenrss-server .
+./mavenrss-server
 ```
 
 本项目也提供了基于 ghcr.io 的预构建服务器镜像：
 
 ```bash
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-amd64
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
+docker run -d -p 1234:1234 ghcr.io/wcy-dt/mavenrss:latest-amd64
+docker run -d -p 1234:1234 ghcr.io/wcy-dt/mavenrss:latest-arm64
 ```
 
 请参阅[服务器模式 API 文档](docs/SERVER_MODE/swagger.json)以获取完整的 API 参考。
@@ -269,14 +269,14 @@ docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
 
 ## 📮 联系与支持
 
-- **Issues**: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
-- **讨论**: [GitHub Discussions](https://github.com/WCY-dt/MrRSS/discussions)
-- **仓库**: [github.com/WCY-dt/MrRSS](https://github.com/WCY-dt/MrRSS)
+- **Issues**: [GitHub Issues](https://github.com/WCY-dt/MavenRSS/issues)
+- **讨论**: [GitHub Discussions](https://github.com/WCY-dt/MavenRSS/discussions)
+- **仓库**: [github.com/WCY-dt/MavenRSS](https://github.com/WCY-dt/MavenRSS)
 
 ---
 
 <div align="center">
-  <img src="imgs/sponsor.png" alt="Sponsor MrRSS"/>
-  <p>Made with ❤️ by the MrRSS Team</p>
+  <img src="imgs/sponsor.png" alt="Sponsor MavenRSS"/>
+  <p>Made with ❤️ by the MavenRSS Team</p>
   <p>⭐ 如果您觉得这个项目有用，请在 GitHub 上给我们点星！</p>
 </div>

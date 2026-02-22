@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MrRSS/internal/database"
+	"MavenRSS/internal/database"
 	"context"
 	"testing"
 	"time"

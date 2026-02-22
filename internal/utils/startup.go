@@ -47,7 +47,7 @@ func enableStartupWindows(executable string) error {
 	// Use reg.exe to add registry entry
 	cmd := exec.Command("reg", "add",
 		"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-		"/v", "MrRSS",
+		"/v", "MavenRSS",
 		"/t", "REG_SZ",
 		"/d", fmt.Sprintf("\"%s\"", executable),
 		"/f")
@@ -65,7 +65,7 @@ func disableStartupWindows() error {
 	// Use reg.exe to remove registry entry
 	cmd := exec.Command("reg", "delete",
 		"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-		"/v", "MrRSS",
+		"/v", "MavenRSS",
 		"/f")
 
 	output, err := cmd.CombinedOutput()
@@ -95,10 +95,10 @@ func enableStartupLinux(executable string) error {
 		return fmt.Errorf("failed to create autostart directory: %w", err)
 	}
 
-	desktopFile := filepath.Join(autostartDir, "mrrss.desktop")
+	desktopFile := filepath.Join(autostartDir, "mavenrss.desktop")
 	content := fmt.Sprintf(`[Desktop Entry]
 Type=Application
-Name=MrRSS
+Name=MavenRSS
 Exec=%s
 Hidden=false
 NoDisplay=false
@@ -119,7 +119,7 @@ func disableStartupLinux() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	desktopFile := filepath.Join(homeDir, ".config", "autostart", "mrrss.desktop")
+	desktopFile := filepath.Join(homeDir, ".config", "autostart", "mavenrss.desktop")
 	if err := os.Remove(desktopFile); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove desktop file: %w", err)
@@ -142,13 +142,13 @@ func enableStartupDarwin(executable string) error {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
 
-	plistFile := filepath.Join(launchAgentsDir, "com.mrrss.app.plist")
+	plistFile := filepath.Join(launchAgentsDir, "com.mavenrss.app.plist")
 	content := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.mrrss.app</string>
+	<string>com.mavenrss.app</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
@@ -173,7 +173,7 @@ func disableStartupDarwin() error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	plistFile := filepath.Join(homeDir, "Library", "LaunchAgents", "com.mrrss.app.plist")
+	plistFile := filepath.Join(homeDir, "Library", "LaunchAgents", "com.mavenrss.app.plist")
 	if err := os.Remove(plistFile); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove plist file: %w", err)

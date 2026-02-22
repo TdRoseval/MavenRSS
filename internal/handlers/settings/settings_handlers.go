@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/middleware"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/middleware"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // isSensitiveSetting checks if a setting is a sensitive configuration

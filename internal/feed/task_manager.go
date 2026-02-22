@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 	"context"
 	"fmt"
 	"log"

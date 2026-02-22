@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/summary"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/summary"
+	"MavenRSS/internal/utils/textutil"
 )
 
 // isAILimitReached checks if the AI usage limit is reached for a specific user

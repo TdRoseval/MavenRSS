@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/feed"
-	corepkg "MrRSS/internal/handlers/core"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/feed"
+	corepkg "MavenRSS/internal/handlers/core"
 )
 
 func TestHandleOPMLImport_RawBody(t *testing.T) {

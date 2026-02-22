@@ -107,7 +107,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
-          name: MrRSS ${{ steps.get_version.outputs.tag }}
+          name: MavenRSS ${{ steps.get_version.outputs.tag }}
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: ${{ steps.get_version.outputs.is_prerelease == 'true' }}
@@ -184,19 +184,19 @@ jobs:
 
           # Determine expected artifact names for this platform/arch
           if [ "${{ matrix.platform }}" = "windows" ]; then
-            INSTALLER="MrRSS-${VERSION}-windows-${{ matrix.arch }}-installer.exe"
+            INSTALLER="MavenRSS-${VERSION}-windows-${{ matrix.arch }}-installer.exe"
             PACKAGE=""  # No package for Windows
           elif [ "${{ matrix.platform }}" = "linux" ]; then
-            INSTALLER="MrRSS-${VERSION}-linux-${{ matrix.arch }}.AppImage"
-            PACKAGE="MrRSS-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+            INSTALLER="MavenRSS-${VERSION}-linux-${{ matrix.arch }}.AppImage"
+            PACKAGE="MavenRSS-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
           elif [ "${{ matrix.platform }}" = "darwin" ]; then
-            INSTALLER="MrRSS-${VERSION}-darwin-${{ matrix.arch }}.dmg"
+            INSTALLER="MavenRSS-${VERSION}-darwin-${{ matrix.arch }}.dmg"
             PACKAGE=""  # No package for macOS
           elif [ "${{ matrix.platform }}" = "ios" ]; then
-            INSTALLER="MrRSS-${VERSION}-ios-${{ matrix.arch }}.ipa"
+            INSTALLER="MavenRSS-${VERSION}-ios-${{ matrix.arch }}.ipa"
             PACKAGE=""  # No package for iOS
           elif [ "${{ matrix.platform }}" = "android" ]; then
-            INSTALLER="MrRSS-${VERSION}-android-${{ matrix.arch }}.apk"
+            INSTALLER="MavenRSS-${VERSION}-android-${{ matrix.arch }}.apk"
             PACKAGE=""  # No package for Android
           fi
 
@@ -318,13 +318,13 @@ jobs:
           task linux:build
 
           # Verify the build
-          if [ ! -f "build/bin/MrRSS" ]; then
+          if [ ! -f "build/bin/MavenRSS" ]; then
             echo "Error: Binary not found"
             exit 1
           fi
 
           # Check architecture
-          file build/bin/MrRSS
+          file build/bin/MavenRSS
           echo "Binary built successfully for ${{ matrix.arch }}"
 
       - name: Build application (Windows)
@@ -338,7 +338,7 @@ jobs:
           task windows:build
 
           # Verify the build
-          if (-not (Test-Path "build/bin/MrRSS.exe")) {
+          if (-not (Test-Path "build/bin/MavenRSS.exe")) {
             Write-Error "Binary not created"
             exit 1
           }
@@ -391,7 +391,7 @@ jobs:
           if (Test-Path $installerPath) {
             $content = Get-Content $installerPath -Raw
             $content = $content -replace '!define APP_VERSION ".*"', "!define APP_VERSION `"$version`""
-            $content = $content -replace 'OutFile ".*"', "OutFile `"..\bin\MrRSS-$version-windows-$arch-installer.exe`""
+            $content = $content -replace 'OutFile ".*"', "OutFile `"..\bin\MavenRSS-$version-windows-$arch-installer.exe`""
             Set-Content $installerPath $content
 
             # Build NSIS installer
@@ -419,25 +419,25 @@ jobs:
           New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
 
           # Copy executable
-          Copy-Item "build/bin/MrRSS.exe" -Destination $portableDir
+          Copy-Item "build/bin/MavenRSS.exe" -Destination $portableDir
 
           # Create portable.txt marker
           New-Item -ItemType File -Path "$portableDir/portable.txt" | Out-Null
 
           # Create README for portable version
           @"
-          MrRSS Portable Edition
+          MavenRSS Portable Edition
 
-          This is the portable version of MrRSS. All data will be stored in the 'data' folder
+          This is the portable version of MavenRSS. All data will be stored in the 'data' folder
           next to this executable.
 
-          To run: Double-click MrRSS.exe
+          To run: Double-click MavenRSS.exe
 
-          For more information, visit: https://github.com/WCY-dt/MrRSS
+          For more information, visit: https://github.com/WCY-dt/MavenRSS
           "@ | Out-File -FilePath "$portableDir/README.txt" -Encoding UTF8
 
           # Create zip file
-          $zipName = "MrRSS-$version-windows-$arch-portable.zip"
+          $zipName = "MavenRSS-$version-windows-$arch-portable.zip"
           Compress-Archive -Path "$portableDir/*" -DestinationPath "build/bin/$zipName" -Force
 
           Write-Host "Created portable package: $zipName"
@@ -455,7 +455,7 @@ jobs:
 
           # Debug: Verify binary architecture
           echo "Binary architecture check:"
-          file build/bin/MrRSS || true
+          file build/bin/MavenRSS || true
 
           chmod +x build/linux/create-appimage.sh
           ARCH=${{ matrix.arch }} ./build/linux/create-appimage.sh || echo "AppImage creation failed, will use tar.gz"
@@ -479,38 +479,38 @@ jobs:
           mkdir -p "$PORTABLE_DIR"
 
           # Copy .app bundle
-          cp -R build/bin/MrRSS.app "$PORTABLE_DIR/"
+          cp -R build/bin/MavenRSS.app "$PORTABLE_DIR/"
 
           # Create portable.txt marker
           touch "$PORTABLE_DIR/portable.txt"
 
           # Create README for portable version
           cat > "$PORTABLE_DIR/README.txt" << 'EOF'
-          MrRSS Portable Edition
+          MavenRSS Portable Edition
 
-          This is the portable version of MrRSS. All data will be stored in the 'data' folder
-          next to the MrRSS.app.
+          This is the portable version of MavenRSS. All data will be stored in the 'data' folder
+          next to the MavenRSS.app.
 
-          To run: Double-click MrRSS.app
+          To run: Double-click MavenRSS.app
 
-          For more information, visit: https://github.com/WCY-dt/MrRSS
+          For more information, visit: https://github.com/WCY-dt/MavenRSS
           EOF
 
           # Create zip file
           cd "$PORTABLE_DIR"
-          zip -r "../bin/MrRSS-${VERSION}-darwin-${ARCH}-portable.zip" *
+          zip -r "../bin/MavenRSS-${VERSION}-darwin-${ARCH}-portable.zip" *
           cd ../..
 
-          echo "Created portable package: MrRSS-${VERSION}-darwin-${ARCH}-portable.zip"
+          echo "Created portable package: MavenRSS-${VERSION}-darwin-${ARCH}-portable.zip"
 
       - name: Package application (Linux - tar.gz fallback)
         if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'linux'
         run: |
           cd build/bin
-          if [ -f "MrRSS" ]; then
-            tar -czf MrRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}.tar.gz MrRSS
+          if [ -f "MavenRSS" ]; then
+            tar -czf MavenRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}.tar.gz MavenRSS
           else
-            echo "Error: MrRSS binary not found"
+            echo "Error: MavenRSS binary not found"
             exit 1
           fi
 
@@ -525,30 +525,30 @@ jobs:
           mkdir -p "$PORTABLE_DIR"
 
           # Copy executable
-          cp build/bin/MrRSS "$PORTABLE_DIR/"
-          chmod +x "$PORTABLE_DIR/MrRSS"
+          cp build/bin/MavenRSS "$PORTABLE_DIR/"
+          chmod +x "$PORTABLE_DIR/MavenRSS"
 
           # Create portable.txt marker
           touch "$PORTABLE_DIR/portable.txt"
 
           # Create README for portable version
           cat > "$PORTABLE_DIR/README.txt" << 'EOF'
-          MrRSS Portable Edition
+          MavenRSS Portable Edition
 
-          This is the portable version of MrRSS. All data will be stored in the 'data' folder
+          This is the portable version of MavenRSS. All data will be stored in the 'data' folder
           next to this executable.
 
-          To run: ./MrRSS
+          To run: ./MavenRSS
 
-          For more information, visit: https://github.com/WCY-dt/MrRSS
+          For more information, visit: https://github.com/WCY-dt/MavenRSS
           EOF
 
           # Create tar.gz file
           cd "$PORTABLE_DIR"
-          tar -czf "../bin/MrRSS-${VERSION}-linux-${ARCH}-portable.tar.gz" *
+          tar -czf "../bin/MavenRSS-${VERSION}-linux-${ARCH}-portable.tar.gz" *
           cd ../..
 
-          echo "Created portable package: MrRSS-${VERSION}-linux-${ARCH}-portable.tar.gz"
+          echo "Created portable package: MavenRSS-${VERSION}-linux-${ARCH}-portable.tar.gz"
 
       - name: Collect artifacts
         if: steps.check_artifacts.outputs.skip_build == 'false'
@@ -560,8 +560,8 @@ jobs:
 
           # Check for installer and portable package
           if [ "${{ matrix.platform }}" = "windows" ]; then
-            installer="MrRSS-${{ needs.create-release.outputs.version }}-windows-${{ matrix.arch }}-installer.exe"
-            portable="MrRSS-${{ needs.create-release.outputs.version }}-windows-${{ matrix.arch }}-portable.zip"
+            installer="MavenRSS-${{ needs.create-release.outputs.version }}-windows-${{ matrix.arch }}-installer.exe"
+            portable="MavenRSS-${{ needs.create-release.outputs.version }}-windows-${{ matrix.arch }}-portable.zip"
             if [ -f "$installer" ]; then
               artifacts="$artifacts$installer,"
             fi
@@ -569,13 +569,13 @@ jobs:
               artifacts="$artifacts$portable,"
             fi
           elif [ "${{ matrix.platform }}" = "linux" ]; then
-            installer="MrRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}.AppImage"
-            portable="MrRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}-portable.tar.gz"
+            installer="MavenRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}.AppImage"
+            portable="MavenRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}-portable.tar.gz"
             if [ -f "$installer" ]; then
               artifacts="$artifacts$installer,"
             fi
             # Check for tar.gz fallback
-            package="MrRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}.tar.gz"
+            package="MavenRSS-${{ needs.create-release.outputs.version }}-linux-${{ matrix.arch }}.tar.gz"
             if [ -f "$package" ]; then
               artifacts="$artifacts$package,"
             fi
@@ -583,8 +583,8 @@ jobs:
               artifacts="$artifacts$portable,"
             fi
           elif [ "${{ matrix.platform }}" = "darwin" ]; then
-            installer="MrRSS-${{ needs.create-release.outputs.version }}-darwin-${{ matrix.arch }}.dmg"
-            portable="MrRSS-${{ needs.create-release.outputs.version }}-darwin-${{ matrix.arch }}-portable.zip"
+            installer="MavenRSS-${{ needs.create-release.outputs.version }}-darwin-${{ matrix.arch }}.dmg"
+            portable="MavenRSS-${{ needs.create-release.outputs.version }}-darwin-${{ matrix.arch }}-portable.zip"
             if [ -f "$installer" ]; then
               artifacts="$artifacts$installer,"
             fi
@@ -602,6 +602,6 @@ jobs:
         with:
           tag_name: ${{ needs.create-release.outputs.tag }}
           files: |
-            build/bin/MrRSS-${{ needs.create-release.outputs.version }}-*
+            build/bin/MavenRSS-${{ needs.create-release.outputs.version }}-*
           token: ${{ secrets.GITHUB_TOKEN }}
           fail_on_unmatched_files: false

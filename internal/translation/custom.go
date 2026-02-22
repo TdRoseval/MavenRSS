@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // CustomTranslator implements a fully customizable HTTP-based translation service

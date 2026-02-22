@@ -682,7 +682,7 @@ const zh: TranslationMessages = {
         headers: 'HTTP 请求头',
         headersDesc: '自定义 HTTP 请求头',
         langMapping: '语言代码映射',
-        langMappingDesc: '将 MrRSS 语言代码映射到 API 特定代码',
+        langMappingDesc: '将 MavenRSS 语言代码映射到 API 特定代码',
         method: 'HTTP 方法',
         methodDesc: 'API 请求的 HTTP 方法',
         responsePath: '响应路径',
@@ -800,7 +800,7 @@ const zh: TranslationMessages = {
       languageDesc: '选择界面语言',
       light: '亮色',
       startupOnBoot: '开机自启动',
-      startupOnBootDesc: '在电脑启动时自动启动 MrRSS',
+      startupOnBootDesc: '在电脑启动时自动启动 MavenRSS',
       theme: '主题',
       themeDesc: '选择首选配色方案',
     },
@@ -1111,7 +1111,7 @@ const zh: TranslationMessages = {
 
   // 顶级键（不带命名空间使用）
   // 只有 appName 应保留为顶级键
-  appName: 'MrRSS',
+  appName: 'MavenRSS',
 
   login: {
     welcome: '欢迎回来',

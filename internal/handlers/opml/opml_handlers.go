@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/jsonimport"
-	"MrRSS/internal/models"
-	"MrRSS/internal/opml"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/jsonimport"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/opml"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )

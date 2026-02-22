@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"MrRSS/internal/crypto"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/crypto"
+	"MavenRSS/internal/models"
 )
 
 // CreateAIProfile creates a new AI profile

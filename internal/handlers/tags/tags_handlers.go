@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
 )
 
 // HandleTags handles GET and POST requests for tags.

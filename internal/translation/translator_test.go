@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/config"
+	"MavenRSS/internal/config"
 )
 
 func TestMockTranslator(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"net/url"
 
-	handlers "MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
+	handlers "MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
 )
 
 // HandleOpenURL handles URL opening requests in server mode.

@@ -1,6 +1,6 @@
-# MrRSS 自定义脚本
+# MavenRSS 自定义脚本
 
-MrRSS 支持自定义脚本，可用于从不提供标准 RSS/Atom 订阅源的源获取 RSS 订阅源。
+MavenRSS 支持自定义脚本，可用于从不提供标准 RSS/Atom 订阅源的源获取 RSS 订阅源。
 
 ## 使用 AI 编写爬虫脚本
 
@@ -37,7 +37,7 @@ MrRSS 支持自定义脚本，可用于从不提供标准 RSS/Atom 订阅源的�
 
 ### 注意事项
 
-- 生成的脚本需要满足 MrRSS 脚本要求（见下文）
+- 生成的脚本需要满足 MavenRSS 脚本要求（见下文）
 - 确保脚本输出有效的 RSS XML 格式
 - 在您的环境中测试脚本是否正常运行
 - 遵守网站的 robots.txt 和使用条款
@@ -46,7 +46,7 @@ MrRSS 支持自定义脚本，可用于从不提供标准 RSS/Atom 订阅源的�
 
 ## 工作原理
 
-1. 将脚本放置在 MrRSS 数据目录内的 `scripts` 文件夹中
+1. 将脚本放置在 MavenRSS 数据目录内的 `scripts` 文件夹中
 2. 添加新订阅源时，选择"自定义脚本"而不是"RSS URL"
 3. 从下拉列表中选择您的脚本
 4. 刷新订阅源时会执行该脚本
@@ -173,7 +173,7 @@ console.log('</rss>');
 
 ## 提示
 
-1. **错误处理**：如果脚本遇到错误，将错误消息写入 stderr。MrRSS 将在订阅源的错误指示器中显示此消息。
+1. **错误处理**：如果脚本遇到错误，将错误消息写入 stderr。MavenRSS 将在订阅源的错误指示器中显示此消息。
 
 2. **超时**：脚本有 30 秒的超时时间。如果脚本运行时间更长，将被终止。
 
@@ -196,13 +196,13 @@ console.log('</rss>');
 
 ## 数据目录位置
 
-scripts 文件夹位于 MrRSS 数据目录中：
+scripts 文件夹位于 MavenRSS 数据目录中：
 
-- **Windows**：`%APPDATA%\MrRSS\scripts\`
-- **macOS**：`~/Library/Application Support/MrRSS/scripts/`
-- **Linux**：`~/.local/share/MrRSS/scripts/`
+- **Windows**：`%APPDATA%\MavenRSS\scripts\`
+- **macOS**：`~/Library/Application Support/MavenRSS/scripts/`
+- **Linux**：`~/.local/share/MavenRSS/scripts/`
 
-您也可以在添加新订阅源时直接从 MrRSS 界面打开 scripts 文件夹。
+您也可以在添加新订阅源时直接从 MavenRSS 界面打开 scripts 文件夹。
 
 ## 其他资源
 

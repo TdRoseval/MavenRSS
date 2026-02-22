@@ -1,10 +1,10 @@
-# AI Agent Guidelines for MrRSS
+# AI Agent Guidelines for MavenRSS
 
 > **Quick Links**: [Architecture](docs/ARCHITECTURE.md) | [Code Patterns](docs/CODE_PATTERNS.md) | [Testing](docs/TESTING.md) | [Build Requirements](docs/BUILD_REQUIREMENTS.md) | [Settings Guide](docs/SETTINGS.md)
 
 ## Project Overview
 
-**MrRSS** is a modern, privacy-focused, cross-platform desktop RSS reader with AI-powered features.
+**MavenRSS** is a modern, privacy-focused, cross-platform desktop RSS reader with AI-powered features.
 
 ### Core Philosophy
 
@@ -58,7 +58,7 @@
 ### High-Level Organization
 
 ```plaintext
-MrRSS/
+MavenRSS/
 ├── main.go                      # Desktop application entry point
 ├── main-core.go                 # Headless server entry point
 ├── internal/                    # Backend Go code
@@ -370,7 +370,7 @@ The settings system uses a JSON schema to automatically generate:
 
 ### Hybrid Communication Pattern
 
-MrRSS uses a **hybrid approach**:
+MavenRSS uses a **hybrid approach**:
 
 1. **HTTP API** (`/api/*`) - Primary communication for data operations
 2. **Wails Bindings** - System integration (browser, window management)

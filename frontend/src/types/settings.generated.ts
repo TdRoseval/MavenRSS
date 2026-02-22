@@ -1,4 +1,4 @@
-// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Auto-generated settings types
 // CODE GENERATED - DO NOT EDIT MANUALLY

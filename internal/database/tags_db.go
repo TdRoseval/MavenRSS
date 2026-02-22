@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 // GetTags retrieves all tags ordered by position.

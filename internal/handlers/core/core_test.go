@@ -3,8 +3,8 @@ package core
 import (
 	"testing"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/feed"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/feed"
 )
 
 func TestNewHandler_ConstructsHandler(t *testing.T) {

@@ -506,7 +506,7 @@ const getErrorClass = (condition: boolean) => (condition ? 'border-red-500' : ''
           <KeyValueList
             :model-value="settings.custom_translation_lang_mapping"
             :key-placeholder="
-              t('setting.content.custom.mrssLangCode') || 'MrRSS code (en, zh, ...)'
+              t('setting.content.custom.mrssLangCode') || 'MavenRSS code (en, zh, ...)'
             "
             :value-placeholder="t('setting.content.apiLangCode') || 'API code'"
             :add-button-text="t('setting.content.addLangMapping')"

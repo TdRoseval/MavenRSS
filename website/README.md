@@ -1,8 +1,8 @@
-# MrRSS Landing Page
+# MavenRSS Landing Page
 
-A modern, visually stunning landing page for MrRSS - an AI-powered RSS reader application.
+A modern, visually stunning landing page for MavenRSS - an AI-powered RSS reader application.
 
-![MrRSS Landing Page](https://img.shields.io/badge/Vue.js-3.4+-42b883?style=flat&logo=vue.js&logoColor=white)
+![MavenRSS Landing Page](https://img.shields.io/badge/Vue.js-3.4+-42b883?style=flat&logo=vue.js&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5.0-646cff?style=flat&logo=vite&logoColor=white)
 
 ## Features
@@ -59,7 +59,7 @@ npm run preview
 ## Project Structure
 
 ```
-mrrss-landing-page/
+mavenrss-landing-page/
 ├── src/
 │   ├── components/
 │   │   ├── HeroSection.vue       # Hero with particle animation

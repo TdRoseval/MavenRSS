@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mrrss-cache-v1.3.20';
+const CACHE_NAME = 'mavenrss-cache-v1.3.20';
 const OFFLINE_URL = '/';
 
 const PRECACHE_ASSETS = [

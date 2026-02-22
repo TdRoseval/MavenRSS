@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-i18n Usage Analyzer for MrRSS
+i18n Usage Analyzer for MavenRSS
 
 This script analyzes i18n key usage across the codebase and generates a markdown table
 with line numbers and clickable links to source files.

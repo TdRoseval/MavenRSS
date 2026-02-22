@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"MrRSS/internal/discovery"
+	"MavenRSS/internal/discovery"
 )
 
 // discoveryServiceWrapper wraps the existing discovery.Service

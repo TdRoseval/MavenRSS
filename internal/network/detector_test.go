@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 )
 
 func TestCalculateSpeedLevel(t *testing.T) {

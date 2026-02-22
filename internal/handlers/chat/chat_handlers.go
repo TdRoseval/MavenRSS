@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/httputil"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/textutil"
 )
 
 type ChatMessage struct {

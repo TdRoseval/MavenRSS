@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"time"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/utils/httputil"
-	"MrRSS/internal/utils/urlutil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/rsshub"
+	"MavenRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/urlutil"
 )
 
 // HandleFeeds returns all feeds.

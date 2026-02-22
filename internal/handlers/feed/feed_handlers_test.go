@@ -3,9 +3,9 @@ package feed_test
 import (
 	"testing"
 
-	"MrRSS/internal/database"
-	ff "MrRSS/internal/feed"
-	"MrRSS/internal/handlers/core"
+	"MavenRSS/internal/database"
+	ff "MavenRSS/internal/feed"
+	"MavenRSS/internal/handlers/core"
 )
 
 func setupHandler(t *testing.T) *core.Handler {

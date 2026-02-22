@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/config"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // AITranslator implements translation using OpenAI-compatible APIs (GPT, Claude, etc.).

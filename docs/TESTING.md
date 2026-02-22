@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document covers testing strategies and patterns for MrRSS.
+This document covers testing strategies and patterns for MavenRSS.
 
 ## Backend Testing (Go)
 

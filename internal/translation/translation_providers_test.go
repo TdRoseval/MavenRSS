@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/ai"
+	"MavenRSS/internal/ai"
 )
 
 type rtFunc func(*http.Request) (*http.Response, error)

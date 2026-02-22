@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/textutil"
 )
 
 // TestCustomTranslationRequest represents a request to test custom translation configuration

@@ -1,12 +1,12 @@
 services:
-  mrrss-server:
+  mavenrss-server:
     build:
       context: .
       dockerfile: DockerfileCN.server
     ports:
       - "1234:1234"
     volumes:
-      - mrrss-data:/app/data
+      - mavenrss-data:/app/data
     environment:
       - MRRSS_DEBUG=false
       # JWT 安全配置（生产环境强烈建议修改！
@@ -27,12 +27,12 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - mrrss-network
+      - mavenrss-network
 
 networks:
-  mrrss-network:
+  mavenrss-network:
     driver: bridge
 
 volumes:
-  mrrss-data:
+  mavenrss-data:
     driver: local

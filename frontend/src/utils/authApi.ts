@@ -11,7 +11,7 @@ import type {
 const API_BASE = '/api';
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('mrrss_auth');
+  const token = localStorage.getItem('mavenrss_auth');
   let authHeader = {};
   if (token) {
     try {

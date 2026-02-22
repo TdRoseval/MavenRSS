@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
 )
 
 func TestFetchFeed_SavesArticlesAndAppliesRules(t *testing.T) {

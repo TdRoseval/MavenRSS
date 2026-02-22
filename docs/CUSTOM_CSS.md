@@ -2,7 +2,7 @@
 
 ## Overview
 
-MrRSS allows you to customize the appearance of article content by uploading your own CSS file. This feature enables you to:
+MavenRSS allows you to customize the appearance of article content by uploading your own CSS file. This feature enables you to:
 
 - Adjust typography (fonts, sizes, line heights)
 - Change colors and spacing

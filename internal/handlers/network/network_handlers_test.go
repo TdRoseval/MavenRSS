@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"MrRSS/internal/database"
-	corepkg "MrRSS/internal/handlers/core"
+	"MavenRSS/internal/database"
+	corepkg "MavenRSS/internal/handlers/core"
 )
 
 func setupHandler(t *testing.T) *corepkg.Handler {
