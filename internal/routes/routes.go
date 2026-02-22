@@ -26,31 +26,43 @@ type Config struct {
 	EnableAuth bool
 	// JWTManager is the JWT manager for authentication
 	JWTManager *auth.JWTManager
+	// EnableRateLimit enables rate limiting middleware
+	EnableRateLimit bool
+	// RateLimitConfig is the rate limiter configuration
+	RateLimitConfig middleware.RateLimiterConfig
+	// EnableSecurityHeaders enables security headers middleware
+	EnableSecurityHeaders bool
 }
 
 // DefaultConfig returns the default route configuration.
 func DefaultConfig() Config {
 	return Config{
-		EnableLogging:     false,
-		EnableRecovery:    true,
-		EnableCORS:        false,
-		EnableCompression: false,
-		EnableAuth:        false,
-		CORSOrigins:       []string{"*"},
-		JWTManager:        nil,
+		EnableLogging:         false,
+		EnableRecovery:        true,
+		EnableCORS:            false,
+		EnableCompression:     false,
+		EnableAuth:            false,
+		CORSOrigins:           []string{"*"},
+		JWTManager:            nil,
+		EnableRateLimit:       false,
+		RateLimitConfig:       middleware.DefaultRateLimiterConfig(),
+		EnableSecurityHeaders: false,
 	}
 }
 
 // ServerConfig returns a configuration suitable for server mode.
 func ServerConfig(jwtManager *auth.JWTManager) Config {
 	return Config{
-		EnableLogging:     true,
-		EnableRecovery:    true,
-		EnableCORS:        true,
-		EnableCompression: true,
-		EnableAuth:        true,
-		CORSOrigins:       []string{"*"},
-		JWTManager:        jwtManager,
+		EnableLogging:         true,
+		EnableRecovery:        true,
+		EnableCORS:            true,
+		EnableCompression:     true,
+		EnableAuth:            true,
+		CORSOrigins:           []string{"*"},
+		JWTManager:            jwtManager,
+		EnableRateLimit:       true,
+		RateLimitConfig:       middleware.DefaultRateLimiterConfig(),
+		EnableSecurityHeaders: true,
 	}
 }
 
@@ -76,6 +88,14 @@ func WrapWithMiddleware(handler http.Handler, cfg Config) http.Handler {
 
 	if cfg.EnableRecovery {
 		middlewares = append(middlewares, middleware.Recovery())
+	}
+
+	if cfg.EnableSecurityHeaders {
+		middlewares = append(middlewares, middleware.SecurityHeaders())
+	}
+
+	if cfg.EnableRateLimit {
+		middlewares = append(middlewares, middleware.RateLimiter(cfg.RateLimitConfig))
 	}
 
 	if cfg.EnableLogging {

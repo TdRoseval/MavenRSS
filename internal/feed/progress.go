@@ -32,3 +32,8 @@ func (f *Fetcher) GetProgressWithStats() ProgressWithStats {
 		QueueTaskCount:    stats.QueueTaskCount,
 	}
 }
+
+// GetProgressWithStatsForUser returns the current progress with statistics filtered for a specific user
+func (f *Fetcher) GetProgressWithStatsForUser(userID int64) ProgressWithStats {
+	return f.taskManager.GetProgressWithStatsForUser(userID)
+}

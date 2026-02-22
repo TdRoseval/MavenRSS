@@ -1,7 +1,5 @@
 <template>
   <div class="admin-user-management">
-    <h2>{{ t('admin.title') }}</h2>
-
     <div v-if="error" class="error-message">
       {{ error }}
     </div>
@@ -27,16 +25,39 @@
               <td>{{ reg.email }}</td>
               <td>{{ formatDate(reg.created_at) }}</td>
               <td class="actions">
-                <button class="btn btn-primary" @click="approveRegistration(reg.id)">
+                <button class="btn btn-small btn-primary" @click="approveRegistration(reg.id)">
                   {{ t('admin.approve') }}
                 </button>
-                <button class="btn btn-danger" @click="rejectRegistration(reg.id)">
+                <button class="btn btn-small btn-danger" @click="rejectRegistration(reg.id)">
                   {{ t('admin.reject') }}
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="pagination">
+        <button
+          class="btn"
+          :disabled="pendingPage === 1"
+          @click="changePendingPage(pendingPage - 1)"
+        >
+          ‹ {{ t('admin.prevPage') }}
+        </button>
+        <span class="page-info">
+          {{ t('admin.total') }} <span class="current-page">{{ pendingPage }}</span> /
+          {{ Math.ceil(totalPending / pendingPageSize) || 1 }} {{ t('admin.page') }} ({{
+            t('admin.total')
+          }}
+          {{ totalPending }} {{ t('admin.pending') }})
+        </span>
+        <button
+          class="btn"
+          :disabled="pendingPage >= Math.ceil(totalPending / pendingPageSize)"
+          @click="changePendingPage(pendingPage + 1)"
+        >
+          {{ t('admin.nextPage') }} ›
+        </button>
       </div>
     </div>
 
@@ -99,6 +120,23 @@
           </tbody>
         </table>
       </div>
+      <div class="pagination">
+        <button class="btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
+          ‹ {{ t('admin.prevPage') }}
+        </button>
+        <span class="page-info">
+          {{ t('admin.total') }} <span class="current-page">{{ currentPage }}</span> /
+          {{ Math.ceil(totalUsers / pageSize) || 1 }} {{ t('admin.page') }} ({{ t('admin.total') }}
+          {{ totalUsers }} {{ t('admin.users') }})
+        </span>
+        <button
+          class="btn"
+          :disabled="currentPage >= Math.ceil(totalUsers / pageSize)"
+          @click="changePage(currentPage + 1)"
+        >
+          {{ t('admin.nextPage') }} ›
+        </button>
+      </div>
     </div>
 
     <div v-if="selectedUser" class="section">
@@ -146,8 +184,36 @@
           <input v-model.number="quotaForm.max_articles" type="number" min="0" />
         </div>
         <div class="form-group">
-          <label>{{ t('admin.maxAICallsPerDay') }}</label>
-          <input v-model.number="quotaForm.max_ai_calls_per_day" type="number" min="0" />
+          <label>{{ t('admin.maxAITokens') }}</label>
+          <input v-model.number="quotaForm.max_ai_tokens" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxAIConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_ai_concurrency" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxFeedFetchConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_feed_fetch_concurrency" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxDBQueryConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_db_query_concurrency" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxMediaCacheConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_media_cache_concurrency" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxRSSDiscoveryConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_rss_discovery_concurrency" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxRSSPathCheckConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_rss_path_check_concurrency" type="number" min="0" />
+        </div>
+        <div class="form-group">
+          <label>{{ t('admin.maxTranslationConcurrency') }}</label>
+          <input v-model.number="quotaForm.max_translation_concurrency" type="number" min="0" />
         </div>
         <div class="form-group">
           <label>{{ t('admin.maxStorageMB') }}</label>
@@ -164,8 +230,8 @@
             {{ userQuota?.max_articles || 0 }}
           </p>
           <p>
-            {{ t('admin.maxAICallsPerDay') }}: {{ userQuota?.used_ai_calls_today || 0 }}
-            {{ t('admin.of') }} {{ userQuota?.max_ai_calls_per_day || 0 }}
+            {{ t('admin.maxAITokens') }}: {{ userQuota?.used_ai_tokens || 0 }} {{ t('admin.of') }}
+            {{ userQuota?.max_ai_tokens || 0 }}
           </p>
           <p>
             {{ t('admin.maxStorageMB') }}: {{ userQuota?.used_storage_mb || 0 }} MB
@@ -245,6 +311,14 @@ const selectedQuotaUser = ref<User | null>(null);
 const userQuota = ref<UserQuota | null>(null);
 const showCreateTemplate = ref(false);
 
+const currentPage = ref(1);
+const pageSize = ref(5);
+const totalUsers = ref(0);
+
+const pendingPage = ref(1);
+const pendingPageSize = ref(5);
+const totalPending = ref(0);
+
 const editForm = ref({
   username: '',
   email: '',
@@ -255,7 +329,14 @@ const editForm = ref({
 const quotaForm = ref({
   max_feeds: 100,
   max_articles: 100000,
-  max_ai_calls_per_day: 100,
+  max_ai_tokens: 1000000,
+  max_ai_concurrency: 5,
+  max_feed_fetch_concurrency: 3,
+  max_db_query_concurrency: 5,
+  max_media_cache_concurrency: 5,
+  max_rss_discovery_concurrency: 8,
+  max_rss_path_check_concurrency: 5,
+  max_translation_concurrency: 3,
   max_storage_mb: 500,
 });
 
@@ -281,15 +362,21 @@ const loadData = async () => {
   try {
     error.value = '';
     console.log('Loading admin data...');
-    const [regs, usrs, tpl] = await Promise.all([
-      authApi.admin.getPendingRegistrations().catch(() => []),
-      authApi.admin.getUsers().catch(() => []),
+    const [regs, usersData, tpl] = await Promise.all([
+      authApi.admin
+        .getPendingRegistrations(pendingPage.value, pendingPageSize.value)
+        .catch(() => ({ registrations: [], total: 0 })),
+      authApi.admin
+        .getUsers(currentPage.value, pageSize.value)
+        .catch(() => ({ users: [], total: 0 })),
       authApi.admin.getTemplateUser().catch(() => null),
     ]);
-    console.log('Users loaded:', usrs);
+    console.log('Users loaded:', usersData);
     console.log('Pending registrations:', regs);
-    pendingRegistrations.value = regs || [];
-    users.value = usrs || [];
+    pendingRegistrations.value = regs.registrations || [];
+    totalPending.value = regs.total || 0;
+    users.value = usersData.users || [];
+    totalUsers.value = usersData.total || 0;
     templateUser.value = tpl;
   } catch (err) {
     console.error('Failed to load admin data:', err);
@@ -339,7 +426,12 @@ const saveUser = async () => {
 };
 
 const deleteUser = async (id: number) => {
-  if (!confirm(t('admin.confirmDelete'))) return;
+  const confirmed = await window.showConfirm({
+    title: t('admin.confirm'),
+    message: t('admin.confirmDelete'),
+    isDanger: true,
+  });
+  if (!confirmed) return;
   try {
     await authApi.admin.deleteUser(id);
     await loadData();
@@ -356,7 +448,14 @@ const viewQuota = async (user: User) => {
     quotaForm.value = {
       max_feeds: userQuota.value.max_feeds,
       max_articles: userQuota.value.max_articles,
-      max_ai_calls_per_day: userQuota.value.max_ai_calls_per_day,
+      max_ai_tokens: userQuota.value.max_ai_tokens,
+      max_ai_concurrency: userQuota.value.max_ai_concurrency,
+      max_feed_fetch_concurrency: userQuota.value.max_feed_fetch_concurrency,
+      max_db_query_concurrency: userQuota.value.max_db_query_concurrency,
+      max_media_cache_concurrency: userQuota.value.max_media_cache_concurrency ?? 5,
+      max_rss_discovery_concurrency: userQuota.value.max_rss_discovery_concurrency ?? 8,
+      max_rss_path_check_concurrency: userQuota.value.max_rss_path_check_concurrency ?? 5,
+      max_translation_concurrency: userQuota.value.max_translation_concurrency ?? 3,
       max_storage_mb: userQuota.value.max_storage_mb,
     };
   } catch (err) {
@@ -396,11 +495,21 @@ const createTemplateUser = async () => {
 onMounted(() => {
   loadData();
 });
+
+const changePage = (page: number) => {
+  currentPage.value = page;
+  loadData();
+};
+
+const changePendingPage = (page: number) => {
+  pendingPage.value = page;
+  loadData();
+};
 </script>
 
 <style scoped>
 .admin-user-management {
-  padding: 20px;
+  padding: 5px 20px;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -411,10 +520,10 @@ h2 {
 }
 
 h3 {
-  margin: 30px 0 15px;
+  margin: 10px 0 10px;
   color: #555;
   border-bottom: 2px solid #eee;
-  padding-bottom: 10px;
+  padding-bottom: 5px;
 }
 
 .error-message {
@@ -422,11 +531,11 @@ h3 {
   color: #c33;
   padding: 10px;
   border-radius: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .section {
-  margin-bottom: 30px;
+  margin-bottom: 15px;
 }
 
 .empty-state {
@@ -437,6 +546,27 @@ h3 {
 
 .table-container {
   overflow-x: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.table-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 table {
@@ -445,101 +575,199 @@ table {
   background: white;
 }
 
-th,
-td {
-  padding: 12px;
+table th {
+  background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+  font-weight: 600;
+  color: #495057;
+  padding: 12px 10px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 2px solid #dee2e6;
+  white-space: nowrap;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-th {
-  background: #f5f5f5;
-  font-weight: 600;
+table th:nth-child(1) {
+  width: 50px;
+  min-width: 50px;
+}
+table th:nth-child(2) {
+  width: 100px;
+  min-width: 100px;
+}
+table th:nth-child(3) {
+  width: 160px;
+  min-width: 160px;
+}
+table th:nth-child(4) {
+  width: 80px;
+  min-width: 80px;
+}
+table th:nth-child(5) {
+  width: 80px;
+  min-width: 80px;
+}
+table th:nth-child(6) {
+  width: 70px;
+  min-width: 70px;
+  text-align: center;
+}
+table th:nth-child(7) {
+  width: 145px;
+  min-width: 145px;
+}
+table th:nth-child(8) {
+  width: 220px;
+  min-width: 220px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.section:first-child table th:nth-child(1) {
+  width: 120px;
+  min-width: 120px;
+}
+.section:first-child table th:nth-child(2) {
+  width: 180px;
+  min-width: 180px;
+}
+.section:first-child table th:nth-child(3) {
+  width: 140px;
+  min-width: 140px;
+}
+.section:first-child table th:nth-child(4) {
+  width: 180px;
+  min-width: 180px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.section:first-child td:nth-child(4) {
+  text-align: center;
+}
+
+td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  color: #343a40;
+}
+
+td:nth-child(6) {
+  text-align: center;
+}
+td:nth-child(8) {
+  text-align: center;
 }
 
 tr:hover {
-  background: #f9f9f9;
+  background: #f8f9fa;
+}
+
+tr:last-child td {
+  border-bottom: none;
 }
 
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  justify-content: center;
+  flex-wrap: nowrap;
 }
 
 .btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
 .btn-primary {
-  background: #007bff;
+  background: linear-gradient(180deg, #007bff 0%, #0056b3 100%);
   color: white;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
 }
 
 .btn-primary:hover {
-  background: #0056b3;
+  background: linear-gradient(180deg, #0056b3 0%, #004085 100%);
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+  transform: translateY(-1px);
 }
 
 .btn-danger {
-  background: #dc3545;
+  background: linear-gradient(180deg, #dc3545 0%, #bd2130 100%);
   color: white;
+  box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
 }
 
 .btn-danger:hover {
-  background: #a71d2a;
+  background: linear-gradient(180deg, #bd2130 0%, #921b24 100%);
+  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+  transform: translateY(-1px);
 }
 
 .btn-small {
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 11px;
+  border-radius: 3px;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .role-badge,
 .status-badge {
   display: inline-block;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .role-badge.admin {
-  background: #ffc107;
-  color: #333;
+  background: linear-gradient(180deg, #ffc107 0%, #e0a800 100%);
+  color: #212529;
+  box-shadow: 0 1px 2px rgba(255, 193, 7, 0.3);
 }
 
 .role-badge.user {
-  background: #17a2b8;
+  background: linear-gradient(180deg, #17a2b8 0%, #117a8b 100%);
   color: white;
+  box-shadow: 0 1px 2px rgba(23, 162, 184, 0.3);
 }
 
 .role-badge.template {
-  background: #6f42c1;
+  background: linear-gradient(180deg, #6f42c1 0%, #5a32a3 100%);
   color: white;
+  box-shadow: 0 1px 2px rgba(111, 66, 193, 0.3);
 }
 
 .status-badge.active {
-  background: #28a745;
+  background: linear-gradient(180deg, #28a745 0%, #1e7e34 100%);
   color: white;
+  box-shadow: 0 1px 2px rgba(40, 167, 69, 0.3);
 }
 
 .status-badge.pending {
-  background: #ffc107;
-  color: #333;
+  background: linear-gradient(180deg, #ffc107 0%, #e0a800 100%);
+  color: #212529;
+  box-shadow: 0 1px 2px rgba(255, 193, 7, 0.3);
 }
 
 .status-badge.suspended {
-  background: #dc3545;
+  background: linear-gradient(180deg, #dc3545 0%, #bd2130 100%);
   color: white;
+  box-shadow: 0 1px 2px rgba(220, 53, 69, 0.3);
 }
 
 .form-container {
@@ -628,5 +856,47 @@ tr:hover {
   margin-top: 0;
   border: none;
   padding: 0;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 15px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.pagination .btn {
+  padding: 6px 14px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.pagination .btn:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.pagination .btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #555;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.page-info .current-page {
+  color: #007bff;
+  font-weight: 600;
 }
 </style>

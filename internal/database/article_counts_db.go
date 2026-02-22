@@ -3,10 +3,15 @@ package database
 import "log"
 
 // GetTotalUnreadCount returns the total number of unread articles.
-func (db *DB) GetTotalUnreadCount() (int, error) {
+func (db *DB) GetTotalUnreadCount(userID int64) (int, error) {
 	db.WaitForReady()
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM articles WHERE is_read = 0 AND is_hidden = 0").Scan(&count)
+	var err error
+	if userID > 0 {
+		err = db.QueryRow("SELECT COUNT(*) FROM articles WHERE user_id = ? AND is_read = 0 AND is_hidden = 0", userID).Scan(&count)
+	} else {
+		err = db.QueryRow("SELECT COUNT(*) FROM articles WHERE is_read = 0 AND is_hidden = 0").Scan(&count)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -14,10 +19,15 @@ func (db *DB) GetTotalUnreadCount() (int, error) {
 }
 
 // GetUnreadCountByFeed returns the number of unread articles for a specific feed.
-func (db *DB) GetUnreadCountByFeed(feedID int64) (int, error) {
+func (db *DB) GetUnreadCountByFeed(feedID int64, userID int64) (int, error) {
 	db.WaitForReady()
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0 AND is_hidden = 0", feedID).Scan(&count)
+	var err error
+	if userID > 0 {
+		err = db.QueryRow("SELECT COUNT(*) FROM articles WHERE user_id = ? AND feed_id = ? AND is_read = 0 AND is_hidden = 0", userID, feedID).Scan(&count)
+	} else {
+		err = db.QueryRow("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0 AND is_hidden = 0", feedID).Scan(&count)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -25,14 +35,30 @@ func (db *DB) GetUnreadCountByFeed(feedID int64) (int, error) {
 }
 
 // GetUnreadCountsForAllFeeds returns a map of feed_id to unread count.
-func (db *DB) GetUnreadCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE is_read = 0 AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -52,14 +78,30 @@ func (db *DB) GetUnreadCountsForAllFeeds() (map[int64]int, error) {
 }
 
 // GetFavoriteCountsForAllFeeds returns a map of feed_id to favorite article count.
-func (db *DB) GetFavoriteCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetFavoriteCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE is_favorite = 1 AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND is_favorite = 1 AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE is_favorite = 1 AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -79,14 +121,30 @@ func (db *DB) GetFavoriteCountsForAllFeeds() (map[int64]int, error) {
 }
 
 // GetReadLaterCountsForAllFeeds returns a map of feed_id to read_later article count.
-func (db *DB) GetReadLaterCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetReadLaterCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE is_read_later = 1 AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND is_read_later = 1 AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE is_read_later = 1 AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -106,14 +164,30 @@ func (db *DB) GetReadLaterCountsForAllFeeds() (map[int64]int, error) {
 }
 
 // GetImageModeCountsForAllFeeds returns a map of feed_id to image article count.
-func (db *DB) GetImageModeCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetImageModeCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE (image_url IS NOT NULL AND image_url != '') AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND (image_url IS NOT NULL AND image_url != '') AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE (image_url IS NOT NULL AND image_url != '') AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -133,14 +207,30 @@ func (db *DB) GetImageModeCountsForAllFeeds() (map[int64]int, error) {
 }
 
 // GetImageUnreadCountsForAllFeeds returns a map of feed_id to unread image article count.
-func (db *DB) GetImageUnreadCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetImageUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE (image_url IS NOT NULL AND image_url != '') AND is_read = 0 AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND (image_url IS NOT NULL AND image_url != '') AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE (image_url IS NOT NULL AND image_url != '') AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -160,14 +250,30 @@ func (db *DB) GetImageUnreadCountsForAllFeeds() (map[int64]int, error) {
 }
 
 // GetFavoriteUnreadCountsForAllFeeds returns a map of feed_id to favorite AND unread article count.
-func (db *DB) GetFavoriteUnreadCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetFavoriteUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE is_favorite = 1 AND is_read = 0 AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND is_favorite = 1 AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE is_favorite = 1 AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -187,14 +293,30 @@ func (db *DB) GetFavoriteUnreadCountsForAllFeeds() (map[int64]int, error) {
 }
 
 // GetReadLaterUnreadCountsForAllFeeds returns a map of feed_id to read_later AND unread article count.
-func (db *DB) GetReadLaterUnreadCountsForAllFeeds() (map[int64]int, error) {
+func (db *DB) GetReadLaterUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
-		SELECT feed_id, COUNT(*)
-		FROM articles
-		WHERE is_read_later = 1 AND is_read = 0 AND is_hidden = 0
-		GROUP BY feed_id
-	`)
+	var rows interface {
+		Scan(dest ...interface{}) error
+		Next() bool
+		Err() error
+		Close() error
+	}
+	var err error
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE user_id = ? AND is_read_later = 1 AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT feed_id, COUNT(*)
+			FROM articles
+			WHERE is_read_later = 1 AND is_read = 0 AND is_hidden = 0
+			GROUP BY feed_id
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -24,18 +24,25 @@ type User struct {
 }
 
 type UserQuota struct {
-	ID                int64     `json:"id"`
-	UserID            int64     `json:"user_id"`
-	MaxFeeds          int       `json:"max_feeds"`
-	MaxArticles       int64     `json:"max_articles"`
-	MaxAICallsPerDay  int       `json:"max_ai_calls_per_day"`
-	MaxStorageMB      int       `json:"max_storage_mb"`
-	UsedFeeds         int       `json:"used_feeds"`
-	UsedArticles      int64     `json:"used_articles"`
-	UsedAICallsToday  int       `json:"used_ai_calls_today"`
-	UsedStorageMB     int       `json:"used_storage_mb"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                       int64     `json:"id"`
+	UserID                   int64     `json:"user_id"`
+	MaxFeeds                 int       `json:"max_feeds"`
+	MaxArticles              int64     `json:"max_articles"`
+	MaxAITokens              int64     `json:"max_ai_tokens"`
+	MaxAIConcurrency         int       `json:"max_ai_concurrency"`
+	MaxFeedFetchConcurrency  int       `json:"max_feed_fetch_concurrency"`
+	MaxDBQueryConcurrency    int       `json:"max_db_query_concurrency"`
+	MaxMediaCacheConcurrency int       `json:"max_media_cache_concurrency"`
+	MaxRSSDiscoveryConcurrency int    `json:"max_rss_discovery_concurrency"`
+	MaxRSSPathCheckConcurrency int    `json:"max_rss_path_check_concurrency"`
+	MaxTranslationConcurrency int      `json:"max_translation_concurrency"`
+	MaxStorageMB             int       `json:"max_storage_mb"`
+	UsedFeeds                int       `json:"used_feeds"`
+	UsedArticles             int64     `json:"used_articles"`
+	UsedAITokens             int64     `json:"used_ai_tokens"`
+	UsedStorageMB            int       `json:"used_storage_mb"`
+	CreatedAt                time.Time `json:"created_at"`
+	UpdatedAt                time.Time `json:"updated_at"`
 }
 
 type UserSession struct {

@@ -71,6 +71,13 @@ func (cm *CleanupManager) Stop() {
 // RequestCleanup requests a cleanup operation
 // If cleanup is blocked (tasks running), it will be retried every 10 minutes
 func (cm *CleanupManager) RequestCleanup() {
+	// Check if auto cleanup is enabled first
+	autoCleanup, _ := cm.fetcher.db.GetSetting("auto_cleanup_enabled")
+	if autoCleanup != "true" {
+		log.Println("Auto cleanup is disabled, skipping cleanup request")
+		return
+	}
+
 	cm.pendingCleanupMu.Lock()
 	cm.pendingCleanup = true
 	cm.pendingCleanupMu.Unlock()
@@ -89,7 +96,7 @@ func (cm *CleanupManager) RequestManualCleanup() {
 
 		log.Println("Executing manual cleanup (clearing all article contents)")
 
-		count, err := cm.fetcher.db.CleanupAllArticleContents()
+		count, err := cm.fetcher.db.CleanupAllArticleContents(0)
 		if err != nil {
 			log.Printf("Manual cleanup error: %v", err)
 		} else {
@@ -136,6 +143,13 @@ func (cm *CleanupManager) canCleanup() bool {
 
 // executeCleanup executes the layered cleanup
 func (cm *CleanupManager) executeCleanup() {
+	// Double-check if auto cleanup is enabled
+	autoCleanup, _ := cm.fetcher.db.GetSetting("auto_cleanup_enabled")
+	if autoCleanup != "true" {
+		log.Println("Auto cleanup is disabled, skipping execution")
+		return
+	}
+
 	log.Println("Starting automatic cleanup...")
 
 	maxSizeMB := cm.getTargetSize()
@@ -151,15 +165,36 @@ func (cm *CleanupManager) executeCleanup() {
 }
 
 // getTargetSize returns the target database size in MB
+// Uses the minimum of user setting and admin quota (admin quota takes precedence)
 func (cm *CleanupManager) getTargetSize() float64 {
-	maxSizeMBStr, _ := cm.fetcher.db.GetSetting("max_cache_size_mb")
-	maxSizeMB := 500 // Default
-	if maxSizeMBStr != "" {
-		if size, err := parseInt(maxSizeMBStr); err == nil && size > 0 {
-			maxSizeMB = size
+	var adminQuotaLimit int
+	var userSettingLimit int = 500 // Default
+
+	// Try to get admin quota for the first user (if multi-user)
+	// In single-user mode, this will get the default user's quota
+	users, _ := cm.fetcher.db.ListUsers()
+	if len(users) > 0 {
+		quota, err := cm.fetcher.db.GetUserQuota(users[0].ID)
+		if err == nil && quota.MaxStorageMB > 0 {
+			adminQuotaLimit = quota.MaxStorageMB
 		}
 	}
-	return float64(maxSizeMB)
+
+	// Get user setting
+	maxSizeMBStr, _ := cm.fetcher.db.GetSetting("max_cache_size_mb")
+	if maxSizeMBStr != "" {
+		if size, err := parseInt(maxSizeMBStr); err == nil && size > 0 {
+			userSettingLimit = size
+		}
+	}
+
+	// Determine the effective limit: admin quota takes precedence if set
+	if adminQuotaLimit > 0 && adminQuotaLimit < userSettingLimit {
+		log.Printf("Using admin quota limit (%d MB) instead of user setting (%d MB)", adminQuotaLimit, userSettingLimit)
+		return float64(adminQuotaLimit)
+	}
+
+	return float64(userSettingLimit)
 }
 
 // layeredCleanup executes cleanup in layers until target size is reached
@@ -233,7 +268,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 5: Latest article contents (all)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupAllArticleContents()
+		count, err := cm.fetcher.db.CleanupAllArticleContents(0)
 		if err != nil {
 			log.Printf("Layer 5 error: %v", err)
 		} else {
@@ -288,6 +323,12 @@ func (cm *CleanupManager) retryLoop() {
 
 // CheckSizeAndCleanup checks database size and triggers cleanup if needed
 func (cm *CleanupManager) CheckSizeAndCleanup() {
+	// Check if auto cleanup is enabled first
+	autoCleanup, _ := cm.fetcher.db.GetSetting("auto_cleanup_enabled")
+	if autoCleanup != "true" {
+		return
+	}
+
 	maxSizeMB := cm.getTargetSize()
 
 	currentSizeMB, err := cm.fetcher.db.GetDatabaseSizeMB()

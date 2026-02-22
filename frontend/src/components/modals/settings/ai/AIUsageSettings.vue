@@ -146,7 +146,10 @@ onMounted(() => {
               })
           "
         />
-        <span v-if="props.settings.ai_usage_limit === '0'" class="text-accent text-xs sm:text-sm font-medium">
+        <span
+          v-if="props.settings.ai_usage_limit === '0'"
+          class="text-accent text-xs sm:text-sm font-medium"
+        >
           ({{ t('common.text.unlimited') }})
         </span>
       </div>

@@ -804,6 +804,35 @@ func (tm *TaskManager) GetPoolTasks() []PoolTaskInfo {
 	return tasks
 }
 
+// GetPoolTasksForUser returns detailed information about tasks currently in the pool for a specific user
+func (tm *TaskManager) GetPoolTasksForUser(userID int64) []PoolTaskInfo {
+	tm.poolMutex.RLock()
+	defer tm.poolMutex.RUnlock()
+
+	tasks := make([]PoolTaskInfo, 0, len(tm.pool))
+	for _, task := range tm.pool {
+		if task.Feed.UserID == userID {
+			tasks = append(tasks, PoolTaskInfo{
+				FeedID:    task.Feed.ID,
+				FeedTitle: task.Feed.Title,
+				Reason:    task.Reason,
+				CreatedAt: task.CreatedAt,
+			})
+		}
+	}
+
+	// Sort by creation time (oldest first)
+	for i := 0; i < len(tasks)-1; i++ {
+		for j := i + 1; j < len(tasks); j++ {
+			if tasks[i].CreatedAt.After(tasks[j].CreatedAt) {
+				tasks[i], tasks[j] = tasks[j], tasks[i]
+			}
+		}
+	}
+
+	return tasks
+}
+
 // GetQueueTasks returns detailed information about tasks in the queue (up to limit)
 // Returns tasks in queue order (head first)
 func (tm *TaskManager) GetQueueTasks(limit int) []QueueTaskInfo {
@@ -830,6 +859,81 @@ func (tm *TaskManager) GetQueueTasks(limit int) []QueueTaskInfo {
 	}
 
 	return tasks
+}
+
+// GetQueueTasksForUser returns detailed information about tasks in the queue for a specific user (up to limit)
+// Returns tasks in queue order (head first)
+func (tm *TaskManager) GetQueueTasksForUser(userID int64, limit int) []QueueTaskInfo {
+	tm.queueMutex.RLock()
+	defer tm.queueMutex.RUnlock()
+
+	tasks := make([]QueueTaskInfo, 0)
+	position := 0
+	for _, feedID := range tm.queue {
+		if limit > 0 && len(tasks) >= limit {
+			break
+		}
+		feed, err := tm.fetcher.db.GetFeedByID(feedID)
+		if err == nil && feed.UserID == userID {
+			tasks = append(tasks, QueueTaskInfo{
+				FeedID:    feed.ID,
+				FeedTitle: feed.Title,
+				Position:  position,
+			})
+			position++
+		}
+	}
+
+	return tasks
+}
+
+// GetProgressWithStatsForUser returns progress with stats filtered by user ID
+func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithStats {
+	tm.progressMutex.Lock()
+	defer tm.progressMutex.Unlock()
+
+	tm.statsMutex.RLock()
+	defer tm.statsMutex.RUnlock()
+
+	// Count pool tasks for this user
+	poolTaskCount := 0
+	tm.poolMutex.RLock()
+	for _, task := range tm.pool {
+		if task.Feed.UserID == userID {
+			poolTaskCount++
+		}
+	}
+	tm.poolMutex.RUnlock()
+
+	// Count queue tasks for this user
+	queueTaskCount := 0
+	tm.queueMutex.RLock()
+	for _, feedID := range tm.queue {
+		feed, err := tm.fetcher.db.GetFeedByID(feedID)
+		if err == nil && feed.UserID == userID {
+			queueTaskCount++
+		}
+	}
+	tm.queueMutex.RUnlock()
+
+	// Filter errors by user
+	filteredErrors := make(map[int64]string)
+	for feedID, errMsg := range tm.progress.Errors {
+		feed, err := tm.fetcher.db.GetFeedByID(feedID)
+		if err == nil && feed.UserID == userID {
+			filteredErrors[feedID] = errMsg
+		}
+	}
+
+	return ProgressWithStats{
+		Progress: Progress{
+			IsRunning: tm.progress.IsRunning,
+			Errors:    filteredErrors,
+		},
+		PoolTaskCount:     poolTaskCount,
+		QueueTaskCount:    queueTaskCount,
+		ArticleClickCount: tm.stats.ArticleClickCount,
+	}
 }
 
 // PoolTaskInfo contains information about a task in the pool

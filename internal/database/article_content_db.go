@@ -62,11 +62,14 @@ func (db *DB) CleanupOldArticleContents(maxAgeDays int) (int64, error) {
 	return result.RowsAffected()
 }
 
-// GetArticleContentCount returns the total number of cached article content entries
-func (db *DB) GetArticleContentCount() (int64, error) {
+// GetArticleContentCount returns the total number of cached article content entries for a specific user
+func (db *DB) GetArticleContentCount(userID int64) (int64, error) {
 	db.WaitForReady()
 	var count int64
-	err := db.QueryRow(`SELECT COUNT(*) FROM article_contents`).Scan(&count)
+	err := db.QueryRow(`
+		SELECT COUNT(*) FROM article_contents 
+		WHERE article_id IN (SELECT id FROM articles WHERE user_id = ?)
+	`, userID).Scan(&count)
 	if err != nil {
 		return 0, err
 	}

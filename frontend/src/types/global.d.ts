@@ -19,6 +19,7 @@ export interface ConfirmDialogOptions {
   confirmText?: string;
   cancelText?: string;
   isDanger?: boolean;
+  useHtml?: boolean;
 }
 
 export interface InputDialogOptions {

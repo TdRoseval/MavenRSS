@@ -9,6 +9,16 @@ services:
       - mrrss-data:/app/data
     environment:
       - MRRSS_DEBUG=false
+      # JWT 安全配置（生产环境强烈建议修改！
+      # MRRSS_JWT_SECRET=your-secret-key-change-me-in-production
+      # 管理员账号配置
+      # MRRSS_ADMIN_USERNAME=admin
+      # MRRSS_ADMIN_EMAIL=admin@example.com
+      # MRRSS_ADMIN_PASSWORD=change-me-strong-password
+      # 模板用户配置
+      # MRRSS_TEMPLATE_USERNAME=template
+      # MRRSS_TEMPLATE_EMAIL=template@example.com
+      # MRRSS_TEMPLATE_PASSWORD=template-password
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1234/api/version"]

@@ -14,14 +14,15 @@ import (
 
 // AITranslator implements translation using OpenAI-compatible APIs (GPT, Claude, etc.).
 type AITranslator struct {
-	APIKey        string
-	Endpoint      string
-	Model         string
-	SystemPrompt  string
-	CustomHeaders string
-	db            DBInterface // Store DB reference for proxy updates
-	client        *ai.Client
-	httpClient    *http.Client // Store HTTP client to preserve proxy settings
+	APIKey         string
+	Endpoint       string
+	Model          string
+	SystemPrompt   string
+	CustomHeaders  string
+	db             DBInterface // Store DB reference for proxy updates
+	client         *ai.Client
+	httpClient     *http.Client // Store HTTP client to preserve proxy settings
+	useGlobalProxy bool         // Store whether to use global proxy
 }
 
 // NewAITranslator creates a new AI translator with the given credentials.
@@ -131,13 +132,15 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 	}
 
 	return &AITranslator{
-		APIKey:        apiKey,
-		Endpoint:      strings.TrimSuffix(endpoint, "/"),
-		Model:         model,
-		SystemPrompt:  "",
-		CustomHeaders: "", // Will be set from settings when used
-		httpClient:    httpClient,
-		client:        ai.NewClientWithHTTPClient(clientConfig, httpClient),
+		APIKey:         apiKey,
+		Endpoint:       strings.TrimSuffix(endpoint, "/"),
+		Model:          model,
+		SystemPrompt:   "",
+		CustomHeaders:  "", // Will be set from settings when used
+		db:             db,
+		httpClient:     httpClient,
+		client:         ai.NewClientWithHTTPClient(clientConfig, httpClient),
+		useGlobalProxy: useProxy,
 	}
 }
 
@@ -180,8 +183,12 @@ func (t *AITranslator) RefreshProxy() {
 		return
 	}
 
-	proxyURL := getProxyFromSettings(t.db)
-	t.httpClient = httputil.GetPooledAIHTTPClient(proxyURL, 60*time.Second)
+	httpClient, err := CreateHTTPClientWithProxyOption(t.db, 60*time.Second, t.useGlobalProxy)
+	if err != nil {
+		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
+	}
+	t.httpClient = httpClient
+
 	clientConfig := ai.ClientConfig{
 		APIKey:        t.APIKey,
 		Endpoint:      t.Endpoint,

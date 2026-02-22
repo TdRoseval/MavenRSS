@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhKey, PhFile, PhInfo } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
@@ -10,6 +11,7 @@ import {
 } from '@/components/settings';
 import { checkServerMode } from '@/utils/serverMode';
 import { ref, onMounted } from 'vue';
+import { maskSensitiveValue } from '@/utils/settingsEncryption';
 
 const { t } = useI18n();
 
@@ -31,6 +33,16 @@ function updateSetting(key: keyof SettingsData, value: any) {
     [key]: value,
   });
 }
+
+const isInherited = computed(() => props.settings._has_inherited === true);
+
+const displayNotionApiKey = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.notion_api_key) : props.settings.notion_api_key
+);
+
+const displayNotionPageId = computed(() => 
+  isInherited.value ? maskSensitiveValue(props.settings.notion_page_id, 8) : props.settings.notion_page_id
+);
 
 onMounted(async () => {
   isServerMode.value = await checkServerMode();
@@ -97,10 +109,11 @@ onMounted(async () => {
       required
     >
       <InputControl
-        :model-value="props.settings.notion_api_key"
+        :model-value="displayNotionApiKey"
         :placeholder="t('setting.plugins.notion.apiKeyPlaceholder')"
-        type="password"
+        :type="isInherited ? 'text' : 'password'"
         width="lg"
+        :disabled="isInherited"
         @update:model-value="updateSetting('notion_api_key', $event)"
       />
     </SubSettingItem>
@@ -113,9 +126,10 @@ onMounted(async () => {
       required
     >
       <InputControl
-        :model-value="props.settings.notion_page_id"
+        :model-value="displayNotionPageId"
         :placeholder="t('setting.plugins.notion.pageIdPlaceholder')"
         width="lg"
+        :disabled="isInherited"
         @update:model-value="updateSetting('notion_page_id', $event)"
       />
     </SubSettingItem>

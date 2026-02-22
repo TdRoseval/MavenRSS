@@ -171,7 +171,7 @@ export class ApiClient {
    */
   private async refreshAccessToken(): Promise<void> {
     const authStore = this.getAuthStore();
-    
+
     if (!authStore.refreshToken) {
       throw new Error('No refresh token available');
     }
@@ -198,7 +198,11 @@ export class ApiClient {
    * @param options - Fetch options
    * @returns Promise with the response data
    */
-  private async request<T>(url: string, options: RequestInit, isRetry: boolean = false): Promise<T> {
+  private async request<T>(
+    url: string,
+    options: RequestInit,
+    isRetry: boolean = false
+  ): Promise<T> {
     // Check network status
     if (this.networkStatus === 'offline') {
       throw new Error('Network connection is offline');
@@ -234,7 +238,7 @@ export class ApiClient {
         if (!this.isRefreshing) {
           this.isRefreshing = true;
           this.refreshPromise = this.refreshAccessToken();
-          
+
           try {
             await this.refreshPromise;
             // Refresh succeeded, retry the request

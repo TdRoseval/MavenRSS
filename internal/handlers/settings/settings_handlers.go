@@ -86,11 +86,19 @@ func sanitizeValue(value string) string {
 
 // GetAllSettingsForUser reads all settings for a specific user from the database and returns them as a map.
 // Encrypted settings are automatically decrypted.
-// For non-admin users, inherited sensitive settings (AI, Proxy, RSSHub) are hidden.
 // If a setting is empty for the user, falls back to global setting.
 func GetAllSettingsForUser(h *core.Handler, userID int64, isAdmin bool, hasInherited bool) map[string]string {
-	result := make(map[string]string, len(AllSettings))
+	result := make(map[string]string, len(AllSettings)+1)
 	globalSettings := GetAllSettings(h)
+	
+	log.Printf("[GetAllSettingsForUser] userID=%d, isAdmin=%v, hasInherited=%v", userID, isAdmin, hasInherited)
+
+	// Add hasInherited flag to result so frontend knows
+	if hasInherited {
+		result["_has_inherited"] = "true"
+	} else {
+		result["_has_inherited"] = "false"
+	}
 
 	for _, def := range AllSettings {
 		var finalValue string
@@ -109,16 +117,12 @@ func GetAllSettingsForUser(h *core.Handler, userID int64, isAdmin bool, hasInher
 			finalValue = userValue
 		}
 
-		// Hide inherited sensitive settings for non-admin users
-		// Only hide if user doesn't have their own value (i.e., value comes from inheritance)
-		if !isAdmin && hasInherited && isSensitiveSetting(def.Key) && userValue == "" {
-			// For non-admin users who inherited from template and don't have their own setting,
-			// hide the sensitive inherited setting
-			result[def.Key] = ""
-			continue
-		}
-
 		result[def.Key] = finalValue
+		
+		// Log AI settings for debugging
+		if len(def.Key) >= 3 && def.Key[:3] == "ai_" {
+			log.Printf("[GetAllSettingsForUser] %s: userValue=%s, finalValue=%s", def.Key, userValue, finalValue)
+		}
 	}
 
 	return result
