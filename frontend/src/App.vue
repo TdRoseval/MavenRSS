@@ -165,18 +165,7 @@ onMounted(() => {
   if (authStore.isAuthenticated) {
     loadInitialSettings();
 
-    // Check for updates on startup (silent mode - don't show toast if up to date)
-    setTimeout(async () => {
-      try {
-        await checkForUpdates(true);
-
-        if (updateInfo.value && updateInfo.value.has_update) {
-          showUpdateDialog.value = true;
-        }
-      } catch (e) {
-        console.error('Error checking for updates:', e);
-      }
-    }, 3000);
+    // Update check on startup has been disabled
 
     // Load feeds and articles in background
     setTimeout(() => {

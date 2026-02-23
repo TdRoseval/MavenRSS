@@ -102,10 +102,9 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isAILimitReached(h, userID) {
-		log.Printf("AI usage limit reached for chat")
-		w.WriteHeader(http.StatusTooManyRequests)
-		response.JSON(w, map[string]string{
-			"error": "AI usage limit reached",
+		log.Printf("AI usage limit reached for chat, returning graceful message")
+		response.JSON(w, ChatResponse{
+			Response: "AI 使用量已达到限制，请稍后再试或联系管理员。",
 		})
 		return
 	}
@@ -268,8 +267,16 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	if isAILimitReached(h, userID) {
-		log.Printf("AI usage limit reached for chat stream")
-		w.WriteHeader(http.StatusTooManyRequests)
+		log.Printf("AI usage limit reached for chat stream, returning graceful message")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		fmt.Fprintf(w, "data: {\"content\":\"AI 使用量已达到限制，请稍后再试或联系管理员。\"}\n\n")
+		fmt.Fprintf(w, "event: done\ndata: {\"done\":true,\"response\":\"AI 使用量已达到限制，请稍后再试或联系管理员。\"}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
 		return
 	}
 
