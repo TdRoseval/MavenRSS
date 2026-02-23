@@ -1,13 +1,23 @@
 import type { Article } from '@/types/models';
+import { useAuthStore } from '@/stores/auth';
+
+interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  user: any;
+}
 
 /**
- * API Client for making HTTP requests to the MrRSS backend
+ * API Client for making HTTP requests to the MavenRSS backend
  * Provides consistent error handling, loading state management, and user feedback
  */
 export class ApiClient {
   private static instance: ApiClient;
   private loadingRequests: Set<string> = new Set();
   private networkStatus: 'online' | 'offline' = 'online';
+  private authStore: any = null;
+  private isRefreshing: boolean = false;
+  private refreshPromise: Promise<any> | null = null;
 
   private constructor() {
     // Monitor network status
@@ -19,6 +29,13 @@ export class ApiClient {
       ApiClient.instance = new ApiClient();
     }
     return ApiClient.instance;
+  }
+
+  private getAuthStore() {
+    if (!this.authStore) {
+      this.authStore = useAuthStore();
+    }
+    return this.authStore;
   }
 
   private setupNetworkMonitoring(): void {
@@ -60,7 +77,12 @@ export class ApiClient {
    * @param options - Additional fetch options
    * @returns Promise with the response data
    */
-  async post<T>(endpoint: string, data?: any, params?: Record<string, any>, options?: RequestInit): Promise<T> {
+  async post<T>(
+    endpoint: string,
+    data?: any,
+    params?: Record<string, any>,
+    options?: RequestInit
+  ): Promise<T> {
     const url = this.buildUrl(endpoint, params);
     return this.request<T>(url, {
       ...options,
@@ -81,7 +103,12 @@ export class ApiClient {
    * @param options - Additional fetch options
    * @returns Promise with the response data
    */
-  async put<T>(endpoint: string, data?: any, params?: Record<string, any>, options?: RequestInit): Promise<T> {
+  async put<T>(
+    endpoint: string,
+    data?: any,
+    params?: Record<string, any>,
+    options?: RequestInit
+  ): Promise<T> {
     const url = this.buildUrl(endpoint, params);
     return this.request<T>(url, {
       ...options,
@@ -101,7 +128,11 @@ export class ApiClient {
    * @param options - Additional fetch options
    * @returns Promise with the response data
    */
-  async delete<T>(endpoint: string, params?: Record<string, any>, options?: RequestInit): Promise<T> {
+  async delete<T>(
+    endpoint: string,
+    params?: Record<string, any>,
+    options?: RequestInit
+  ): Promise<T> {
     const url = this.buildUrl(endpoint, params);
     return this.request<T>(url, {
       ...options,
@@ -135,12 +166,43 @@ export class ApiClient {
   }
 
   /**
+   * Refresh access token using refresh token
+   * @returns Promise with new auth data
+   */
+  private async refreshAccessToken(): Promise<void> {
+    const authStore = this.getAuthStore();
+
+    if (!authStore.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: authStore.refreshToken }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh token');
+    }
+
+    const data: AuthResponse = await response.json();
+    authStore.setAuth(data.access_token, data.refresh_token, data.user);
+  }
+
+  /**
    * Makes an HTTP request with consistent error handling
    * @param url - Full URL to request
    * @param options - Fetch options
    * @returns Promise with the response data
    */
-  private async request<T>(url: string, options: RequestInit): Promise<T> {
+  private async request<T>(
+    url: string,
+    options: RequestInit,
+    isRetry: boolean = false
+  ): Promise<T> {
     // Check network status
     if (this.networkStatus === 'offline') {
       throw new Error('Network connection is offline');
@@ -151,23 +213,81 @@ export class ApiClient {
     this.loadingRequests.add(requestKey);
 
     try {
-      const response = await fetch(url, options);
+      // If already refreshing, wait for it to complete
+      if (this.isRefreshing && this.refreshPromise && !isRetry) {
+        await this.refreshPromise;
+        // Retry the original request after refresh
+        return this.request<T>(url, options, true);
+      }
+
+      // Add authorization header if access token is available
+      const authStore = this.getAuthStore();
+      const headers = new Headers(options.headers || {});
+
+      if (authStore.accessToken) {
+        headers.set('Authorization', `Bearer ${authStore.accessToken}`);
+      }
+
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      // Handle 401 Unauthorized - try to refresh token first
+      if (response.status === 401 && !isRetry) {
+        if (!this.isRefreshing) {
+          this.isRefreshing = true;
+          this.refreshPromise = this.refreshAccessToken();
+
+          try {
+            await this.refreshPromise;
+            // Refresh succeeded, retry the request
+            return this.request<T>(url, options, true);
+          } catch (refreshError) {
+            // Refresh failed, clear auth
+            authStore.clearStorage();
+            throw new Error('Authentication required');
+          } finally {
+            this.isRefreshing = false;
+            this.refreshPromise = null;
+          }
+        }
+      }
+
+      // Handle 401 on retry - clear auth
+      if (response.status === 401 && isRetry) {
+        authStore.clearStorage();
+        throw new Error('Authentication required');
+      }
 
       // Check if response is OK
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${errorText || response.statusText}`);
+        const contentType = response.headers.get('content-type') || '';
+        let errorText: string;
+
+        if (contentType.includes('application/json')) {
+          const errorData = await response.json();
+          errorText = errorData.error || errorData.message || response.statusText;
+        } else {
+          errorText = await response.text();
+        }
+
+        throw new Error(errorText || `API error: ${response.status}`);
       }
 
       // Parse response as JSON
-      const data = await response.json();
+      const text = await response.text();
+      if (!text) {
+        return {} as T;
+      }
+      const data = JSON.parse(text);
       return data as T;
     } catch (error) {
       // Handle network errors
       if (error instanceof Error) {
         console.error(`API request failed: ${url}`, error);
         // Show user-friendly error message
-        if (window.showToast) {
+        if (window.showToast && error.message !== 'Authentication required') {
           window.showToast(`API request failed: ${error.message}`, 'error');
         }
       }

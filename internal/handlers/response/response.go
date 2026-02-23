@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	apperrors "MrRSS/internal/errors"
+	apperrors "MavenRSS/internal/errors"
 )
 
 // APIResponse represents a standard API response structure

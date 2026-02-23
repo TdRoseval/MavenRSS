@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/textutil"
 
 	"github.com/mmcdole/gofeed"
 )
@@ -92,6 +92,7 @@ func (f *Fetcher) processArticles(feed models.Feed, items []*gofeed.Item) []*Art
 		}
 
 		article := &models.Article{
+			UserID:                feed.UserID,
 			FeedID:                feed.ID,
 			Title:                 title,
 			URL:                   item.Link,

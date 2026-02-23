@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
+import { authFetch, authFetchJson } from '@/utils/authFetch';
 
 interface SummarySettings {
   enabled: boolean;
@@ -35,8 +36,7 @@ export function useArticleSummary() {
   // Load summary settings
   async function loadSummarySettings(): Promise<void> {
     try {
-      const res = await fetch('/api/settings');
-      const data = await res.json();
+      const data = await authFetchJson('/api/settings');
       summarySettings.value = {
         enabled: data.summary_enabled === 'true',
         length: data.summary_length || 'medium',
@@ -89,7 +89,7 @@ export function useArticleSummary() {
     loadingSummaries.value.add(article.id);
 
     try {
-      const res = await fetch('/api/articles/summarize', {
+      const res = await authFetch('/api/articles/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,4 +1,4 @@
-# Makefile for MrRSS (Wails v3 + Task)
+# Makefile for MavenRSS (Wails v3 + Task)
 .PHONY: help dev build package run test test-frontend test-backend lint lint-frontend format format-backend install-deps update-deps check setup clean love swagger swagger-validate swagger-serve static-check
 
 # Detect OS
@@ -15,7 +15,7 @@ endif
 
 # Default target
 help: ## Show this help message
-	@echo "MrRSS Development Makefile ($(DETECTED_OS))"
+	@echo "MavenRSS Development Makefile ($(DETECTED_OS))"
 	@echo ""
 	@echo "Wails v3 Build System - Using Task Runner"
 	@echo ""
@@ -158,7 +158,7 @@ else
 endif
 
 love: ## Show some love
-	@echo "❤️ MrRSS loves you too! ❤️"
+	@echo "❤️ MavenRSS loves you too! ❤️"
 
 # Platform-specific builds
 build-windows: ## Build for Windows

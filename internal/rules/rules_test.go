@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
 )
 
 func setupTestEngine(t *testing.T) *Engine {

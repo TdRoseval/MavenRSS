@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/config"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/httputil"
 )
 
 type TestResult struct {
@@ -29,13 +29,15 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	result := TestResult{
 		TestTime: time.Now().Format(time.RFC3339),
 	}
 
-	apiKey, _ := h.DB.GetEncryptedSetting("ai_api_key")
-	endpoint, _ := h.DB.GetSetting("ai_endpoint")
-	model, _ := h.DB.GetSetting("ai_model")
+	apiKey, _ := h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
+	endpoint, _ := h.DB.GetSettingWithFallback(userID, "ai_endpoint")
+	model, _ := h.DB.GetSettingWithFallback(userID, "ai_model")
 
 	defaults := config.Get()
 	if endpoint == "" {
@@ -81,7 +83,7 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	startTime := time.Now()
 
-	httpClient, err := createAIHTTPClientWithProxy(h, true, 30*time.Second)
+	httpClient, err := createAIHTTPClientWithProxy(h, userID, true, 30*time.Second)
 	if err != nil {
 		result.ConnectionSuccess = false
 		result.ModelAvailable = false
@@ -135,17 +137,17 @@ func HandleGetAITestInfo(h *core.Handler, w http.ResponseWriter, r *http.Request
 	response.JSON(w, result)
 }
 
-func createAIHTTPClientWithProxy(h *core.Handler, useGlobalProxy bool, timeout time.Duration) (*http.Client, error) {
+func createAIHTTPClientWithProxy(h *core.Handler, userID int64, useProxy bool, timeout time.Duration) (*http.Client, error) {
 	var proxyURL string
 
-	if useGlobalProxy {
-		proxyEnabled, _ := h.DB.GetSetting("proxy_enabled")
+	if useProxy {
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 		if proxyEnabled == "true" {
-			proxyType, _ := h.DB.GetSetting("proxy_type")
-			proxyHost, _ := h.DB.GetSetting("proxy_host")
-			proxyPort, _ := h.DB.GetSetting("proxy_port")
-			proxyUsername, _ := h.DB.GetEncryptedSetting("proxy_username")
-			proxyPassword, _ := h.DB.GetEncryptedSetting("proxy_password")
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			proxyURL = buildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 		}
 	}

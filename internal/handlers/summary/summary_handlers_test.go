@@ -11,10 +11,10 @@ import (
 	"time"
 	"unsafe"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/feed"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/feed"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/models"
 
 	"github.com/mmcdole/gofeed"
 )

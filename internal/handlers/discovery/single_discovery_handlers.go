@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"MrRSS/internal/discovery"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
+	"MavenRSS/internal/discovery"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
 )
 
 // HandleDiscoverBlogs discovers blogs from a feed's friend links.
@@ -57,12 +57,24 @@ func HandleDiscoverBlogs(h *core.Handler, w http.ResponseWriter, r *http.Request
 		subscribedURLs = make(map[string]bool) // Continue with empty set
 	}
 
+	// Get user quota for concurrency limits
+	userID := targetFeed.UserID
+	maxRSSConcurrency := 0
+	maxPathConcurrency := 0
+	if userID > 0 {
+		quota, err := h.DB.GetUserQuota(userID)
+		if err == nil && quota != nil {
+			maxRSSConcurrency = quota.MaxRSSDiscoveryConcurrency
+			maxPathConcurrency = quota.MaxRSSPathCheckConcurrency
+		}
+	}
+
 	// Discover blogs with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	log.Printf("Starting blog discovery for feed: %s (%s)", targetFeed.Title, targetFeed.URL)
-	discovered, err := h.DiscoveryService.DiscoverFromFeed(ctx, targetFeed.URL)
+	discovered, err := h.DiscoveryService.DiscoverFromFeedWithProgress(ctx, targetFeed.URL, maxRSSConcurrency, maxPathConcurrency, nil)
 	if err != nil {
 		log.Printf("Error discovering blogs: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
@@ -163,6 +175,18 @@ func HandleStartSingleDiscovery(h *core.Handler, w http.ResponseWriter, r *http.
 		subscribedURLs = make(map[string]bool)
 	}
 
+	// Get user quota for concurrency limits
+	userID := targetFeed.UserID
+	maxRSSConcurrency := 0
+	maxPathConcurrency := 0
+	if userID > 0 {
+		quota, err := h.DB.GetUserQuota(userID)
+		if err == nil && quota != nil {
+			maxRSSConcurrency = quota.MaxRSSDiscoveryConcurrency
+			maxPathConcurrency = quota.MaxRSSPathCheckConcurrency
+		}
+	}
+
 	// Start discovery in background
 	go func() {
 		// Create a progress callback that updates the state
@@ -178,7 +202,7 @@ func HandleStartSingleDiscovery(h *core.Handler, w http.ResponseWriter, r *http.
 		defer cancel()
 
 		log.Printf("Starting background discovery for feed: %s (%s)", targetFeed.Title, targetFeed.URL)
-		discovered, err := h.DiscoveryService.DiscoverFromFeedWithProgress(ctx, targetFeed.URL, progressCb)
+		discovered, err := h.DiscoveryService.DiscoverFromFeedWithProgress(ctx, targetFeed.URL, maxRSSConcurrency, maxPathConcurrency, progressCb)
 
 		h.DiscoveryMu.Lock()
 		defer h.DiscoveryMu.Unlock()
@@ -201,6 +225,7 @@ func HandleStartSingleDiscovery(h *core.Handler, w http.ResponseWriter, r *http.
 		for _, blog := range discovered {
 			if !subscribedURLs[blog.RSSFeed] {
 				filtered = append(filtered, blog)
+				subscribedURLs[blog.RSSFeed] = true
 			}
 		}
 

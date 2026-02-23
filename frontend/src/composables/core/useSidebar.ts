@@ -3,6 +3,7 @@ import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
 import type { Feed } from '@/types/models';
+import { authFetch, authPost, authFetchJson } from '@/utils/authFetch';
 
 interface TreeNode {
   _feeds: Feed[];
@@ -209,15 +210,13 @@ export function useSidebar() {
       await store.markAllAsRead(feed.id);
       window.showToast(t('article.action.markedAllAsRead'), 'success');
     } else if (action === 'refreshFeed') {
-      await fetch(`/api/feeds/refresh?id=${feed.id}`, { method: 'POST' });
+      await authPost(`/api/feeds/refresh?id=${feed.id}`);
       window.showToast(t('modal.feed.feedRefreshStarted'), 'success');
       // Start polling for progress as the backend is now fetching articles for this feed
       store.pollProgress();
     } else if (action === 'syncFeed') {
       // Sync individual FreshRSS feed
-      await fetch(`/api/freshrss/sync-feed?stream_id=${feed.freshrss_stream_id}`, {
-        method: 'POST',
-      });
+      await authPost(`/api/freshrss/sync-feed?stream_id=${feed.freshrss_stream_id}`);
       window.showToast(t('modal.feed.syncFeedStarted'), 'success');
       // Start polling for progress
       store.pollProgress();
@@ -230,8 +229,9 @@ export function useSidebar() {
         isDanger: true,
       });
       if (confirmed) {
-        await fetch(`/api/feeds/delete?id=${feed.id}`, { method: 'POST' });
+        await authPost(`/api/feeds/delete?id=${feed.id}`);
         store.fetchFeeds();
+        store.fetchArticles();
         window.showToast(t('modal.feed.unsubscribedSuccess'), 'success');
       }
     } else if (action === 'edit') {
@@ -241,7 +241,7 @@ export function useSidebar() {
       let urlToOpen = feed.website_url || feed.url;
       if (urlToOpen.startsWith('rsshub://')) {
         try {
-          const response = await fetch('/api/rsshub/transform-url', {
+          const response = await authFetch('/api/rsshub/transform-url', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -369,9 +369,7 @@ export function useSidebar() {
     if (action === 'markAllRead') {
       // Use the category parameter for the API call
       const category = categoryName === 'uncategorized' ? '' : categoryName;
-      await fetch(`/api/articles/mark-all-read?category=${encodeURIComponent(category)}`, {
-        method: 'POST',
-      });
+      await authPost(`/api/articles/mark-all-read?category=${encodeURIComponent(category)}`);
       store.fetchUnreadCounts();
       window.showToast(t('article.action.markedAllAsRead'), 'success');
     } else if (action === 'rename') {
@@ -395,15 +393,11 @@ export function useSidebar() {
             newCategory = newName + feed.category.substring(categoryName.length);
           }
 
-          return fetch('/api/feeds/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: feed.id,
-              title: feed.title,
-              url: feed.url,
-              category: newCategory,
-            }),
+          return authPost('/api/feeds/update', {
+            id: feed.id,
+            title: feed.title,
+            url: feed.url,
+            category: newCategory,
           });
         });
 

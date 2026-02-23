@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // Translator defines the interface for translation services
@@ -23,6 +23,13 @@ type ProxyRefresher interface {
 type DBInterface interface {
 	GetSetting(key string) (string, error)
 	GetEncryptedSetting(key string) (string, error)
+}
+
+// DBInterfaceWithFallback is an optional extension for databases that support user settings with fallback
+type DBInterfaceWithFallback interface {
+	DBInterface
+	GetSettingWithFallback(userID int64, key string) (string, error)
+	GetEncryptedSettingWithFallback(userID int64, key string) (string, error)
 }
 
 // CreateHTTPClientWithProxy creates an HTTP client with global proxy settings if enabled

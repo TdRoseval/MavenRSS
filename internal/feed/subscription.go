@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
-	"MrRSS/internal/utils"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/rsshub"
+	"MavenRSS/internal/utils"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/antchfx/htmlquery"
 	"github.com/antchfx/xmlquery"
@@ -46,8 +46,15 @@ func generateTitleFromRoute(route string) string {
 
 // AddRSSHubSubscription adds a new RSSHub feed subscription and returns the feed ID.
 // This is a specialized handler for RSSHub routes, similar to script subscriptions.
+// Deprecated: Use AddRSSHubSubscriptionWithUserID instead
 func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTitle string) (int64, error) {
-	utils.DebugLog("AddRSSHubSubscription: Adding RSSHub feed with route: %s", route)
+	return f.AddRSSHubSubscriptionWithUserID(route, category, customTitle, 0)
+}
+
+// AddRSSHubSubscriptionWithUserID adds a new RSSHub feed subscription and returns the feed ID.
+// This is a specialized handler for RSSHub routes, similar to script subscriptions.
+func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string, customTitle string, userID int64) (int64, error) {
+	utils.DebugLog("AddRSSHubSubscriptionWithUserID: Adding RSSHub feed with route: %s, userID: %v", route, userID)
 
 	// Validate route
 	if route == "" {
@@ -55,21 +62,21 @@ func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTit
 	}
 
 	// Validate route by testing it (skip if API key is empty)
-	endpoint, _ := f.db.GetSetting("rsshub_endpoint")
+	endpoint, _ := f.db.GetSettingWithFallback(userID, "rsshub_endpoint")
 	if endpoint == "" {
 		endpoint = "https://rsshub.app"
 	}
-	apiKey, _ := f.db.GetEncryptedSetting("rsshub_api_key")
+	apiKey, _ := f.db.GetEncryptedSettingWithFallback(userID, "rsshub_api_key")
 
-	// Build proxy URL if enabled
+	// Build proxy URL if enabled (优先用户设置，回退全局)
 	var proxyURL string
-	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	proxyEnabled, _ := f.db.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
-		proxyType, _ := f.db.GetSetting("proxy_type")
-		proxyHost, _ := f.db.GetSetting("proxy_host")
-		proxyPort, _ := f.db.GetSetting("proxy_port")
-		proxyUsername, _ := f.db.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := f.db.GetEncryptedSetting("proxy_password")
+		proxyType, _ := f.db.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := f.db.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := f.db.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := f.db.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := f.db.GetEncryptedSettingWithFallback(userID, "proxy_password")
 		proxyURL = BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
 	}
 
@@ -91,9 +98,9 @@ func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTit
 	// Store with rsshub:// protocol (similar to script://)
 	url := "rsshub://" + route
 
-	utils.DebugLog("AddRSSHubSubscription: Creating feed with URL: %s", url)
+	utils.DebugLog("AddRSSHubSubscriptionWithUserID: Creating feed with URL: %s", url)
 
-	// Mark feed as using proxy if global proxy is enabled
+	// Mark feed as using proxy if proxy is enabled
 	// This ensures RSSHub feeds use the configured proxy during refresh
 	useProxy := proxyEnabled == "true"
 
@@ -105,8 +112,12 @@ func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTit
 		Category:     category,
 		ProxyEnabled: useProxy,
 		ProxyURL:     proxyURL,
+		UserID:       userID,
 	}
 
+	if userID > 0 {
+		return f.db.AddFeedForUser(userID, feed)
+	}
 	return f.db.AddFeed(feed)
 }
 
@@ -512,15 +523,20 @@ func (f *Fetcher) ImportSubscription(title, url, category string) (int64, error)
 
 // ParseFeed parses an RSS feed from a URL and returns the parsed feed
 func (f *Fetcher) ParseFeed(ctx context.Context, url string) (*gofeed.Feed, error) {
+	return f.ParseFeedWithUserID(ctx, url, 0)
+}
+
+// ParseFeedWithUserID parses an RSS feed from a URL and returns the parsed feed, using user ID for settings
+func (f *Fetcher) ParseFeedWithUserID(ctx context.Context, url string, userID int64) (*gofeed.Feed, error) {
 	// Transform RSSHub URLs
-	actualURL, err := f.transformRSSHubURL(url)
+	actualURL, err := f.transformRSSHubURL(url, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Use fetchAndSanitizeFeed to ensure proper HTTP client (with proxy) is used
-	tempFeed := &models.Feed{URL: actualURL}
-	proxyEnabled, _ := f.db.GetSetting("proxy_enabled")
+	tempFeed := &models.Feed{URL: actualURL, UserID: userID}
+	proxyEnabled, _ := f.db.GetSettingWithFallback(userID, "proxy_enabled")
 	if proxyEnabled == "true" {
 		tempFeed.ProxyEnabled = true
 	}
@@ -626,7 +642,7 @@ func (f *Fetcher) parseFeedWithFeedInternal(ctx context.Context, feed *models.Fe
 	// Transform RSSHub URLs if needed
 	actualURL := feed.URL
 	if rsshub.IsRSSHubURL(feed.URL) {
-		transformedURL, err := f.transformRSSHubURL(feed.URL)
+		transformedURL, err := f.transformRSSHubURL(feed.URL, feed.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform RSSHub URL: %w", err)
 		}

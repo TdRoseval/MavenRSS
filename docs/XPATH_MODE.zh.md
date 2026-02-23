@@ -1,13 +1,13 @@
-# MrRSS XPath 模式
+# MavenRSS XPath 模式
 
-MrRSS 支持 XPath 模式，可以从不提供标准 RSS/Atom 订阅源的网站中提取类似 RSS 的内容。该模式允许您定义 XPath 表达式，直接从 HTML 或 XML 页面中抓取文章数据。
+MavenRSS 支持 XPath 模式，可以从不提供标准 RSS/Atom 订阅源的网站中提取类似 RSS 的内容。该模式允许您定义 XPath 表达式，直接从 HTML 或 XML 页面中抓取文章数据。
 
 ## 工作原理
 
 1. 添加新订阅源时，选择 "XPath" 作为订阅源类型
 2. 根据您的数据源选择 "HTML + XPath" 或 "XML + XPath"
 3. 提供源 URL 并为不同的文章元素配置 XPath 表达式
-4. MrRSS 将解析页面并使用您的 XPath 表达式提取文章
+4. MavenRSS 将解析页面并使用您的 XPath 表达式提取文章
 
 ## XPath 类型
 

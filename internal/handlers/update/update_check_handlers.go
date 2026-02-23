@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/fileutil"
-	"MrRSS/internal/utils/httputil"
-	"MrRSS/internal/version"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/fileutil"
+	"MavenRSS/internal/utils/httputil"
+	"MavenRSS/internal/version"
 )
 
 // isNetworkError checks if the error is related to network connectivity issues
@@ -89,7 +89,7 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	currentVersion := version.Version
 	// Use /releases endpoint to get all releases, then filter for stable versions
-	const githubAPI = "https://api.github.com/repos/WCY-dt/MrRSS/releases"
+	const githubAPI = "https://api.github.com/repos/WCY-dt/MavenRSS/releases"
 
 	// Create HTTP client with global proxy support
 	var proxyURL string
@@ -201,8 +201,8 @@ func HandleCheckUpdates(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 		// Match platform-specific installer/package with architecture
 		// Asset naming convention:
-		//   Installer: MrRSS-{version}-{platform}-{arch}-installer.{ext}
-		//   Portable: MrRSS-{version}-{platform}-{arch}-portable.{ext}
+		//   Installer: MavenRSS-{version}-{platform}-{arch}-installer.{ext}
+		//   Portable: MavenRSS-{version}-{platform}-{arch}-portable.{ext}
 		platformArch := platform + "-" + arch
 
 		if platform == "windows" {

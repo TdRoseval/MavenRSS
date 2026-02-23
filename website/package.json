@@ -1,7 +1,7 @@
 {
-  "name": "mrrss-website",
+  "name": "mavenrss-website",
   "version": "1.3.20",
-  "description": "MrRSS - AI-Powered RSS Reader Landing Page",
+  "description": "MavenRSS - AI-Powered RSS Reader Landing Page",
   "type": "module",
   "scripts": {
     "dev": "vite",

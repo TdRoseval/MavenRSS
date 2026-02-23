@@ -1,7 +1,7 @@
 package service
 
 import (
-	"MrRSS/internal/database"
+	"MavenRSS/internal/database"
 )
 
 // settingsService implements SettingsService interface

@@ -13,6 +13,7 @@ import {
   PhPencil,
 } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
+import { authGet, authPost, authPut, authDelete, authFetch } from '@/utils/authFetch';
 
 interface ChatMessage {
   id: number;
@@ -77,10 +78,9 @@ onMounted(async () => {
 
 async function loadSessions() {
   try {
-    const response = await fetch(`/api/ai/chat/sessions?article_id=${props.article.id}`);
-    if (response.ok) {
-      sessions.value = await response.json();
-    }
+    sessions.value = await authGet<ChatSession[]>(
+      `/api/ai/chat/sessions?article_id=${props.article.id}`
+    );
   } catch (e) {
     console.error('Failed to load sessions:', e);
   }
@@ -88,18 +88,17 @@ async function loadSessions() {
 
 async function selectSession(sessionId: number) {
   try {
-    const response = await fetch(`/api/ai/chat/messages?session_id=${sessionId}`);
-    if (response.ok) {
-      const loadedMessages = await response.json();
-      messages.value = loadedMessages;
-      currentSessionId.value = sessionId;
-      // Set isFirstMessage based on whether the session has any messages
-      // New sessions (no messages) should have isFirstMessage = true
-      isFirstMessage.value = loadedMessages.length === 0;
-      showSessions.value = false;
-      await nextTick();
-      scrollToBottom();
-    }
+    const loadedMessages = await authGet<ChatMessage[]>(
+      `/api/ai/chat/messages?session_id=${sessionId}`
+    );
+    messages.value = loadedMessages;
+    currentSessionId.value = sessionId;
+    // Set isFirstMessage based on whether the session has any messages
+    // New sessions (no messages) should have isFirstMessage = true
+    isFirstMessage.value = loadedMessages.length === 0;
+    showSessions.value = false;
+    await nextTick();
+    scrollToBottom();
   } catch (e) {
     console.error('Failed to load session messages:', e);
   }
@@ -107,23 +106,15 @@ async function selectSession(sessionId: number) {
 
 async function createNewSession() {
   try {
-    const response = await fetch('/api/ai/chat/session/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        article_id: props.article.id,
-        title: t('article.chat.newChat'),
-      }),
+    const newSession = await authPost<ChatSession>('/api/ai/chat/session/create', {
+      article_id: props.article.id,
+      title: t('article.chat.newChat'),
     });
-
-    if (response.ok) {
-      const newSession = await response.json();
-      sessions.value.unshift(newSession);
-      // Select the new session and reset for first message
-      await selectSession(newSession.id);
-      // Ensure isFirstMessage is true for new sessions
-      isFirstMessage.value = true;
-    }
+    sessions.value.unshift(newSession);
+    // Select the new session and reset for first message
+    await selectSession(newSession.id);
+    // Ensure isFirstMessage is true for new sessions
+    isFirstMessage.value = true;
   } catch (e) {
     console.error('Failed to create session:', e);
   }
@@ -139,9 +130,7 @@ async function deleteSession(sessionId: number, e: Event) {
   if (!confirmed) return;
 
   try {
-    await fetch(`/api/ai/chat/session?session_id=${sessionId}`, {
-      method: 'DELETE',
-    });
+    await authDelete(`/api/ai/chat/session?session_id=${sessionId}`);
 
     sessions.value = sessions.value.filter((s) => s.id !== sessionId);
     if (currentSessionId.value === sessionId) {
@@ -164,10 +153,8 @@ function startEditSession(session: ChatSession, e: Event) {
 
 async function saveSessionTitle(sessionId: number) {
   try {
-    await fetch(`/api/ai/chat/session?session_id=${sessionId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: editingSessionTitle.value }),
+    await authPut(`/api/ai/chat/session?session_id=${sessionId}`, {
+      title: editingSessionTitle.value,
     });
 
     const session = sessions.value.find((s) => s.id === sessionId);
@@ -241,86 +228,122 @@ async function sendMessage() {
   inputMessage.value = '';
   isLoading.value = true;
 
+  const assistantMessageIndex = messages.value.length;
+  const assistantMessage: ChatMessage = {
+    id: 0,
+    role: 'assistant',
+    content: '',
+    html: '',
+    created_at: new Date().toISOString(),
+  };
+  messages.value.push(assistantMessage);
+
   await nextTick();
   scrollToBottom();
 
   try {
-    // Prepare article content for AI context
-    // Use up to 50000 characters for better context while staying reasonable
     const articleContent = props.articleContent ? props.articleContent.slice(0, 50000) : '';
-
     const requestBody: any = {
       session_id: currentSessionId.value,
       article_id: props.article.id,
-      messages: messages.value.slice(-10),
+      messages: messages.value.slice(0, -1).slice(-10),
       is_first_message: isFirstMessage.value,
       article_title: props.article.title,
       article_url: props.article.url,
-      // Include article content to ensure AI has context
       article_content: articleContent,
     };
 
-    const response = await fetch('/api/ai-chat', {
+    const response = await authFetch('/api/ai-chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      messages.value.push({
-        id: 0,
-        role: 'assistant',
-        content: data.response,
-        html: data.html, // Use pre-rendered HTML from backend
-        thinking: data.thinking,
-        created_at: new Date().toISOString(),
-      });
-
-      if (data.session_id && data.session_id !== currentSessionId.value) {
-        currentSessionId.value = data.session_id;
-        await loadSessions();
-      }
-
-      isFirstMessage.value = false;
-    } else {
+    if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI chat error response:', response.status, errorText);
+      console.error('AI chat stream error:', response.status, errorText);
+      throw new Error(errorText);
+    }
 
-      let errorMessage = t('article.chat.aiChatError');
-      try {
-        const errorData = JSON.parse(errorText);
-        // Extract error message from various possible formats
-        if (typeof errorData.error === 'string') {
-          errorMessage = errorData.error;
-        } else if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        } else if (typeof errorData === 'string') {
-          errorMessage = errorData;
-        } else {
-          errorMessage = t('article.chat.aiChatError');
-        }
-      } catch {
-        errorMessage = errorText || t('article.chat.aiChatError');
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+    let eventName: string | null = null;
+    let chunkCount = 0;
+
+    console.log('Starting to read SSE stream...');
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.log('Stream done, total chunks:', chunkCount);
+        break;
       }
 
-      messages.value.push({
-        id: 0,
-        role: 'assistant',
-        content: errorMessage,
-        created_at: new Date().toISOString(),
-      });
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('event: ')) {
+          eventName = trimmed.slice(7);
+          console.log('Received event:', eventName);
+          continue;
+        }
+
+        if (!trimmed.startsWith('data: ')) continue;
+
+        const dataStr = trimmed.slice(6);
+        if (!dataStr) continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+          console.log('Received data:', data);
+
+          if (eventName === 'done' || data.done) {
+            console.log('Stream completed, final data:', data);
+            if (data.response) {
+              messages.value[assistantMessageIndex] = {
+                ...messages.value[assistantMessageIndex],
+                content: data.response,
+                html: data.html,
+                thinking: data.thinking,
+              };
+            }
+            eventName = null;
+            await nextTick();
+            scrollToBottom();
+          } else if (data.content) {
+            chunkCount++;
+            fullContent += data.content;
+            messages.value[assistantMessageIndex] = {
+              ...messages.value[assistantMessageIndex],
+              content: fullContent,
+              html: '',
+            };
+            if (chunkCount % 10 === 0) {
+              console.log('Processed', chunkCount, 'chunks');
+            }
+            await nextTick();
+            scrollToBottom();
+          }
+        } catch (e) {
+          console.error('Failed to parse SSE data:', e, 'data:', dataStr);
+        }
+      }
     }
+
+    isFirstMessage.value = false;
   } catch (e) {
-    console.error('AI chat error:', e);
-    messages.value.push({
-      id: 0,
-      role: 'assistant',
-      content: t('article.chat.aiChatError'),
-      created_at: new Date().toISOString(),
-    });
+    console.error('AI chat stream error:', e);
+    assistantMessage.content = t('article.chat.aiChatError');
+    assistantMessage.html = '';
   } finally {
     isLoading.value = false;
     await nextTick();
@@ -489,11 +512,10 @@ const currentSessionTitle = computed(() => {
                 <div class="whitespace-pre-wrap">{{ msg.thinking }}</div>
               </div>
               <!-- Message content with pre-rendered HTML from backend -->
-              <div
-                v-if="msg.role === 'assistant'"
-                class="prose prose-sm max-w-none"
-                v-html="msg.html || msg.content"
-              ></div>
+              <div v-if="msg.role === 'assistant'" class="prose prose-sm max-w-none">
+                <div v-if="msg.html" v-html="msg.html"></div>
+                <div v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+              </div>
               <div v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
             </div>
           </div>

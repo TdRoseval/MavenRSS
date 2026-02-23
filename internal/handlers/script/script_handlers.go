@@ -10,9 +10,9 @@ import (
 	"runtime"
 	"strings"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/fileutil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/fileutil"
 )
 
 // HandleGetScriptsDir returns the path to the scripts directory

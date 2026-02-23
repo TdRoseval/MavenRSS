@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/httputil"
 )
 
 const maxRetries = 3
@@ -617,7 +617,7 @@ func (c *Client) SubscribeToFeed(ctx context.Context, feedURL, title string) err
 	return nil
 }
 
-// SyncService handles synchronization between MrRSS and FreshRSS
+// SyncService handles synchronization between MavenRSS and FreshRSS
 type SyncService struct {
 	client *Client
 	db     Database
@@ -725,7 +725,7 @@ func (s *SyncService) Sync(ctx context.Context) error {
 		existingArticleMap[article.URL] = true
 	}
 
-	// Convert FreshRSS articles to MrRSS articles (only new ones)
+	// Convert FreshRSS articles to MavenRSS articles (only new ones)
 	mrssArticles := make([]*models.Article, 0, len(freshArticles))
 	for _, freshArt := range freshArticles {
 		// Skip if article already exists
@@ -797,7 +797,7 @@ func (s *SyncService) buildCategoryPath(categories []Category, categoryMap map[s
 		label := cat.Label
 		// FreshRSS supports nested categories with "/" separator
 		// The label itself may contain "/" for hierarchy (e.g., "Tech/News")
-		// MrRSS already uses "/" as category separator, so we can use it directly
+		// MavenRSS already uses "/" as category separator, so we can use it directly
 		return label
 	}
 

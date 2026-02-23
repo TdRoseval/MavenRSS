@@ -18,6 +18,7 @@ import {
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
+import { authGet, authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -46,11 +47,8 @@ function updateSetting(key: keyof SettingsData, value: any) {
 // Fetch current media cache size
 async function fetchMediaCacheSize() {
   try {
-    const response = await fetch('/api/media/info');
-    if (response.ok) {
-      const data = await response.json();
-      mediaCacheSize.value = data.cache_size_mb || 0;
-    }
+    const data = await authGet('/api/media/info');
+    mediaCacheSize.value = data.cache_size_mb || 0;
   } catch (error) {
     console.error('Failed to fetch media cache size:', error);
   }
@@ -59,11 +57,8 @@ async function fetchMediaCacheSize() {
 // Fetch article content cache count
 async function fetchArticleCacheCount() {
   try {
-    const response = await fetch('/api/articles/content-cache-info');
-    if (response.ok) {
-      const data = await response.json();
-      articleCacheCount.value = data.cached_articles || 0;
-    }
+    const data = await authGet('/api/articles/content-cache-info');
+    articleCacheCount.value = data.cached_articles || 0;
   } catch (error) {
     console.error('Failed to fetch article cache count:', error);
   }
@@ -80,18 +75,13 @@ async function cleanMediaCache() {
 
   isCleaningCache.value = true;
   try {
-    const response = await fetch('/api/media/cleanup?all=true', { method: 'POST' });
-    if (response.ok) {
-      const data = await response.json();
-      window.showToast(
-        `${t('setting.database.mediaCacheCleanup')}: ${t('modal.feed.filesRemoved', { count: data.files_cleaned })}`,
-        'success'
-      );
-      // Immediately update cache size
-      await fetchMediaCacheSize();
-    } else {
-      window.showToast(t('common.errors.cleaningDatabase'), 'error');
-    }
+    const data = await authPost('/api/media/cleanup?all=true');
+    window.showToast(
+      `${t('setting.database.mediaCacheCleanup')}: ${t('modal.feed.filesRemoved', { count: data.files_cleaned })}`,
+      'success'
+    );
+    // Immediately update cache size
+    await fetchMediaCacheSize();
   } catch (error) {
     console.error('Failed to clean media cache:', error);
     window.showToast(t('common.errors.cleaningDatabase'), 'error');
@@ -111,18 +101,13 @@ async function cleanArticleContentCache() {
 
   isCleaningArticleCache.value = true;
   try {
-    const response = await fetch('/api/articles/cleanup-content', { method: 'POST' });
-    if (response.ok) {
-      const data = await response.json();
-      window.showToast(
-        `${t('setting.database.articleContentCacheCleanup')}: ${t('modal.feed.articlesRemoved', { count: data.entries_cleaned })}`,
-        'success'
-      );
-      // Immediately update cache count
-      await fetchArticleCacheCount();
-    } else {
-      window.showToast(t('common.errors.cleaningDatabase'), 'error');
-    }
+    const data = await authPost('/api/articles/cleanup-content');
+    window.showToast(
+      `${t('setting.database.articleContentCacheCleanup')}: ${t('modal.feed.articlesRemoved', { count: data.entries_cleaned })}`,
+      'success'
+    );
+    // Immediately update cache count
+    await fetchArticleCacheCount();
   } catch (error) {
     console.error('Failed to clean article content cache:', error);
     window.showToast(t('common.errors.cleaningDatabase'), 'error');

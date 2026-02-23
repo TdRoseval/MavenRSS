@@ -2,6 +2,7 @@ import { ref, computed, type Ref } from 'vue';
 import { useAppStore } from '@/stores/app';
 import type { Article } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
+import { authFetchJson } from '@/utils/authFetch';
 
 export function useArticleFilter() {
   const store = useAppStore();
@@ -41,7 +42,7 @@ export function useArticleFilter() {
     try {
       const page = append ? filterPage.value : 1;
 
-      const res = await fetch('/api/articles/filter', {
+      const data = await authFetchJson('/api/articles/filter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -51,37 +52,29 @@ export function useArticleFilter() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const articles = data.articles || [];
+      const articles = data.articles || [];
 
-        if (append) {
-          store.setFilteredArticlesFromServer([...store.filteredArticlesFromServer, ...articles]);
-        } else {
-          store.setFilteredArticlesFromServer(articles);
-          filterPage.value = 1;
-        }
-
-        // Ensure filtered articles are also in the store for article detail view
-        articles.forEach((article) => {
-          const existingIndex = store.articles.findIndex((a) => a.id === article.id);
-          if (existingIndex === -1) {
-            // Article not in store, add it
-            store.articles.push(article);
-          } else {
-            // Article already in store, update it
-            store.articles[existingIndex] = article;
-          }
-        });
-
-        filterHasMore.value = data.has_more;
-        filterTotal.value = data.total;
+      if (append) {
+        store.setFilteredArticlesFromServer([...store.filteredArticlesFromServer, ...articles]);
       } else {
-        console.error('Error fetching filtered articles');
-        if (!append) {
-          store.setFilteredArticlesFromServer([]);
-        }
+        store.setFilteredArticlesFromServer(articles);
+        filterPage.value = 1;
       }
+
+      // Ensure filtered articles are also in the store for article detail view
+      articles.forEach((article) => {
+        const existingIndex = store.articles.findIndex((a) => a.id === article.id);
+        if (existingIndex === -1) {
+          // Article not in store, add it
+          store.articles.push(article);
+        } else {
+          // Article already in store, update it
+          store.articles[existingIndex] = article;
+        }
+      });
+
+      filterHasMore.value = data.has_more;
+      filterTotal.value = data.total;
     } catch (e) {
       console.error('Error fetching filtered articles:', e);
       if (!append) {

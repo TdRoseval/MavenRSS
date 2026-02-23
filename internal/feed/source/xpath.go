@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/mmcdole/gofeed"
@@ -112,7 +112,7 @@ func (x *XPathSource) doFetch(ctx context.Context, config *Config) (*gofeed.Feed
 	if config.UserAgent != "" {
 		req.Header.Set("User-Agent", config.UserAgent)
 	} else {
-		req.Header.Set("User-Agent", "MrRSS/1.0")
+		req.Header.Set("User-Agent", "MavenRSS/1.0")
 	}
 
 	resp, err := x.client.Do(req)
@@ -253,7 +253,7 @@ func (x *XPathSource) FetchRaw(ctx context.Context, url string, userAgent string
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	} else {
-		req.Header.Set("User-Agent", "MrRSS/1.0")
+		req.Header.Set("User-Agent", "MavenRSS/1.0")
 	}
 
 	resp, err := x.client.Do(req)

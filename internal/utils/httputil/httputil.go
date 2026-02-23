@@ -299,7 +299,7 @@ func TestProxyConnection(proxyURL, testURL string, timeout time.Duration) ProxyT
 		return result
 	}
 
-	req.Header.Set("User-Agent", "MrRSS-ProxyTest/1.0")
+	req.Header.Set("User-Agent", "MavenRSS-ProxyTest/1.0")
 	req.Header.Set("Accept", "*/*")
 
 	resp, err := client.Do(req)

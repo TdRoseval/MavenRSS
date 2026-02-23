@@ -9,6 +9,7 @@ interface Props {
   confirmText?: string;
   cancelText?: string;
   isDanger?: boolean;
+  useHtml?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
@@ -16,6 +17,7 @@ withDefaults(defineProps<Props>(), {
   confirmText: undefined,
   cancelText: undefined,
   isDanger: false,
+  useHtml: false,
 });
 
 const { t } = useI18n();
@@ -47,10 +49,12 @@ function handleClose() {
 </script>
 
 <template>
-  <BaseModal :title="title" :closable="false" size="md" :z-index="150" @close="handleClose">
+  <BaseModal :title="title" :closable="false" size="md" :z-index="2000" @close="handleClose">
     <!-- Body -->
     <div class="p-3 sm:p-5">
-      <p class="m-0 text-text-primary text-sm sm:text-base">{{ message }}</p>
+      <p v-if="!useHtml" class="m-0 text-text-primary text-sm sm:text-base">{{ message }}</p>
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <div v-else class="m-0 text-text-primary text-sm sm:text-base" v-html="message"></div>
     </div>
 
     <!-- Footer -->

@@ -3,14 +3,14 @@ package service
 import (
 	"sync"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/cache"
-	"MrRSS/internal/database"
-	"MrRSS/internal/discovery"
-	"MrRSS/internal/feed"
-	"MrRSS/internal/statistics"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/cache"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/discovery"
+	"MavenRSS/internal/feed"
+	"MavenRSS/internal/statistics"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // Registry is the central service registry that manages all application services.

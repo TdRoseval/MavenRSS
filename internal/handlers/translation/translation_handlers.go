@@ -2,14 +2,16 @@ package translation
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/textutil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/textutil"
 )
 
 // TestCustomTranslationRequest represents a request to test custom translation configuration
@@ -24,6 +26,96 @@ type TestCustomTranslationResponse struct {
 	Success bool   `json:"success"`
 	Result  string `json:"result,omitempty"`
 	Error   string `json:"error,omitempty"`
+}
+
+// isAILimitReached checks if the AI usage limit is reached for a specific user
+func isAILimitReached(h *core.Handler, userID int64) bool {
+	usageStr, err := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	if err != nil {
+		return false
+	}
+	usage, _ := strconv.ParseInt(usageStr, 10, 64)
+
+	userLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_limit")
+	hardLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_hard_limit")
+
+	userLimit, _ := strconv.ParseInt(userLimitStr, 10, 64)
+	hardLimit, _ := strconv.ParseInt(hardLimitStr, 10, 64)
+
+	effectiveLimit := int64(0)
+	if userLimit > 0 && hardLimit > 0 {
+		effectiveLimit = min(userLimit, hardLimit)
+	} else if userLimit > 0 {
+		effectiveLimit = userLimit
+	} else if hardLimit > 0 {
+		effectiveLimit = hardLimit
+	}
+
+	if effectiveLimit == 0 {
+		return false
+	}
+
+	return usage >= effectiveLimit
+}
+
+// addAIUsage adds tokens to the AI usage counter for a specific user
+func addAIUsage(h *core.Handler, userID int64, tokens int64) {
+	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
+	newUsage := currentUsage + tokens
+	if userID > 0 {
+		h.DB.SetSettingForUser(userID, "ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+	} else {
+		h.DB.SetSetting("ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+	}
+}
+
+// Helper to get AI translator with user-specific settings
+func getAITranslatorForUser(h *core.Handler, userID int64) (*translation.AITranslator, error) {
+	log.Printf("[getAITranslatorForUser] Starting for user %d", userID)
+	// First, try to use AI profile provider if available
+	if h.AIProfileProvider != nil {
+		log.Printf("[getAITranslatorForUser] AIProfileProvider available, trying to get config for translation feature")
+		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureTranslation)
+		if err == nil && cfg != nil {
+			log.Printf("[getAITranslatorForUser] Got AI profile config, endpoint: %s, model: %s", cfg.Endpoint, cfg.Model)
+			// Get system prompt from settings
+			systemPrompt, _ := h.DB.GetSettingWithFallback(userID, "ai_translation_prompt")
+			translator := translation.NewAITranslatorWithDB(cfg.APIKey, cfg.Endpoint, cfg.Model, h.DB)
+			if systemPrompt != "" {
+				log.Printf("[getAITranslatorForUser] Setting system prompt")
+				translator.SetSystemPrompt(systemPrompt)
+			}
+			if cfg.CustomHeaders != "" {
+				log.Printf("[getAITranslatorForUser] Setting custom headers")
+				translator.SetCustomHeaders(cfg.CustomHeaders)
+			}
+			return translator, nil
+		} else {
+			log.Printf("[getAITranslatorForUser] No AI profile config found (err: %v, cfg: %v), falling back to legacy settings", err, cfg)
+		}
+	} else {
+		log.Printf("[getAITranslatorForUser] AIProfileProvider not available, falling back to legacy settings")
+	}
+
+	// Fallback to legacy settings
+	apiKey, _ := h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
+	endpoint, _ := h.DB.GetSettingWithFallback(userID, "ai_endpoint")
+	model, _ := h.DB.GetSettingWithFallback(userID, "ai_model")
+	systemPrompt, _ := h.DB.GetSettingWithFallback(userID, "ai_translation_prompt")
+	customHeaders, _ := h.DB.GetSettingWithFallback(userID, "ai_custom_headers")
+
+	log.Printf("[getAITranslatorForUser] Legacy settings - endpoint: %s, model: %s, has API key: %v", endpoint, model, apiKey != "")
+	translator := translation.NewAITranslatorWithDB(apiKey, endpoint, model, h.DB)
+	if systemPrompt != "" {
+		log.Printf("[getAITranslatorForUser] Setting system prompt from legacy settings")
+		translator.SetSystemPrompt(systemPrompt)
+	}
+	if customHeaders != "" {
+		log.Printf("[getAITranslatorForUser] Setting custom headers from legacy settings")
+		translator.SetCustomHeaders(customHeaders)
+	}
+	return translator, nil
 }
 
 // HandleTranslateArticle translates an article's title.
@@ -42,6 +134,8 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
 		ArticleID  int64  `json:"article_id"`
@@ -95,8 +189,8 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	// Step 2: Proceed with translation
-	// Check if we should use AI translation or fallback to Google
-	provider, _ := h.DB.GetSetting("translation_provider")
+	// Check if we should use AI translation or other provider
+	provider, _ := h.DB.GetSettingWithFallback(userID, "translation_provider")
 	isAIProvider := provider == "ai"
 
 	var translatedTitle string
@@ -105,37 +199,49 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	if isAIProvider {
 		// Check if AI usage limit is reached
-		if h.AITracker.IsLimitReached() {
+		if isAILimitReached(h, userID) {
 			limitReached = true
-			// Fallback to Google Translate
-			googleTranslator := translation.NewGoogleFreeTranslatorWithDB(h.DB)
-			translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, googleTranslator, req.TargetLang)
-		} else {
-			// Apply rate limiting for AI requests
-			h.AITracker.WaitForRateLimit()
-
-			// Use markdown-preserving translation for better list structure
-			translatedTitle, translateErr = translation.TranslateMarkdownAIPrompt(req.Title, h.Translator, req.TargetLang)
-
-			// If AI fails, fallback to Google Translate
-			if translateErr != nil {
-				googleTranslator := translation.NewGoogleFreeTranslatorWithDB(h.DB)
-				translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, googleTranslator, req.TargetLang)
-			}
-
-			// Track AI usage only on success (whether AI or fallback)
-			if translateErr == nil {
-				h.AITracker.TrackTranslation(req.Title, translatedTitle)
-			}
+			// AI limit reached, return error instead of silently falling back to Google
+			response.Error(w, fmt.Errorf("AI usage limit reached"), http.StatusTooManyRequests)
+			return
 		}
-	} else {
-		// Non-AI provider, use markdown-preserving translation
-		translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
-	}
+		
+		// Apply rate limiting for AI requests
+		h.AITracker.WaitForRateLimit()
 
-	if translateErr != nil {
-		response.Error(w, translateErr, http.StatusInternalServerError)
-		return
+		// Create AI translator directly with user-specific settings
+		aiTranslator, err := getAITranslatorForUser(h, userID)
+		if err != nil {
+			log.Printf("Failed to create AI translator: %v", err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Use markdown-preserving translation for better list structure
+		translatedTitle, translateErr = translation.TranslateMarkdownAIPrompt(req.Title, aiTranslator, req.TargetLang)
+
+		// If AI fails, don't silently fall back to Google - return error instead
+		if translateErr != nil {
+			log.Printf("AI translation failed: %v", translateErr)
+			response.Error(w, translateErr, http.StatusInternalServerError)
+			return
+		}
+
+		// Track AI usage
+		inputTokens := ai.EstimateTokens(req.Title)
+		outputTokens := ai.EstimateTokens(translatedTitle)
+		totalTokens := inputTokens + outputTokens
+		addAIUsage(h, userID, totalTokens)
+	} else {
+		// Non-AI provider, use original logic with h.Translator
+		translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
+		
+		// If translation fails, return error instead of falling back to Google
+		if translateErr != nil {
+			log.Printf("Translation failed for provider %s: %v", provider, translateErr)
+			response.Error(w, translateErr, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Step 3: Post-translation check - if translation equals original, it was already in target language
@@ -210,6 +316,9 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+	log.Printf("[TranslateText] Starting translation for user %d", userID)
+
 	var req struct {
 		Text       string `json:"text"`
 		TargetLang string `json:"target_language"`
@@ -217,26 +326,30 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("Error decoding translation request: %v", err)
+		log.Printf("[TranslateText] Error decoding translation request: %v", err)
 		response.Error(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.Text == "" || req.TargetLang == "" {
-		log.Printf("Missing required fields in translation request")
+		log.Printf("[TranslateText] Missing required fields in translation request")
 		response.Error(w, nil, http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("[TranslateText] Text length: %d, TargetLang: %s, Force: %v", len(req.Text), req.TargetLang, req.Force)
 
 	// Step 1: Pre-translation language detection to avoid unnecessary API calls
 	detector := translation.GetLanguageDetector()
 	// Use full-text analysis for better accuracy on longer content
 	// Skip language detection if force flag is set
 	shouldTranslate := req.Force || detector.ShouldTranslateFullText(req.Text, req.TargetLang)
+	log.Printf("[TranslateText] shouldTranslate: %v", shouldTranslate)
 
 	if !shouldTranslate {
 		// Text is already in target language, return original text
 		htmlText := textutil.ConvertMarkdownToHTML(req.Text)
+		log.Printf("[TranslateText] Skipping translation (already in target language)")
 		response.JSON(w, map[string]interface{}{
 			"translated_text": req.Text,
 			"html":            htmlText,
@@ -247,54 +360,71 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	// Step 2: Proceed with translation
-	// Check if we should use AI translation or fallback to Google
-	provider, _ := h.DB.GetSetting("translation_provider")
+	// Check if we should use AI translation or other provider
+	provider, _ := h.DB.GetSettingWithFallback(userID, "translation_provider")
 	isAIProvider := provider == "ai"
+	log.Printf("[TranslateText] provider: %s, isAIProvider: %v", provider, isAIProvider)
 
 	var translatedText string
 	var err error
 
 	if isAIProvider {
 		// Check if AI usage limit is reached
-		if h.AITracker.IsLimitReached() {
-			log.Printf("AI usage limit reached, falling back to Google Translate")
-			// Fallback to Google Translate
-			googleTranslator := translation.NewGoogleFreeTranslatorWithDB(h.DB)
-			translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, googleTranslator, req.TargetLang)
-		} else {
-			// Apply rate limiting for AI requests
-			h.AITracker.WaitForRateLimit()
-
-			// Use markdown-preserving translation for better list structure
-			translatedText, err = translation.TranslateMarkdownAIPrompt(req.Text, h.Translator, req.TargetLang)
-
-			// If AI fails, fallback to Google Translate
-			if err != nil {
-				log.Printf("AI translation failed, falling back to Google Translate: %v", err)
-				googleTranslator := translation.NewGoogleFreeTranslatorWithDB(h.DB)
-				translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, googleTranslator, req.TargetLang)
-			}
-
-			// Track AI usage only on success (whether AI or fallback)
-			if err == nil {
-				h.AITracker.TrackTranslation(req.Text, translatedText)
-			}
+		if isAILimitReached(h, userID) {
+			log.Printf("[TranslateText] AI usage limit reached")
+			// AI limit reached, return error instead of silently falling back to Google
+			response.Error(w, fmt.Errorf("AI usage limit reached"), http.StatusTooManyRequests)
+			return
 		}
-	} else {
-		// Non-AI provider, use markdown-preserving translation
-		translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
-	}
+		
+		// Apply rate limiting for AI requests
+		h.AITracker.WaitForRateLimit()
 
-	if err != nil {
-		log.Printf("Error translating text: %v", err)
-		response.Error(w, err, http.StatusInternalServerError)
-		return
+		// Create AI translator directly with user-specific settings
+		log.Printf("[TranslateText] Creating AI translator for user %d", userID)
+		aiTranslator, translatorErr := getAITranslatorForUser(h, userID)
+		if translatorErr != nil {
+			log.Printf("[TranslateText] Failed to create AI translator: %v", translatorErr)
+			response.Error(w, translatorErr, http.StatusInternalServerError)
+			return
+		}
+		log.Printf("[TranslateText] AI translator created successfully, endpoint: %s, model: %s", aiTranslator.Endpoint, aiTranslator.Model)
+
+		// Use markdown-preserving translation for better list structure
+		log.Printf("[TranslateText] Starting AI translation...")
+		translatedText, err = translation.TranslateMarkdownAIPrompt(req.Text, aiTranslator, req.TargetLang)
+
+		// If AI fails, don't silently fall back to Google - return error instead
+		if err != nil {
+			log.Printf("[TranslateText] AI translation failed: %v", err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+		log.Printf("[TranslateText] AI translation succeeded, translated length: %d", len(translatedText))
+
+		// Track AI usage
+		inputTokens := ai.EstimateTokens(req.Text)
+		outputTokens := ai.EstimateTokens(translatedText)
+		totalTokens := inputTokens + outputTokens
+		addAIUsage(h, userID, totalTokens)
+	} else {
+		// Non-AI provider, use original logic with h.Translator
+		log.Printf("[TranslateText] Using non-AI provider: %s", provider)
+		translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
+		
+		// If translation fails, return error instead of falling back to Google
+		if err != nil {
+			log.Printf("[TranslateText] Translation failed for provider %s: %v", provider, err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Step 3: Post-translation check - if translation equals original, it was already in target language
 	// This provides a safety net in case pre-translation detection was inaccurate
 	if translatedText == req.Text {
 		htmlText := textutil.ConvertMarkdownToHTML(translatedText)
+		log.Printf("[TranslateText] Translation equals original, skipping")
 		response.JSON(w, map[string]string{
 			"translated_text": translatedText,
 			"html":            htmlText,
@@ -306,6 +436,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	// Convert translated markdown to HTML
 	htmlText := textutil.ConvertMarkdownToHTML(translatedText)
 
+	log.Printf("[TranslateText] Translation completed successfully")
 	response.JSON(w, map[string]string{
 		"translated_text": translatedText,
 		"html":            htmlText,
@@ -351,13 +482,32 @@ func HandleGetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	usage, _ := h.AITracker.GetCurrentUsage()
-	limit, _ := h.AITracker.GetUsageLimit()
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	usage, _ := strconv.ParseInt(usageStr, 10, 64)
+
+	userLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_limit")
+	hardLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_hard_limit")
+
+	userLimit, _ := strconv.ParseInt(userLimitStr, 10, 64)
+	hardLimit, _ := strconv.ParseInt(hardLimitStr, 10, 64)
+
+	effectiveLimit := int64(0)
+	if userLimit > 0 && hardLimit > 0 {
+		effectiveLimit = min(userLimit, hardLimit)
+	} else if userLimit > 0 {
+		effectiveLimit = userLimit
+	} else if hardLimit > 0 {
+		effectiveLimit = hardLimit
+	}
+
+	limitReached := isAILimitReached(h, userID)
 
 	response.JSON(w, map[string]interface{}{
 		"usage":         usage,
-		"limit":         limit,
-		"limit_reached": h.AITracker.IsLimitReached(),
+		"limit":         effectiveLimit,
+		"limit_reached": limitReached,
 	})
 }
 

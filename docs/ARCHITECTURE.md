@@ -1,4 +1,4 @@
-# MrRSS Architecture Documentation
+# MavenRSS Architecture Documentation
 
 ## Table of Contents
 
@@ -13,7 +13,7 @@
 
 ## Overview
 
-MrRSS is built with a modern, modular architecture using:
+MavenRSS is built with a modern, modular architecture using:
 
 - **Backend**: Go 1.25+ with Wails v3 (alpha) framework
 - **Frontend**: Vue 3.5+ Composition API with TypeScript
@@ -376,7 +376,7 @@ func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
 
 ### AI-Powered Summarization
 
-MrRSS supports two types of summarization:
+MavenRSS supports two types of summarization:
 
 #### Local Summarization (Offline)
 

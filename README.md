@@ -1,14 +1,10 @@
-# MrRSS
-
-<a href="https://trendshift.io/repositories/15731" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15731" alt="WCY-dt%2FMrRSS | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-
-![Screenshot](imgs/og1.png)
+# MavenRSS (fork from [MrRSS](https://github.com/WCY-dt/MrRSS))
 
 <p>
    <strong>English</strong> | <a href="README_zh.md">简体中文</a>
 </p>
 
-[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MavenRSS/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
 [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -16,43 +12,61 @@
 
 ## ✨ Features
 
-- 🌐 **Auto-Translation & Summarization**: Automatically translate article titles and content, and generate concise summaries to help you get information quickly
+- 🌐 **Web & Desktop Deployment**: Choose between a native desktop application (Windows/macOS/Linux) or a self-hosted web server with multi-user access
+- 🔐 **User Authentication**: Secure login/registration system with JWT-based authentication and multi-tenant support
+- 🌍 **Auto-Translation & Summarization**: Automatically translate article titles and content, and generate concise summaries to help you get information quickly
 - 🤖 **AI-Enhanced Features**: Integrated advanced AI technology for translation, summarization, recommendations, and more, making reading smarter
 - 🔌 **Rich Plugin Ecosystem**: Supports integration with mainstream tools like Obsidian, Notion, FreshRSS, and RSSHub for easy feature extension
 - 📡 **Diverse Subscription Methods**: Supports URL, XPath, scripts, newsletters, and other feed types to meet different needs
 - 🏭 **Custom Scripts & Automation**: Built-in filters and scripting system supporting highly customizable automation workflows
+- 📱 **Mobile-Friendly**: Responsive design optimized for mobile devices with faster load times and smoother user experience
 
 ## 🚀 Quick Start
 
-### Download and Install
+### Deployment Options
 
-#### Option 1: Download Pre-built Installer (Recommended)
+MavenRSS offers three deployment options: 
 
-Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page.
+#### Option 1: Desktop Application (Recommended for Personal Use)
 
-<details>
+Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page of the upstream repository.
 
-<summary>Click to view the list of available installers</summary>
 
-<div markdown="1">
 
-**Standard Installation:**
+#### Option 2: Web Server (Recommended for Teams/Shared Use)
 
-- **Windows:** `MrRSS-{version}-windows-amd64-installer.exe` / `MrRSS-{version}-windows-arm64-installer.exe`
-- **macOS:** `MrRSS-{version}-darwin-universal.dmg`
-- **Linux:** `MrRSS-{version}-linux-amd64.AppImage` / `MrRSS-{version}-linux-arm64.AppImage`
+Deploy MavenRSS as a web server for multi-user access.
 
-**Portable Version** (no installation required, all data in one folder):
+##### Using Docker (Recommended)
 
-- **Windows:** `MrRSS-{version}-windows-{arch}-portable.zip`
-- **Linux:** `MrRSS-{version}-linux-{arch}-portable.tar.gz`
-- **macOS:** `MrRSS-{version}-darwin-{arch}-portable.zip`
+```bash
+# Start using Docker Compose
+docker-compose up -d
 
-</div>
+# Or using Docker directly
+docker run -d -p 1234:1234 \
+  -v mavenrss-data:/app/data \
+  --name mavenrss-server \
+  ghcr.io/tdroseval/mavenrss:latest
+```
 
-</details>
+Access the web interface at `http://localhost:1234`
 
-#### Option 2: Build from Source
+##### Configuration
+
+The following environment variables are available for configuration:
+
+- `MRRSS_JWT_SECRET`: Secret key for JWT tokens (required for production)
+- `MRRSS_ADMIN_USERNAME`: Admin username
+- `MRRSS_ADMIN_EMAIL`: Admin email
+- `MRRSS_ADMIN_PASSWORD`: Admin password
+- `MRRSS_TEMPLATE_USERNAME`: Template user username
+- `MRRSS_TEMPLATE_EMAIL`: Template user email
+- `MRRSS_TEMPLATE_PASSWORD`: Template user password
+
+
+
+#### Option 3: Build from Source (Desktop)
 
 <details>
 
@@ -86,8 +100,8 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/WCY-dt/MrRSS.git
-   cd MrRSS
+   git clone https://github.com/TdRoseval/MavenRSS.git
+   cd MavenRSS
    ```
 
 2. **Install frontend dependencies**
@@ -121,9 +135,9 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 5. **Run the application**
 
-   - Windows: `build/bin/MrRSS.exe`
-   - macOS: `build/bin/MrRSS.app`
-   - Linux: `build/bin/MrRSS`
+   - Windows: `build/bin/MavenRSS.exe`
+   - macOS: `build/bin/MavenRSS.app`
+   - Linux: `build/bin/MavenRSS`
 
 </div>
 
@@ -137,15 +151,18 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 <div markdown="1">
 
-**Normal Mode** (default):
+**Desktop Application:**
 
-- **Windows:** `%APPDATA%\MrRSS\` (e.g., `C:\Users\YourName\AppData\Roaming\MrRSS\`)
-- **macOS:** `~/Library/Application Support/MrRSS/`
-- **Linux:** `~/.local/share/MrRSS/`
+- **Normal Mode** (default):
+  - **Windows:** `%APPDATA%\MavenRSS\` (e.g., `C:\Users\YourName\AppData\Roaming\MavenRSS\`)
+  - **macOS:** `~/Library/Application Support/MavenRSS/`
+  - **Linux:** `~/.local/share/MavenRSS/`
 
-**Portable Mode** (when `portable.txt` exists):
+- **Portable Mode** (when `portable.txt` exists):
+  - All data stored in `data/` folder
 
-- All data stored in `data/` folder
+**Web Server:**
+- All data stored in the Docker volume or configured data directory
 
 This ensures your data persists across application updates and reinstalls.
 
@@ -211,72 +228,17 @@ pre-commit run --all-files
 make test
 ```
 
-### Server Mode (API-only)
-
-For server deployments and API integration, use the headless server version:
-
-```bash
-# Using Docker (recommended)
-docker run -p 1234:1234 mrrss-server:latest
-
-# Or build from source
-go build -tags server -o mrrss-server .
-./mrrss-server
-```
-
-Pre-built server images based on ghcr.io are also available:
-
-```bash
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-amd64
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
-```
-
-Please refer to the [Server Mode API Documentation](docs/SERVER_MODE/swagger.json) for a complete API reference.
-
 </div>
 
 </details>
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-<details>
-
-<summary>Click to expand the contributing guidelines</summary>
-
-<div markdown="1">
-
-Before contributing:
-
-1. Read the [Code of Conduct](CODE_OF_CONDUCT.md)
-2. Check existing issues or create a new one
-3. Fork the repository and create a feature branch
-4. Make your changes and add tests
-5. Submit a pull request
-
-</div>
-
-</details>
-
-## 🔒 Security
-
-If you discover a security vulnerability, please follow our [Security Policy](SECURITY.md).
 
 ## 📝 License
 
 This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
-## 📮 Contact & Support
-
-- **Issues**: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/WCY-dt/MrRSS/discussions)
-- **Repository**: [github.com/WCY-dt/MrRSS](https://github.com/WCY-dt/MrRSS)
-
 ---
 
 <div align="center">
-  <img src="imgs/sponsor.png" alt="Sponsor MrRSS"/>
-  <p>Made with ❤️ by the MrRSS Team</p>
+  <p>Made by AI</p>
   <p>⭐ Star us on GitHub if you find this project useful!</p>
 </div>

@@ -24,9 +24,9 @@ func TestGetDataDir(t *testing.T) {
 		t.Errorf("Data directory does not exist: %s", dir)
 	}
 
-	// Check that it ends with MrRSS (in normal mode) or data (in portable mode)
-	if !IsPortableMode() && !strings.HasSuffix(dir, "MrRSS") {
-		t.Errorf("Expected path to end with MrRSS in normal mode, got: %s", dir)
+	// Check that it ends with MavenRSS (in normal mode) or data (in portable mode)
+	if !IsPortableMode() && !strings.HasSuffix(dir, "MavenRSS") {
+		t.Errorf("Expected path to end with MavenRSS in normal mode, got: %s", dir)
 	}
 	if IsPortableMode() && !strings.HasSuffix(dir, "data") {
 		t.Errorf("Expected path to end with data in portable mode, got: %s", dir)
@@ -103,7 +103,7 @@ func TestGetDataDir_PlatformSpecific(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetDataDir failed: %v", err)
 		}
-		expected := filepath.Join("/Users/testuser", "Library", "Application Support", "MrRSS")
+		expected := filepath.Join("/Users/testuser", "Library", "Application Support", "MavenRSS")
 		if dir != expected {
 			t.Errorf("Expected %s, got %s", expected, dir)
 		}

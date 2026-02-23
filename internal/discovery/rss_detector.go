@@ -13,10 +13,14 @@ import (
 )
 
 // discoverRSSFeedsWithProgress discovers RSS feeds with progress updates
-func (s *Service) discoverRSSFeedsWithProgress(ctx context.Context, blogURLs []string, progressCb ProgressCallback) []DiscoveredBlog {
+func (s *Service) discoverRSSFeedsWithProgress(ctx context.Context, blogURLs []string, maxRSSConcurrency int, maxPathConcurrency int, progressCb ProgressCallback) []DiscoveredBlog {
 	var wg sync.WaitGroup
 	results := make(chan DiscoveredBlog, len(blogURLs))
-	sem := make(chan struct{}, MaxConcurrentRSSChecks)
+	
+	if maxRSSConcurrency <= 0 {
+		maxRSSConcurrency = 8
+	}
+	sem := make(chan struct{}, maxRSSConcurrency)
 
 	// Track progress
 	var progressMu sync.Mutex
@@ -57,7 +61,7 @@ OuterLoop:
 				})
 			}
 
-			if blog, err := s.discoverBlogRSS(ctx, u); err == nil {
+			if blog, err := s.discoverBlogRSS(ctx, u, maxPathConcurrency); err == nil {
 				progressMu.Lock()
 				foundCount++
 				progressMu.Unlock()
@@ -80,9 +84,9 @@ OuterLoop:
 }
 
 // discoverBlogRSS discovers RSS feed for a single blog
-func (s *Service) discoverBlogRSS(ctx context.Context, blogURL string) (DiscoveredBlog, error) {
+func (s *Service) discoverBlogRSS(ctx context.Context, blogURL string, maxPathConcurrency int) (DiscoveredBlog, error) {
 	// Try to find RSS feed URL
-	rssURL, err := s.findRSSFeed(ctx, blogURL)
+	rssURL, err := s.findRSSFeed(ctx, blogURL, maxPathConcurrency)
 	if err != nil {
 		return DiscoveredBlog{}, err
 	}
@@ -121,7 +125,7 @@ func (s *Service) discoverBlogRSS(ctx context.Context, blogURL string) (Discover
 }
 
 // findRSSFeed finds the RSS feed URL for a blog
-func (s *Service) findRSSFeed(ctx context.Context, blogURL string) (string, error) {
+func (s *Service) findRSSFeed(ctx context.Context, blogURL string, maxPathConcurrency int) (string, error) {
 	// Common RSS feed paths to try
 	u, err := url.Parse(blogURL)
 	if err != nil {
@@ -181,7 +185,10 @@ func (s *Service) findRSSFeed(ctx context.Context, blogURL string) (string, erro
 	resultCh := make(chan feedResult, len(commonPaths))
 
 	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, MaxConcurrentPathChecks)
+	if maxPathConcurrency <= 0 {
+		maxPathConcurrency = 5
+	}
+	semaphore := make(chan struct{}, maxPathConcurrency)
 
 	for _, path := range commonPaths {
 		feedURL := baseURL + path

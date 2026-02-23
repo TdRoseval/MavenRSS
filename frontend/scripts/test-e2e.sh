@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MrRSS E2E Test Runner
+# MavenRSS E2E Test Runner
 # This script helps you run E2E tests with the Wails backend
 
 set -e
@@ -11,7 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}🧪 MrRSS E2E Test Runner${NC}\n"
+echo -e "${GREEN}🧪 MavenRSS E2E Test Runner${NC}\n"
 
 # Change to frontend directory
 cd "$(dirname "$0")/../"

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/database"
-	ff "MrRSS/internal/feed"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/database"
+	ff "MavenRSS/internal/feed"
+	"MavenRSS/internal/models"
 )
 
 // Test that FetchAll respects concurrency limits

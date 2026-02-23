@@ -1,10 +1,10 @@
 # Build Requirements
 
-This document describes the system-level dependencies required for building MrRSS on different platforms.
+This document describes the system-level dependencies required for building MavenRSS on different platforms.
 
 ## Overview
 
-MrRSS uses Wails v3 (alpha) framework which requires CGO (C bindings for Go):
+MavenRSS uses Wails v3 (alpha) framework which requires CGO (C bindings for Go):
 
 - **Wails v3**: For the desktop application framework with built-in system tray
 - **SQLite**: Pure Go implementation (`modernc.org/sqlite`), no C dependencies
@@ -117,13 +117,13 @@ xcode-select --install
 macOS requires an application bundle structure:
 
 ```plaintext
-MrRSS.app/
+MavenRSS.app/
   Contents/
     Info.plist
     MacOS/
-      MrRSS
+      MavenRSS
     Resources/
-      MrRSS.icns
+      MavenRSS.icns
 ```
 
 Wails automatically creates this structure during build.

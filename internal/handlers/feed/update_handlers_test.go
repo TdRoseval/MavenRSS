@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	fh "MrRSS/internal/handlers/feed"
-	"MrRSS/internal/models"
+	fh "MavenRSS/internal/handlers/feed"
+	"MavenRSS/internal/models"
 )
 
 // reuse setupHandler from feed_handlers_test.go

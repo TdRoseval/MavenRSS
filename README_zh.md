@@ -1,14 +1,12 @@
-# MrRSS
+# MavenRSS (fork from [MrRSS](https://github.com/WCY-dt/MrRSS))
 
-<a href="https://trendshift.io/repositories/15731" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15731" alt="WCY-dt%2FMrRSS | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
-![Screenshot](imgs/og1.png)
 
 <p>
    <a href="README.md">English</a> | <strong>简体中文</strong>
 </p>
 
-[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MrRSS/releases)
+[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MavenRSS/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
 [![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
@@ -16,43 +14,61 @@
 
 ## ✨ 功能特性
 
-- 🌐 **自动翻译与摘要**: 自动翻译文章标题与正文，并生成简洁的内容摘要，助你快速获取信息
-- 🤖 **AI 增强功能**: 集成先进 AI 技术，赋能翻译、摘要、推荐等多种功能，让阅读更智能
-- 🔌 **丰富的插件生态**: 支持 Obsidian、Notion、FreshRSS、RSSHub 等主流工具集成，轻松扩展功能
-- 📡 **多样化订阅方式**: 支持 URL、XPath、脚本、Newsletter 等多种订阅源类型，满足不同需求
-- 🏭 **自定义脚本与自动化**: 内置过滤器与脚本系统，支持高度自定义的自动化流程
+- 🌐 **网页与桌面端部署**：可选择原生桌面应用（Windows/macOS/Linux）或支持多用户访问的自托管网页服务器
+- 🔐 **用户身份认证**：安全的登录/注册系统，基于 JWT 身份认证，支持多租户
+- 🌍 **自动翻译与摘要**：自动翻译文章标题与正文，并生成简洁的内容摘要，助你快速获取信息
+- 🤖 **AI 增强功能**：集成先进 AI 技术，赋能翻译、摘要、推荐等多种功能，让阅读更智能
+- 🔌 **丰富的插件生态**：支持 Obsidian、Notion、FreshRSS、RSSHub 等主流工具集成，轻松扩展功能
+- 📡 **多样化订阅方式**：支持 URL、XPath、脚本、Newsletter 等多种订阅源类型，满足不同需求
+- 🏭 **自定义脚本与自动化**：内置过滤器与脚本系统，支持高度自定义的自动化流程
+- 📱 **移动端友好**：响应式设计，针对移动设备优化，加载更快，用户体验更流畅
 
 ## 🚀 快速开始
 
-### 下载与安装
+### 部署选项
 
-#### 选项 1: 下载预构建安装包（推荐）
+MavenRSS 提供三种部署方式：
 
-从 [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) 页面下载适合您平台的最新安装包。
+#### 选项 1：桌面应用（个人使用推荐）
 
-<details>
+从上游仓库的 [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) 页面下载适合您平台的最新安装包。
 
-<summary>点击查看可用的安装包列表</summary>
 
-<div markdown="1">
 
-**标准安装版：**
+#### 选项 2：网页服务器（团队/共享使用推荐）
 
-- **Windows:** `MrRSS-{version}-windows-amd64-installer.exe` / `MrRSS-{version}-windows-arm64-installer.exe`
-- **macOS:** `MrRSS-{version}-darwin-universal.dmg`
-- **Linux:** `MrRSS-{version}-linux-amd64.AppImage` / `MrRSS-{version}-linux-arm64.AppImage`
+将 MavenRSS 部署为网页服务器，支持多用户访问。
 
-**便携版**（无需安装，所有数据在一个文件夹内）：
+##### 使用 Docker（推荐）
 
-- **Windows:** `MrRSS-{version}-windows-{arch}-portable.zip`
-- **Linux:** `MrRSS-{version}-linux-{arch}-portable.tar.gz`
-- **macOS:** `MrRSS-{version}-darwin-{arch}-portable.zip`
+```bash
+# 使用 Docker Compose 启动
+docker-compose up -d
 
-</div>
+# 或直接使用 Docker
+docker run -d -p 1234:1234 \
+  -v mavenrss-data:/app/data \
+  --name mavenrss-server \
+  ghcr.io/tdroseval/mavenrss:latest
+```
 
-</details>
+在 `http://localhost:1234` 访问网页界面
 
-#### 选项 2: 源码构建
+##### 配置
+
+以下环境变量可用于配置：
+
+- `MRRSS_JWT_SECRET`：JWT 令牌的密钥（生产环境必需）
+- `MRRSS_ADMIN_USERNAME`：管理员用户名
+- `MRRSS_ADMIN_EMAIL`：管理员邮箱
+- `MRRSS_ADMIN_PASSWORD`：管理员密码
+- `MRRSS_TEMPLATE_USERNAME`：模板用户用户名
+- `MRRSS_TEMPLATE_EMAIL`：模板用户邮箱
+- `MRRSS_TEMPLATE_PASSWORD`：模板用户密码
+
+
+
+#### 选项 3：从源码构建（桌面版）
 
 <details>
 
@@ -86,8 +102,8 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 1. **克隆仓库**
 
    ```bash
-   git clone https://github.com/WCY-dt/MrRSS.git
-   cd MrRSS
+   git clone https://github.com/TdRoseval/MavenRSS.git
+   cd MavenRSS
    ```
 
 2. **安装前端依赖**
@@ -121,9 +137,9 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 5. **运行应用**
 
-   - Windows: `build/bin/MrRSS.exe`
-   - macOS: `build/bin/MrRSS.app`
-   - Linux: `build/bin/MrRSS`
+   - Windows: `build/bin/MavenRSS.exe`
+   - macOS: `build/bin/MavenRSS.app`
+   - Linux: `build/bin/MavenRSS`
 
 </div>
 
@@ -137,15 +153,18 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 <div markdown="1">
 
-**正常模式**（默认）：
+**桌面应用：**
 
-- **Windows:** `%APPDATA%\MrRSS\` (例如 `C:\Users\YourName\AppData\Roaming\MrRSS\`)
-- **macOS:** `~/Library/Application Support/MrRSS/`
-- **Linux:** `~/.local/share/MrRSS/`
+- **正常模式**（默认）：
+  - **Windows:** `%APPDATA%\MavenRSS\` (例如 `C:\Users\YourName\AppData\Roaming\MavenRSS\`)
+  - **macOS:** `~/Library/Application Support/MavenRSS/`
+  - **Linux:** `~/.local/share/MavenRSS/`
 
-**便携模式**（当 `portable.txt` 文件存在时）：
+- **便携模式**（当 `portable.txt` 文件存在时）：
+  - 所有数据存储在 `data/` 文件夹中
 
-- 所有数据存储在 `data/` 文件夹中
+**网页服务器：**
+- 所有数据存储在 Docker 卷或配置的数据目录中
 
 这确保了您的数据在应用更新和重新安装时得以保留。
 
@@ -211,72 +230,17 @@ pre-commit run --all-files
 make test
 ```
 
-### 服务器模式（仅限 API）
-
-对于服务器部署和 API 集成，请使用无界面服务器版本：
-
-```bash
-# 使用 Docker（推荐）
-docker run -p 1234:1234 mrrss-server:latest
-
-# 或从源码构建
-go build -tags server -o mrrss-server .
-./mrrss-server
-```
-
-本项目也提供了基于 ghcr.io 的预构建服务器镜像：
-
-```bash
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-amd64
-docker run -d -p 1234:1234 ghcr.io/wcy-dt/mrrss:latest-arm64
-```
-
-请参阅[服务器模式 API 文档](docs/SERVER_MODE/swagger.json)以获取完整的 API 参考。
-
 </div>
 
 </details>
-
-## 🤝 贡献
-
-我们欢迎贡献！详情请参阅我们的[贡献指南](CONTRIBUTING.md)。
-
-<details>
-
-<summary>点击展开贡献指南</summary>
-
-<div markdown="1">
-
-在贡献之前：
-
-1. 阅读[行为准则](CODE_OF_CONDUCT.md)
-2. 检查现有 issue 或创建一个新 issue
-3. Fork 仓库并创建功能分支
-4. 进行更改并添加测试
-5. 提交 Pull Request
-
-</div>
-
-</details>
-
-## 🔒 安全
-
-如果您发现安全漏洞，请遵循我们的[安全策略](SECURITY.md)。
 
 ## 📝 许可证
 
 本项目采用 GPL-3.0 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
 
-## 📮 联系与支持
-
-- **Issues**: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
-- **讨论**: [GitHub Discussions](https://github.com/WCY-dt/MrRSS/discussions)
-- **仓库**: [github.com/WCY-dt/MrRSS](https://github.com/WCY-dt/MrRSS)
-
 ---
 
 <div align="center">
-  <img src="imgs/sponsor.png" alt="Sponsor MrRSS"/>
-  <p>Made with ❤️ by the MrRSS Team</p>
+  <p>Made by AI</p>
   <p>⭐ 如果您觉得这个项目有用，请在 GitHub 上给我们点星！</p>
 </div>

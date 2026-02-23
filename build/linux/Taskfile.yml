@@ -153,10 +153,10 @@ tasks:
     deps:
       - task: common:build:frontend
     cmds:
-      - docker build -f Dockerfile.server -t mrrss-server:latest .
-      - docker create --name mrrss-server-temp mrrss-server:latest
-      - docker cp mrrss-server-temp:/app/mrrss-server {{.BIN_DIR}}/{{.APP_NAME}}-server
-      - docker rm mrrss-server-temp
+      - docker build -f Dockerfile.server -t mavenrss-server:latest .
+      - docker create --name mavenrss-server-temp mavenrss-server:latest
+      - docker cp mavenrss-server-temp:/app/mavenrss-server {{.BIN_DIR}}/{{.APP_NAME}}-server
+      - docker rm mavenrss-server-temp
     preconditions:
       - sh: docker info > /dev/null 2>&1
         msg: "Docker is required for building the server version"

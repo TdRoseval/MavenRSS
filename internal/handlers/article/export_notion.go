@@ -13,10 +13,10 @@ import (
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // NotionBlock represents a Notion block structure

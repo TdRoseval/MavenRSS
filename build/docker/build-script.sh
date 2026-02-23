@@ -3,7 +3,7 @@ set -e
 
 PLATFORM=$1
 ARCH=${2:-amd64}
-APP_NAME=${APP_NAME:-MrRSS}
+APP_NAME=${APP_NAME:-MavenRSS}
 
 echo "Building for $PLATFORM/$ARCH..."
 

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
 )
 
 // WindowState represents the saved window state

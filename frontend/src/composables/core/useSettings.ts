@@ -7,6 +7,7 @@ import type { SettingsData } from '@/types/settings';
 import type { ThemePreference } from '@/stores/app';
 import { generateInitialSettings, parseSettingsData } from './useSettings.generated';
 import { apiClient } from '@/utils/apiClient';
+import { saveLanguage } from '@/i18n';
 
 export function useSettings() {
   const { locale } = useI18n();
@@ -22,7 +23,7 @@ export function useSettings() {
     isLoading.value = true;
     try {
       const data = await apiClient.get<SettingsData>('/settings');
-      
+
       // Use generated helper to parse settings (alphabetically sorted)
       settings.value = parseSettingsData(data as Record<string, string>);
 
@@ -59,9 +60,10 @@ export function useSettings() {
    */
 
   function applySettings(data: SettingsData, setTheme: (preference: ThemePreference) => void) {
-    // Apply the saved language
+    // Apply the saved language and save to localStorage
     if (data.language) {
       locale.value = data.language;
+      saveLanguage(data.language as any);
     }
 
     // Apply the saved theme

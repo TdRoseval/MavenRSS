@@ -1,5 +1,6 @@
 import { ref, onUnmounted, type Ref } from 'vue';
 import type { Feed } from '@/types/models';
+import { authPost } from '@/utils/authFetch';
 
 export interface DropPreview {
   targetFeedId: number | null;
@@ -253,20 +254,11 @@ export function useDragDrop() {
     });
 
     try {
-      const response = await fetch('/api/feeds/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          feed_id: feedId,
-          category: targetCategory,
-          position: newPosition,
-        }),
+      await authPost('/api/feeds/reorder', {
+        feed_id: feedId,
+        category: targetCategory,
+        position: newPosition,
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to reorder feed');
-      }
 
       console.log('[onDrop] Successfully reordered feed');
       return { success: true };

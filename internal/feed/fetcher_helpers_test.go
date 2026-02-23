@@ -1,9 +1,9 @@
 package feed
 
 import (
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/httputil"
 	"context"
 	"net/http"
 	"net/url"

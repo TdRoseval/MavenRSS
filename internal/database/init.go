@@ -3,7 +3,7 @@ package database
 import (
 	"fmt"
 
-	"MrRSS/internal/config"
+	"MavenRSS/internal/config"
 
 	_ "modernc.org/sqlite"
 )
@@ -18,6 +18,9 @@ func (db *DB) Init() error {
 		if err = db.Ping(); err != nil {
 			return
 		}
+
+		// Enable foreign key constraints
+		_, _ = db.Exec(`PRAGMA foreign_keys = ON`)
 
 		if err = initSchema(db.DB); err != nil {
 			return

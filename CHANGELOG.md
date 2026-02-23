@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MrRSS will be documented in this file.
+All notable changes to MavenRSS will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -551,7 +551,7 @@ The following changes may affect existing configurations:
 
 ### Added
 
-- Supported portable mode for running MrRSS from USB drives with all data stored in a single folder. (#167)
+- Supported portable mode for running MavenRSS from USB drives with all data stored in a single folder. (#167)
 - Supported minimizing to system tray on close action.
 - Supported hiding preview images in article list for a more compact view. (#157)
 
@@ -868,7 +868,7 @@ The following changes may affect existing configurations:
 
 ### Added
 
-- **Initial Public Release** of MrRSS
+- **Initial Public Release** of MavenRSS
 - **Cross-Platform Support**: Native desktop app for Windows, macOS, and Linux
 - **RSS Feed Management**: Add, edit, and delete RSS feeds
 - **Article Reading**: Clean, distraction-free reading interface
@@ -888,7 +888,7 @@ The following changes may affect existing configurations:
 
 ### Version Numbering
 
-MrRSS follows [Semantic Versioning](https://semver.org/):
+MavenRSS follows [Semantic Versioning](https://semver.org/):
 
 - **MAJOR** version for incompatible API changes
 - **MINOR** version for backwards-compatible functionality additions
@@ -896,7 +896,7 @@ MrRSS follows [Semantic Versioning](https://semver.org/):
 
 ### Download
 
-Downloads for all platforms are available on the [GitHub Releases](https://github.com/WCY-dt/MrRSS/releases) page.
+Downloads for all platforms are available on the [GitHub Releases](https://github.com/WCY-dt/MavenRSS/releases) page.
 
 ### Upgrade Notes
 
@@ -908,6 +908,6 @@ When upgrading from a previous version:
 
 ### Support
 
-- Report bugs: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
-- Feature requests: [GitHub Issues](https://github.com/WCY-dt/MrRSS/issues)
+- Report bugs: [GitHub Issues](https://github.com/WCY-dt/MavenRSS/issues)
+- Feature requests: [GitHub Issues](https://github.com/WCY-dt/MavenRSS/issues)
 - Documentation: [README](README.md)

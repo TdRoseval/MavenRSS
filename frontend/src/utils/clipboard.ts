@@ -1,5 +1,5 @@
 /**
- * Clipboard utilities for MrRSS
+ * Clipboard utilities for MavenRSS
  * Uses Wails v3 native Clipboard API with browser fallback
  */
 
@@ -44,13 +44,13 @@ async function copyToClipboard(text: string): Promise<boolean> {
       await clipboard.SetText(text);
       return true;
     }
-    
+
     // Fallback to browser clipboard API
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-    
+
     // Fallback to document.execCommand for older browsers
     const textArea = document.createElement('textarea');
     textArea.value = text;

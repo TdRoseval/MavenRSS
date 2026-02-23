@@ -7,11 +7,11 @@ import (
 	"net/url"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/config"
-	"MrRSS/internal/database"
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/httputil"
 )
 
 type aiService struct {

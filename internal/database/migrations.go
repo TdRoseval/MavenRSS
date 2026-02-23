@@ -24,6 +24,10 @@ func runMigrations(db *sql.DB) error {
 	// Migration: Add video_url column for YouTube video support
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN video_url TEXT DEFAULT ''`)
 
+	// Migration: Fix articles.user_id - update articles to have correct user_id from their feeds
+	// This is needed because articles were created without user_id set correctly
+	_, _ = db.Exec(`UPDATE articles SET user_id = (SELECT feeds.user_id FROM feeds WHERE feeds.id = articles.feed_id) WHERE articles.user_id = 0`)
+
 	// Migration: Add XPath support fields to feeds table
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN type TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN xpath_item TEXT DEFAULT ''`)
@@ -137,6 +141,19 @@ func runMigrations(db *sql.DB) error {
 
 	// Migration: Add use_global_proxy column to ai_profiles table
 	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN use_global_proxy BOOLEAN DEFAULT 1`)
+
+	// Migration: Update user_quota table with new AI token and concurrency columns
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_tokens INTEGER DEFAULT 1000000`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_concurrency INTEGER DEFAULT 5`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN used_ai_tokens INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_feed_fetch_concurrency INTEGER DEFAULT 3`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_db_query_concurrency INTEGER DEFAULT 5`)
+
+	// Migration: Add more concurrency limit columns
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_media_cache_concurrency INTEGER DEFAULT 5`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_rss_discovery_concurrency INTEGER DEFAULT 8`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_rss_path_check_concurrency INTEGER DEFAULT 5`)
+	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_translation_concurrency INTEGER DEFAULT 3`)
 
 	return nil
 }

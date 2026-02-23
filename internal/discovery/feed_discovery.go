@@ -8,16 +8,16 @@ import (
 	"net/url"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 func (s *Service) DiscoverFromFeed(ctx context.Context, feedURL string) ([]DiscoveredBlog, error) {
-	return s.DiscoverFromFeedWithProgress(ctx, feedURL, nil)
+	return s.DiscoverFromFeedWithProgress(ctx, feedURL, 0, 0, nil)
 }
 
-func (s *Service) DiscoverFromFeedWithProgress(ctx context.Context, feedURL string, progressCb ProgressCallback) ([]DiscoveredBlog, error) {
+func (s *Service) DiscoverFromFeedWithProgress(ctx context.Context, feedURL string, maxRSSConcurrency int, maxPathConcurrency int, progressCb ProgressCallback) ([]DiscoveredBlog, error) {
 	if progressCb != nil {
 		progressCb(Progress{
 			Stage:   "fetching_homepage",
@@ -56,7 +56,7 @@ func (s *Service) DiscoverFromFeedWithProgress(ctx context.Context, feedURL stri
 		})
 	}
 
-	discovered := s.discoverRSSFeedsWithProgress(ctx, friendLinks, progressCb)
+	discovered := s.discoverRSSFeedsWithProgress(ctx, friendLinks, maxRSSConcurrency, maxPathConcurrency, progressCb)
 
 	return discovered, nil
 }

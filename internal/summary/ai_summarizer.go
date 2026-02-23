@@ -7,23 +7,24 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/config"
-	"MrRSS/internal/translation"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // AISummarizer implements summarization using OpenAI-compatible APIs (GPT, Claude, etc.).
 type AISummarizer struct {
-	APIKey        string
-	Endpoint      string
-	Model         string
-	SystemPrompt  string
-	CustomHeaders string
-	Language      string // User's language setting (e.g., "en", "zh")
-	client        *ai.Client
-	httpClient    *http.Client // Store HTTP client to preserve proxy settings
-	db            DBInterface  // Store DB reference for proxy updates
+	APIKey         string
+	Endpoint       string
+	Model          string
+	SystemPrompt   string
+	CustomHeaders  string
+	Language       string // User's language setting (e.g., "en", "zh")
+	client         *ai.Client
+	httpClient     *http.Client // Store HTTP client to preserve proxy settings
+	db             DBInterface  // Store DB reference for proxy updates
+	useGlobalProxy bool         // Store whether to use global proxy
 }
 
 // DBInterface defines the minimal database interface needed for proxy settings
@@ -128,15 +129,16 @@ func NewAISummarizerWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 	}
 
 	return &AISummarizer{
-		APIKey:        apiKey,
-		Endpoint:      strings.TrimSuffix(endpoint, "/"),
-		Model:         model,
-		SystemPrompt:  "",
-		CustomHeaders: "",   // Will be set from settings when used
-		Language:      "en", // Default to English
-		httpClient:    httpClient,
-		client:        ai.NewClientWithHTTPClient(clientConfig, httpClient),
-		db:            db,
+		APIKey:         apiKey,
+		Endpoint:       strings.TrimSuffix(endpoint, "/"),
+		Model:          model,
+		SystemPrompt:   "",
+		CustomHeaders:  "",   // Will be set from settings when used
+		Language:       "en", // Default to English
+		httpClient:     httpClient,
+		client:         ai.NewClientWithHTTPClient(clientConfig, httpClient),
+		db:             db,
+		useGlobalProxy: useProxy,
 	}
 }
 
@@ -167,7 +169,7 @@ func (s *AISummarizer) RefreshProxy() {
 		return
 	}
 
-	httpClient, err := translation.CreateHTTPClientWithProxyOption(s.db, 60*time.Second, true)
+	httpClient, err := translation.CreateHTTPClientWithProxyOption(s.db, 60*time.Second, s.useGlobalProxy)
 	if err != nil {
 		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
 	}

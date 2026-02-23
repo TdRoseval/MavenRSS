@@ -1,6 +1,7 @@
 package database
 
 import (
+	"database/sql"
 	"log"
 	"strconv"
 	"time"
@@ -57,37 +58,67 @@ func (db *DB) CleanupOldArticles() (int64, error) {
 	return totalDeleted, nil
 }
 
-// CleanupAllArticleContents removes all cached article contents
-func (db *DB) CleanupAllArticleContents() (int64, error) {
+// CleanupAllArticleContents removes all cached article contents for a specific user
+// If userID is 0, removes all (legacy behavior)
+func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 	db.WaitForReady()
-	result, err := db.Exec(`DELETE FROM article_contents`)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(`
+			DELETE FROM article_contents
+			WHERE article_id IN (SELECT id FROM articles WHERE user_id = ?)
+		`, userID)
+	} else {
+		result, err = db.Exec(`DELETE FROM article_contents`)
+	}
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-// DeleteAllArticles removes ALL articles from the database
+// DeleteAllArticles removes ALL articles from the database for a specific user
 // This keeps feeds, settings, and other metadata intact
-func (db *DB) DeleteAllArticles() (int64, error) {
+// If userID is 0, removes all (legacy behavior)
+func (db *DB) DeleteAllArticles(userID int64) (int64, error) {
 	db.WaitForReady()
-	result, err := db.Exec(`DELETE FROM articles`)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(`DELETE FROM articles WHERE user_id = ?`, userID)
+	} else {
+		result, err = db.Exec(`DELETE FROM articles`)
+	}
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-// CleanupUnimportantArticles removes all articles except read, favorited, and read later ones.
-func (db *DB) CleanupUnimportantArticles() (int64, error) {
+// CleanupUnimportantArticles removes all articles except read, favorited, and read later ones for a specific user
+// If userID is 0, removes all (legacy behavior)
+func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {
 	db.WaitForReady()
 
-	result, err := db.Exec(`
-		DELETE FROM articles
-		WHERE is_read = 0
-		AND is_favorite = 0
-		AND is_read_later = 0
-	`)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE user_id = ?
+			AND is_read = 0
+			AND is_favorite = 0
+			AND is_read_later = 0
+		`, userID)
+	} else {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE is_read = 0
+			AND is_favorite = 0
+			AND is_read_later = 0
+		`)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -127,16 +158,34 @@ func (db *DB) GetDatabaseSizeMB() (float64, error) {
 
 // ShouldCleanupBeforeSave checks if database is approaching the size limit.
 // Returns true if database size is over 80% of max_cache_size_mb.
+// Admin quota takes precedence over user setting.
 func (db *DB) ShouldCleanupBeforeSave() (bool, error) {
 	db.WaitForReady()
 
-	// Get max cache size from settings (default 500 MB)
+	var adminQuotaLimit int
+	var userSettingLimit int = 500 // Default
+
+	// Try to get admin quota for the first user
+	users, _ := db.ListUsers()
+	if len(users) > 0 {
+		quota, err := db.GetUserQuota(users[0].ID)
+		if err == nil && quota.MaxStorageMB > 0 {
+			adminQuotaLimit = quota.MaxStorageMB
+		}
+	}
+
+	// Get user setting
 	maxSizeMBStr, err := db.GetSetting("max_cache_size_mb")
-	maxSizeMB := 500
 	if err == nil {
 		if size, err := strconv.Atoi(maxSizeMBStr); err == nil && size > 0 {
-			maxSizeMB = size
+			userSettingLimit = size
 		}
+	}
+
+	// Determine the effective limit: admin quota takes precedence if set
+	maxSizeMB := userSettingLimit
+	if adminQuotaLimit > 0 && adminQuotaLimit < userSettingLimit {
+		maxSizeMB = adminQuotaLimit
 	}
 
 	// Get current database size
@@ -153,16 +202,35 @@ func (db *DB) ShouldCleanupBeforeSave() (bool, error) {
 // CleanupBySize removes oldest articles to keep database under max_cache_size_mb limit.
 // Protects favorited and read later articles.
 // Uses priority order: oldest read articles first, then older unread articles.
+// Admin quota takes precedence over user setting.
 func (db *DB) CleanupBySize() (int64, error) {
 	db.WaitForReady()
 
-	// Get max cache size from settings (default 500 MB)
+	var adminQuotaLimit int
+	var userSettingLimit int = 500 // Default
+
+	// Try to get admin quota for the first user
+	users, _ := db.ListUsers()
+	if len(users) > 0 {
+		quota, err := db.GetUserQuota(users[0].ID)
+		if err == nil && quota.MaxStorageMB > 0 {
+			adminQuotaLimit = quota.MaxStorageMB
+		}
+	}
+
+	// Get user setting
 	maxSizeMBStr, err := db.GetSetting("max_cache_size_mb")
-	maxSizeMB := 500
 	if err == nil {
 		if size, err := strconv.Atoi(maxSizeMBStr); err == nil && size > 0 {
-			maxSizeMB = size
+			userSettingLimit = size
 		}
+	}
+
+	// Determine the effective limit: admin quota takes precedence if set
+	maxSizeMB := userSettingLimit
+	if adminQuotaLimit > 0 && adminQuotaLimit < userSettingLimit {
+		log.Printf("CleanupBySize: Using admin quota limit (%d MB) instead of user setting (%d MB)", adminQuotaLimit, userSettingLimit)
+		maxSizeMB = adminQuotaLimit
 	}
 
 	// Get current database size

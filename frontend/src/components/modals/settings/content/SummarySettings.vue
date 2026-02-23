@@ -19,6 +19,7 @@ import {
 import AIProfileSelector from '@/components/modals/settings/ai/AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
+import { authDelete } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -49,18 +50,10 @@ async function clearSummaryCache() {
 
   isClearingCache.value = true;
   try {
-    const response = await fetch('/api/articles/clear-summaries', {
-      method: 'DELETE',
-    });
-
-    if (response.ok) {
-      window.showToast(t('setting.content.clearSummaryCacheSuccess'), 'success');
-      // Refresh article list to show updated summaries
-      window.dispatchEvent(new CustomEvent('refresh-articles'));
-    } else {
-      console.error('Server error:', response.status);
-      window.showToast(t('setting.content.clearSummaryCacheFailed'), 'error');
-    }
+    await authDelete('/api/articles/clear-summaries');
+    window.showToast(t('setting.content.clearSummaryCacheSuccess'), 'success');
+    // Refresh article list to show updated summaries
+    window.dispatchEvent(new CustomEvent('refresh-articles'));
   } catch (error) {
     console.error('Failed to clear summary cache:', error);
     window.showToast(t('setting.content.clearSummaryCacheFailed'), 'error');

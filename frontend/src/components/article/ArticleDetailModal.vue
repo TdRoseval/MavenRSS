@@ -10,6 +10,7 @@ import FindInPage from '../common/FindInPage.vue';
 import type { Article } from '@/types/models';
 import { openInBrowser } from '@/utils/browser';
 import { useSettings } from '@/composables/core/useSettings';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   article: Article;
@@ -51,7 +52,7 @@ async function exportToObsidian() {
   try {
     window.showToast(t('setting.plugins.obsidian.exporting'), 'info');
 
-    const response = await fetch('/api/articles/export/obsidian', {
+    const response = await authFetch('/api/articles/export/obsidian', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -115,7 +116,7 @@ async function exportToNotion() {
   try {
     window.showToast(t('setting.plugins.notion.exporting'), 'info');
 
-    const response = await fetch('/api/articles/export/notion', {
+    const response = await authFetch('/api/articles/export/notion', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

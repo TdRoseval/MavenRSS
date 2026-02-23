@@ -10,16 +10,35 @@ import {
   PhGear,
   PhTextOutdent,
   PhSidebar,
+  PhUsers,
+  PhSignOut,
 } from '@phosphor-icons/vue';
+import { useAuthStore } from '@/stores/auth';
+import { computed } from 'vue';
 import { ref, onMounted } from 'vue';
 import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { useArticleFilter } from '@/composables/article/useArticleFilter';
+import { authFetchJson } from '@/utils/authFetch';
 import LogoSvg from '../../../public/assets/logo.svg';
 
 const store = useAppStore();
+const authStore = useAuthStore();
 const { t } = useI18n();
 const { clearAllFilters } = useArticleFilter();
+
+const isAdmin = computed(() => authStore.user?.role === 'admin');
+const showLogoutConfirm = ref(false);
+
+function handleLogoutConfirm() {
+  showLogoutConfirm.value = false;
+  authStore.logout();
+  window.location.replace(window.location.href);
+}
+
+function cancelLogout() {
+  showLogoutConfirm.value = false;
+}
 
 interface Props {
   isCollapsed?: boolean;
@@ -38,6 +57,7 @@ const emit = defineEmits<{
   'toggle-feed-drawer': [];
   ready: [{ expanded: boolean; pinned: boolean }];
   'toggle-activity-bar': [];
+  'open-user-management': [];
 }>();
 
 interface NavItem {
@@ -82,35 +102,28 @@ const navItems: NavItem[] = [
   },
 ];
 
-// Check if image gallery feature is enabled
 const imageGalleryEnabled = ref(false);
 
 async function loadImageGallerySetting() {
   try {
-    const res = await fetch('/api/settings');
-    if (res.ok) {
-      const data = await res.json();
-      imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
-    }
+    const data = await authFetchJson<any>('/api/settings');
+    imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
 }
 
-// Feed drawer state - use localStorage just like category open/pinned state
 const savedPinnedState = localStorage.getItem('FeedListPinned');
 const savedExpandedState = localStorage.getItem('FeedListExpanded');
 
-const isFeedListPinned = ref(savedPinnedState === 'true' || savedPinnedState === null); // Default: pinned
-const isFeedListExpanded = ref(savedExpandedState === 'true' || savedExpandedState === null); // Default: expanded
+const isFeedListPinned = ref(savedPinnedState === 'true' || savedPinnedState === null);
+const isFeedListExpanded = ref(savedExpandedState === 'true' || savedExpandedState === null);
 
-// Save state to localStorage
 function saveDrawerState() {
   localStorage.setItem('FeedListPinned', String(isFeedListPinned.value));
   localStorage.setItem('FeedListExpanded', String(isFeedListExpanded.value));
 }
 
-// Load state from localStorage (called on mount)
 function loadDrawerState() {
   const pinned = localStorage.getItem('FeedListPinned');
   const expanded = localStorage.getItem('FeedListExpanded');
@@ -119,16 +132,16 @@ function loadDrawerState() {
 }
 
 onMounted(async () => {
-  await loadImageGallerySetting();
+  if (authStore.isAuthenticated) {
+    await loadImageGallerySetting();
+  }
   loadDrawerState();
 
-  // Notify parent that initialization is complete
   emit('ready', {
     expanded: isFeedListExpanded.value,
     pinned: isFeedListPinned.value,
   });
 
-  // Listen for settings changes
   window.addEventListener('image-gallery-setting-changed', (e: Event) => {
     const customEvent = e as CustomEvent;
     imageGalleryEnabled.value = customEvent.detail.enabled;
@@ -136,18 +149,12 @@ onMounted(async () => {
 });
 
 function handleNavClick(item: NavItem) {
-  // Clear any active saved filters when clicking main filter buttons
   clearAllFilters();
   store.setFilter(item.filterType);
   emit('select-filter', item.filterType);
-
-  // Don't auto-expand feed panel when clicking nav items
-  // Only expand when clicking the Feed button
 }
 
 function toggleFeedList() {
-  // Only toggle expand/collapse state
-  // Pinned state should remain unchanged and only be controlled via the pin button in FeedList
   isFeedListExpanded.value = !isFeedListExpanded.value;
   saveDrawerState();
   emit('toggle-feed-drawer');
@@ -162,29 +169,24 @@ function pinFeedList() {
 
 function unpinFeedList() {
   isFeedListPinned.value = false;
-  // Keep expanded when unpinning - don't collapse
   saveDrawerState();
   emit('toggle-feed-drawer');
 }
 
-// Listen for drawer state changes from parent
 function handleFeedListStateChange(expanded: boolean, pinned?: boolean) {
   isFeedListExpanded.value = expanded;
-  // Only update pinned if it's provided (not undefined)
   if (pinned !== undefined) {
     isFeedListPinned.value = pinned;
   }
   saveDrawerState();
 }
 
-// Expose functions and state to parent
 defineExpose({
   toggleFeedList,
   pinFeedList,
   unpinFeedList,
   handleFeedListStateChange,
   loadDrawerState,
-  // Expose refs as computed getters
   get isFeedListExpanded() {
     return isFeedListExpanded.value;
   },
@@ -200,15 +202,12 @@ defineExpose({
       v-if="!props.isCollapsed"
       class="smart-activity-bar flex flex-col items-center py-3 bg-bg-tertiary border-r border-border h-full select-none shrink-0 relative z-30"
     >
-      <!-- Logo -->
       <div class="mb-6">
-        <img :src="LogoSvg" alt="MrRSS" class="w-6 h-6" />
+        <img :src="LogoSvg" alt="MavenRSS" class="w-6 h-6" />
       </div>
 
-      <!-- Divider -->
       <div class="w-8 h-px bg-border mb-3"></div>
 
-      <!-- Navigation Items -->
       <div
         class="flex-1 flex flex-col items-center gap-1 w-full overflow-y-auto overflow-x-hidden nav-items-container"
       >
@@ -225,7 +224,6 @@ defineExpose({
             :title="item.label"
             @click="handleNavClick(item)"
           >
-            <!-- Icon -->
             <component
               :is="
                 store.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon
@@ -238,7 +236,6 @@ defineExpose({
               ]"
             />
 
-            <!-- Unread Badge (only for 'all' button) -->
             <span
               v-if="item.id === 'all' && store.unreadCounts?.total > 0"
               class="absolute bottom-0.5 right-0.5 min-w-[14px] h-[14px] px-0.5 text-[9px] font-medium flex items-center justify-center rounded-full text-white"
@@ -250,7 +247,6 @@ defineExpose({
         </TransitionGroup>
       </div>
 
-      <!-- Bottom Actions -->
       <div class="flex flex-col items-center gap-1 mt-auto w-full">
         <button
           class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
@@ -261,7 +257,6 @@ defineExpose({
           <PhPlus :size="24" weight="regular" class="transition-all" />
         </button>
 
-        <!-- Feed List Button -->
         <button
           class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
           style="width: 44px; height: 44px"
@@ -284,12 +279,30 @@ defineExpose({
           <PhGear :size="24" weight="regular" class="transition-all" />
         </button>
 
-        <!-- Divider -->
+        <button
+          v-if="isAdmin"
+          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+          style="width: 44px; height: 44px"
+          :title="t('admin.title')"
+          @click="emit('open-user-management')"
+        >
+          <PhUsers :size="24" weight="regular" class="transition-all" />
+        </button>
+
+        <button
+          type="button"
+          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
+          style="width: 44px; height: 44px"
+          :title="t('admin.logout')"
+          @click="showLogoutConfirm = true"
+        >
+          <PhSignOut :size="24" weight="regular" class="transition-all" />
+        </button>
+
         <div class="w-8 h-px bg-border my-2"></div>
 
-        <!-- Collapse Button (at the bottom) - Hidden on mobile -->
         <button
-          v-if="!isMobile"
+          v-if="false && !isMobile"
           class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
           style="width: 44px; height: 44px"
           :title="t('sidebar.activity.collapseActivityBar')"
@@ -300,12 +313,24 @@ defineExpose({
       </div>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <div v-if="showLogoutConfirm" class="logout-modal-overlay" @click="cancelLogout">
+      <div class="logout-modal" @click.stop>
+        <h3>{{ t('admin.logout') }}</h3>
+        <p>{{ t('admin.confirmLogout') }}</p>
+        <div class="logout-modal-buttons">
+          <button class="btn-cancel" @click="cancelLogout">{{ t('admin.cancel') }}</button>
+          <button class="btn-confirm" @click="handleLogoutConfirm">{{ t('admin.logout') }}</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
 @reference "../../style.css";
 
-/* Activity bar slide transition */
 .activity-bar-slide-enter-active {
   transition:
     transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
@@ -344,25 +369,20 @@ defineExpose({
   top: 0;
   bottom: 0;
   z-index: 15;
-  /* Prevent layout shift during animations */
   backface-visibility: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Mobile: activity bar should have the same z-index as sidebar */
 @media (max-width: 767px) {
   .smart-activity-bar {
     z-index: 60;
   }
 }
 
-/* Navigation items smooth transitions */
 .nav-items-container {
-  /* Smooth height transition when items are added/removed */
   transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Nav item enter/leave transitions */
 .nav-item-enter-active,
 .nav-item-leave-active {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -384,7 +404,6 @@ defineExpose({
   will-change: transform;
 }
 
-/* Ensure smooth transitions for icon scale changes */
 .smart-activity-bar button .ph,
 .smart-activity-bar button svg {
   transition:
@@ -393,7 +412,6 @@ defineExpose({
   will-change: transform;
 }
 
-/* Improve button hover transition */
 .smart-activity-bar button {
   transition:
     color 0.2s ease,
@@ -401,7 +419,6 @@ defineExpose({
   will-change: color, background-color;
 }
 
-/* Smaller screens (laptops, tablets) */
 @media (max-width: 1400px) {
   .smart-activity-bar {
     width: 48px;
@@ -414,7 +431,6 @@ defineExpose({
   }
 }
 
-/* Mobile devices */
 @media (max-width: 767px) {
   .smart-activity-bar {
     width: 44px;
@@ -429,5 +445,59 @@ defineExpose({
 </style>
 
 <style>
-/* Dark mode for unread badge - keep accent color */
+.logout-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.logout-modal {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  min-width: 300px;
+  text-align: center;
+}
+
+.logout-modal h3 {
+  margin: 0 0 16px;
+  color: #333;
+}
+
+.logout-modal p {
+  margin: 0 0 24px;
+  color: #666;
+}
+
+.logout-modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn-cancel,
+.btn-confirm {
+  padding: 8px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  border: none;
+}
+
+.btn-cancel {
+  background: #f1f5f9;
+  color: #333;
+}
+
+.btn-confirm {
+  background: #dc3545;
+  color: white;
+}
 </style>

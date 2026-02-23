@@ -1,13 +1,13 @@
-# XPath Mode for MrRSS
+# XPath Mode for MavenRSS
 
-MrRSS supports XPath mode for extracting RSS-like content from websites that don't provide standard RSS/Atom feeds. This mode allows you to define XPath expressions to scrape article data directly from HTML or XML pages.
+MavenRSS supports XPath mode for extracting RSS-like content from websites that don't provide standard RSS/Atom feeds. This mode allows you to define XPath expressions to scrape article data directly from HTML or XML pages.
 
 ## How It Works
 
 1. When adding a new feed, select "XPath" as the feed type
 2. Choose between "HTML + XPath" or "XML + XPath" depending on your source
 3. Provide the source URL and configure XPath expressions for different article elements
-4. MrRSS will parse the page and extract articles using your XPath expressions
+4. MavenRSS will parse the page and extract articles using your XPath expressions
 
 ## XPath Types
 

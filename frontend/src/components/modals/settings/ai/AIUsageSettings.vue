@@ -5,6 +5,7 @@ import { PhChartLine, PhArrowCounterClockwise } from '@phosphor-icons/vue';
 import { SettingGroup, SettingItem, StatusBoxGroup } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
+import { authGet, authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -31,10 +32,7 @@ const aiUsage = ref<{
 
 async function fetchAIUsage() {
   try {
-    const response = await fetch('/api/ai-usage');
-    if (response.ok) {
-      aiUsage.value = await response.json();
-    }
+    aiUsage.value = await authGet('/api/ai-usage');
   } catch (e) {
     console.error('Failed to fetch AI usage:', e);
   }
@@ -49,41 +47,47 @@ async function resetAIUsage() {
   if (!confirmed) return;
 
   try {
-    const response = await fetch('/api/ai-usage/reset', { method: 'POST' });
-    if (response.ok) {
-      await fetchAIUsage();
-      // Reset the local settings value as well
-      emit('update:settings', {
-        ...props.settings,
-        ai_usage_tokens: '0',
-      });
-      window.showToast(t('setting.ai.aiUsageResetSuccess'), 'success');
-    }
+    await authPost('/api/ai-usage/reset');
+    await fetchAIUsage();
+    // Reset the local settings value as well
+    emit('update:settings', {
+      ...props.settings,
+      ai_usage_tokens: '0',
+    });
+    window.showToast(t('setting.ai.aiUsageResetSuccess'), 'success');
   } catch (e) {
     console.error('Failed to reset AI usage:', e);
     window.showToast(t('setting.ai.aiUsageResetError'), 'error');
   }
 }
 
+// Helper to get the current limit (use settings value if available)
+const currentLimit = computed((): number => {
+  if (props.settings.ai_usage_limit !== undefined) {
+    return parseInt(props.settings.ai_usage_limit, 10);
+  }
+  return aiUsage.value.limit;
+});
+
 // Calculate usage percentage
 function getUsagePercentage(): number {
-  if (aiUsage.value.limit === 0) return 0;
-  return Math.min(100, (aiUsage.value.usage / aiUsage.value.limit) * 100);
+  if (currentLimit.value === 0) return 0;
+  return Math.min(100, (aiUsage.value.usage / currentLimit.value) * 100);
 }
 
 // Status box type based on usage
 const statusType = computed(() => {
-  if (aiUsage.value.limit === 0) return 'neutral';
+  if (currentLimit.value === 0) return 'neutral';
   if (aiUsage.value.limit_reached) return 'error';
   const percentage = getUsagePercentage();
   if (percentage > 80) return 'warning';
   return 'success';
 });
 
-// Token display value
+// Token display value - use settings value if available, otherwise fall back to api value
 const tokenDisplay = computed(() => {
-  if (aiUsage.value.limit > 0) {
-    return `${aiUsage.value.usage.toLocaleString()} / ${aiUsage.value.limit.toLocaleString()}`;
+  if (currentLimit.value > 0) {
+    return `${aiUsage.value.usage.toLocaleString()} / ${currentLimit.value.toLocaleString()}`;
   }
   return `${aiUsage.value.usage.toLocaleString()} / ∞`;
 });
@@ -102,7 +106,7 @@ onMounted(() => {
         {
           label: t('setting.ai.aiUsageTokens'),
           value: tokenDisplay,
-          unit: aiUsage.limit > 0 ? t('setting.ai.tokens') : '',
+          unit: currentLimit > 0 ? t('setting.ai.tokens') : '',
           type: statusType,
         },
       ]"
@@ -112,7 +116,7 @@ onMounted(() => {
         onClick: resetAIUsage,
       }"
       :status-info="
-        aiUsage.limit > 0
+        currentLimit > 0
           ? {
               label: t('common.text.progress'),
               time: getUsagePercentage().toFixed(2) + '%',
@@ -127,20 +131,28 @@ onMounted(() => {
       :title="t('setting.ai.setUsageLimit')"
       :description="t('setting.ai.setUsageLimitDesc')"
     >
-      <input
-        :value="props.settings.ai_usage_limit"
-        type="number"
-        min="0"
-        :placeholder="t('setting.ai.aiUsageLimitPlaceholder')"
-        class="input-field w-32 sm:w-48 text-xs sm:text-sm"
-        @input="
-          (e) =>
-            emit('update:settings', {
-              ...props.settings,
-              ai_usage_limit: (e.target as HTMLInputElement).value,
-            })
-        "
-      />
+      <div class="flex items-center gap-2">
+        <input
+          :value="props.settings.ai_usage_limit"
+          type="number"
+          min="0"
+          :placeholder="t('setting.ai.aiUsageLimitPlaceholder')"
+          class="input-field w-32 sm:w-48 text-xs sm:text-sm"
+          @input="
+            (e) =>
+              emit('update:settings', {
+                ...props.settings,
+                ai_usage_limit: (e.target as HTMLInputElement).value,
+              })
+          "
+        />
+        <span
+          v-if="props.settings.ai_usage_limit === '0'"
+          class="text-accent text-xs sm:text-sm font-medium"
+        >
+          ({{ t('common.text.unlimited') }})
+        </span>
+      </div>
     </SettingItem>
   </SettingGroup>
 </template>

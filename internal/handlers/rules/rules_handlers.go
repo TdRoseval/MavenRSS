@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/rules"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/rules"
 )
 
 // HandleApplyRule applies a rule to matching articles

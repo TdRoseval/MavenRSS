@@ -21,6 +21,7 @@ import {
 import { useSettings } from '@/composables/core/useSettings';
 import { useAppStore } from '@/stores/app';
 import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
+import { authPost } from '@/utils/authFetch';
 import './ArticleContent.css';
 
 interface SummaryResult {
@@ -203,34 +204,25 @@ async function translateText(
   };
 
   try {
-    const res = await fetch('/api/articles/translate-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
+    const data = await authPost<any>('/api/articles/translate-text', requestBody);
 
-    if (res.ok) {
-      const data = await res.json();
-
-      // Check if translation was skipped
-      if (data.skipped === 'true' || data.skipped === true) {
-        if (data.reason === 'already_target_language') {
-          translationSkipped.value = true;
-        }
-      } else {
-        // Reset skip flags on successful translation
-        translationSkipped.value = false;
+    // Check if translation was skipped
+    if (data.skipped === 'true' || data.skipped === true) {
+      if (data.reason === 'already_target_language') {
+        translationSkipped.value = true;
       }
-
-      return {
-        text: data.translated_text || '',
-        html: data.html || '',
-      };
     } else {
-      window.showToast(t('common.errors.translatingContent'), 'error');
+      // Reset skip flags on successful translation
+      translationSkipped.value = false;
     }
-  } catch {
-    window.showToast(t('common.errors.translating'), 'error');
+
+    return {
+      text: data.translated_text || '',
+      html: data.html || '',
+    };
+  } catch (error) {
+    console.error('Translation error:', error);
+    window.showToast(t('common.errors.translatingContent'), 'error');
   }
   return { text: '', html: '' };
 }
@@ -249,49 +241,38 @@ async function fetchFullArticle(showErrors: boolean = true) {
 
   isFetchingFullArticle.value = true;
   try {
-    const res = await fetch(`/api/articles/fetch-full?id=${props.article.id}`, {
-      method: 'POST',
-    });
+    const data = await authPost<any>(`/api/articles/fetch-full?id=${props.article.id}`);
+    let content = data.content || '';
 
-    if (res.ok) {
-      const data = await res.json();
-      let content = data.content || '';
+    // Proxy images if media cache is enabled
+    const cacheEnabled = await isMediaCacheEnabled();
+    if (cacheEnabled && content) {
+      // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
+      const feedUrl = data.feed_url || props.article.url;
+      content = proxyImagesInHtml(content, feedUrl);
+    }
 
-      // Proxy images if media cache is enabled
-      const cacheEnabled = await isMediaCacheEnabled();
-      if (cacheEnabled && content) {
-        // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
-        const feedUrl = data.feed_url || props.article.url;
-        content = proxyImagesInHtml(content, feedUrl);
+    fullArticleContent.value = content;
+    if (showErrors) {
+      window.showToast(t('article.action.fullArticleFetched'), 'success');
+    }
+
+    // After fetching full content, regenerate summary and trigger translation
+    if (props.article) {
+      // Generate summary if we should wait for full content
+      // This handles the case where:
+      // 1. Summary uses AI auto trigger OR local algorithm
+      // 2. AND auto-show all content is enabled
+      if (shouldWaitForFullContentBeforeSummary.value) {
+        setTimeout(() => generateSummary(props.article), 100);
       }
 
-      fullArticleContent.value = content;
-      if (showErrors) {
-        window.showToast(t('article.action.fullArticleFetched'), 'success');
-      }
-
-      // After fetching full content, regenerate summary and trigger translation
-      if (props.article) {
-        // Generate summary if we should wait for full content
-        // This handles the case where:
-        // 1. Summary uses AI auto trigger OR local algorithm
-        // 2. AND auto-show all content is enabled
-        if (shouldWaitForFullContentBeforeSummary.value) {
-          setTimeout(() => generateSummary(props.article), 100);
-        }
-
-        if (translationEnabled.value) {
-          // Only translate content, not title (title translation is cached in DB)
-          // Content hash will automatically detect new content and trigger translation
-          // Wait for DOM to update with new content before translating
-          await nextTick();
-          await translateContentParagraphs(fullArticleContent.value);
-        }
-      }
-    } else {
-      console.error('Error fetching full article:', res.status);
-      if (showErrors) {
-        window.showToast(t('common.errors.fetchingFullArticle'), 'error');
+      if (translationEnabled.value) {
+        // Only translate content, not title (title translation is cached in DB)
+        // Content hash will automatically detect new content and trigger translation
+        // Wait for DOM to update with new content before translating
+        await nextTick();
+        await translateContentParagraphs(fullArticleContent.value);
       }
     }
   } catch (e) {

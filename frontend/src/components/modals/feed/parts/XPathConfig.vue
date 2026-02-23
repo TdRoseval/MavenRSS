@@ -45,8 +45,8 @@ const { t, locale } = useI18n();
 
 function openDocumentation() {
   const docUrl = locale.value.startsWith('zh')
-    ? 'https://github.com/WCY-dt/MrRSS/blob/main/docs/XPATH_MODE.zh.md'
-    : 'https://github.com/WCY-dt/MrRSS/blob/main/docs/XPATH_MODE.md';
+    ? 'https://github.com/WCY-dt/MavenRSS/blob/main/docs/XPATH_MODE.zh.md'
+    : 'https://github.com/WCY-dt/MavenRSS/blob/main/docs/XPATH_MODE.md';
   openInBrowser(docUrl);
 }
 

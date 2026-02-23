@@ -1,10 +1,10 @@
 # AI 配置指南
 
-MrRSS 支持 AI 功能，包括翻译、摘要和聊天。本指南介绍如何配置不同的 AI 服务。
+MavenRSS 支持 AI 功能，包括翻译、摘要和聊天。本指南介绍如何配置不同的 AI 服务。
 
 ## 支持的 AI 服务
 
-MrRSS 可与任何兼容 OpenAI 的 API 服务以及用于本地模型的 Ollama 配合使用。
+MavenRSS 可与任何兼容 OpenAI 的 API 服务以及用于本地模型的 Ollama 配合使用。
 
 ## 配置步骤
 

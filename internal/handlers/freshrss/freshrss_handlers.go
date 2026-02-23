@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"MrRSS/internal/freshrss"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/freshrss"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // HandleSyncFeed syncs articles for a single FreshRSS feed

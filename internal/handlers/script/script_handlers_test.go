@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"MrRSS/internal/database"
-	corepkg "MrRSS/internal/handlers/core"
-	"MrRSS/internal/utils/fileutil"
+	"MavenRSS/internal/database"
+	corepkg "MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/utils/fileutil"
 )
 
 func setupHandler(t *testing.T) *corepkg.Handler {

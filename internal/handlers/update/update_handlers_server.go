@@ -7,9 +7,9 @@ import (
 	"log"
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/version"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/version"
 )
 
 // HandleCheckUpdates is not available in server mode.

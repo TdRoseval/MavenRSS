@@ -3,7 +3,7 @@ package ai
 import (
 	"strconv"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 // ProfileProvider provides AI profile resolution for different features

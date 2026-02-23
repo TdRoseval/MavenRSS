@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue';
 import type { Article } from '@/types/models';
 import type { ImageGalleryDataReturn } from '../types';
+import { authFetchJson } from '@/utils/authFetch';
 
 const ITEMS_PER_PAGE = 30;
 
@@ -54,33 +55,30 @@ export function useImageGalleryData(): ImageGalleryDataReturn {
         }
       }
 
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await authFetchJson(url);
 
-        // Validate that data is an array
-        if (!Array.isArray(data)) {
-          console.error('API response is not an array:', data);
-          return;
-        }
-
-        const newArticles = data;
-
-        if (loadMore) {
-          articles.value = [...articles.value, ...newArticles];
-        } else {
-          articles.value = newArticles;
-        }
-
-        hasMore.value = newArticles.length >= ITEMS_PER_PAGE;
-
-        // Preload image counts for new articles
-        newArticles.forEach((article: Article) => {
-          if (!imageCountCache.value.has(article.id)) {
-            fetchImageCount(article.id);
-          }
-        });
+      // Validate that data is an array
+      if (!Array.isArray(data)) {
+        console.error('API response is not an array:', data);
+        return;
       }
+
+      const newArticles = data;
+
+      if (loadMore) {
+        articles.value = [...articles.value, ...newArticles];
+      } else {
+        articles.value = newArticles;
+      }
+
+      hasMore.value = newArticles.length >= ITEMS_PER_PAGE;
+
+      // Preload image counts for new articles
+      newArticles.forEach((article: Article) => {
+        if (!imageCountCache.value.has(article.id)) {
+          fetchImageCount(article.id);
+        }
+      });
     } catch (e) {
       console.error('Failed to load images:', e);
     } finally {
@@ -94,12 +92,9 @@ export function useImageGalleryData(): ImageGalleryDataReturn {
    */
   async function fetchImageCount(articleId: number): Promise<void> {
     try {
-      const res = await fetch(`/api/articles/extract-images?id=${articleId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.images && Array.isArray(data.images)) {
-          imageCountCache.value.set(articleId, data.images.length);
-        }
+      const data = await authFetchJson(`/api/articles/extract-images?id=${articleId}`);
+      if (data.images && Array.isArray(data.images)) {
+        imageCountCache.value.set(articleId, data.images.length);
       }
     } catch (e) {
       console.error('Failed to fetch image count:', e);

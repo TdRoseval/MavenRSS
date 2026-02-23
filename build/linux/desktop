@@ -1,11 +1,11 @@
 [Desktop Entry]
 Version=1.0
-Name=MrRSS
+Name=MavenRSS
 Comment=A modern, standalone RSS reader
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/MrRSS %u
+Exec=/usr/local/bin/MavenRSS %u
 Terminal=false
 Type=Application
-Icon=MrRSS
+Icon=MavenRSS
 Categories=Utility;
-StartupWMClass=MrRSS
+StartupWMClass=MavenRSS

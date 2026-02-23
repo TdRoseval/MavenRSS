@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils/httputil"
+	"MavenRSS/internal/utils/httputil"
 )
 
 // ClientConfig holds the configuration for the AI client
@@ -549,4 +549,137 @@ func isNetworkError(errMsg string) bool {
 	}
 
 	return false
+}
+
+// RequestStream makes a streaming AI request and returns a channel of chunks
+func (c *Client) RequestStream(config RequestConfig) (<-chan StreamChunk, error) {
+	const totalAITimeout = 300 * time.Second
+	
+	ctx := config.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	
+	totalCtx, cancel := context.WithTimeout(ctx, totalAITimeout)
+	config.Context = totalCtx
+	
+	chunkChan := make(chan StreamChunk, 100)
+	
+	go func() {
+		defer close(chunkChan)
+		defer cancel()
+		
+		// Try OpenAI format first
+		handler := NewOpenAIHandler()
+		if streamHandler, ok := any(handler).(StreamFormatHandler); ok {
+			err := c.tryStreamFormat(streamHandler, handler, config, chunkChan)
+			if err == nil {
+				return
+			}
+			chunkChan <- StreamChunk{Error: err}
+			log.Printf("[AI Client] Streaming request failed: %v", err)
+		} else {
+			chunkChan <- StreamChunk{Error: fmt.Errorf("OpenAI handler does not support streaming")}
+		}
+	}()
+	
+	return chunkChan, nil
+}
+
+// tryStreamFormat attempts to make a streaming request using a specific format handler
+func (c *Client) tryStreamFormat(streamHandler StreamFormatHandler, handler FormatHandler, config RequestConfig, chunkChan chan<- StreamChunk) error {
+	// Build streaming request body
+	requestBody, err := streamHandler.BuildStreamRequest(config)
+	if err != nil {
+		return fmt.Errorf("failed to build stream request: %w", err)
+	}
+	
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal stream request: %w", err)
+	}
+	
+	// Format endpoint
+	formattedEndpoint := handler.FormatEndpoint(c.config.Endpoint, c.config.Model)
+	
+	// Check context before making request
+	if config.Context != nil {
+		select {
+		case <-config.Context.Done():
+			return fmt.Errorf("request cancelled: %w", config.Context.Err())
+		default:
+		}
+	}
+	
+	// Send request
+	resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
+	if err != nil {
+		return fmt.Errorf("stream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Validate response status
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		if err := handler.ValidateResponse(resp.StatusCode, bodyBytes); err != nil {
+			return err
+		}
+		return fmt.Errorf("stream request returned status %d", resp.StatusCode)
+	}
+	
+	// Parse streaming response
+	reader := resp.Body
+	buf := make([]byte, 4096)
+	var lineBuffer strings.Builder
+	
+	// Check if handler has ParseStreamChunk method
+	type StreamChunkParser interface {
+		ParseStreamChunk(line string) StreamChunk
+	}
+	
+	parser, ok := handler.(StreamChunkParser)
+	if !ok {
+		return fmt.Errorf("handler does not support stream chunk parsing")
+	}
+	
+	for {
+		select {
+		case <-config.Context.Done():
+			return fmt.Errorf("request cancelled: %w", config.Context.Err())
+		default:
+		}
+		
+		n, err := reader.Read(buf)
+		if n > 0 {
+			for i := 0; i < n; i++ {
+				if buf[i] == '\n' {
+					line := lineBuffer.String()
+					lineBuffer.Reset()
+					
+					chunk := parser.ParseStreamChunk(line)
+					if chunk.Error != nil {
+						log.Printf("[AI Client] Stream chunk parse error: %v", chunk.Error)
+						continue
+					}
+					
+					if chunk.Content != "" || chunk.Done || chunk.Thinking != "" {
+						chunkChan <- chunk
+					}
+					
+					if chunk.Done {
+						return nil
+					}
+				} else {
+					lineBuffer.WriteByte(buf[i])
+				}
+			}
+		}
+		
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("stream read error: %w", err)
+		}
+	}
 }

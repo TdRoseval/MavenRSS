@@ -15,16 +15,16 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/utils/fileutil"
-	"MrRSS/internal/utils/httputil"
-	"MrRSS/internal/version"
+	"MavenRSS/internal/utils/fileutil"
+	"MavenRSS/internal/utils/httputil"
+	"MavenRSS/internal/version"
 )
 
 const (
 	// Default API endpoint
 	defaultAPIURL = "https://cf-monitor-api.ch3nyang.workers.dev"
 	// Default App ID
-	defaultAppID = "mrrss"
+	defaultAppID = "mavenrss"
 )
 
 // MonitorClient handles analytics reporting

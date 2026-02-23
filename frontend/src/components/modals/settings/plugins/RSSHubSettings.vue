@@ -10,6 +10,8 @@ import {
   InputControl,
   TipBox,
 } from '@/components/settings';
+import { authPost } from '@/utils/authFetch';
+import { maskSensitiveValue } from '@/utils/settingsEncryption';
 
 const { t } = useI18n();
 const store = useAppStore();
@@ -30,6 +32,20 @@ function updateSetting(key: keyof SettingsData, value: any) {
     [key]: value,
   });
 }
+
+const isInherited = computed(() => props.settings._has_inherited === true);
+
+const displayRSSHubEndpoint = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.rsshub_endpoint, 8)
+    : props.settings.rsshub_endpoint
+);
+
+const displayRSSHubApiKey = computed(() =>
+  isInherited.value
+    ? maskSensitiveValue(props.settings.rsshub_api_key)
+    : props.settings.rsshub_api_key
+);
 
 const isTesting = ref(false);
 
@@ -59,18 +75,10 @@ async function testConnection() {
   isTesting.value = true;
 
   try {
-    const response = await fetch('/api/rsshub/test-connection', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        endpoint: props.settings.rsshub_endpoint,
-        api_key: props.settings.rsshub_api_key,
-      }),
+    const result = await authPost('/api/rsshub/test-connection', {
+      endpoint: props.settings.rsshub_endpoint,
+      api_key: props.settings.rsshub_api_key,
     });
-
-    const result = await response.json();
 
     if (result.success) {
       window.showToast(t('setting.rsshub.connectionSuccessful'), 'success');
@@ -125,9 +133,10 @@ async function testConnection() {
       required
     >
       <InputControl
-        :model-value="props.settings.rsshub_endpoint"
+        :model-value="displayRSSHubEndpoint"
         placeholder="https://rsshub.app"
         width="md"
+        :disabled="isInherited"
         @update:model-value="updateSetting('rsshub_endpoint', $event)"
       />
     </SubSettingItem>
@@ -139,10 +148,11 @@ async function testConnection() {
       :description="t('setting.rsshub.apiKeyDesc')"
     >
       <InputControl
-        type="password"
-        :model-value="props.settings.rsshub_api_key"
+        :type="isInherited ? 'text' : 'password'"
+        :model-value="displayRSSHubApiKey"
         :placeholder="t('setting.rsshub.optional')"
         width="md"
+        :disabled="isInherited"
         @update:model-value="updateSetting('rsshub_api_key', $event)"
       />
     </SubSettingItem>

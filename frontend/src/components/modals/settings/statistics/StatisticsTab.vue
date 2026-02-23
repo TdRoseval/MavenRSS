@@ -18,6 +18,7 @@ import {
   PhCalendarStar,
 } from '@phosphor-icons/vue';
 import { ButtonControl } from '@/components/settings';
+import { authGet, authDelete } from '@/utils/authFetch';
 
 const { t } = useI18n();
 
@@ -140,9 +141,7 @@ async function fetchStatistics() {
       url += `&start_date=${customStartDate.value}&end_date=${customEndDate.value}`;
     }
 
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch statistics');
-    stats.value = await response.json();
+    stats.value = await authGet(url);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unknown error';
     console.error('Error fetching statistics:', e);
@@ -185,18 +184,11 @@ async function resetStatistics() {
 
   isResetting.value = true;
   try {
-    const response = await fetch('/api/statistics', {
-      method: 'DELETE',
-    });
+    await authDelete('/api/statistics');
 
-    if (response.ok) {
-      window.showToast(t('setting.statistic.resetSuccess'), 'success');
-      // Refresh statistics after reset
-      await fetchStatistics();
-    } else {
-      console.error('Server error:', response.status);
-      window.showToast(t('setting.statistic.resetFailed'), 'error');
-    }
+    window.showToast(t('setting.statistic.resetSuccess'), 'success');
+    // Refresh statistics after reset
+    await fetchStatistics();
   } catch (error) {
     console.error('Failed to reset statistics:', error);
     window.showToast(t('setting.statistic.resetFailed'), 'error');

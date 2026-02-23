@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { useAppStore } from '@/stores/app';
 import { PhX, PhPlus } from '@phosphor-icons/vue';
 import TagFormModal from '../../settings/tags/TagFormModal.vue';
+import { authFetch } from '@/utils/authFetch';
 
 interface Props {
   selectedTags: number[];
@@ -47,7 +48,7 @@ function closeNewTagModal() {
 
 async function handleSaveTag(name: string, color: string) {
   try {
-    const res = await fetch('/api/tags', {
+    const res = await authFetch('/api/tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color }),

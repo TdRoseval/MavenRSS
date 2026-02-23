@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"MrRSS/internal/cache"
-	"MrRSS/internal/models"
-	"MrRSS/internal/utils/fileutil"
+	"MavenRSS/internal/cache"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils/fileutil"
 )
 
 // StartBackgroundScheduler starts the background scheduler for auto-updates and cleanup.
@@ -75,6 +75,10 @@ func (h *Handler) startScheduler(ctx context.Context, intelligentMode bool) {
 		log.Printf("First run - initialized last_global_refresh to %v", lastGlobalRefresh)
 		// Trigger initial global refresh for first-time users
 		go h.triggerGlobalRefresh(ctx, intelligentMode, &lastGlobalRefresh)
+	} else if lastGlobalRefreshStr == "" {
+		// No stored time - initialize to now
+		lastGlobalRefresh = time.Now()
+		log.Printf("No last_global_refresh found, initializing to now")
 	} else {
 		// Parse stored time
 		lastGlobalRefresh, err = time.Parse(time.RFC3339, lastGlobalRefreshStr)

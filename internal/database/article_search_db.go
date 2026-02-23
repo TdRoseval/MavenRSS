@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"MrRSS/internal/models"
+	"MavenRSS/internal/models"
 )
 
 // GetImageGalleryArticles retrieves articles from image mode feeds with pagination.
@@ -15,6 +15,11 @@ import (
 // Otherwise, it gets articles from all image mode feeds.
 // If onlyUnread is true, only returns unread articles.
 func (db *DB) GetImageGalleryArticles(feedID int64, category string, showHidden bool, onlyUnread bool, limit, offset int) ([]models.Article, error) {
+	return db.GetImageGalleryArticlesForUser(0, feedID, category, showHidden, onlyUnread, limit, offset)
+}
+
+// GetImageGalleryArticlesForUser retrieves articles from image mode feeds with pagination for a specific user.
+func (db *DB) GetImageGalleryArticlesForUser(userID int64, feedID int64, category string, showHidden bool, onlyUnread bool, limit, offset int) ([]models.Article, error) {
 	db.WaitForReady()
 	baseQuery := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url, a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later, a.translated_title, a.summary, f.title, a.author
@@ -23,6 +28,12 @@ func (db *DB) GetImageGalleryArticles(feedID int64, category string, showHidden 
 		WHERE COALESCE(f.is_image_mode, 0) = 1
 	`
 	var args []interface{}
+
+	// Always filter by user_id
+	if userID > 0 {
+		baseQuery += " AND a.user_id = ?"
+		args = append(args, userID)
+	}
 
 	// Always filter hidden articles unless showHidden is true
 	if !showHidden {

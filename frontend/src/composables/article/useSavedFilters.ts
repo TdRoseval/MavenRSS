@@ -1,29 +1,28 @@
 import { ref, type Ref } from 'vue';
 import type { SavedFilter } from '@/types/filter';
 import type { FilterCondition } from '@/types/filter';
+import { authFetchJson, authPost, authFetch } from '@/utils/authFetch';
+import { useAuthStore } from '@/stores/auth';
 
 export function useSavedFilters() {
+  const authStore = useAuthStore();
   const savedFilters: Ref<SavedFilter[]> = ref([]);
   const isLoading = ref(false);
   const error: Ref<string | null> = ref(null);
 
   // Fetch all saved filters
   async function fetchSavedFilters(): Promise<void> {
+    if (!authStore.isAuthenticated) {
+      return;
+    }
     isLoading.value = true;
     error.value = null;
     try {
-      const res = await fetch('/api/saved-filters');
-      if (res.ok) {
-        const data = await res.json();
-        // Ensure data is an array before assigning
-        savedFilters.value = Array.isArray(data) ? data : [];
-      } else {
-        throw new Error('Failed to fetch saved filters');
-      }
+      const data = await authFetchJson<any[]>('/api/saved-filters');
+      savedFilters.value = Array.isArray(data) ? data : [];
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Unknown error';
       console.error('Error fetching saved filters:', e);
-      // Ensure savedFilters is an array even on error
       savedFilters.value = [];
     } finally {
       isLoading.value = false;
@@ -35,6 +34,9 @@ export function useSavedFilters() {
     name: string,
     conditions: FilterCondition[]
   ): Promise<SavedFilter | null> {
+    if (!authStore.isAuthenticated) {
+      return null;
+    }
     const conditionsJson = JSON.stringify(conditions);
 
     const requestBody = {
@@ -42,29 +44,14 @@ export function useSavedFilters() {
       conditions: conditionsJson,
     };
 
-    const res = await fetch('/api/saved-filters', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (res.ok) {
-      const newFilter = await res.json();
-      // Ensure savedFilters is an array before pushing
-      if (Array.isArray(savedFilters.value)) {
-        savedFilters.value.push(newFilter);
-      } else {
-        savedFilters.value = [newFilter];
-      }
-      return newFilter;
-    } else if (res.status === 409) {
-      // Conflict - filter with same name already exists
-      const errorData = await res.json();
-      throw new Error(errorData.error || 'A filter with this name already exists');
+    const newFilter = await authPost('/api/saved-filters', requestBody);
+    // Ensure savedFilters is an array before pushing
+    if (Array.isArray(savedFilters.value)) {
+      savedFilters.value.push(newFilter);
     } else {
-      const errorText = await res.text();
-      throw new Error(`Failed to create saved filter: ${errorText}`);
+      savedFilters.value = [newFilter];
     }
+    return newFilter;
   }
 
   // Update existing saved filter
@@ -73,8 +60,11 @@ export function useSavedFilters() {
     name: string,
     conditions: FilterCondition[]
   ): Promise<boolean> {
+    if (!authStore.isAuthenticated) {
+      return false;
+    }
     try {
-      const res = await fetch(`/api/saved-filters/filter?id=${id}`, {
+      await authFetchJson(`/api/saved-filters/filter?id=${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -83,12 +73,8 @@ export function useSavedFilters() {
         }),
       });
 
-      if (res.ok) {
-        await fetchSavedFilters(); // Refresh list
-        return true;
-      } else {
-        throw new Error('Failed to update saved filter');
-      }
+      await fetchSavedFilters(); // Refresh list
+      return true;
     } catch (e) {
       console.error('Error updating saved filter:', e);
       return false;
@@ -97,22 +83,21 @@ export function useSavedFilters() {
 
   // Delete saved filter
   async function deleteSavedFilter(id: number): Promise<boolean> {
+    if (!authStore.isAuthenticated) {
+      return false;
+    }
     try {
-      const res = await fetch(`/api/saved-filters/filter?id=${id}`, {
+      await authFetchJson(`/api/saved-filters/filter?id=${id}`, {
         method: 'DELETE',
       });
 
-      if (res.ok) {
-        // Ensure savedFilters is an array before filtering
-        if (Array.isArray(savedFilters.value)) {
-          savedFilters.value = savedFilters.value.filter((f) => f.id !== id);
-        } else {
-          savedFilters.value = [];
-        }
-        return true;
+      // Ensure savedFilters is an array before filtering
+      if (Array.isArray(savedFilters.value)) {
+        savedFilters.value = savedFilters.value.filter((f) => f.id !== id);
       } else {
-        throw new Error('Failed to delete saved filter');
+        savedFilters.value = [];
       }
+      return true;
     } catch (e) {
       console.error('Error deleting saved filter:', e);
       return false;
@@ -121,20 +106,14 @@ export function useSavedFilters() {
 
   // Reorder saved filters
   async function reorderSavedFilters(filters: SavedFilter[]): Promise<boolean> {
+    if (!authStore.isAuthenticated) {
+      return false;
+    }
     try {
-      const res = await fetch('/api/saved-filters/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filters),
-      });
-
-      if (res.ok) {
-        // Ensure filters is an array before assigning
-        savedFilters.value = Array.isArray(filters) ? filters : [];
-        return true;
-      } else {
-        throw new Error('Failed to reorder saved filters');
-      }
+      await authPost('/api/saved-filters/reorder', filters);
+      // Ensure filters is an array before assigning
+      savedFilters.value = Array.isArray(filters) ? filters : [];
+      return true;
     } catch (e) {
       console.error('Error reordering saved filters:', e);
       return false;

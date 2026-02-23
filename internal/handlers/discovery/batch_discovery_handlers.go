@@ -6,10 +6,10 @@ import (
 	"log"
 	"net/http"
 
-	"MrRSS/internal/discovery"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/handlers/response"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/discovery"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
 )
 
 // HandleDiscoverAllFeeds discovers feeds from all subscriptions that haven't been discovered yet.
@@ -76,8 +76,19 @@ discoveryLoop:
 		default:
 		}
 
+		// Get user quota for concurrency limits
+		maxRSSConcurrency := 0
+		maxPathConcurrency := 0
+		if feed.UserID > 0 {
+			quota, err := h.DB.GetUserQuota(feed.UserID)
+			if err == nil && quota != nil {
+				maxRSSConcurrency = quota.MaxRSSDiscoveryConcurrency
+				maxPathConcurrency = quota.MaxRSSPathCheckConcurrency
+			}
+		}
+
 		log.Printf("Discovering from feed: %s (%s)", feed.Title, feed.URL)
-		discovered, err := h.DiscoveryService.DiscoverFromFeed(ctx, feed.URL)
+		discovered, err := h.DiscoveryService.DiscoverFromFeedWithProgress(ctx, feed.URL, maxRSSConcurrency, maxPathConcurrency, nil)
 		if err != nil {
 			log.Printf("Error discovering from feed %s: %v", feed.Title, err)
 			continue
@@ -232,6 +243,17 @@ func HandleStartBatchDiscovery(h *core.Handler, w http.ResponseWriter, r *http.R
 
 			log.Printf("Discovering from feed: %s (%s)", feed.Title, feed.URL)
 
+			// Get user quota for concurrency limits
+			maxRSSConcurrency := 0
+			maxPathConcurrency := 0
+			if feed.UserID > 0 {
+				quota, err := h.DB.GetUserQuota(feed.UserID)
+				if err == nil && quota != nil {
+					maxRSSConcurrency = quota.MaxRSSDiscoveryConcurrency
+					maxPathConcurrency = quota.MaxRSSPathCheckConcurrency
+				}
+			}
+
 			// Create a per-feed progress callback
 			feedProgressCb := func(progress discovery.Progress) {
 				h.DiscoveryMu.Lock()
@@ -245,7 +267,7 @@ func HandleStartBatchDiscovery(h *core.Handler, w http.ResponseWriter, r *http.R
 				h.DiscoveryMu.Unlock()
 			}
 
-			discovered, err := h.DiscoveryService.DiscoverFromFeedWithProgress(ctx, feed.URL, feedProgressCb)
+			discovered, err := h.DiscoveryService.DiscoverFromFeedWithProgress(ctx, feed.URL, maxRSSConcurrency, maxPathConcurrency, feedProgressCb)
 			if err != nil {
 				log.Printf("Error discovering from feed %s: %v", feed.Title, err)
 				if err := h.DB.MarkFeedDiscovered(feed.ID); err != nil {

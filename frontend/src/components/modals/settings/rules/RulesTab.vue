@@ -8,6 +8,7 @@ import RuleItem from './RuleItem.vue';
 import type { Condition } from '@/composables/rules/useRuleOptions';
 import type { SettingsData } from '@/types/settings';
 import { ButtonControl, SettingGroup, SettingItem } from '@/components/settings';
+import { authPost } from '@/utils/authFetch';
 
 const store = useAppStore();
 const { t } = useI18n();
@@ -88,11 +89,7 @@ async function saveRules() {
     // No transformation needed - feed_type values are already codes
     const updatedSettings = { ...props.settings, rules: JSON.stringify(rules.value) };
     emit('update:settings', updatedSettings);
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rules: updatedSettings.rules }),
-    });
+    await authPost('/api/settings', { rules: updatedSettings.rules });
   } catch (e) {
     console.error('Error saving rules:', e);
   }
@@ -168,20 +165,10 @@ async function applyRule(rule: Rule): Promise<void> {
 
   try {
     // No transformation needed - feed_type values are already codes
-    const res = await fetch('/api/rules/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rule),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      window.showToast(t('modal.rule.ruleAppliedSuccess', { count: data.affected }), 'success');
-      store.fetchArticles();
-      store.fetchUnreadCounts();
-    } else {
-      window.showToast(t('common.errors.savingSettings'), 'error');
-    }
+    const data = await authPost('/api/rules/apply', rule);
+    window.showToast(t('modal.rule.ruleAppliedSuccess', { count: data.affected }), 'success');
+    store.fetchArticles();
+    store.fetchUnreadCounts();
   } catch (e) {
     console.error('Error applying rule:', e);
     window.showToast(t('common.errors.savingSettings'), 'error');

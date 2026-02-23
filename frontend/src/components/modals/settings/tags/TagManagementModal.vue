@@ -7,6 +7,7 @@ import { PhPlus, PhPencil, PhTrash } from '@phosphor-icons/vue';
 import BaseModal from '@/components/common/BaseModal.vue';
 import ModalFooter from '@/components/common/ModalFooter.vue';
 import TagFormModal from './TagFormModal.vue';
+import { authGet, authPost } from '@/utils/authFetch';
 
 const { t } = useI18n();
 const store = useAppStore();
@@ -27,8 +28,7 @@ onMounted(async () => {
 
 async function fetchTags() {
   try {
-    const res = await fetch('/api/tags');
-    tags.value = await res.json();
+    tags.value = await authGet('/api/tags');
   } catch (e) {
     console.error('Failed to fetch tags:', e);
   }
@@ -48,23 +48,15 @@ async function handleSaveTag(name: string, color: string) {
   try {
     if (editingTag.value) {
       // Update existing tag
-      await fetch('/api/tags/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingTag.value.id,
-          name,
-          color,
-          position: editingTag.value.position,
-        }),
+      await authPost('/api/tags/update', {
+        id: editingTag.value.id,
+        name,
+        color,
+        position: editingTag.value.position,
       });
     } else {
       // Create new tag
-      await fetch('/api/tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, color }),
-      });
+      await authPost('/api/tags', { name, color });
     }
 
     await fetchTags();
@@ -84,11 +76,7 @@ async function deleteTag(tag: Tag) {
   }
 
   try {
-    await fetch('/api/tags/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: tag.id }),
-    });
+    await authPost('/api/tags/delete', { id: tag.id });
 
     await fetchTags();
 

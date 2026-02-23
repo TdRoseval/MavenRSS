@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"MrRSS/internal/database"
-	"MrRSS/internal/freshrss"
-	"MrRSS/internal/models"
-	"MrRSS/internal/rsshub"
+	"MavenRSS/internal/database"
+	"MavenRSS/internal/freshrss"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/rsshub"
 )
 
 // getFeedType returns the type code of a feed

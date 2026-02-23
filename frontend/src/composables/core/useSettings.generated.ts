@@ -1,4 +1,4 @@
-// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Auto-generated settings composable helpers
 // CODE GENERATED - DO NOT EDIT MANUALLY
@@ -25,6 +25,7 @@ export function generateInitialSettings(): SettingsData {
     ai_summary_prompt: settingsDefaults.ai_summary_prompt,
     ai_translation_profile_id: settingsDefaults.ai_translation_profile_id,
     ai_translation_prompt: settingsDefaults.ai_translation_prompt,
+    ai_usage_hard_limit: settingsDefaults.ai_usage_hard_limit,
     ai_usage_limit: settingsDefaults.ai_usage_limit,
     ai_usage_tokens: settingsDefaults.ai_usage_tokens,
     auto_cleanup_enabled: settingsDefaults.auto_cleanup_enabled,
@@ -60,6 +61,7 @@ export function generateInitialSettings(): SettingsData {
     full_text_fetch_enabled: settingsDefaults.full_text_fetch_enabled,
     google_translate_endpoint: settingsDefaults.google_translate_endpoint,
     hover_mark_as_read: settingsDefaults.hover_mark_as_read,
+    idle_conn_timeout_seconds: settingsDefaults.idle_conn_timeout_seconds,
     image_gallery_enabled: settingsDefaults.image_gallery_enabled,
     language: settingsDefaults.language,
     last_global_refresh: settingsDefaults.last_global_refresh,
@@ -68,6 +70,9 @@ export function generateInitialSettings(): SettingsData {
     max_article_age_days: settingsDefaults.max_article_age_days,
     max_cache_size_mb: settingsDefaults.max_cache_size_mb,
     max_concurrent_refreshes: settingsDefaults.max_concurrent_refreshes,
+    max_conns_per_host: settingsDefaults.max_conns_per_host,
+    max_idle_conns: settingsDefaults.max_idle_conns,
+    max_idle_conns_per_host: settingsDefaults.max_idle_conns_per_host,
     media_cache_enabled: settingsDefaults.media_cache_enabled,
     media_cache_max_age_days: settingsDefaults.media_cache_max_age_days,
     media_cache_max_size_mb: settingsDefaults.media_cache_max_size_mb,
@@ -113,6 +118,7 @@ export function generateInitialSettings(): SettingsData {
     window_width: settingsDefaults.window_width,
     window_x: settingsDefaults.window_x,
     window_y: settingsDefaults.window_y,
+    _has_inherited: false,
   } as SettingsData;
 }
 
@@ -135,6 +141,7 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     ai_translation_profile_id:
       data.ai_translation_profile_id || settingsDefaults.ai_translation_profile_id,
     ai_translation_prompt: data.ai_translation_prompt || settingsDefaults.ai_translation_prompt,
+    ai_usage_hard_limit: data.ai_usage_hard_limit || settingsDefaults.ai_usage_hard_limit,
     ai_usage_limit: data.ai_usage_limit || settingsDefaults.ai_usage_limit,
     ai_usage_tokens: data.ai_usage_tokens || settingsDefaults.ai_usage_tokens,
     auto_cleanup_enabled: data.auto_cleanup_enabled === 'true',
@@ -181,6 +188,8 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     google_translate_endpoint:
       data.google_translate_endpoint || settingsDefaults.google_translate_endpoint,
     hover_mark_as_read: data.hover_mark_as_read === 'true',
+    idle_conn_timeout_seconds:
+      parseInt(data.idle_conn_timeout_seconds) || settingsDefaults.idle_conn_timeout_seconds,
     image_gallery_enabled: data.image_gallery_enabled === 'true',
     language: data.language || settingsDefaults.language,
     last_global_refresh: data.last_global_refresh || settingsDefaults.last_global_refresh,
@@ -191,6 +200,10 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     max_cache_size_mb: parseInt(data.max_cache_size_mb) || settingsDefaults.max_cache_size_mb,
     max_concurrent_refreshes:
       data.max_concurrent_refreshes || settingsDefaults.max_concurrent_refreshes,
+    max_conns_per_host: parseInt(data.max_conns_per_host) || settingsDefaults.max_conns_per_host,
+    max_idle_conns: parseInt(data.max_idle_conns) || settingsDefaults.max_idle_conns,
+    max_idle_conns_per_host:
+      parseInt(data.max_idle_conns_per_host) || settingsDefaults.max_idle_conns_per_host,
     media_cache_enabled: data.media_cache_enabled === 'true',
     media_cache_max_age_days:
       parseInt(data.media_cache_max_age_days) || settingsDefaults.media_cache_max_age_days,
@@ -239,6 +252,7 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     window_width: data.window_width || settingsDefaults.window_width,
     window_x: data.window_x || settingsDefaults.window_x,
     window_y: data.window_y || settingsDefaults.window_y,
+    _has_inherited: data._has_inherited === 'true',
   } as SettingsData;
 }
 
@@ -268,6 +282,8 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
       settingsRef.value.ai_translation_profile_id ?? settingsDefaults.ai_translation_profile_id,
     ai_translation_prompt:
       settingsRef.value.ai_translation_prompt ?? settingsDefaults.ai_translation_prompt,
+    ai_usage_hard_limit:
+      settingsRef.value.ai_usage_hard_limit ?? settingsDefaults.ai_usage_hard_limit,
     ai_usage_limit: settingsRef.value.ai_usage_limit ?? settingsDefaults.ai_usage_limit,
     ai_usage_tokens: settingsRef.value.ai_usage_tokens ?? settingsDefaults.ai_usage_tokens,
     auto_cleanup_enabled: (
@@ -337,6 +353,9 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     hover_mark_as_read: (
       settingsRef.value.hover_mark_as_read ?? settingsDefaults.hover_mark_as_read
     ).toString(),
+    idle_conn_timeout_seconds: (
+      settingsRef.value.idle_conn_timeout_seconds ?? settingsDefaults.idle_conn_timeout_seconds
+    ).toString(),
     image_gallery_enabled: (
       settingsRef.value.image_gallery_enabled ?? settingsDefaults.image_gallery_enabled
     ).toString(),
@@ -351,6 +370,15 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     ).toString(),
     max_concurrent_refreshes:
       settingsRef.value.max_concurrent_refreshes ?? settingsDefaults.max_concurrent_refreshes,
+    max_conns_per_host: (
+      settingsRef.value.max_conns_per_host ?? settingsDefaults.max_conns_per_host
+    ).toString(),
+    max_idle_conns: (
+      settingsRef.value.max_idle_conns ?? settingsDefaults.max_idle_conns
+    ).toString(),
+    max_idle_conns_per_host: (
+      settingsRef.value.max_idle_conns_per_host ?? settingsDefaults.max_idle_conns_per_host
+    ).toString(),
     media_cache_enabled: (
       settingsRef.value.media_cache_enabled ?? settingsDefaults.media_cache_enabled
     ).toString(),

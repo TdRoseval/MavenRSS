@@ -1,3 +1,5 @@
+import { authFetch } from '@/utils/authFetch';
+
 /**
  * Opens a URL in the user's default web browser using Wails v3 Browser API.
  * This function calls the backend /api/browser/open endpoint which uses
@@ -14,7 +16,7 @@ export async function openInBrowser(url: string): Promise<void> {
   }
 
   try {
-    const response = await fetch('/api/browser/open', {
+    const response = await authFetch('/api/browser/open', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

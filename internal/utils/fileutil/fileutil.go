@@ -44,7 +44,7 @@ func IsPortableMode() bool {
 	return isPortableMode
 }
 
-// GetDataDir returns the platform-specific user data directory for MrRSS.
+// GetDataDir returns the platform-specific user data directory for MavenRSS.
 func GetDataDir() (string, error) {
 	var dataDir string
 	var err error
@@ -99,7 +99,7 @@ func GetDataDir() (string, error) {
 			}
 		}
 
-		dataDir = filepath.Join(baseDir, "MrRSS")
+		dataDir = filepath.Join(baseDir, "MavenRSS")
 	}
 
 	err = os.MkdirAll(dataDir, 0755)

@@ -4,13 +4,20 @@ import (
 	"context"
 	"sync"
 
-	"MrRSS/internal/ai"
+	"MavenRSS/internal/ai"
 )
 
 // SettingsProvider is an interface for retrieving translation settings.
 type SettingsProvider interface {
 	GetSetting(key string) (string, error)
 	GetEncryptedSetting(key string) (string, error)
+}
+
+// SettingsProviderWithFallback is an optional extension for settings providers that support user settings with fallback
+type SettingsProviderWithFallback interface {
+	SettingsProvider
+	GetSettingWithFallback(userID int64, key string) (string, error)
+	GetEncryptedSettingWithFallback(userID int64, key string) (string, error)
 }
 
 // CacheProvider is an interface for translation caching

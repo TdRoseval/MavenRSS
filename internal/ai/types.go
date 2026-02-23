@@ -60,6 +60,22 @@ type FormatHandler interface {
 	ValidateResponse(statusCode int, body []byte) error
 }
 
+// StreamFormatHandler extends FormatHandler with streaming support
+type StreamFormatHandler interface {
+	FormatHandler
+	// BuildStreamRequest builds the request body for streaming
+	BuildStreamRequest(config RequestConfig) (map[string]interface{}, error)
+}
+
+// StreamChunk represents a single chunk from a streaming response
+type StreamChunk struct {
+	Content    string
+	Thinking   string
+	Done       bool
+	Error      error
+}
+
+
 // ParseCustomHeaders parses custom headers from JSON string to map
 func ParseCustomHeaders(headersJSON string) map[string]string {
 	headers := make(map[string]string)

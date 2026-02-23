@@ -1,4 +1,4 @@
-// Copyright 2026 Ch3nyang & MrRSS Team. All rights reserved.
+// Copyright 2026 Ch3nyang & MavenRSS Team. All rights reserved.
 //
 // Auto-generated settings types
 // CODE GENERATED - DO NOT EDIT MANUALLY
@@ -17,6 +17,7 @@ export interface SettingsData {
   ai_summary_prompt: string;
   ai_translation_profile_id: string;
   ai_translation_prompt: string;
+  ai_usage_hard_limit: string;
   ai_usage_limit: string;
   ai_usage_tokens: string;
   auto_cleanup_enabled: boolean;
@@ -52,6 +53,7 @@ export interface SettingsData {
   full_text_fetch_enabled: boolean;
   google_translate_endpoint: string;
   hover_mark_as_read: boolean;
+  idle_conn_timeout_seconds: number;
   image_gallery_enabled: boolean;
   language: string;
   last_global_refresh: string;
@@ -60,6 +62,9 @@ export interface SettingsData {
   max_article_age_days: number;
   max_cache_size_mb: number;
   max_concurrent_refreshes: string;
+  max_conns_per_host: number;
+  max_idle_conns: number;
+  max_idle_conns_per_host: number;
   media_cache_enabled: boolean;
   media_cache_max_age_days: number;
   media_cache_max_size_mb: number;

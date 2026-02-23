@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"MrRSS/internal/database"
-	ff "MrRSS/internal/feed"
-	"MrRSS/internal/handlers/article"
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/models"
+	"MavenRSS/internal/database"
+	ff "MavenRSS/internal/feed"
+	"MavenRSS/internal/handlers/article"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/models"
 )
 
 func setupHandler(t *testing.T) *core.Handler {

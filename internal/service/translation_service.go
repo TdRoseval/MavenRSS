@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"MrRSS/internal/ai"
-	"MrRSS/internal/translation"
+	"MavenRSS/internal/ai"
+	"MavenRSS/internal/translation"
 )
 
 // translationService implements TranslationService interface

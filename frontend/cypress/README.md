@@ -1,6 +1,6 @@
-# Cypress E2E Tests for MrRSS
+# Cypress E2E Tests for MavenRSS
 
-This directory contains end-to-end (E2E) tests for the MrRSS frontend application using Cypress.
+This directory contains end-to-end (E2E) tests for the MavenRSS frontend application using Cypress.
 
 ## Quick Start
 
@@ -64,7 +64,7 @@ cypress/
    npm install
    ```
 
-2. Start the MrRSS backend server:
+2. Start the MavenRSS backend server:
 
    ```bash
    # From the project root
@@ -236,7 +236,7 @@ describe('Feature Name', () => {
 
 ```bash
 # Terminal 1: Start Wails dev server
-cd /path/to/MrRSS
+cd /path/to/MavenRSS
 wails3 dev
 
 # Terminal 2: Run tests

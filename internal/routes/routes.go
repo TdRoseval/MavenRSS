@@ -1,12 +1,13 @@
-// Package routes provides centralized route registration for the MrRSS API.
+// Package routes provides centralized route registration for the MavenRSS API.
 // This eliminates code duplication between main.go and main-core.go.
 package routes
 
 import (
 	"net/http"
 
-	"MrRSS/internal/handlers/core"
-	"MrRSS/internal/middleware"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/middleware"
 )
 
 // Config contains options for route registration.
@@ -21,27 +22,47 @@ type Config struct {
 	EnableCompression bool
 	// CORSOrigins specifies allowed origins for CORS
 	CORSOrigins []string
+	// EnableAuth enables authentication middleware
+	EnableAuth bool
+	// JWTManager is the JWT manager for authentication
+	JWTManager *auth.JWTManager
+	// EnableRateLimit enables rate limiting middleware
+	EnableRateLimit bool
+	// RateLimitConfig is the rate limiter configuration
+	RateLimitConfig middleware.RateLimiterConfig
+	// EnableSecurityHeaders enables security headers middleware
+	EnableSecurityHeaders bool
 }
 
 // DefaultConfig returns the default route configuration.
 func DefaultConfig() Config {
 	return Config{
-		EnableLogging:     false,
-		EnableRecovery:    true,
-		EnableCORS:        false,
-		EnableCompression: false,
-		CORSOrigins:       []string{"*"},
+		EnableLogging:         false,
+		EnableRecovery:        true,
+		EnableCORS:            false,
+		EnableCompression:     false,
+		EnableAuth:            false,
+		CORSOrigins:           []string{"*"},
+		JWTManager:            nil,
+		EnableRateLimit:       false,
+		RateLimitConfig:       middleware.DefaultRateLimiterConfig(),
+		EnableSecurityHeaders: false,
 	}
 }
 
 // ServerConfig returns a configuration suitable for server mode.
-func ServerConfig() Config {
+func ServerConfig(jwtManager *auth.JWTManager) Config {
 	return Config{
-		EnableLogging:     true,
-		EnableRecovery:    true,
-		EnableCORS:        true,
-		EnableCompression: true,
-		CORSOrigins:       []string{"*"},
+		EnableLogging:         true,
+		EnableRecovery:        true,
+		EnableCORS:            true,
+		EnableCompression:     true,
+		EnableAuth:            true,
+		CORSOrigins:           []string{"*"},
+		JWTManager:            jwtManager,
+		EnableRateLimit:       true,
+		RateLimitConfig:       middleware.DefaultRateLimiterConfig(),
+		EnableSecurityHeaders: true,
 	}
 }
 
@@ -54,11 +75,11 @@ func RegisterAPIRoutes(mux *http.ServeMux, h *core.Handler) {
 // RegisterAPIRoutesWithConfig registers all API routes with the specified configuration.
 func RegisterAPIRoutesWithConfig(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	// Register all route groups
-	registerFeedRoutes(mux, h)
-	registerArticleRoutes(mux, h)
-	registerAIRoutes(mux, h)
-	registerSettingsRoutes(mux, h)
-	registerOtherRoutes(mux, h)
+	registerFeedRoutes(mux, h, cfg)
+	registerArticleRoutes(mux, h, cfg)
+	registerAIRoutes(mux, h, cfg)
+	registerSettingsRoutes(mux, h, cfg)
+	registerOtherRoutes(mux, h, cfg)
 }
 
 // WrapWithMiddleware wraps an http.Handler with the standard middleware chain.
@@ -67,6 +88,14 @@ func WrapWithMiddleware(handler http.Handler, cfg Config) http.Handler {
 
 	if cfg.EnableRecovery {
 		middlewares = append(middlewares, middleware.Recovery())
+	}
+
+	if cfg.EnableSecurityHeaders {
+		middlewares = append(middlewares, middleware.SecurityHeaders())
+	}
+
+	if cfg.EnableRateLimit {
+		middlewares = append(middlewares, middleware.RateLimiter(cfg.RateLimitConfig))
 	}
 
 	if cfg.EnableLogging {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	dbpkg "MrRSS/internal/database"
-	"MrRSS/internal/models"
+	dbpkg "MavenRSS/internal/database"
+	"MavenRSS/internal/models"
 )
 
 func setupDBWithFeed(t *testing.T) *dbpkg.DB {
