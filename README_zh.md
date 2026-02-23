@@ -1,4 +1,4 @@
-# MavenRSS
+# MavenRSS (fork from [MrRSS](https://github.com/WCY-dt/MrRSS))
 
 
 
