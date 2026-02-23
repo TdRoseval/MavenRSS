@@ -565,6 +565,10 @@ func (tm *TaskManager) processQueue(ctx context.Context) {
 			log.Printf("Error getting feed %d: %v", feedID, err)
 			continue
 		}
+		if feed == nil {
+			log.Printf("Feed %d not found in database", feedID)
+			continue
+		}
 
 		// Create task
 		task := &RefreshTask{
@@ -766,7 +770,7 @@ func (tm *TaskManager) GetQueuedFeedNames() []string {
 	names := make([]string, 0, len(feedIDs))
 	for _, feedID := range feedIDs {
 		feed, err := tm.fetcher.db.GetFeedByID(feedID)
-		if err == nil {
+		if err == nil && feed != nil {
 			names = append(names, feed.Title)
 		}
 	}
@@ -849,7 +853,7 @@ func (tm *TaskManager) GetQueueTasks(limit int) []QueueTaskInfo {
 	for i := 0; i < count; i++ {
 		feedID := tm.queue[i]
 		feed, err := tm.fetcher.db.GetFeedByID(feedID)
-		if err == nil {
+		if err == nil && feed != nil {
 			tasks = append(tasks, QueueTaskInfo{
 				FeedID:    feed.ID,
 				FeedTitle: feed.Title,
@@ -874,7 +878,7 @@ func (tm *TaskManager) GetQueueTasksForUser(userID int64, limit int) []QueueTask
 			break
 		}
 		feed, err := tm.fetcher.db.GetFeedByID(feedID)
-		if err == nil && feed.UserID == userID {
+		if err == nil && feed != nil && feed.UserID == userID {
 			tasks = append(tasks, QueueTaskInfo{
 				FeedID:    feed.ID,
 				FeedTitle: feed.Title,
@@ -910,7 +914,7 @@ func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithSta
 	tm.queueMutex.RLock()
 	for _, feedID := range tm.queue {
 		feed, err := tm.fetcher.db.GetFeedByID(feedID)
-		if err == nil && feed.UserID == userID {
+		if err == nil && feed != nil && feed.UserID == userID {
 			queueTaskCount++
 		}
 	}
@@ -920,7 +924,7 @@ func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithSta
 	filteredErrors := make(map[int64]string)
 	for feedID, errMsg := range tm.progress.Errors {
 		feed, err := tm.fetcher.db.GetFeedByID(feedID)
-		if err == nil && feed.UserID == userID {
+		if err == nil && feed != nil && feed.UserID == userID {
 			filteredErrors[feedID] = errMsg
 		}
 	}

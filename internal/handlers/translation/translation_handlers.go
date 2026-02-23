@@ -2,7 +2,6 @@ package translation
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -200,43 +199,48 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if isAIProvider {
 		// Check if AI usage limit is reached
 		if isAILimitReached(h, userID) {
+			log.Printf("AI usage limit reached for article translation, falling back to non-AI provider")
 			limitReached = true
-			// AI limit reached, return error instead of silently falling back to Google
-			response.Error(w, fmt.Errorf("AI usage limit reached"), http.StatusTooManyRequests)
-			return
+			// Fall back to non-AI provider gracefully
+			translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
+		} else {
+			// Apply rate limiting for AI requests
+			h.AITracker.WaitForRateLimit()
+
+			// Create AI translator directly with user-specific settings
+			aiTranslator, err := getAITranslatorForUser(h, userID)
+			if err != nil {
+				log.Printf("Failed to create AI translator, falling back to non-AI: %v", err)
+				translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
+			} else {
+				// Use markdown-preserving translation for better list structure
+				translatedTitle, translateErr = translation.TranslateMarkdownAIPrompt(req.Title, aiTranslator, req.TargetLang)
+
+				// If AI fails, fall back to non-AI provider gracefully
+				if translateErr != nil {
+					log.Printf("AI translation failed, falling back to non-AI: %v", translateErr)
+					translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
+				} else {
+					// Track AI usage only on success
+					inputTokens := ai.EstimateTokens(req.Title)
+					outputTokens := ai.EstimateTokens(translatedTitle)
+					totalTokens := inputTokens + outputTokens
+					addAIUsage(h, userID, totalTokens)
+				}
+			}
 		}
 		
-		// Apply rate limiting for AI requests
-		h.AITracker.WaitForRateLimit()
-
-		// Create AI translator directly with user-specific settings
-		aiTranslator, err := getAITranslatorForUser(h, userID)
-		if err != nil {
-			log.Printf("Failed to create AI translator: %v", err)
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-
-		// Use markdown-preserving translation for better list structure
-		translatedTitle, translateErr = translation.TranslateMarkdownAIPrompt(req.Title, aiTranslator, req.TargetLang)
-
-		// If AI fails, don't silently fall back to Google - return error instead
+		// If even the fallback fails, return error
 		if translateErr != nil {
-			log.Printf("AI translation failed: %v", translateErr)
+			log.Printf("Translation failed even with fallback: %v", translateErr)
 			response.Error(w, translateErr, http.StatusInternalServerError)
 			return
 		}
-
-		// Track AI usage
-		inputTokens := ai.EstimateTokens(req.Title)
-		outputTokens := ai.EstimateTokens(translatedTitle)
-		totalTokens := inputTokens + outputTokens
-		addAIUsage(h, userID, totalTokens)
 	} else {
 		// Non-AI provider, use original logic with h.Translator
 		translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
 		
-		// If translation fails, return error instead of falling back to Google
+		// If translation fails, return error
 		if translateErr != nil {
 			log.Printf("Translation failed for provider %s: %v", provider, translateErr)
 			response.Error(w, translateErr, http.StatusInternalServerError)
@@ -371,48 +375,53 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	if isAIProvider {
 		// Check if AI usage limit is reached
 		if isAILimitReached(h, userID) {
-			log.Printf("[TranslateText] AI usage limit reached")
-			// AI limit reached, return error instead of silently falling back to Google
-			response.Error(w, fmt.Errorf("AI usage limit reached"), http.StatusTooManyRequests)
-			return
+			log.Printf("[TranslateText] AI usage limit reached, falling back to non-AI provider")
+			// Fall back to non-AI provider gracefully
+			translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
+		} else {
+			// Apply rate limiting for AI requests
+			h.AITracker.WaitForRateLimit()
+
+			// Create AI translator directly with user-specific settings
+			log.Printf("[TranslateText] Creating AI translator for user %d", userID)
+			aiTranslator, translatorErr := getAITranslatorForUser(h, userID)
+			if translatorErr != nil {
+				log.Printf("[TranslateText] Failed to create AI translator, falling back to non-AI: %v", translatorErr)
+				translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
+			} else {
+				log.Printf("[TranslateText] AI translator created successfully, endpoint: %s, model: %s", aiTranslator.Endpoint, aiTranslator.Model)
+
+				// Use markdown-preserving translation for better list structure
+				log.Printf("[TranslateText] Starting AI translation...")
+				translatedText, err = translation.TranslateMarkdownAIPrompt(req.Text, aiTranslator, req.TargetLang)
+
+				// If AI fails, fall back to non-AI provider gracefully
+				if err != nil {
+					log.Printf("[TranslateText] AI translation failed, falling back to non-AI: %v", err)
+					translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
+				} else {
+					log.Printf("[TranslateText] AI translation succeeded, translated length: %d", len(translatedText))
+					// Track AI usage only on success
+					inputTokens := ai.EstimateTokens(req.Text)
+					outputTokens := ai.EstimateTokens(translatedText)
+					totalTokens := inputTokens + outputTokens
+					addAIUsage(h, userID, totalTokens)
+				}
+			}
 		}
 		
-		// Apply rate limiting for AI requests
-		h.AITracker.WaitForRateLimit()
-
-		// Create AI translator directly with user-specific settings
-		log.Printf("[TranslateText] Creating AI translator for user %d", userID)
-		aiTranslator, translatorErr := getAITranslatorForUser(h, userID)
-		if translatorErr != nil {
-			log.Printf("[TranslateText] Failed to create AI translator: %v", translatorErr)
-			response.Error(w, translatorErr, http.StatusInternalServerError)
-			return
-		}
-		log.Printf("[TranslateText] AI translator created successfully, endpoint: %s, model: %s", aiTranslator.Endpoint, aiTranslator.Model)
-
-		// Use markdown-preserving translation for better list structure
-		log.Printf("[TranslateText] Starting AI translation...")
-		translatedText, err = translation.TranslateMarkdownAIPrompt(req.Text, aiTranslator, req.TargetLang)
-
-		// If AI fails, don't silently fall back to Google - return error instead
+		// If even the fallback fails, return error
 		if err != nil {
-			log.Printf("[TranslateText] AI translation failed: %v", err)
+			log.Printf("[TranslateText] Translation failed even with fallback: %v", err)
 			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[TranslateText] AI translation succeeded, translated length: %d", len(translatedText))
-
-		// Track AI usage
-		inputTokens := ai.EstimateTokens(req.Text)
-		outputTokens := ai.EstimateTokens(translatedText)
-		totalTokens := inputTokens + outputTokens
-		addAIUsage(h, userID, totalTokens)
 	} else {
 		// Non-AI provider, use original logic with h.Translator
 		log.Printf("[TranslateText] Using non-AI provider: %s", provider)
 		translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
 		
-		// If translation fails, return error instead of falling back to Google
+		// If translation fails, return error
 		if err != nil {
 			log.Printf("[TranslateText] Translation failed for provider %s: %v", provider, err)
 			response.Error(w, err, http.StatusInternalServerError)

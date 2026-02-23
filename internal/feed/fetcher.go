@@ -518,6 +518,10 @@ func (f *Fetcher) FetchFeedsByIDs(ctx context.Context, feedIDs []int64) {
 			log.Printf("Error getting feed %d: %v", feedID, err)
 			continue
 		}
+		if feed == nil {
+			log.Printf("Feed %d not found in database", feedID)
+			continue
+		}
 		// Add to queue head as high priority (manual add/edit)
 		f.taskManager.AddToQueueHead(ctx, *feed, TaskReasonManualAdd)
 	}

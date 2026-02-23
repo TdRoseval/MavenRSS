@@ -90,8 +90,6 @@ func sanitizeValue(value string) string {
 func GetAllSettingsForUser(h *core.Handler, userID int64, isAdmin bool, hasInherited bool) map[string]string {
 	result := make(map[string]string, len(AllSettings)+1)
 	globalSettings := GetAllSettings(h)
-	
-	log.Printf("[GetAllSettingsForUser] userID=%d, isAdmin=%v, hasInherited=%v", userID, isAdmin, hasInherited)
 
 	// Add hasInherited flag to result so frontend knows
 	if hasInherited {
@@ -118,11 +116,6 @@ func GetAllSettingsForUser(h *core.Handler, userID int64, isAdmin bool, hasInher
 		}
 
 		result[def.Key] = finalValue
-		
-		// Log AI settings for debugging
-		if len(def.Key) >= 3 && def.Key[:3] == "ai_" {
-			log.Printf("[GetAllSettingsForUser] %s: userValue=%s, finalValue=%s", def.Key, userValue, finalValue)
-		}
 	}
 
 	return result
@@ -204,7 +197,6 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		// Get all settings using the definition-driven approach
-		log.Printf("[HandleSettings] GET request, userID=%d, ok=%v", userID, ok)
 		// If we have a user ID, return user settings, otherwise return global settings
 		var settings map[string]string
 		if ok {
@@ -212,19 +204,15 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		} else {
 			settings = GetAllSettings(h)
 		}
-		log.Printf("[HandleSettings] GET request, returning %d settings", len(settings))
 		response.JSON(w, settings)
 
 	case http.MethodPost:
-		log.Printf("[HandleSettings] POST request, userID=%d, ok=%v", userID, ok)
 		// Parse request body as a generic map
 		var req map[string]string
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			response.Error(w, err, http.StatusBadRequest)
 			return
 		}
-
-		log.Printf("[HandleSettings] POST request, saving %d settings for userID=%d", len(req), userID)
 
 		// Check if we're disabling FreshRSS
 		if newEnabled, okFresh := req["freshrss_enabled"]; okFresh {

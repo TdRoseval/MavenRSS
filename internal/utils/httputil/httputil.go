@@ -112,6 +112,8 @@ func CreateHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, err
 		if parsedProxy != nil {
 			transport.Proxy = http.ProxyURL(parsedProxy)
 		}
+	} else {
+		transport.Proxy = nil
 	}
 
 	return &http.Client{
@@ -147,6 +149,8 @@ func CreateAIHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, e
 		if parsedProxy != nil {
 			transport.Proxy = http.ProxyURL(parsedProxy)
 		}
+	} else {
+		transport.Proxy = nil
 	}
 
 	return &http.Client{

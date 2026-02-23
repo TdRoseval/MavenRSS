@@ -45,7 +45,7 @@ function getFriendlyErrorMessage(error: string): string {
   if (error.includes('timeout') || error.includes('Timeout')) {
     return t('modal.feed.errorTimeout');
   }
-  if (error.includes('connection') || error.includes('Connection')) {
+  if (error.includes('connection') || error.includes('Connection') || error.includes('EOF')) {
     return t('modal.feed.errorConnection');
   }
   if (error.includes('dns') || error.includes('DNS')) {

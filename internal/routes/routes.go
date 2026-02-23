@@ -87,7 +87,9 @@ func WrapWithMiddleware(handler http.Handler, cfg Config) http.Handler {
 	var middlewares []middleware.Middleware
 
 	if cfg.EnableRecovery {
-		middlewares = append(middlewares, middleware.Recovery())
+		middlewares = append(middlewares, middleware.RecoveryWithConfig(middleware.RecoveryConfig{
+			EnableStackTrace: true,
+		}))
 	}
 
 	if cfg.EnableSecurityHeaders {

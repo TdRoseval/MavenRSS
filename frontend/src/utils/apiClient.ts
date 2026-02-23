@@ -286,8 +286,23 @@ export class ApiClient {
       // Handle network errors
       if (error instanceof Error) {
         console.error(`API request failed: ${url}`, error);
-        // Show user-friendly error message
-        if (window.showToast && error.message !== 'Authentication required') {
+        // Silently ignore rate limit errors, quota errors, and AI usage limit errors
+        const silentErrors = [
+          'Rate limit exceeded',
+          'API request failed: Rate limit exceeded',
+          'quota exceeded',
+          'Quota exceeded',
+          'QUOTA_EXCEEDED',
+          'AI usage limit reached',
+          'usage limit reached',
+          'limit reached',
+          'Too Many Requests',
+          '429'
+        ];
+        const isSilentError = silentErrors.some(msg => error.message.toLowerCase().includes(msg.toLowerCase()));
+        
+        // Show user-friendly error message only for non-silent errors
+        if (window.showToast && error.message !== 'Authentication required' && !isSilentError) {
           window.showToast(`API request failed: ${error.message}`, 'error');
         }
       }
