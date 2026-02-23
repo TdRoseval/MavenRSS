@@ -1,4 +1,4 @@
-# MavenRSS
+# MavenRSS (fork from [MrRSS](https://github.com/WCY-dt/MrRSS))
 
 <p>
    <strong>English</strong> | <a href="README_zh.md">简体中文</a>
