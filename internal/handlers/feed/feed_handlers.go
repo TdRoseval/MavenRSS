@@ -133,34 +133,27 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Get user proxy settings as fallback
 	var userProxyURL string
 	proxyEnabled := req.ProxyEnabled
+	finalProxyURL := req.ProxyURL
+	
+	// Only apply user proxy settings if the feed is set to use proxy
 	if proxyEnabled {
 		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 		if proxyEnabledStr == "true" {
-			proxyEnabled = true
 			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
 			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
 			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
 			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
 			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			
+			// Use request proxy URL if provided, otherwise use user proxy settings
+			if finalProxyURL == "" && userProxyURL != "" {
+				finalProxyURL = userProxyURL
+			}
 		}
 	} else {
-		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
-		if proxyEnabledStr == "true" {
-			proxyEnabled = true
-			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
-			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
-			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
-			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
-			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
-			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-		}
-	}
-	
-	// Use request proxy URL if provided, otherwise use user proxy settings
-	finalProxyURL := req.ProxyURL
-	if finalProxyURL == "" && userProxyURL != "" {
-		finalProxyURL = userProxyURL
+		// User explicitly set to NO proxy - make sure we don't use any proxy
+		finalProxyURL = ""
 	}
 	
 	// First, create a basic feed with user_id
@@ -443,34 +436,27 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	// Get user proxy settings as fallback
 	var userProxyURL string
 	proxyEnabled := req.ProxyEnabled
+	finalProxyURL := req.ProxyURL
+	
+	// Only apply user proxy settings if the feed is set to use proxy
 	if proxyEnabled {
 		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
 		if proxyEnabledStr == "true" {
-			proxyEnabled = true
 			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
 			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
 			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
 			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
 			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+			
+			// Use request proxy URL if provided, otherwise use user proxy settings
+			if finalProxyURL == "" && userProxyURL != "" {
+				finalProxyURL = userProxyURL
+			}
 		}
 	} else {
-		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
-		if proxyEnabledStr == "true" {
-			proxyEnabled = true
-			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
-			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
-			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
-			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
-			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
-			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-		}
-	}
-	
-	// Use request proxy URL if provided, otherwise use user proxy settings
-	finalProxyURL := req.ProxyURL
-	if finalProxyURL == "" && userProxyURL != "" {
-		finalProxyURL = userProxyURL
+		// User explicitly set to NO proxy - make sure we don't use any proxy
+		finalProxyURL = ""
 	}
 	
 	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, finalProxyURL, proxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.EmailIMAPPort); err != nil {

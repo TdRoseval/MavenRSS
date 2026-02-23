@@ -309,10 +309,13 @@ func (p *ClientPool) createTransport(proxyURL string, config TransportConfig) *h
 		parsedProxy, err := ValidateAndParseProxyURL(proxyURL)
 		if err != nil {
 			log.Printf("[ClientPool] ERROR: Invalid proxy configuration '%s': %v. Request will proceed WITHOUT proxy. Please check your proxy settings.", proxyURL, err)
+			transport.Proxy = nil
 		} else if parsedProxy != nil {
 			transport.Proxy = http.ProxyURL(parsedProxy)
 			log.Printf("[ClientPool] Proxy configured successfully: %s://%s", parsedProxy.Scheme, parsedProxy.Host)
 		}
+	} else {
+		transport.Proxy = nil
 	}
 
 	return transport
