@@ -10,6 +10,7 @@ import (
 
 	"MavenRSS/internal/handlers/core"
 	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/models"
 	"MavenRSS/internal/opml"
 )
 
@@ -111,7 +112,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 // HandleOPMLExport handles OPML export for server mode.
 // @Summary      Export OPML file
-// @Description  Export all feeds as an OPML file (server mode - direct download)
+// @Description  Export current user's feeds as an OPML file (server mode - direct download)
 // @Tags         opml
 // @Accept       json
 // @Produce      xml
@@ -119,25 +120,36 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /opml/export [get]
 func HandleOPMLExport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	// Get feeds data
-	feeds, err := h.DB.GetFeeds()
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
+	feeds, err := h.DB.GetFeedsForUser(userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	// Generate OPML content
-	data, err := opml.Generate(feeds)
+	localFeeds := make([]models.Feed, 0)
+	for _, feed := range feeds {
+		if !feed.IsFreshRSSSource {
+			localFeeds = append(localFeeds, feed)
+		}
+	}
+
+	log.Printf("[OPML Export] User %d: Exporting %d local feeds (excluded %d FreshRSS feeds)",
+		userID, len(localFeeds), len(feeds)-len(localFeeds))
+
+	data, err := opml.Generate(localFeeds)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	// Set headers for file download
 	w.Header().Set("Content-Type", "application/xml")
 	w.Header().Set("Content-Disposition", "attachment; filename=subscriptions.opml")
-
-	// Write OPML content
 	w.Write(data)
 }
 

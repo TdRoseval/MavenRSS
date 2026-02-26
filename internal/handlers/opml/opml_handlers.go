@@ -176,7 +176,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 // HandleOPMLExport handles OPML file export.
 // @Summary      Export subscriptions to OPML
-// @Description  Export all local RSS feed subscriptions to an OPML file (excludes FreshRSS feeds)
+// @Description  Export current user's RSS feed subscriptions to an OPML file (excludes FreshRSS feeds)
 // @Tags         opml
 // @Accept       json
 // @Produce      text/xml
@@ -184,13 +184,18 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /opml/export [get]
 func HandleOPMLExport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	feeds, err := h.DB.GetFeeds()
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
+	feeds, err := h.DB.GetFeedsForUser(userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
-	// Filter out FreshRSS feeds - only export local feeds
 	localFeeds := make([]models.Feed, 0)
 	for _, feed := range feeds {
 		if !feed.IsFreshRSSSource {
@@ -198,8 +203,8 @@ func HandleOPMLExport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("[OPML Export] Exporting %d local feeds (excluded %d FreshRSS feeds)",
-		len(localFeeds), len(feeds)-len(localFeeds))
+	log.Printf("[OPML Export] User %d: Exporting %d local feeds (excluded %d FreshRSS feeds)",
+		userID, len(localFeeds), len(feeds)-len(localFeeds))
 
 	data, err := opml.Generate(localFeeds)
 	if err != nil {
@@ -376,7 +381,7 @@ func HandleOPMLImportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 // HandleOPMLExportDialog opens a save dialog to export OPML file.
 // @Summary      Export dialog (desktop mode)
-// @Description  Open a save dialog to export subscriptions to OPML or JSON file (desktop mode only)
+// @Description  Open a save dialog to export current user's subscriptions to OPML or JSON file (desktop mode only)
 // @Tags         opml
 // @Accept       json
 // @Produce      json
@@ -395,8 +400,13 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Get feeds data
-	feeds, err := h.DB.GetFeeds()
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
+	feeds, err := h.DB.GetFeedsForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -406,7 +416,6 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Filter out FreshRSS feeds - only export local feeds
 	localFeeds := make([]models.Feed, 0)
 	for _, feed := range feeds {
 		if !feed.IsFreshRSSSource {
@@ -414,8 +423,8 @@ func HandleOPMLExportDialog(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	log.Printf("[OPML Export Dialog] Exporting %d local feeds (excluded %d FreshRSS feeds)",
-		len(localFeeds), len(feeds)-len(localFeeds))
+	log.Printf("[OPML Export Dialog] User %d: Exporting %d local feeds (excluded %d FreshRSS feeds)",
+		userID, len(localFeeds), len(feeds)-len(localFeeds))
 
 	// Type assert to *application.App to access Dialog
 	app, ok := h.App.(*application.App)
