@@ -26,6 +26,7 @@ func registerOtherRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 
 	// Refresh and progress
 	registerProtectedRoute(mux, "/api/refresh", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleRefresh(h, w, r) })
+	registerProtectedRoute(mux, "/api/refresh/stop", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleStopRefresh(h, w, r) })
 	registerProtectedRoute(mux, "/api/progress", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleProgress(h, w, r) })
 	registerProtectedRoute(mux, "/api/progress/task-details", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleTaskDetails(h, w, r) })
 

@@ -368,6 +368,10 @@ export async function refreshFeeds(): Promise<void> {
   return apiClient.post<void>('/refresh');
 }
 
+export async function stopRefreshFeeds(): Promise<void> {
+  return apiClient.post<void>('/refresh/stop');
+}
+
 export async function fetchSettings(): Promise<any> {
   return apiClient.get<any>('/settings');
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"MavenRSS/internal/database"
 	"MavenRSS/internal/freshrss"
@@ -215,6 +216,13 @@ func HandleClearReadLater(h *core.Handler, w http.ResponseWriter, r *http.Reques
 // @Success      200  {string}  string  "Refresh started successfully"
 // @Router       /articles/refresh [post]
 func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	// Update last_global_refresh to now
+	newUpdateTime := time.Now().Format(time.RFC3339)
+	if err := h.DB.SetSetting("last_global_refresh", newUpdateTime); err != nil {
+		log.Printf("Failed to update last_global_refresh: %v", err)
+	}
+	log.Printf("Manual refresh triggered, updated last_global_refresh to: %s", newUpdateTime)
+
 	// Get user ID from request
 	userID, ok := core.GetUserIDFromRequest(r)
 	if !ok {
@@ -231,6 +239,35 @@ func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Return success response
 	response.JSON(w, map[string]string{"status": "refreshing"})
+}
+
+// HandleStopRefresh stops the currently running refresh.
+// @Summary      Stop refresh
+// @Description  Stop the currently running feed refresh
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Success      200  {string}  string  "Refresh stopped successfully"
+// @Router       /articles/refresh/stop [post]
+func HandleStopRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Update last_global_refresh to now even when stopping
+	newUpdateTime := time.Now().Format(time.RFC3339)
+	if err := h.DB.SetSetting("last_global_refresh", newUpdateTime); err != nil {
+		log.Printf("Failed to update last_global_refresh on stop: %v", err)
+	}
+	log.Printf("Refresh stop requested, updated last_global_refresh to: %s", newUpdateTime)
+
+	// Stop the task manager
+	taskManager := h.Fetcher.GetTaskManager()
+	taskManager.Stop()
+
+	// Return success response
+	response.JSON(w, map[string]string{"status": "stopped"})
 }
 
 // HandleCleanupArticles triggers manual cleanup of articles.

@@ -54,7 +54,7 @@ export interface AppActions {
   refreshFeeds: () => Promise<void>;
   pollProgress: () => void;
   checkForAppUpdates: () => Promise<void>;
-  startAutoRefresh: (minutes: number) => void;
+  stopRefresh: () => Promise<void>;
   toggleShowOnlyUnread: () => void;
   setActiveFilters: (filters: FilterCondition[]) => void;
 }
@@ -109,7 +109,6 @@ export const useAppStore = defineStore('app', () => {
 
   // Refresh progress
   const refreshProgress = ref<RefreshProgress>({ isRunning: false });
-  let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   // Actions - Article Management
   async function setFilter(filter: Filter): Promise<void> {
@@ -616,15 +615,12 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  function startAutoRefresh(minutes: number): void {
-    if (refreshInterval) clearInterval(refreshInterval);
-    if (minutes > 0) {
-      refreshInterval = setInterval(
-        () => {
-          refreshFeeds();
-        },
-        minutes * 60 * 1000
-      );
+  async function stopRefresh(): Promise<void> {
+    try {
+      await apiClient.stopRefreshFeeds();
+      refreshProgress.value.isRunning = false;
+    } catch (e) {
+      console.error('Error stopping refresh:', e);
     }
   }
 
@@ -715,7 +711,7 @@ export const useAppStore = defineStore('app', () => {
     startFreshRSSStatusPolling,
     stopFreshRSSStatusPolling,
     checkForAppUpdates,
-    startAutoRefresh,
+    stopRefresh,
     toggleShowOnlyUnread,
     setActiveFilters,
     setFilteredArticlesFromServer,
