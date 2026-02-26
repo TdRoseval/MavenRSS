@@ -219,11 +219,6 @@ async function loadInitialSettings() {
       saveLanguage(data.language);
     }
 
-    if (data.update_interval) {
-      updateInterval = parseInt(data.update_interval);
-      store.startAutoRefresh(updateInterval);
-    }
-
     if (data.last_global_refresh) {
       lastGlobalRefresh = data.last_global_refresh;
     }
@@ -292,21 +287,11 @@ window.addEventListener('open-context-menu', (e) => {
 });
 
 // Check if we should trigger refresh based on last update time and interval
+// Note: This is now mainly for display purposes - actual auto-refresh is controlled by backend
 function shouldTriggerRefresh(lastUpdate: string, intervalMinutes: number): boolean {
-  if (!lastUpdate) {
-    return true; // Never updated, should refresh
-  }
-
-  try {
-    const lastUpdateTime = new Date(lastUpdate).getTime();
-    const now = Date.now();
-    const intervalMs = intervalMinutes * 60 * 1000;
-
-    // Refresh if more than interval time has passed since last update
-    return now - lastUpdateTime >= intervalMs;
-  } catch {
-    return true; // Invalid date, should refresh
-  }
+  // Always return false - auto-refresh is now controlled by backend only
+  // This function is kept for potential future use
+  return false;
 }
 
 function toggleSidebar(): void {

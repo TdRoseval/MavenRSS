@@ -549,6 +549,12 @@ async function handleApplyFilters(filters: typeof activeFilters.value): Promise<
 
 // Actions
 async function refreshArticles(): Promise<void> {
+  // If refresh is already running, stop it
+  if (store.refreshProgress.isRunning) {
+    await store.stopRefresh();
+    return;
+  }
+
   // Save current scroll position and set refreshing state
   if (listRef.value) {
     savedScrollTop.value = listRef.value.scrollTop;
@@ -816,7 +822,7 @@ function cardModalRetryLoadContent(): void {
           >
             <button
               class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
-              :title="t('article.action.refresh')"
+              :title="store.refreshProgress.isRunning ? t('article.action.stopRefresh') : t('article.action.refresh')"
               @click="refreshArticles"
             >
               <PhArrowClockwise

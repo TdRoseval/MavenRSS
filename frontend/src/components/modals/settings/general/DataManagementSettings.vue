@@ -118,7 +118,10 @@ async function cleanArticleContentCache() {
 
 // Fetch all cache data
 async function fetchAllCacheData() {
-  if (props.settings.media_cache_enabled) {
+  const isMediaCacheEnabled =
+    props.settings.media_cache_enabled === true ||
+    props.settings.media_cache_enabled === 'true';
+  if (isMediaCacheEnabled) {
     await fetchMediaCacheSize();
   }
   await fetchArticleCacheCount();

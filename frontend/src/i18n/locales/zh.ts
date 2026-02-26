@@ -31,6 +31,7 @@ const zh: TranslationMessages = {
       openInBrowser: '在浏览器中打开',
       openInBrowserShortcut: '在浏览器中打开',
       refresh: '刷新',
+      stopRefresh: '停止刷新',
       refreshFeed: '刷新订阅',
       refreshFeedsShortcut: '刷新订阅',
       refreshing: '刷新中',

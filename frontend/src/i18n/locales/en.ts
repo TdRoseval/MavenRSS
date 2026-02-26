@@ -33,6 +33,7 @@ const en: TranslationMessages = {
       openInBrowser: 'Open in Browser',
       openInBrowserShortcut: 'Open in Browser',
       refresh: 'Refresh',
+      stopRefresh: 'Stop Refresh',
       refreshFeed: 'Refresh Feed',
       refreshFeedsShortcut: 'Refresh Feeds',
       refreshing: 'Refreshing',

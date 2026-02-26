@@ -100,7 +100,6 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
       locale.value = settingsRef.value.language;
       saveLanguage(settingsRef.value.language as any);
       store.setTheme(settingsRef.value.theme as 'light' | 'dark' | 'auto');
-      store.startAutoRefresh(settingsRef.value.update_interval);
 
       // Notify components about default view mode change
       window.dispatchEvent(
