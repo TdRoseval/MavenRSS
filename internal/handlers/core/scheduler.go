@@ -100,8 +100,8 @@ func (h *Handler) startScheduler(ctx context.Context, intelligentMode bool) {
 		return time.Duration(interval) * time.Minute
 	}
 
-	globalInterval := getGlobalInterval()
-	log.Printf("Global refresh interval: %v", globalInterval)
+	// Log initial interval
+	log.Printf("Global refresh interval: %v", getGlobalInterval())
 
 	// Use a ticker to check every minute
 	ticker := time.NewTicker(1 * time.Minute)
@@ -113,11 +113,13 @@ func (h *Handler) startScheduler(ctx context.Context, intelligentMode bool) {
 			log.Println("Stopping scheduler")
 			return
 		case <-ticker.C:
+			// Get latest global interval on every check
+			currentGlobalInterval := getGlobalInterval()
 			// Check if we need to trigger global refresh
 			timeSinceLastGlobal := time.Since(lastGlobalRefresh)
-			if timeSinceLastGlobal >= globalInterval {
+			if timeSinceLastGlobal >= currentGlobalInterval {
 				log.Printf("Time since last global refresh (%v) >= global interval (%v), triggering global refresh",
-					timeSinceLastGlobal, globalInterval)
+					timeSinceLastGlobal, currentGlobalInterval)
 				// Trigger global refresh for feeds using global setting
 				// Note: lastGlobalRefresh will be updated inside triggerGlobalRefresh
 				go h.triggerGlobalRefresh(ctx, intelligentMode, &lastGlobalRefresh)
