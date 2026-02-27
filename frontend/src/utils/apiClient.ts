@@ -176,7 +176,8 @@ export class ApiClient {
       throw new Error('No refresh token available');
     }
 
-    const response = await fetch('/api/auth/refresh', {
+    const url = this.buildUrl('/auth/refresh');
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -185,7 +186,16 @@ export class ApiClient {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to refresh token');
+      const contentType = response.headers.get('content-type') || '';
+      let errorText: string;
+
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json();
+        errorText = errorData.error || errorData.message || response.statusText;
+      } else {
+        errorText = await response.text();
+      }
+      throw new Error(errorText || 'Failed to refresh token');
     }
 
     const data: AuthResponse = await response.json();
@@ -251,6 +261,10 @@ export class ApiClient {
             this.isRefreshing = false;
             this.refreshPromise = null;
           }
+        } else {
+          // Already refreshing, wait for it to complete and retry
+          await this.refreshPromise;
+          return this.request<T>(url, options, true);
         }
       }
 
@@ -297,10 +311,12 @@ export class ApiClient {
           'usage limit reached',
           'limit reached',
           'Too Many Requests',
-          '429'
+          '429',
         ];
-        const isSilentError = silentErrors.some(msg => error.message.toLowerCase().includes(msg.toLowerCase()));
-        
+        const isSilentError = silentErrors.some((msg) =>
+          error.message.toLowerCase().includes(msg.toLowerCase())
+        );
+
         // Show user-friendly error message only for non-silent errors
         if (window.showToast && error.message !== 'Authentication required' && !isSilentError) {
           window.showToast(`API request failed: ${error.message}`, 'error');

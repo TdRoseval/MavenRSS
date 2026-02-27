@@ -173,8 +173,8 @@ onBeforeUnmount(() => {
 
       <!-- RSS content view -->
       <ArticleContent
-        ref="articleContentRef"
         v-else
+        ref="articleContentRef"
         :article="article"
         :article-content="articleContent"
         :is-loading-content="isLoadingContent"

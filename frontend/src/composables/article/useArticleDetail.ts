@@ -341,10 +341,16 @@ export function useArticleDetail() {
       // Re-fetch content
       await fetchArticleContent();
 
-      window.showToast(t('article.action.refreshSuccess') || 'Article refreshed successfully', 'success');
+      window.showToast(
+        t('article.action.refreshSuccess') || 'Article refreshed successfully',
+        'success'
+      );
     } catch (e) {
       console.error('Error refreshing article:', e);
-      window.showToast(t('common.errors.refreshingArticle') || 'Failed to refresh article', 'error');
+      window.showToast(
+        t('common.errors.refreshingArticle') || 'Failed to refresh article',
+        'error'
+      );
     } finally {
       isRefreshing.value = false;
     }

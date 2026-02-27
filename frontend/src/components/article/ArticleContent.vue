@@ -847,10 +847,10 @@ watch(
       summaryResult.value = null;
       lastTranslatedArticleId.value = null;
       lastTranslatedContentHash.value = '';
-      
+
       // Regenerate summary
       await generateSummary(props.article, true);
-      
+
       // Re-translate content
       if (translationEnabled.value && displayContent.value) {
         await nextTick();
