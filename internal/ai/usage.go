@@ -2,6 +2,7 @@
 package ai
 
 import (
+	"container/heap"
 	"log"
 	"strconv"
 	"strings"
@@ -9,26 +10,81 @@ import (
 	"time"
 )
 
+// PriorityLevel defines the priority levels for AI requests
+type PriorityLevel int
+
+const (
+	// PriorityNormal is the default priority for background requests
+	PriorityNormal PriorityLevel = 0
+	// PriorityHigh is for user-initiated requests on selected articles
+	PriorityHigh PriorityLevel = 1
+)
+
+// Request represents a queued AI request with priority
+type Request struct {
+	priority PriorityLevel
+	index    int       // The index of the item in the heap
+	ready    chan bool // Channel to signal when the request is ready to proceed
+}
+
+// PriorityQueue implements a heap-based priority queue
+type PriorityQueue []*Request
+
+func (pq PriorityQueue) Len() int { return len(pq) }
+
+func (pq PriorityQueue) Less(i, j int) bool {
+	// Higher priority requests come first
+	return pq[i].priority > pq[j].priority
+}
+
+func (pq PriorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index = i
+	pq[j].index = j
+}
+
+func (pq *PriorityQueue) Push(x interface{}) {
+	n := len(*pq)
+	item := x.(*Request)
+	item.index = n
+	*pq = append(*pq, item)
+}
+
+func (pq *PriorityQueue) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil // avoid memory leak
+	item.index = -1 // for safety
+	*pq = old[0 : n-1]
+	return item
+}
+
 // SettingsProvider is an interface for retrieving and storing settings.
 type SettingsProvider interface {
 	GetSetting(key string) (string, error)
 	SetSetting(key, value string) error
 }
 
-// UsageTracker tracks AI usage (tokens) and enforces rate limits.
+// UsageTracker tracks AI usage (tokens) and enforces rate limits with priority queue.
 type UsageTracker struct {
 	settings    SettingsProvider
-	mu          sync.RWMutex
+	mu          sync.Mutex
+	pq          PriorityQueue
 	lastRequest time.Time
 	minInterval time.Duration // Minimum interval between AI requests
+	isProcessing bool
 }
 
 // NewUsageTracker creates a new AI usage tracker.
 func NewUsageTracker(settings SettingsProvider) *UsageTracker {
-	return &UsageTracker{
+	tracker := &UsageTracker{
 		settings:    settings,
 		minInterval: 500 * time.Millisecond, // Default: max 2 requests per second
+		pq:          make(PriorityQueue, 0),
 	}
+	heap.Init(&tracker.pq)
+	return tracker
 }
 
 // SetMinInterval sets the minimum interval between AI requests.
@@ -52,20 +108,70 @@ func (t *UsageTracker) CanMakeRequest() bool {
 	return true
 }
 
-// WaitForRateLimit blocks until a request can be made.
-func (t *UsageTracker) WaitForRateLimit() {
+// processQueue processes the priority queue in a separate goroutine
+func (t *UsageTracker) processQueue() {
 	t.mu.Lock()
-	elapsed := time.Since(t.lastRequest)
-	wait := t.minInterval - elapsed
+	if t.isProcessing {
+		t.mu.Unlock()
+		return
+	}
+	t.isProcessing = true
 	t.mu.Unlock()
 
-	if wait > 0 {
-		time.Sleep(wait)
+	for {
+		t.mu.Lock()
+		if t.pq.Len() == 0 {
+			t.isProcessing = false
+			t.mu.Unlock()
+			return
+		}
+
+		// Pop the highest priority request
+		req := heap.Pop(&t.pq).(*Request)
+		
+		// Check rate limit
+		now := time.Now()
+		elapsed := now.Sub(t.lastRequest)
+		wait := t.minInterval - elapsed
+		
+		if wait > 0 {
+			// Need to wait, put the request back and unlock
+			heap.Push(&t.pq, req)
+			t.mu.Unlock()
+			time.Sleep(wait)
+			continue
+		}
+
+		// Ready to process this request
+		t.lastRequest = now
+		t.mu.Unlock()
+
+		// Signal the request that it's ready
+		req.ready <- true
+	}
+}
+
+// WaitForRateLimit blocks until a request can be made with normal priority.
+func (t *UsageTracker) WaitForRateLimit() {
+	t.WaitForRateLimitWithPriority(PriorityNormal)
+}
+
+// WaitForRateLimitWithPriority blocks until a request can be made with specified priority.
+func (t *UsageTracker) WaitForRateLimitWithPriority(priority PriorityLevel) {
+	req := &Request{
+		priority: priority,
+		ready:    make(chan bool, 1),
 	}
 
 	t.mu.Lock()
-	t.lastRequest = time.Now()
+	heap.Push(&t.pq, req)
 	t.mu.Unlock()
+
+	// Start processing the queue
+	go t.processQueue()
+
+	// Wait for the request to be ready
+	<-req.ready
 }
 
 // GetCurrentUsage returns the current token usage.

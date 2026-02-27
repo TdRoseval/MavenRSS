@@ -203,6 +203,7 @@ async function translateText(
     text: text,
     target_language: targetLanguage.value,
     force: force,
+    high_priority: true, // Article content is always high priority
   };
 
   try {

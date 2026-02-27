@@ -137,9 +137,10 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
-		ArticleID  int64  `json:"article_id"`
-		Title      string `json:"title"`
-		TargetLang string `json:"target_language"`
+		ArticleID     int64  `json:"article_id"`
+		Title         string `json:"title"`
+		TargetLang    string `json:"target_language"`
+		HighPriority  bool   `json:"high_priority"` // Whether this request should be prioritized
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -204,8 +205,12 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 			// Fall back to non-AI provider gracefully
 			translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
 		} else {
-			// Apply rate limiting for AI requests
-			h.AITracker.WaitForRateLimit()
+			// Apply rate limiting for AI requests with priority
+			if req.HighPriority {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh)
+			} else {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal)
+			}
 
 			// Create AI translator directly with user-specific settings
 			aiTranslator, err := getAITranslatorForUser(h, userID)
@@ -324,9 +329,10 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 	log.Printf("[TranslateText] Starting translation for user %d", userID)
 
 	var req struct {
-		Text       string `json:"text"`
-		TargetLang string `json:"target_language"`
-		Force      bool   `json:"force"`
+		Text         string `json:"text"`
+		TargetLang   string `json:"target_language"`
+		Force        bool   `json:"force"`
+		HighPriority bool   `json:"high_priority"` // Whether this request should be prioritized
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -379,8 +385,12 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 			// Fall back to non-AI provider gracefully
 			translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
 		} else {
-			// Apply rate limiting for AI requests
-			h.AITracker.WaitForRateLimit()
+			// Apply rate limiting for AI requests with priority
+			if req.HighPriority {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh)
+			} else {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal)
+			}
 
 			// Create AI translator directly with user-specific settings
 			log.Printf("[TranslateText] Creating AI translator for user %d", userID)
