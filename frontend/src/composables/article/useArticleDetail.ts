@@ -316,6 +316,40 @@ export function useArticleDetail() {
     }
   }
 
+  // Force refresh article content, translation and summary
+  const isRefreshing = ref(false);
+  async function refreshArticle() {
+    if (!article.value || isRefreshing.value) return;
+
+    isRefreshing.value = true;
+    try {
+      // Call backend to clear cached data
+      await authPost(`/api/articles/refresh?id=${article.value.id}`);
+
+      // Clear local cached content
+      articleContent.value = '';
+      currentArticleId.value = null;
+
+      // Clear translated title
+      article.value.translated_title = '';
+
+      // Clear summary (need to find how it's stored)
+      if ('summary' in article.value) {
+        (article.value as any).summary = '';
+      }
+
+      // Re-fetch content
+      await fetchArticleContent();
+
+      window.showToast(t('article.action.refreshSuccess') || 'Article refreshed successfully', 'success');
+    } catch (e) {
+      console.error('Error refreshing article:', e);
+      window.showToast(t('common.errors.refreshingArticle') || 'Failed to refresh article', 'error');
+    } finally {
+      isRefreshing.value = false;
+    }
+  }
+
   // Unwrap images from hyperlinks
   // This ensures images can be clicked directly without triggering link navigation
   // Works on both main content and translated content
@@ -914,6 +948,7 @@ export function useArticleDetail() {
     hasNextArticle,
     articles,
     currentArticleIndex: currentArticleIndexForDisplay,
+    isRefreshing,
 
     // Functions
     close,
@@ -929,6 +964,7 @@ export function useArticleDetail() {
     exportToNotion,
     attachImageEventListeners, // Expose for re-attaching after content modifications
     handleRetryLoadContent,
+    refreshArticle,
     goToPreviousArticle,
     goToNextArticle,
 

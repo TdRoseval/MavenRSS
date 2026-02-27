@@ -31,6 +31,8 @@ const zh: TranslationMessages = {
       openInBrowser: '在浏览器中打开',
       openInBrowserShortcut: '在浏览器中打开',
       refresh: '刷新',
+      refreshArticle: '强制刷新文章',
+      refreshSuccess: '文章刷新成功',
       stopRefresh: '停止刷新',
       refreshFeed: '刷新订阅',
       refreshFeedsShortcut: '刷新订阅',
@@ -192,6 +194,7 @@ const zh: TranslationMessages = {
       networkErrorCheckingUpdates:
         '无法连接到 GitHub 服务器。如果您在中国大陆，请尝试使用代理或VPN。',
       reorderingFeed: '重新排序订阅源失败',
+      refreshingArticle: '刷新文章失败',
       savingSettings: '保存设置时出错',
       subscribingFeeds: '订阅时出错',
       translating: '翻译失败。请检查网络连接和翻译设置。',

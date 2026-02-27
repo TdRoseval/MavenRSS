@@ -33,6 +33,8 @@ const en: TranslationMessages = {
       openInBrowser: 'Open in Browser',
       openInBrowserShortcut: 'Open in Browser',
       refresh: 'Refresh',
+      refreshArticle: 'Force Refresh Article',
+      refreshSuccess: 'Article refreshed successfully',
       stopRefresh: 'Stop Refresh',
       refreshFeed: 'Refresh Feed',
       refreshFeedsShortcut: 'Refresh Feeds',
@@ -195,6 +197,7 @@ const en: TranslationMessages = {
       networkErrorCheckingUpdates:
         'Unable to connect to GitHub servers. If you are in mainland China, please try using a proxy or VPN.',
       reorderingFeed: 'Failed to reorder feed',
+      refreshingArticle: 'Failed to refresh article',
       savingSettings: 'Error saving settings',
       subscribingFeeds: 'Error subscribing to feeds',
       translating:

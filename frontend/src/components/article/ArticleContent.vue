@@ -42,12 +42,14 @@ interface Props {
   attachImageEventListeners?: () => void;
   showTranslations?: boolean;
   showContent?: boolean;
+  forceRefreshKey?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showTranslations: true,
   attachImageEventListeners: undefined,
   showContent: true,
+  forceRefreshKey: 0,
 });
 
 const emit = defineEmits<{
@@ -836,6 +838,28 @@ watch(fullArticleContent, async (content) => {
   }
 });
 
+// Watch for force refresh key changes and regenerate summary and translation
+watch(
+  () => props.forceRefreshKey,
+  async () => {
+    if (props.article && props.forceRefreshKey > 0) {
+      // Reset summary and translation states
+      summaryResult.value = null;
+      lastTranslatedArticleId.value = null;
+      lastTranslatedContentHash.value = '';
+      
+      // Regenerate summary
+      await generateSummary(props.article, true);
+      
+      // Re-translate content
+      if (translationEnabled.value && displayContent.value) {
+        await nextTick();
+        await translateContentParagraphs(displayContent.value);
+      }
+    }
+  }
+);
+
 // Clean up event listeners
 onBeforeUnmount(() => {
   // Cancel any ongoing summary generation
@@ -858,7 +882,7 @@ onBeforeUnmount(() => {
     @click="handleContainerClick"
   >
     <div
-      class="max-w-3xl mx-auto bg-bg-primary"
+      class="max-w-3xl mx-auto bg-bg-primary pb-12"
       :class="{
         'hide-translations': !showTranslations,
         'translation-only-mode': translationSettings.translationOnlyMode,
