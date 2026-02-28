@@ -2,9 +2,11 @@
  * Media proxy utilities for handling anti-hotlinking and caching
  */
 
-// Cache for media cache enabled setting to avoid repeated API calls
+import { useAuthStore } from '@/stores/auth';
+
 let mediaCacheEnabledCache: boolean | null = null;
 let mediaCachePromise: Promise<boolean> | null = null;
+let mediaProxyFallbackCache: boolean | null = null;
 
 /**
  * Encode a string to URL-safe Base64
@@ -55,46 +57,45 @@ export function decodeURLSafe(str: string): string {
 export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: boolean): string {
   if (!url) return '';
 
-  // Don't proxy data URLs or blob URLs
   if (url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
 
-  // Don't proxy localhost URLs (these are local development URLs)
   if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
     return url;
   }
 
-  // Resolve relative URLs using the referer
-  // Relative URLs need to be converted to absolute URLs before proxying
   let urlToProxy = url;
   if (referer && !url.startsWith('http://') && !url.startsWith('https://')) {
-    // This is a relative URL, resolve it against the referer
     try {
       const baseUrl = new URL(referer);
       urlToProxy = new URL(url, baseUrl).href;
     } catch (e) {
-      // If URL resolution fails, use the original URL
       console.warn('Failed to resolve relative URL:', url, 'against referer:', referer, e);
       urlToProxy = url;
     }
   }
 
-  // Use URL-safe Base64 encoding to handle Unicode and special characters
   const urlB64 = encodeURLSafe(urlToProxy);
 
-  // Build proxy URL with base64-encoded parameters
   let proxyUrl = `/api/media/proxy?url_b64=${urlB64}`;
 
-  // Add referer if provided (also base64-encoded)
   if (referer) {
     const refererB64 = encodeURLSafe(referer);
     proxyUrl += `&referer_b64=${refererB64}`;
   }
 
-  // Add force_cache parameter if specified
   if (forceCache) {
     proxyUrl += `&force_cache=true`;
+  }
+
+  try {
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      proxyUrl += `&token=${encodeURIComponent(authStore.accessToken)}`;
+    }
+  } catch (e) {
+    console.warn('Failed to get auth token for media proxy:', e);
   }
 
   return proxyUrl;
@@ -121,8 +122,12 @@ export async function isMediaCacheEnabled(): Promise<boolean> {
       const response = await fetch('/api/settings');
       if (response.ok) {
         const settings = await response.json();
+        console.log('[MediaProxy] Settings response:', settings.media_cache_enabled, settings.media_proxy_fallback);
         mediaCacheEnabledCache =
           settings.media_cache_enabled === 'true' || settings.media_cache_enabled === true;
+        mediaProxyFallbackCache =
+          settings.media_proxy_fallback === 'true' || settings.media_proxy_fallback === true;
+        console.log('[MediaProxy] Parsed values: cache=', mediaCacheEnabledCache, ', fallback=', mediaProxyFallbackCache);
         return mediaCacheEnabledCache;
       }
     } catch (error) {
@@ -138,10 +143,26 @@ export async function isMediaCacheEnabled(): Promise<boolean> {
 }
 
 /**
+ * Check if media proxy should be used (either cache or fallback enabled)
+ * @returns Promise<boolean>
+ */
+export async function shouldProxyMedia(): Promise<boolean> {
+  // Ensure settings are loaded
+  if (mediaCacheEnabledCache === null || mediaProxyFallbackCache === null) {
+    await isMediaCacheEnabled();
+  }
+  const result = mediaCacheEnabledCache === true || mediaProxyFallbackCache === true;
+  console.log('[MediaProxy] shouldProxyMedia:', result, 
+    '(cache:', mediaCacheEnabledCache, ', fallback:', mediaProxyFallbackCache, ')');
+  return result;
+}
+
+/**
  * Clear the media cache enabled cache (call this when settings change)
  */
 export function clearMediaCacheEnabledCache(): void {
   mediaCacheEnabledCache = null;
+  mediaProxyFallbackCache = null;
 }
 
 /**
@@ -154,12 +175,16 @@ export function clearMediaCacheEnabledCache(): void {
 export function proxyImagesInHtml(html: string, referer?: string): string {
   if (!html) return html;
 
+  console.log('[MediaProxy] proxyImagesInHtml called, referer:', referer);
+
   // First, convert lazy-loaded images to normal images
   // This ensures images load immediately without waiting for lazy loading scripts
   let processed = convertLazyImages(html);
 
   // Then proxy the src attributes
   processed = proxyImgAttribute(processed, 'src', referer);
+
+  console.log('[MediaProxy] proxyImagesInHtml done');
 
   return processed;
 }

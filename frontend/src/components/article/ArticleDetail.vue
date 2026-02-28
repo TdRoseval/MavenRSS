@@ -159,6 +159,7 @@ onBeforeUnmount(() => {
         @export-to-obsidian="exportToObsidian"
         @export-to-notion="exportToNotion"
         @refresh-article="refreshArticle"
+        @open-in-browser="openOriginal"
       />
 
       <!-- Original webpage view -->

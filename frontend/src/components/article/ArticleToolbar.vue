@@ -3,17 +3,14 @@ import { useI18n } from 'vue-i18n';
 import { useSettings } from '@/composables/core/useSettings';
 import { onMounted } from 'vue';
 import {
-  PhArrowLeft,
   PhX,
-  PhGlobe,
-  PhArticle,
   PhEnvelopeOpen,
   PhEnvelope,
   PhStar,
   PhClockCountdown,
-  PhArrowSquareOut,
   PhTranslate,
   PhArrowClockwise,
+  PhArrowSquareOut,
 } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 
@@ -48,11 +45,11 @@ defineEmits<{
   toggleRead: [];
   toggleFavorite: [];
   toggleReadLater: [];
-  openOriginal: [];
   toggleTranslations: [];
   exportToObsidian: [];
   exportToNotion: [];
   refreshArticle: [];
+  openInBrowser: [];
 }>();
 </script>
 
@@ -72,14 +69,6 @@ defineEmits<{
       <PhX :size="20" class="sm:w-5 sm:h-5" />
     </button>
     <div class="flex gap-1 sm:gap-2 ml-auto">
-      <button
-        class="action-btn"
-        :title="showContent ? t('article.action.viewOriginal') : t('article.action.viewContent')"
-        @click="$emit('toggleContentView')"
-      >
-        <PhGlobe v-if="showContent" :size="18" class="sm:w-5 sm:h-5" />
-        <PhArticle v-else :size="18" class="sm:w-5 sm:h-5" />
-      </button>
       <button
         v-if="showContent && settings.translation_enabled && !settings.translation_only_mode"
         class="action-btn"
@@ -140,10 +129,11 @@ defineEmits<{
           :weight="article.is_read_later ? 'fill' : 'regular'"
         />
       </button>
+      <!-- Open in browser button -->
       <button
         class="action-btn"
         :title="t('article.action.openInBrowser')"
-        @click="$emit('openOriginal')"
+        @click="$emit('openInBrowser')"
       >
         <PhArrowSquareOut :size="18" class="sm:w-5 sm:h-5" />
       </button>

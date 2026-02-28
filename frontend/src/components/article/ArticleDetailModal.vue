@@ -309,6 +309,7 @@ function handleOverlayClick(e: MouseEvent) {
           @toggle-translations="toggleTranslations"
           @export-to-obsidian="exportToObsidian"
           @export-to-notion="exportToNotion"
+          @open-in-browser="openOriginal"
         />
 
         <!-- Modal content -->

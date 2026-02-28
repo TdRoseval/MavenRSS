@@ -2,6 +2,7 @@ import { openInBrowser } from '@/utils/browser';
 import { copyArticleLink, copyArticleTitle } from '@/utils/clipboard';
 import { useAppStore } from '@/stores/app';
 import { apiClient } from '@/utils/apiClient';
+import { authPost } from '@/utils/authFetch';
 import type { Article } from '@/types/models';
 
 type ViewMode = 'original' | 'rendered' | 'external';
@@ -149,6 +150,16 @@ export function useArticleActions(
         }
       );
     }
+
+    // Add refresh article option
+    menuItems.push(
+      { separator: true },
+      {
+        label: t('article.action.refreshArticle'),
+        action: 'refreshArticle',
+        icon: 'ph-arrow-clockwise',
+      }
+    );
 
     window.dispatchEvent(
       new CustomEvent('open-context-menu', {
@@ -394,6 +405,22 @@ export function useArticleActions(
       }
     } else if (action === 'openBrowser') {
       openInBrowser(article.url);
+    } else if (action === 'refreshArticle') {
+      try {
+        await authPost(`/api/articles/refresh?id=${article.id}`);
+        window.showToast(
+          t('article.action.refreshSuccess') || 'Article refreshed successfully',
+          'success'
+        );
+        // Dispatch event to refresh article list
+        window.dispatchEvent(new CustomEvent('refresh-articles'));
+      } catch (e) {
+        console.error('Error refreshing article:', e);
+        window.showToast(
+          t('common.errors.refreshingArticle') || 'Failed to refresh article',
+          'error'
+        );
+      }
     }
   }
 
