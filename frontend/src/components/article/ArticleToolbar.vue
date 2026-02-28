@@ -3,16 +3,14 @@ import { useI18n } from 'vue-i18n';
 import { useSettings } from '@/composables/core/useSettings';
 import { onMounted } from 'vue';
 import {
-  PhArrowLeft,
   PhX,
-  PhGlobe,
-  PhArticle,
   PhEnvelopeOpen,
   PhEnvelope,
   PhStar,
   PhClockCountdown,
-  PhArrowSquareOut,
   PhTranslate,
+  PhArrowClockwise,
+  PhArrowSquareOut,
 } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 
@@ -32,11 +30,13 @@ interface Props {
   showContent: boolean;
   showTranslations?: boolean;
   isModal?: boolean;
+  isRefreshing?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
   showTranslations: true,
   isModal: false,
+  isRefreshing: false,
 });
 
 defineEmits<{
@@ -45,10 +45,11 @@ defineEmits<{
   toggleRead: [];
   toggleFavorite: [];
   toggleReadLater: [];
-  openOriginal: [];
   toggleTranslations: [];
   exportToObsidian: [];
   exportToNotion: [];
+  refreshArticle: [];
+  openInBrowser: [];
 }>();
 </script>
 
@@ -56,6 +57,8 @@ defineEmits<{
   <div
     class="p-2 sm:p-4 border-b border-border flex justify-between items-center bg-bg-primary shrink-0"
   >
+    <!-- Empty space placeholder for mobile to balance layout -->
+    <div v-if="!isModal" class="md:hidden w-8"></div>
     <!-- Modal mode: X button always visible -->
     <button
       v-if="isModal"
@@ -65,24 +68,7 @@ defineEmits<{
     >
       <PhX :size="20" class="sm:w-5 sm:h-5" />
     </button>
-    <!-- Normal mode: Back button on mobile -->
-    <button
-      v-else
-      class="md:hidden flex items-center gap-1.5 sm:gap-2 text-text-secondary hover:text-text-primary text-sm sm:text-base"
-      @click="$emit('close')"
-    >
-      <PhArrowLeft :size="18" class="sm:w-5 sm:h-5" />
-      <span class="hidden xs:inline">{{ t('common.back') }}</span>
-    </button>
     <div class="flex gap-1 sm:gap-2 ml-auto">
-      <button
-        class="action-btn"
-        :title="showContent ? t('article.action.viewOriginal') : t('article.action.viewContent')"
-        @click="$emit('toggleContentView')"
-      >
-        <PhGlobe v-if="showContent" :size="18" class="sm:w-5 sm:h-5" />
-        <PhArticle v-else :size="18" class="sm:w-5 sm:h-5" />
-      </button>
       <button
         v-if="showContent && settings.translation_enabled && !settings.translation_only_mode"
         class="action-btn"
@@ -143,12 +129,35 @@ defineEmits<{
           :weight="article.is_read_later ? 'fill' : 'regular'"
         />
       </button>
+      <!-- Open in browser button -->
       <button
         class="action-btn"
         :title="t('article.action.openInBrowser')"
-        @click="$emit('openOriginal')"
+        @click="$emit('openInBrowser')"
       >
         <PhArrowSquareOut :size="18" class="sm:w-5 sm:h-5" />
+      </button>
+      <!-- Refresh button -->
+      <button
+        class="action-btn"
+        :disabled="isRefreshing"
+        :title="t('article.action.refreshArticle')"
+        @click="$emit('refreshArticle')"
+      >
+        <PhArrowClockwise
+          :size="18"
+          class="sm:w-5 sm:h-5"
+          :class="{ 'animate-spin': isRefreshing }"
+        />
+      </button>
+      <!-- Mobile close button - always at the far right -->
+      <button
+        v-if="!isModal"
+        class="md:hidden action-btn"
+        :title="t('common.close')"
+        @click="$emit('close')"
+      >
+        <PhX :size="18" class="sm:w-5 sm:h-5" />
       </button>
       <button
         v-if="settings.obsidian_enabled"

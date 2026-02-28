@@ -3,7 +3,7 @@ import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
 import type { Article, Feed } from '@/types/models';
-import { proxyImagesInHtml, isMediaCacheEnabled } from '@/utils/mediaProxy';
+import { proxyImagesInHtml, shouldProxyMedia } from '@/utils/mediaProxy';
 import { authFetch, authFetchJson, authPost } from '@/utils/authFetch';
 
 type ViewMode = 'original' | 'rendered' | 'external';
@@ -284,11 +284,13 @@ export function useArticleDetail() {
       const data = await authFetchJson(`/api/articles/content?id=${article.value.id}`);
       let content = data.content || '';
 
-      // Proxy images if media cache is enabled
-      const cacheEnabled = await isMediaCacheEnabled();
-      if (cacheEnabled && content) {
+      // Proxy images if media proxy is enabled (cache or fallback)
+      const proxyEnabled = await shouldProxyMedia();
+      console.log('[useArticleDetail] proxyEnabled:', proxyEnabled, 'content length:', content?.length);
+      if (proxyEnabled && content) {
         // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
         const feedUrl = data.feed_url || article.value.url;
+        console.log('[useArticleDetail] Calling proxyImagesInHtml with feedUrl:', feedUrl);
         content = proxyImagesInHtml(content, feedUrl);
       }
 
@@ -313,6 +315,46 @@ export function useArticleDetail() {
   function handleRetryLoadContent() {
     if (article.value && showContent.value) {
       fetchArticleContent();
+    }
+  }
+
+  // Force refresh article content, translation and summary
+  const isRefreshing = ref(false);
+  async function refreshArticle() {
+    if (!article.value || isRefreshing.value) return;
+
+    isRefreshing.value = true;
+    try {
+      // Call backend to clear cached data
+      await authPost(`/api/articles/refresh?id=${article.value.id}`);
+
+      // Clear local cached content
+      articleContent.value = '';
+      currentArticleId.value = null;
+
+      // Clear translated title
+      article.value.translated_title = '';
+
+      // Clear summary (need to find how it's stored)
+      if ('summary' in article.value) {
+        (article.value as any).summary = '';
+      }
+
+      // Re-fetch content
+      await fetchArticleContent();
+
+      window.showToast(
+        t('article.action.refreshSuccess') || 'Article refreshed successfully',
+        'success'
+      );
+    } catch (e) {
+      console.error('Error refreshing article:', e);
+      window.showToast(
+        t('common.errors.refreshingArticle') || 'Failed to refresh article',
+        'error'
+      );
+    } finally {
+      isRefreshing.value = false;
     }
   }
 
@@ -914,6 +956,7 @@ export function useArticleDetail() {
     hasNextArticle,
     articles,
     currentArticleIndex: currentArticleIndexForDisplay,
+    isRefreshing,
 
     // Functions
     close,
@@ -929,6 +972,7 @@ export function useArticleDetail() {
     exportToNotion,
     attachImageEventListeners, // Expose for re-attaching after content modifications
     handleRetryLoadContent,
+    refreshArticle,
     goToPreviousArticle,
     goToNextArticle,
 

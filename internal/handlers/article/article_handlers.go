@@ -2,6 +2,7 @@ package article
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -321,4 +322,50 @@ func HandleFilteredArticles(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	}
 
 	response.JSON(w, resp)
+}
+
+// HandleRefreshArticle refreshes a single article's content, translation and summary.
+// @Summary      Refresh article
+// @Description  Force refresh a single article's content, translation and summary
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Param        id  query     int    true  "Article ID"
+// @Success      200  {object}  map[string]bool  "Success status"
+// @Failure      400  {object}  map[string]string  "Bad request"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /articles/refresh [post]
+func HandleRefreshArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get article ID from query parameter
+	articleIDStr := r.URL.Query().Get("id")
+	if articleIDStr == "" {
+		response.Error(w, nil, http.StatusBadRequest)
+		return
+	}
+
+	var articleID int64
+	if _, err := fmt.Sscanf(articleIDStr, "%d", &articleID); err != nil {
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	// Clear cached content, translation and summary
+	if err := h.DB.ClearArticleContent(articleID); err != nil {
+		log.Printf("Error clearing article content: %v", err)
+	}
+
+	if err := h.DB.ClearArticleTranslation(articleID); err != nil {
+		log.Printf("Error clearing article translation: %v", err)
+	}
+
+	if err := h.DB.ClearArticleSummary(articleID); err != nil {
+		log.Printf("Error clearing article summary: %v", err)
+	}
+
+	response.JSON(w, map[string]bool{"success": true})
 }

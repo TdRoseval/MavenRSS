@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { PhNewspaper, PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue';
+import { PhNewspaper, PhCaretLeft, PhCaretRight, PhX } from '@phosphor-icons/vue';
 import { useArticleDetail } from '@/composables/article/useArticleDetail';
 import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 import FindInPage from '../common/FindInPage.vue';
 import { encodeURLSafe } from '@/utils/mediaProxy';
+import { useAuthStore } from '@/stores/auth';
 
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 
@@ -45,8 +46,16 @@ const {
   handleRetryLoadContent,
   goToPreviousArticle,
   goToNextArticle,
+  isRefreshing,
   t,
 } = useArticleDetail();
+
+const { refreshArticle: refreshArticleFromComposable } = useArticleDetail();
+
+async function refreshArticle() {
+  await refreshArticleFromComposable();
+  forceRefreshKey.value++;
+}
 
 function handleClose() {
   if (props.isMobile) {
@@ -57,11 +66,24 @@ function handleClose() {
 
 const showTranslations = ref(true);
 const showFindInPage = ref(false);
+const articleContentRef = ref<any>(null);
+const forceRefreshKey = ref(0);
 
 const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
   const urlB64 = encodeURLSafe(article.value.url);
-  return `/api/webpage/proxy?url_b64=${urlB64}`;
+  let proxyUrl = `/api/webpage/proxy?url_b64=${urlB64}`;
+  
+  try {
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      proxyUrl += `&token=${encodeURIComponent(authStore.accessToken)}`;
+    }
+  } catch (e) {
+    console.warn('Failed to get auth token for webpage proxy:', e);
+  }
+  
+  return proxyUrl;
 });
 
 function toggleTranslations() {
@@ -115,14 +137,14 @@ onBeforeUnmount(() => {
       v-if="isMobile && article"
       class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-secondary"
     >
+      <span class="flex-1 truncate text-sm font-medium text-center pr-8">{{ article.title }}</span>
       <button
-        class="flex items-center justify-center p-2 -ml-2 rounded-lg hover:bg-bg-tertiary transition-colors"
+        class="flex items-center justify-center p-2 -mr-2 rounded-lg hover:bg-bg-tertiary transition-colors"
         :title="t('article.navigation.backToList') || 'Back to list'"
         @click="emit('close')"
       >
-        <PhCaretLeft :size="20" />
+        <PhX :size="20" />
       </button>
-      <span class="flex-1 truncate text-sm font-medium">{{ article.title }}</span>
     </div>
 
     <div
@@ -138,6 +160,7 @@ onBeforeUnmount(() => {
         :article="article"
         :show-content="showContent"
         :show-translations="showTranslations"
+        :is-refreshing="isRefreshing"
         @close="handleClose"
         @toggle-content-view="toggleContentView"
         @toggle-read="toggleRead"
@@ -147,6 +170,8 @@ onBeforeUnmount(() => {
         @toggle-translations="toggleTranslations"
         @export-to-obsidian="exportToObsidian"
         @export-to-notion="exportToNotion"
+        @refresh-article="refreshArticle"
+        @open-in-browser="openOriginal"
       />
 
       <!-- Original webpage view -->
@@ -162,12 +187,14 @@ onBeforeUnmount(() => {
       <!-- RSS content view -->
       <ArticleContent
         v-else
+        ref="articleContentRef"
         :article="article"
         :article-content="articleContent"
         :is-loading-content="isLoadingContent"
         :attach-image-event-listeners="attachImageEventListeners"
         :show-translations="showTranslations"
         :show-content="showContent"
+        :force-refresh-key="forceRefreshKey"
         @retry-load-content="handleRetryLoadContent"
       />
 

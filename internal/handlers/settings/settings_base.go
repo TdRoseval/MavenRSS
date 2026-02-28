@@ -5,6 +5,7 @@
 package settings
 
 import (
+	"MavenRSS/internal/config"
 	"MavenRSS/internal/handlers/core"
 )
 
@@ -126,6 +127,7 @@ var AllSettings = []SettingDef{
 
 // GetAllSettings reads all settings from the database and returns them as a map.
 // Encrypted settings are automatically decrypted.
+// Falls back to default values from config package if settings are not found in database.
 func GetAllSettings(h *core.Handler) map[string]string {
 	result := make(map[string]string, len(AllSettings))
 
@@ -135,6 +137,10 @@ func GetAllSettings(h *core.Handler) map[string]string {
 			value = safeGetEncryptedSetting(h, def.Key)
 		} else {
 			value = safeGetSetting(h, def.Key)
+		}
+		// Fall back to default value if value is empty
+		if value == "" {
+			value = config.GetString(def.Key)
 		}
 		result[def.Key] = value
 	}

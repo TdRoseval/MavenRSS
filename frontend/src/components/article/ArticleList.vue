@@ -822,7 +822,11 @@ function cardModalRetryLoadContent(): void {
           >
             <button
               class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
-              :title="store.refreshProgress.isRunning ? t('article.action.stopRefresh') : t('article.action.refresh')"
+              :title="
+                store.refreshProgress.isRunning
+                  ? t('article.action.stopRefresh')
+                  : t('article.action.refresh')
+              "
               @click="refreshArticles"
             >
               <PhArrowClockwise

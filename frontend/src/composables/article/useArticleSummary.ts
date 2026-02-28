@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
 import { authFetch, authFetchJson } from '@/utils/authFetch';
+import { useAppStore } from '@/stores/app';
 
 interface SummarySettings {
   enabled: boolean;
@@ -23,6 +24,7 @@ interface SummaryResult {
 
 export function useArticleSummary() {
   const { t } = useI18n();
+  const store = useAppStore();
   const summarySettings = ref<SummarySettings>({
     enabled: false,
     length: 'medium',
@@ -96,6 +98,7 @@ export function useArticleSummary() {
           article_id: article.id,
           length: summarySettings.value.length,
           content: content,
+          high_priority: store.currentArticleId === article.id,
         }),
         signal: controller?.signal,
       });
