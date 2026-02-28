@@ -87,6 +87,7 @@ func sanitizeValue(value string) string {
 // GetAllSettingsForUser reads all settings for a specific user from the database and returns them as a map.
 // Encrypted settings are automatically decrypted.
 // If a setting is empty for the user, falls back to global setting.
+// If global setting is also empty, falls back to default value from config package.
 func GetAllSettingsForUser(h *core.Handler, userID int64, isAdmin bool, hasInherited bool) map[string]string {
 	result := make(map[string]string, len(AllSettings)+1)
 	globalSettings := GetAllSettings(h)
