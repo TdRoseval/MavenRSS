@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAppStore } from '@/stores/app';
+import { useAuthStore } from '@/stores/auth';
 import { PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue';
 import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';
@@ -157,6 +158,23 @@ const hasPreviousArticle = computed(() => currentArticleIndex.value > 0);
 const hasNextArticle = computed(
   () => currentArticleIndex.value >= 0 && currentArticleIndex.value < store.articles.length - 1
 );
+
+// Webpage proxy URL with auth token
+const webpageProxyUrl = computed(() => {
+  if (!props.article?.url) return '';
+  let proxyUrl = `/api/webpage/proxy?url=${encodeURIComponent(props.article.url)}`;
+  
+  try {
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      proxyUrl += `&token=${encodeURIComponent(authStore.accessToken)}`;
+    }
+  } catch (e) {
+    console.warn('Failed to get auth token for webpage proxy:', e);
+  }
+  
+  return proxyUrl;
+});
 
 // Load default view mode on mount
 onMounted(async () => {
@@ -318,7 +336,7 @@ function handleOverlayClick(e: MouseEvent) {
           <div v-if="!showContent" class="flex-1 bg-bg-primary w-full">
             <iframe
               :key="article.id"
-              :src="`/api/webpage/proxy?url=${encodeURIComponent(article.url)}`"
+              :src="webpageProxyUrl"
               class="w-full h-full border-none"
               sandbox="allow-scripts allow-same-origin allow-popups"
             ></iframe>

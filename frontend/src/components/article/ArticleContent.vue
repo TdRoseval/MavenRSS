@@ -363,19 +363,25 @@ function simpleHash(str: string): string {
 
 // Translate content paragraphs while preserving inline elements (formulas, code, images)
 async function translateContentParagraphs(content: string) {
+  console.log('[ArticleContent] translateContentParagraphs called:', {
+    translationEnabled: translationEnabled.value,
+    contentLength: content?.length,
+    lastTranslatedArticleId: lastTranslatedArticleId.value,
+    currentArticleId: props.article?.id,
+  });
+
   if (!translationEnabled.value || !content) {
+    console.log('[ArticleContent] Translation skipped: disabled or no content');
     return;
   }
 
-  // Calculate content hash to detect if content has changed
   const contentHash = simpleHash(content);
 
-  // Prevent duplicate translations for the same content
-  // Check both article ID and content hash to handle RSS content vs full content
   if (
     lastTranslatedArticleId.value === props.article?.id &&
     lastTranslatedContentHash.value === contentHash
   ) {
+    console.log('[ArticleContent] Translation skipped: already translated');
     return;
   }
 
@@ -713,18 +719,27 @@ watch(
       false,
     ];
 
-    // Trigger when:
-    // 1. Article changes AND content is present
-    // 2. Same article but content changes (from empty to loaded) AND translation is enabled
-    // 3. Translation setting changes from false to true AND content is present
+    const isFirstRun = oldValue === undefined;
+
     const articleChanged = newArticleId !== oldArticleId;
     const contentJustLoaded =
       newArticleId && oldContent === '' && newContent && newContent !== oldContent;
     const translationJustEnabled =
       oldTranslationEnabled === false && newTranslationEnabled === true;
 
+    console.log('[ArticleContent] Translation watch triggered:', {
+      isFirstRun,
+      articleChanged,
+      contentJustLoaded,
+      translationJustEnabled,
+      newArticleId,
+      newContent: newContent?.substring(0, 50),
+      newTranslationEnabled,
+      oldTranslationEnabled,
+    });
+
     const shouldTrigger =
-      newContent && newArticleId && (articleChanged || contentJustLoaded || translationJustEnabled);
+      newContent && newArticleId && (articleChanged || contentJustLoaded || translationJustEnabled || (isFirstRun && newTranslationEnabled));
 
     if (shouldTrigger) {
       // Wait for DOM to update with the new content

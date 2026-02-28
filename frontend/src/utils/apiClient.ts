@@ -149,7 +149,11 @@ export class ApiClient {
   private buildUrl(endpoint: string, params?: Record<string, any>): string {
     let url = endpoint;
     if (!url.startsWith('/api/')) {
-      url = `/api/${url}`;
+      if (url.startsWith('/')) {
+        url = `/api${url}`;
+      } else {
+        url = `/api/${url}`;
+      }
     }
 
     if (params && Object.keys(params).length > 0) {

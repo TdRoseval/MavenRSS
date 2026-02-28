@@ -213,14 +213,35 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		}
 	}
 
-	// All formats failed - return detailed error
-	errMsg := "all API formats failed: [" + strings.Join(allErrors, "; ") + "]"
-
+	// All formats failed - return user-friendly error
+	var userFriendlyErr string
+	
 	if len(networkErrors) > 0 {
-		errMsg += " [Network errors detected: " + strings.Join(networkErrors, "; ") + ". Check your network/proxy configuration]"
+		// Network connectivity issues
+		userFriendlyErr = "AI service unavailable: Unable to connect to the AI service. Please check your network connection and proxy settings."
+	} else if len(allErrors) > 0 {
+		// Check for common error patterns
+		errStr := strings.ToLower(strings.Join(allErrors, "; "))
+		if strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "401") || strings.Contains(errStr, "invalid api key") {
+			userFriendlyErr = "AI service unavailable: Invalid API key. Please check your AI configuration."
+		} else if strings.Contains(errStr, "forbidden") || strings.Contains(errStr, "403") {
+			userFriendlyErr = "AI service unavailable: Access denied. Please check your API permissions."
+		} else if strings.Contains(errStr, "not found") || strings.Contains(errStr, "404") {
+			userFriendlyErr = "AI service unavailable: API endpoint not found. Please check your endpoint configuration."
+		} else if strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "429") {
+			userFriendlyErr = "AI service unavailable: Rate limit exceeded. Please try again later."
+		} else if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
+			userFriendlyErr = "AI service unavailable: Request timed out. The AI service may be slow or unavailable."
+		} else if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "no route to host") {
+			userFriendlyErr = "AI service unavailable: Cannot reach the AI server. Please check your network and endpoint configuration."
+		} else {
+			userFriendlyErr = "AI service unavailable: The AI service could not process the request. Please check your configuration."
+		}
+	} else {
+		userFriendlyErr = "AI service unavailable: Unknown error occurred."
 	}
 
-	return ResponseResult{}, fmt.Errorf(errMsg)
+	return ResponseResult{}, fmt.Errorf(userFriendlyErr)
 }
 
 // tryFormat attempts to make a request using a specific format handler

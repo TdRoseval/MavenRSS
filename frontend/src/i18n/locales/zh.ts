@@ -108,6 +108,7 @@ const zh: TranslationMessages = {
       articleSummary: '文章摘要',
       articleTooShort: '文章内容过短',
       generatingSummaryTime: '生成摘要耗时 {time}',
+      serviceUnavailable: 'AI 服务暂时不可用',
     },
     toolbar: {
       addToFavorite: '添加到收藏',

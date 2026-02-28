@@ -283,11 +283,18 @@ async function handleSummaryLinkClick(event: MouseEvent) {
         <div v-else-if="summaryResult?.error" class="flex flex-col items-center gap-2 py-4">
           <div class="flex items-center gap-2 text-red-500">
             <PhWarning :size="18" />
-            <span class="text-sm">{{ t('setting.content.summaryGenerationFailed') }}</span>
+            <span class="text-sm">{{ t('article.summary.serviceUnavailable') }}</span>
           </div>
           <div class="text-xs text-text-secondary text-center max-w-xs break-words">
             {{ summaryResult.error }}
           </div>
+          <button
+            class="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs bg-bg-tertiary text-text-secondary rounded-lg hover:bg-bg-secondary transition-colors"
+            @click.stop="handleGenerateSummary"
+          >
+            <PhArrowsClockwise :size="14" />
+            <span>{{ t('setting.content.retrySummary') }}</span>
+          </button>
         </div>
 
         <!-- No Summary Available -->

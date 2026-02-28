@@ -111,6 +111,7 @@ const en: TranslationMessages = {
       articleSummary: 'Article Summary',
       articleTooShort: 'Article content is too short',
       generatingSummaryTime: 'Generating summary took {time}',
+      serviceUnavailable: 'AI service temporarily unavailable',
     },
     toolbar: {
       addToFavorite: 'Add to Favorites',

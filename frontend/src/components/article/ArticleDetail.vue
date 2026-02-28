@@ -6,6 +6,7 @@ import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 import FindInPage from '../common/FindInPage.vue';
 import { encodeURLSafe } from '@/utils/mediaProxy';
+import { useAuthStore } from '@/stores/auth';
 
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 
@@ -71,7 +72,18 @@ const forceRefreshKey = ref(0);
 const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
   const urlB64 = encodeURLSafe(article.value.url);
-  return `/api/webpage/proxy?url_b64=${urlB64}`;
+  let proxyUrl = `/api/webpage/proxy?url_b64=${urlB64}`;
+  
+  try {
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      proxyUrl += `&token=${encodeURIComponent(authStore.accessToken)}`;
+    }
+  } catch (e) {
+    console.warn('Failed to get auth token for webpage proxy:', e);
+  }
+  
+  return proxyUrl;
 });
 
 function toggleTranslations() {
