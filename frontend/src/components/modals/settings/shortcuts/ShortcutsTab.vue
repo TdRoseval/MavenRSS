@@ -43,8 +43,8 @@ const emit = defineEmits<{
 // Create a computed ref that returns the settings object for auto-save
 const settingsRef = computed(() => props.settings);
 
-// Use composable for auto-save with reactivity
-useSettingsAutoSave(settingsRef);
+// Note: Auto-save has been removed. Settings are now saved manually via the Save button in SettingsModal.
+// useSettingsAutoSave(settingsRef);
 
 // Update settings and dispatch events
 function updateSetting(key: keyof SettingsData, value: any) {
