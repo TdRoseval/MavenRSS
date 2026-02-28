@@ -64,7 +64,17 @@ func (ld *LanguageDetector) DetectLanguage(text string) string {
 
 	info := whatlanggo.DetectWithOptions(textForDetection, options)
 
-	if info.Confidence >= 0.5 {
+	// Increase confidence threshold for short texts
+	// Short texts are more prone to misclassification
+	confidenceThreshold := 0.5
+	if len(textForDetection) < 20 {
+		confidenceThreshold = 0.7 // Higher threshold for short texts
+	}
+	if len(textForDetection) < 10 {
+		confidenceThreshold = 0.85 // Even higher for very short texts
+	}
+
+	if info.Confidence >= confidenceThreshold {
 		isoCode := whatlangToISOCode(info.Lang)
 		// Special handling for Chinese - distinguish Simplified vs Traditional
 		if isoCode == "zh" {

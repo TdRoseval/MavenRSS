@@ -168,6 +168,24 @@ func TestLanguageDetector_ShouldTranslate(t *testing.T) {
 			targetLang: "zh-CN",
 			wantShould: false,
 		},
+		{
+			name:       "Short English text to Chinese - should translate",
+			text:       "Breaking News",
+			targetLang: "zh",
+			wantShould: true, // Short English text should be translated to Chinese
+		},
+		{
+			name:       "Short English text to Chinese - very short",
+			text:       "News",
+			targetLang: "zh",
+			wantShould: true, // Very short text should translate (detection fails)
+		},
+		{
+			name:       "Short English sentence to Chinese",
+			text:       "This is a short article.",
+			targetLang: "zh",
+			wantShould: true,
+		},
 	}
 
 	for _, tt := range tests {

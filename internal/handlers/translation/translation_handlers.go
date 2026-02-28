@@ -173,8 +173,14 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	detector := translation.GetLanguageDetector()
 	shouldTranslate := detector.ShouldTranslate(req.Title, req.TargetLang)
 
+	// Log detection result for debugging
+	detectedLang := detector.DetectLanguage(req.Title)
+	log.Printf("[Translate] Article %d: title='%s', targetLang='%s', detectedLang='%s', shouldTranslate=%v", 
+		req.ArticleID, req.Title, req.TargetLang, detectedLang, shouldTranslate)
+
 	if !shouldTranslate {
 		// Text is already in target language, return original title
+		log.Printf("[Translate] Article %d: Skipping translation - already in target language", req.ArticleID)
 		if updateErr := h.DB.UpdateArticleTranslation(req.ArticleID, req.Title); updateErr != nil {
 			response.Error(w, updateErr, http.StatusInternalServerError)
 			return
