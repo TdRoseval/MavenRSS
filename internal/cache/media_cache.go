@@ -333,6 +333,24 @@ func getSmartReferer(imageURL, originalReferer string) string {
 	imgHost := imgURL.Hostname()
 	refHost := refURL.Hostname()
 
+	// Special handling for known CDN domains that require specific referers
+	// For example: img.ithome.com should use www.ithome.com as referer
+	// This check must happen BEFORE the same-domain check
+	imgHostLower := strings.ToLower(imgHost)
+	if strings.HasPrefix(imgHostLower, "img.") {
+		// Extract the main domain (e.g., img.ithome.com -> ithome.com)
+		mainDomain := strings.TrimPrefix(imgHostLower, "img.")
+		// Check if the original referer is from the same main domain family
+		if strings.HasSuffix(refHost, "."+mainDomain) || refHost == mainDomain {
+			// Use the original referer's domain with the main site's www subdomain
+			// If referer already has www, keep it; otherwise use www
+			if strings.HasPrefix(refHost, "www.") {
+				return fmt.Sprintf("%s://%s", refURL.Scheme, refHost)
+			}
+			return fmt.Sprintf("%s://www.%s", refURL.Scheme, mainDomain)
+		}
+	}
+
 	// If the image host and referer host are the same domain, use the original referer
 	// This handles same-origin images (e.g., images hosted on the same site as the article)
 	if imgHost == refHost || strings.HasSuffix(imgHost, "."+refHost) || strings.HasSuffix(refHost, "."+imgHost) {
