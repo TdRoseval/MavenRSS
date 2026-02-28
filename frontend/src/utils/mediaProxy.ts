@@ -89,15 +89,9 @@ export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: b
     proxyUrl += `&force_cache=true`;
   }
 
-  try {
-    const authStore = useAuthStore();
-    if (authStore.accessToken) {
-      proxyUrl += `&token=${encodeURIComponent(authStore.accessToken)}`;
-    }
-  } catch (e) {
-    console.warn('Failed to get auth token for media proxy:', e);
-  }
-
+  // No need to add token - authentication will be handled via cookies
+  // The browser automatically sends cookies with all requests including <img> tags
+  
   return proxyUrl;
 }
 
@@ -169,10 +163,11 @@ export function clearMediaCacheEnabledCache(): void {
  * Process HTML content to proxy image URLs
  * @param html HTML content
  * @param referer Optional referer URL
+ * @param token Optional authentication token for media proxy
  * @returns HTML with proxied image URLs
  * @note Unquoted src attributes are supported but must not contain spaces (per HTML spec)
  */
-export function proxyImagesInHtml(html: string, referer?: string): string {
+export function proxyImagesInHtml(html: string, referer?: string, token?: string): string {
   if (!html) return html;
 
   console.log('[MediaProxy] proxyImagesInHtml called, referer:', referer);
@@ -182,7 +177,7 @@ export function proxyImagesInHtml(html: string, referer?: string): string {
   let processed = convertLazyImages(html);
 
   // Then proxy the src attributes
-  processed = proxyImgAttribute(processed, 'src', referer);
+  processed = proxyImgAttribute(processed, 'src', referer, token);
 
   console.log('[MediaProxy] proxyImagesInHtml done');
 
@@ -250,9 +245,10 @@ function convertLazyImages(html: string): string {
  * @param html HTML content
  * @param attrName Attribute name to proxy (e.g., 'src', 'data-original', 'data-src')
  * @param referer Optional referer URL
+ * @param token Optional authentication token
  * @returns HTML with proxied attribute
  */
-function proxyImgAttribute(html: string, attrName: string, referer?: string): string {
+function proxyImgAttribute(html: string, attrName: string, referer?: string, token?: string): string {
   // Enhanced regex to handle img attributes with better pattern matching
   // Handles double quotes, single quotes, and unquoted values
   // Note: Unquoted values cannot contain spaces per HTML specification

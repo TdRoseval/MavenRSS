@@ -76,6 +76,12 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken.value = refresh;
     user.value = userData;
     saveToStorage();
+    
+    // Set cookies for media proxy and other resource requests
+    // Cookie will be automatically sent with all requests including <img> tags
+    const cookieOptions = 'path=/; SameSite=Strict; Secure';
+    document.cookie = `access_token=${encodeURIComponent(access)}; ${cookieOptions}`;
+    document.cookie = `refresh_token=${encodeURIComponent(refresh)}; ${cookieOptions}`;
   }
 
   function updateUser(userData: User) {
@@ -86,6 +92,10 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     clearStorage();
     clearRememberedCredentials();
+    
+    // Clear cookies
+    document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   }
 
   return {
