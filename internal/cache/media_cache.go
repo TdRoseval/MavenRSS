@@ -20,12 +20,12 @@ import (
 )
 
 const (
-	maxRetries              = 2
+	maxRetries              = 3
 	largeFileSizeThreshold  = httputil.LargeFileSizeThreshold
 	defaultDownloadTimeout  = httputil.DefaultMediaCacheTimeout
 	maxDownloadTimeout      = httputil.MaxMediaDownloadTimeout
-	totalMaxTimeout         = 60 * time.Second
-	headRequestTimeout      = 3 * time.Second
+	totalMaxTimeout         = 120 * time.Second
+	headRequestTimeout      = 5 * time.Second
 )
 
 // MediaCache handles caching of images and videos to work around anti-hotlinking

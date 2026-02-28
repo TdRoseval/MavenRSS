@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	proxyMaxRetries = 2
+	proxyMaxRetries = 3
 )
 
 // decodeURLSafeBase64 decodes URL-safe Base64 strings
