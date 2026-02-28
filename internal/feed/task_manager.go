@@ -152,6 +152,42 @@ func (tm *TaskManager) Stop() {
 	log.Println("Task manager stopped")
 }
 
+// StopForUser stops tasks for a specific user only (used in server mode)
+// It removes the user's tasks from queue and pool, allowing other users' tasks to continue
+func (tm *TaskManager) StopForUser(userID int64) {
+	log.Printf("Stopping tasks for user %d", userID)
+
+	// Remove user's tasks from queue
+	tm.queueMutex.Lock()
+	newQueue := make([]int64, 0)
+	for _, feedID := range tm.queue {
+		feed, err := tm.fetcher.db.GetFeedByID(feedID)
+		if err == nil && feed != nil && feed.UserID != userID {
+			newQueue = append(newQueue, feedID)
+		}
+	}
+	tm.queue = newQueue
+	tm.queueMutex.Unlock()
+
+	// Remove user's tasks from pool
+	tm.poolMutex.Lock()
+	for feedID, task := range tm.pool {
+		if task.Feed.UserID == userID {
+			delete(tm.pool, feedID)
+			log.Printf("Removed feed %s from pool (user %d stop)", task.Feed.Title, userID)
+		}
+	}
+	tm.poolMutex.Unlock()
+
+	// Update stats
+	tm.updateStats()
+
+	// Check if there are still tasks running
+	tm.checkCompletion()
+
+	log.Printf("Stopped tasks for user %d", userID)
+}
+
 // MarkRunning marks the progress as running
 func (tm *TaskManager) MarkRunning() {
 	tm.progressMutex.Lock()

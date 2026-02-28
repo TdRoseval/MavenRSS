@@ -88,6 +88,11 @@ func (f *Fetcher) GetTaskManager() *TaskManager {
 	return f.taskManager
 }
 
+// StopRefreshForUser stops the refresh tasks for a specific user
+func (f *Fetcher) StopRefreshForUser(userID int64) {
+	f.taskManager.StopForUser(userID)
+}
+
 // GetCleanupManager returns the cleanup manager
 func (f *Fetcher) GetCleanupManager() *CleanupManager {
 	return f.cleanupManager

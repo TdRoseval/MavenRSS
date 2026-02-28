@@ -11,6 +11,7 @@ import (
 	"MavenRSS/internal/freshrss"
 	"MavenRSS/internal/handlers/core"
 	"MavenRSS/internal/handlers/response"
+	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
 )
 
@@ -242,6 +243,8 @@ func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleStopRefresh stops the currently running refresh.
+// In server mode, it stops only the current user's tasks
+// In desktop mode, it stops all tasks
 // @Summary      Stop refresh
 // @Description  Stop the currently running feed refresh
 // @Tags         articles
@@ -262,9 +265,18 @@ func HandleStopRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	}
 	log.Printf("Refresh stop requested, updated last_global_refresh to: %s", newUpdateTime)
 
-	// Stop the task manager
-	taskManager := h.Fetcher.GetTaskManager()
-	taskManager.Stop()
+	// Get user ID from request
+	userID, ok := core.GetUserIDFromRequest(r)
+
+	if ok && fileutil.IsServerMode() {
+		// In server mode, only stop tasks for this specific user
+		log.Printf("Stopping refresh tasks for user %d", userID)
+		h.Fetcher.StopRefreshForUser(userID)
+	} else {
+		// In desktop mode, or if no user ID, stop all tasks
+		taskManager := h.Fetcher.GetTaskManager()
+		taskManager.Stop()
+	}
 
 	// Return success response
 	response.JSON(w, map[string]string{"status": "stopped"})
