@@ -55,13 +55,24 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          return caches.open(CACHE_NAME)
+          // Only cache successful responses
+          if (!response || response.status !== 200 || response.type === 'error') {
+            return response;
+          }
+          
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME)
             .then((cache) => {
-              cache.put(request, response.clone());
-              return response;
+              cache.put(request, responseToCache);
+            })
+            .catch((err) => {
+              console.log('[ServiceWorker] Cache put error:', err);
             });
+          
+          return response;
         })
-        .catch(() => {
+        .catch((err) => {
+          console.log('[ServiceWorker] Fetch error:', err);
           return caches.match(request);
         })
     );
@@ -72,27 +83,48 @@ self.addEventListener('fetch', (event) => {
     caches.match(request)
       .then((cachedResponse) => {
         if (cachedResponse) {
+          // Network first for uncached resources
           fetch(request)
             .then((response) => {
+              if (!response || response.status !== 200 || response.type === 'error') {
+                return;
+              }
+              
+              const responseToCache = response.clone();
               caches.open(CACHE_NAME)
                 .then((cache) => {
-                  cache.put(request, response);
+                  cache.put(request, responseToCache);
+                })
+                .catch((err) => {
+                  console.log('[ServiceWorker] Cache put error:', err);
                 });
             })
-            .catch(() => {});
+            .catch((err) => {
+              console.log('[ServiceWorker] Network fetch error:', err);
+            });
           
           return cachedResponse;
         }
 
         return fetch(request)
           .then((response) => {
-            return caches.open(CACHE_NAME)
+            if (!response || response.status !== 200 || response.type === 'error') {
+              return response;
+            }
+            
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
               .then((cache) => {
-                cache.put(request, response.clone());
-                return response;
+                cache.put(request, responseToCache);
+              })
+              .catch((err) => {
+                console.log('[ServiceWorker] Cache put error:', err);
               });
+            
+            return response;
           })
-          .catch(() => {
+          .catch((err) => {
+            console.log('[ServiceWorker] Fetch error:', err);
             if (request.mode === 'navigate') {
               return caches.match(OFFLINE_URL);
             }
