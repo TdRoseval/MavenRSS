@@ -283,6 +283,6 @@ func (s *Service) getFavicon(blogURL string) string {
 		return ""
 	}
 
-	// Use Google's favicon service as fallback
-	return fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s", u.Host)
+	// Use domestic favicon service as fallback
+	return fmt.Sprintf("https://api.iowen.cn/favicon/%s.png", u.Host)
 }

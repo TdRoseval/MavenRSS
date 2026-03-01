@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	proxyMaxRetries = 2
+	proxyMaxRetries = 3
 )
 
 // decodeURLSafeBase64 decodes URL-safe Base64 strings
@@ -106,6 +106,28 @@ func ProxyImagesInHTML(htmlContent, referer string) string {
 			srcURL = baseURL.ResolveReference(parsedURL).String()
 		}
 
+		// SPECIAL HANDLING for wechat2rss.bestlogs.dev
+		// This service proxies WeChat official account images, but requires authorization
+		// Instead of using their proxy, we extract the original image URL and proxy it directly
+		imageReferer := referer // Default to original referer
+		if strings.Contains(srcURL, "wechat2rss.bestlogs.dev") && strings.Contains(srcURL, "/img-proxy/") {
+			// Try to extract the original image URL from the wechat2rss proxy URL
+			// Format: https://wechat2rss.bestlogs.dev/img-proxy/?url=<encoded_url>&referer=<encoded_referer>
+			if parsed, err := url.Parse(srcURL); err == nil {
+				originalURL := parsed.Query().Get("url")
+				if originalURL != "" {
+					log.Printf("[ProxyImagesInHTML] Extracted original WeChat image URL: %s", originalURL)
+					srcURL = originalURL // Use the original URL directly
+					// Use the original image domain as referer
+					if imgParsed, err := url.Parse(originalURL); err == nil {
+						if imgParsed.Hostname() != "" {
+							imageReferer = fmt.Sprintf("%s://%s", imgParsed.Scheme, imgParsed.Host)
+						}
+					}
+				}
+			}
+		}
+
 		// CRITICAL FIX: Use base64 encoding to avoid all URL encoding issues
 		// This prevents double-encoding problems with special characters
 		// Base64 encoding is safe for URLs and doesn't interfere with query parameter parsing
@@ -115,7 +137,7 @@ func ProxyImagesInHTML(htmlContent, referer string) string {
 		// CRITICAL FIX: Determine if we should use the referer or not
 		// Some sites block requests from certain referers (e.g., RSS hubs)
 		// We use smart referer logic to handle this
-		proxyReferer := getSmartReferer(srcURL, referer)
+		proxyReferer := getSmartReferer(srcURL, imageReferer)
 
 		// Add referer if provided (also base64-encoded)
 		if proxyReferer != "" {
@@ -150,6 +172,24 @@ func getSmartReferer(imageURL, originalReferer string) string {
 
 	imgHost := imgURL.Hostname()
 	refHost := refURL.Hostname()
+
+	// Special handling for known CDN domains that require specific referers
+	// For example: img.ithome.com should use www.ithome.com as referer
+	// This check must happen BEFORE the same-domain check
+	imgHostLower := strings.ToLower(imgHost)
+	if strings.HasPrefix(imgHostLower, "img.") {
+		// Extract the main domain (e.g., img.ithome.com -> ithome.com)
+		mainDomain := strings.TrimPrefix(imgHostLower, "img.")
+		// Check if the original referer is from the same main domain family
+		if strings.HasSuffix(refHost, "."+mainDomain) || refHost == mainDomain {
+			// Use the original referer's domain with the main site's www subdomain
+			// If referer already has www, keep it; otherwise use www
+			if strings.HasPrefix(refHost, "www.") {
+				return fmt.Sprintf("%s://%s", refURL.Scheme, refHost)
+			}
+			return fmt.Sprintf("%s://www.%s", refURL.Scheme, mainDomain)
+		}
+	}
 
 	// If the image host and referer host are the same domain, use the original referer
 	// This handles same-origin images (e.g., images hosted on the same site as the article)
@@ -467,9 +507,28 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	// Set User-Agent to mimic a regular browser
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-	// Forward some headers from the original request
+	// Forward important headers from the original request
 	if referer := r.Header.Get("Referer"); referer != "" {
 		req.Header.Set("Referer", referer)
+	}
+	
+	// Forward authorization header if present (for services that require auth)
+	// This is needed for some RSS sources like wechat2rss that require authentication
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	
+	// Forward cookie header if present
+	if cookie := r.Header.Get("Cookie"); cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+	
+	// Special handling for wechat2rss.bestlogs.dev - it requires authorization header
+	// If the referer is from wechat2rss, we need to forward the auth header
+	if strings.Contains(webpageURL, "wechat2rss.bestlogs.dev") {
+		// Check if there's an authorization header in the request
+		// If not, the RSS feed might need to be configured with credentials
+		log.Printf("[WebpageProxy] Accessing wechat2rss resource, URL: %s", webpageURL)
 	}
 
 	// Execute the request with retry
@@ -1702,6 +1761,13 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Special handling for wechat2rss.bestlogs.dev
+	// This service requires specific headers for image proxying
+	isWechat2RSS := strings.Contains(referer, "wechat2rss.bestlogs.dev")
+	if isWechat2RSS {
+		log.Printf("[WebpageResource] wechat2rss resource detected: %s (referer: %s)", resourceURL, referer)
+	}
+
 	// Build proxy URL from user settings (优先用户设置，回退全局)
 	var proxyURL string
 	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
@@ -1753,6 +1819,24 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Referer", referer)
 	req.Header.Set("Accept", "*/*")
+	
+	// Forward authorization and cookie headers if present (for services that require auth)
+	// These might be needed for some RSS sources that require authentication
+	if r.Header.Get("Authorization") != "" {
+		req.Header.Set("Authorization", r.Header.Get("Authorization"))
+	}
+	if r.Header.Get("Cookie") != "" {
+		req.Header.Set("Cookie", r.Header.Get("Cookie"))
+	}
+	
+	// Special handling for wechat2rss - add additional headers it might expect
+	if isWechat2RSS {
+		// wechat2rss may expect these headers for image proxying
+		req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+		req.Header.Set("DNT", "1")
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+	}
 
 	// Execute the request with retry
 	var resp *http.Response

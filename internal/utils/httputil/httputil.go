@@ -331,7 +331,7 @@ func TestProxyWithDefaultURL(proxyURL string, timeout time.Duration) ProxyTestRe
 	testURLs := []string{
 		"https://httpbin.org/ip",
 		"https://api.ipify.org?format=json",
-		"https://www.google.com/favicon.ico",
+		"https://api.iowen.cn/favicon/www.baidu.com.png",
 	}
 
 	for _, testURL := range testURLs {

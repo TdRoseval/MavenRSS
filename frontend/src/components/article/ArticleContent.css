@@ -218,14 +218,38 @@
   cursor: default;
 }
 
-/* Small inline images with explicit small dimensions */
+/* Small inline images with explicit small dimensions - only for very small images (<= 50px) */
 .prose img[width][height] {
-  /* Parse the width/height, but only if both are small enough */
-  /* This rule will be overridden by the next rule for larger images */
   display: inline-block;
   vertical-align: middle;
   margin: 0.25em;
   border-radius: 0.25rem;
+}
+
+/* Only treat as inline if the image is actually small */
+.prose img[width][height][height="16"],
+.prose img[width][height][height="20"],
+.prose img[width][height][height="24"],
+.prose img[width][height][height="32"],
+.prose img[width][height][height="40"],
+.prose img[width][height][height="48"],
+.prose img[width][height][style*="height: 16"],
+.prose img[width][height][style*="height: 20"],
+.prose img[width][height][style*="height: 24"],
+.prose img[width][height][style*="height: 32"],
+.prose img[width][height][style*="height: 40"],
+.prose img[width][height][style*="height: 48"] {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0.25em;
+  border-radius: 0.25rem;
+}
+
+/* Larger images should always be block */
+.prose img[width][height]:not([height="16"]):not([height="20"]):not([height="24"]):not([height="32"]):not([height="40"]):not([height="48"]) {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .prose img:hover {
@@ -1152,10 +1176,14 @@
   }
 
   /* Inline images on mobile - only apply to very small images (icons/emojis) */
-  .prose p img[height],
-  .prose p img[width],
-  .prose li img[height],
-  .prose li img[width] {
+  .prose p img[height="16"],
+  .prose p img[height="20"],
+  .prose p img[height="24"],
+  .prose p img[height="32"],
+  .prose li img[height="16"],
+  .prose li img[height="20"],
+  .prose li img[height="24"],
+  .prose li img[height="32"] {
     max-height: 1.25em;
   }
 

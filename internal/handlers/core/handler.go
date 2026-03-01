@@ -5,10 +5,13 @@ package core
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -263,6 +266,15 @@ func (h *Handler) FetchFullArticleContent(pageURL string) (string, error) {
 	// Remove duplicate content blocks
 	content := removeDuplicateContent(buf.String())
 
+	// Proxy images in the content if media proxy is enabled
+	// This ensures images work correctly even with anti-hotlinking protection
+	mediaProxyEnabled, _ := h.DB.GetSetting("media_proxy_enabled")
+	mediaCacheEnabled, _ := h.DB.GetSetting("media_cache_enabled")
+	if mediaProxyEnabled == "true" || mediaCacheEnabled == "true" {
+		log.Printf("[FetchFullArticleContent] Media proxy enabled, processing images...")
+		content = h.ProxyImagesInHTMLContent(content, pageURL)
+	}
+
 	log.Printf("[FetchFullArticleContent] Successfully fetched article content, original length: %d, after dedup: %d", buf.Len(), len(content))
 	return content, nil
 }
@@ -411,4 +423,129 @@ func normalizeText(text string) string {
 	// Remove extra whitespace
 	text = strings.Join(strings.Fields(text), " ")
 	return text
+}
+
+// ProxyImagesInHTMLContent proxies all image URLs in HTML content
+// This is used for full-text fetched articles to ensure images work with anti-hotlinking protection
+func (h *Handler) ProxyImagesInHTMLContent(htmlContent, referer string) string {
+	if htmlContent == "" || referer == "" {
+		return htmlContent
+	}
+
+	// Parse the referer URL once for resolving relative URLs
+	baseURL, err := url.Parse(referer)
+	if err != nil {
+		log.Printf("Failed to parse referer URL: %v", err)
+		return htmlContent
+	}
+
+	// Use regex to find and replace img src attributes
+	re := regexp.MustCompile(`<img[^>]*src\s*=\s*(?:['"]\s*)?([^'"\s>]+)(?:\s*['"])?[^>]*>`)
+	htmlContent = re.ReplaceAllStringFunc(htmlContent, func(match string) string {
+		// Extract the src URL from the match
+		re := regexp.MustCompile(`src\s*=\s*(?:['"]\s*)?([^'"\s>]+)(?:\s*['"])?`)
+		srcMatch := re.FindStringSubmatch(match)
+		if len(srcMatch) < 2 {
+			return match // No valid src found, return unchanged
+		}
+
+		srcURL := srcMatch[1]
+
+		// Skip data URLs, blob URLs, and already proxied URLs
+		if strings.HasPrefix(srcURL, "data:") ||
+			strings.HasPrefix(srcURL, "blob:") ||
+			strings.Contains(srcURL, "/api/media/proxy") {
+			return match
+		}
+
+		// Decode HTML entities
+		srcURL = html.UnescapeString(srcURL)
+
+		// Resolve relative URLs
+		if !strings.HasPrefix(srcURL, "http://") && !strings.HasPrefix(srcURL, "https://") {
+			parsedURL, err := url.Parse(srcURL)
+			if err != nil {
+				log.Printf("Failed to parse image URL %s: %v", srcURL, err)
+				return match
+			}
+			srcURL = baseURL.ResolveReference(parsedURL).String()
+		}
+
+		// Special handling for wechat2rss.bestlogs.dev
+		imageReferer := referer
+		if strings.Contains(srcURL, "wechat2rss.bestlogs.dev") && strings.Contains(srcURL, "/img-proxy/") {
+			if parsed, err := url.Parse(srcURL); err == nil {
+				originalURL := parsed.Query().Get("url")
+				if originalURL != "" {
+					log.Printf("[ProxyImagesInHTMLContent] Extracted original WeChat image URL: %s", originalURL)
+					srcURL = originalURL
+					if imgParsed, err := url.Parse(originalURL); err == nil {
+						if imgParsed.Hostname() != "" {
+							imageReferer = fmt.Sprintf("%s://%s", imgParsed.Scheme, imgParsed.Host)
+						}
+					}
+				}
+			}
+		}
+
+		// Use base64 encoding for safe URL transmission
+		proxyURL := fmt.Sprintf("/api/media/proxy?url_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(srcURL)))
+
+		// Determine referer using smart logic
+		proxyReferer := getSmartRefererForHandler(srcURL, imageReferer)
+
+		// Add referer if provided
+		if proxyReferer != "" {
+			proxyURL += fmt.Sprintf("&referer_b64=%s",
+				base64.StdEncoding.EncodeToString([]byte(proxyReferer)))
+		}
+
+		// Replace the src URL in the img tag
+		return strings.Replace(match, srcMatch[1], proxyURL, 1)
+	})
+
+	return htmlContent
+}
+
+// getSmartRefererForHandler determines the appropriate referer for image proxying
+// This is a simplified version of the media package's getSmartReferer function
+func getSmartRefererForHandler(imageURL, originalReferer string) string {
+	if imageURL == "" {
+		return ""
+	}
+
+	imgURL, err := url.Parse(imageURL)
+	if err != nil {
+		return originalReferer
+	}
+
+	refURL, err := url.Parse(originalReferer)
+	if err != nil {
+		return originalReferer
+	}
+
+	imgHost := imgURL.Hostname()
+	refHost := refURL.Hostname()
+
+	// Special handling for known CDN domains
+	imgHostLower := strings.ToLower(imgHost)
+	if strings.HasPrefix(imgHostLower, "img.") {
+		mainDomain := strings.TrimPrefix(imgHostLower, "img.")
+		if strings.HasSuffix(refHost, "."+mainDomain) || refHost == mainDomain {
+			if strings.HasPrefix(refHost, "www.") {
+				return fmt.Sprintf("%s://%s", refURL.Scheme, refHost)
+			}
+			return fmt.Sprintf("%s://www.%s", refURL.Scheme, mainDomain)
+		}
+	}
+
+	// Same domain check - use original referer
+	if imgHost == refHost || strings.HasSuffix(imgHost, "."+refHost) {
+		return originalReferer
+	}
+
+	// For third-party images, use the image's domain as referer
+	// This helps bypass anti-hotlinking protection
+	return fmt.Sprintf("%s://%s", imgURL.Scheme, imgURL.Host)
 }

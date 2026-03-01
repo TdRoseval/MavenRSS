@@ -26,52 +26,62 @@ export function useArticleDetail() {
   const { t, locale } = useI18n();
 
   const article = computed<Article | undefined>(() => {
-    // First try to find in regular articles
-    let foundArticle = store.articles.find((a: Article) => a.id === store.currentArticleId);
-    // If not found, try AI search results
-    if (!foundArticle && store.aiSearchResults.length > 0) {
-      foundArticle = store.aiSearchResults.find((a: Article) => a.id === store.currentArticleId);
-    }
-    return foundArticle;
+    // Get the correct article list matching ArticleList's logic
+    const articles = getEffectiveArticlesList();
+    return articles.find((a: Article) => a.id === store.currentArticleId);
   });
 
-  // Get current article index in the filtered list
+  // Get effective articles list matching ArticleList's filtering logic
+  function getEffectiveArticlesList(): Article[] {
+    // First check if AI search is active
+    if (store.aiSearchResults.length > 0) {
+      return store.aiSearchResults;
+    }
+    // Then check if there are active filters (from article filters)
+    if (store.activeFilters.length > 0) {
+      return store.filteredArticlesFromServer;
+    }
+    // Otherwise use regular articles
+    return store.articles;
+  }
+
+  // Get current article index in the filtered list (matching ArticleList order)
   const currentArticleIndex = computed(() => {
     if (!store.currentArticleId) return -1;
-    // Check both regular articles and AI search results
-    let index = store.articles.findIndex((a: Article) => a.id === store.currentArticleId);
-    if (index === -1 && store.aiSearchResults.length > 0) {
-      index = store.aiSearchResults.findIndex((a: Article) => a.id === store.currentArticleId);
-    }
-    return index;
+    const articles = getEffectiveArticlesList();
+    return articles.findIndex((a: Article) => a.id === store.currentArticleId);
   });
 
   // Check if there's a previous article
-  const hasPreviousArticle = computed(() => currentArticleIndex.value > 0);
+  const hasPreviousArticle = computed(() => {
+    const articles = getEffectiveArticlesList();
+    return currentArticleIndex.value > 0 && articles.length > 0;
+  });
 
   // Check if there's a next article
-  const hasNextArticle = computed(
-    () => currentArticleIndex.value >= 0 && currentArticleIndex.value < store.articles.length - 1
-  );
+  const hasNextArticle = computed(() => {
+    const articles = getEffectiveArticlesList();
+    return currentArticleIndex.value >= 0 && currentArticleIndex.value < articles.length - 1;
+  });
 
   // Navigate to previous article
   function goToPreviousArticle() {
-    if (hasPreviousArticle.value) {
-      const prevArticle = store.articles[currentArticleIndex.value - 1];
-      store.currentArticleId = prevArticle.id;
-      markAsReadIfNeeded(prevArticle);
-      scrollArticleIntoView(prevArticle.id);
-    }
+    if (!hasPreviousArticle.value) return;
+    const articles = getEffectiveArticlesList();
+    const prevArticle = articles[currentArticleIndex.value - 1];
+    store.currentArticleId = prevArticle.id;
+    markAsReadIfNeeded(prevArticle);
+    scrollArticleIntoView(prevArticle.id);
   }
 
   // Navigate to next article
   function goToNextArticle() {
-    if (hasNextArticle.value) {
-      const nextArticle = store.articles[currentArticleIndex.value + 1];
-      store.currentArticleId = nextArticle.id;
-      markAsReadIfNeeded(nextArticle);
-      scrollArticleIntoView(nextArticle.id);
-    }
+    if (!hasNextArticle.value) return;
+    const articles = getEffectiveArticlesList();
+    const nextArticle = articles[currentArticleIndex.value + 1];
+    store.currentArticleId = nextArticle.id;
+    markAsReadIfNeeded(nextArticle);
+    scrollArticleIntoView(nextArticle.id);
   }
 
   // Scroll article into view in the article list
@@ -97,8 +107,8 @@ export function useArticleDetail() {
     }
   }
 
-  // Expose articles list and index for UI display
-  const articles = computed(() => store.articles);
+  // Expose articles list and index for UI display (matching ArticleList order)
+  const articles = computed(() => getEffectiveArticlesList());
   const currentArticleIndexForDisplay = computed(() => currentArticleIndex.value + 1);
 
   // Get effective view mode based on feed settings and global settings

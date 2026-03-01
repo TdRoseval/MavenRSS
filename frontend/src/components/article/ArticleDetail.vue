@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
   <main
     :class="[
       'flex-1 bg-bg-primary flex flex-col h-full absolute w-full md:static md:w-auto z-30 transition-transform duration-300',
-      article ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+      article ? 'translate-x-0 md:translate-x-0' : 'translate-x-full',
     ]"
   >
     <!-- Mobile header with back button -->
@@ -185,48 +185,54 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- RSS content view -->
-      <ArticleContent
-        v-else
-        ref="articleContentRef"
-        :article="article"
-        :article-content="articleContent"
-        :is-loading-content="isLoadingContent"
-        :attach-image-event-listeners="attachImageEventListeners"
-        :show-translations="showTranslations"
-        :show-content="showContent"
-        :force-refresh-key="forceRefreshKey"
-        @retry-load-content="handleRetryLoadContent"
-      />
-
-      <!-- Navigation buttons - hidden on mobile -->
-      <div
-        v-if="(hasPreviousArticle || hasNextArticle) && !isMobile"
-        class="flex items-center justify-between bg-bg-primary px-3 py-1.5"
-      >
-        <button
-          v-if="hasPreviousArticle"
-          :title="t('article.navigation.previousArticle') || 'Previous article'"
-          class="flex items-center gap-1.5 px-2 py-1 rounded text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="goToPreviousArticle"
-        >
-          <PhCaretLeft :size="16" />
-          <span class="text-xs">{{ t('article.navigation.previousArticle') || 'Previous' }}</span>
-        </button>
-
-        <div v-else class="w-16"></div>
-
-        <button
-          v-if="hasNextArticle"
-          :title="t('article.navigation.nextArticle') || 'Next article'"
-          class="flex items-center gap-1.5 px-2 py-1 rounded text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="goToNextArticle"
-        >
-          <span class="text-xs">{{ t('article.navigation.nextArticle') || 'Next' }}</span>
-          <PhCaretRight :size="16" />
-        </button>
-
-        <div v-else class="w-16"></div>
+      <div v-else :class="isMobile ? 'flex-1 overflow-y-auto pb-16' : 'flex-1 overflow-y-auto'">
+        <ArticleContent
+          ref="articleContentRef"
+          :article="article"
+          :article-content="articleContent"
+          :is-loading-content="isLoadingContent"
+          :attach-image-event-listeners="attachImageEventListeners"
+          :show-translations="showTranslations"
+          :show-content="showContent"
+          :force-refresh-key="forceRefreshKey"
+          @retry-load-content="handleRetryLoadContent"
+        />
       </div>
+    </div>
+
+    <!-- Navigation buttons - placed outside flex container for fixed positioning -->
+    <div
+      v-if="hasPreviousArticle || hasNextArticle"
+      :class="[
+        'flex items-center bg-bg-primary px-3 py-1.5',
+        isMobile ? 'fixed bottom-0 left-0 right-0 border-t border-border z-20 justify-end gap-2' : 'absolute bottom-0 left-0 right-0 justify-between'
+      ]"
+    >
+      <button
+        v-if="hasPreviousArticle"
+        :title="t('article.navigation.previousArticle') || 'Previous article'"
+        :class="[
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+          isMobile ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50'
+        ]"
+        @click="goToPreviousArticle"
+      >
+        <PhCaretLeft :size="16" />
+        <span v-if="!isMobile" class="text-xs">{{ t('article.navigation.previousArticle') || 'Previous' }}</span>
+      </button>
+
+      <button
+        v-if="hasNextArticle"
+        :title="t('article.navigation.nextArticle') || 'Next article'"
+        :class="[
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+          isMobile ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50'
+        ]"
+        @click="goToNextArticle"
+      >
+        <span v-if="!isMobile" class="text-xs">{{ t('article.navigation.nextArticle') || 'Next' }}</span>
+        <PhCaretRight :size="16" />
+      </button>
     </div>
 
     <!-- Find in Page (only shown in content mode) -->

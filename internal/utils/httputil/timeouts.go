@@ -9,12 +9,12 @@ const (
 	DefaultDiscoveryTimeout    = 60 * time.Second
 	DefaultTranslationTimeout  = 60 * time.Second
 	DefaultAITimeout           = 120 * time.Second
-	DefaultMediaProxyTimeout   = 60 * time.Second
-	DefaultMediaCacheTimeout   = 60 * time.Second
+	DefaultMediaProxyTimeout   = 90 * time.Second
+	DefaultMediaCacheTimeout   = 90 * time.Second
 	DefaultNetworkDetectTimeout = 10 * time.Second
 	DefaultWebpageProxyTimeout = 60 * time.Second
 	
-	MaxMediaDownloadTimeout = 120 * time.Second
+	MaxMediaDownloadTimeout = 180 * time.Second
 	LargeFileSizeThreshold  = 10 * 1024 * 1024 // 10MB
 )
 
