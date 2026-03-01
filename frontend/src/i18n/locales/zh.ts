@@ -132,6 +132,8 @@ const zh: TranslationMessages = {
     placeholder: '描述你想要查找的内容...',
     searchFailed: 'AI 搜索失败，请检查 AI 设置。',
     showingResults: '正在显示 AI 搜索结果',
+    sortByRelevance: '按相关度排序',
+    sortByTime: '按时间排序（最新优先）',
   },
   common: {
     cancel: '取消',

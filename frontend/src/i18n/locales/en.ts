@@ -135,6 +135,8 @@ const en: TranslationMessages = {
     placeholder: 'Describe what you want to find...',
     searchFailed: 'AI search failed. Please check your AI settings.',
     showingResults: 'Showing AI search results',
+    sortByRelevance: 'Sort by relevance',
+    sortByTime: 'Sort by time (newest first)',
   },
   common: {
     cancel: 'Cancel',

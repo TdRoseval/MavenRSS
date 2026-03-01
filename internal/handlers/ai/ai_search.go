@@ -18,10 +18,12 @@ import (
 
 // AISearchRequest represents the request for AI-powered search
 type AISearchRequest struct {
-	Query    string  `json:"query"`
-	Filter   string  `json:"filter,omitempty"`
-	FeedID   *int64  `json:"feed_id,omitempty"`
-	Category string  `json:"category,omitempty"`
+	Query          string  `json:"query"`
+	Filter         string  `json:"filter,omitempty"`
+	FeedID         *int64  `json:"feed_id,omitempty"`
+	Category       string  `json:"category,omitempty"`
+	ShowOnlyUnread bool    `json:"show_only_unread,omitempty"`
+	SortBy         string  `json:"sort_by,omitempty"`
 }
 
 // AISearchResponse represents the response from AI search
@@ -109,7 +111,7 @@ Output: {"required":["Python","web框架","web framework"],"optional":["Django",
 }
 
 // buildSearchSQL builds the SQL query from search terms with relevance scoring
-func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64, category string) string {
+func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64, category string, userID int64, showOnlyUnread bool, showHidden bool, sortBy string) string {
 	if terms == nil || (len(terms.Required) == 0 && len(terms.Patterns) == 0) {
 		return ""
 	}
@@ -184,7 +186,18 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 	
 	// Add filter conditions
 	var additionalConditions []string
-	additionalConditions = append(additionalConditions, "a.is_hidden = 0")
+	
+	// Only filter hidden articles if showHidden is false (respect user setting)
+	if !showHidden {
+		additionalConditions = append(additionalConditions, "a.is_hidden = 0")
+	}
+	
+	// Filter by user to ensure data isolation
+	if userID > 0 {
+		additionalConditions = append(additionalConditions, fmt.Sprintf("a.user_id = %d", userID))
+		// Also filter feeds by user to ensure category filtering is scoped to user's feeds
+		additionalConditions = append(additionalConditions, fmt.Sprintf("f.user_id = %d", userID))
+	}
 	
 	if feedID != nil {
 		additionalConditions = append(additionalConditions, fmt.Sprintf("a.feed_id = %d", *feedID))
@@ -207,8 +220,27 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 		additionalConditions = append(additionalConditions, "a.image_url != ''")
 	}
 	
+	// Add showOnlyUnread condition (only if filter is not already set to "unread")
+	if showOnlyUnread && filter != "unread" {
+		additionalConditions = append(additionalConditions, "a.is_read = 0")
+	}
+	
 	fullWhereClause := strings.Join(additionalConditions, " AND ")
 	fullWhereClause = fmt.Sprintf("%s AND (%s)", fullWhereClause, whereClause)
+
+	// Determine sort order based on sortBy parameter
+	var orderClause string
+	switch sortBy {
+	case "time":
+		// Sort by time only (newest first), ignore relevance
+		orderClause = "a.published_at DESC"
+	case "relevance":
+		// Sort by relevance score first, then by time
+		orderClause = fmt.Sprintf("%s DESC, a.published_at DESC", relevanceScore)
+	default:
+		// Default: relevance first, then time
+		orderClause = fmt.Sprintf("%s DESC, a.published_at DESC", relevanceScore)
+	}
 
 	query := fmt.Sprintf(`
 		SELECT a.id, a.feed_id, a.title, a.url, a.image_url, a.audio_url, a.video_url,
@@ -219,9 +251,9 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 		JOIN feeds f ON a.feed_id = f.id
 		LEFT JOIN article_contents c ON a.id = c.article_id
 		WHERE %s
-		ORDER BY relevance_score DESC, a.published_at DESC
+		ORDER BY %s
 		LIMIT %d
-	`, relevanceScore, fullWhereClause, limit)
+	`, relevanceScore, fullWhereClause, orderClause, limit)
 
 	return query
 }
@@ -356,8 +388,12 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	allTerms = append(allTerms, searchTerms.Patterns...)
 	log.Printf("[AI Search] Required: %v, Optional: %v, Patterns: %v", searchTerms.Required, searchTerms.Optional, searchTerms.Patterns)
 
+	// Get show_hidden_articles setting
+	showHiddenStr, _ := h.DB.GetSettingForUser(userID, "show_hidden_articles")
+	showHidden := showHiddenStr == "true"
+
 	// Build and execute search query
-	searchSQL := buildSearchSQL(searchTerms, 100, req.Filter, req.FeedID, req.Category)
+	searchSQL := buildSearchSQL(searchTerms, 100, req.Filter, req.FeedID, req.Category, userID, req.ShowOnlyUnread, showHidden, req.SortBy)
 	log.Printf("[AI Search] SQL query:\n%s", searchSQL)
 
 	// Execute search

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner } from '@phosphor-icons/vue';
+import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner, PhFunnel, PhClock, PhStar } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 import { useAppStore } from '@/stores/app';
 import { authPost } from '@/utils/authFetch';
@@ -19,9 +19,11 @@ const searchQuery = ref('');
 const isSearching = ref(false);
 const hasResults = ref(false);
 const errorMessage = ref('');
+const sortBy = ref<'relevance' | 'time'>('relevance');
 
 // Computed
 const canSearch = computed(() => searchQuery.value.trim().length > 0 && !isSearching.value);
+const canToggleSort = computed(() => hasResults.value && !isSearching.value);
 
 // Methods
 async function performAISearch() {
@@ -34,6 +36,7 @@ async function performAISearch() {
     // Build request body with search query and current filters
     const requestBody: any = {
       query: searchQuery.value.trim(),
+      sort_by: sortBy.value,
     };
 
     // Add current filter parameters if they exist
@@ -45,6 +48,9 @@ async function performAISearch() {
     }
     if (store.currentCategory !== null) {
       requestBody.category = store.currentCategory;
+    }
+    if (store.showOnlyUnread) {
+      requestBody.show_only_unread = true;
     }
 
     const data = await authPost<any>('/api/ai/search', requestBody);
@@ -92,10 +98,19 @@ async function performAISearch() {
   }
 }
 
+function toggleSortOrder() {
+  if (!canToggleSort.value) return;
+  sortBy.value = sortBy.value === 'relevance' ? 'time' : 'relevance';
+  if (hasResults.value) {
+    performAISearch();
+  }
+}
+
 function clearSearch() {
   searchQuery.value = '';
   hasResults.value = false;
   errorMessage.value = '';
+  sortBy.value = 'relevance';
   emit('clear');
 }
 
@@ -149,6 +164,20 @@ function handleKeyDown(event: KeyboardEvent) {
         <PhSpinner v-if="isSearching" :size="16" class="animate-spin" />
         <PhSparkle v-else :size="16" />
         <span class="hidden sm:inline">{{ t('aiSearch.button') }}</span>
+      </button>
+
+      <!-- Sort Toggle Button -->
+      <button
+        class="sort-toggle-button flex items-center gap-1 px-2 py-2 text-sm transition-colors flex-shrink-0"
+        :class="[
+          canToggleSort ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-tertiary cursor-not-allowed',
+        ]"
+        :disabled="!canToggleSort"
+        :title="sortBy === 'relevance' ? t('aiSearch.sortByTime') : t('aiSearch.sortByRelevance')"
+        @click="toggleSortOrder"
+      >
+        <PhClock v-if="sortBy === 'time'" :size="16" />
+        <PhStar v-else :size="16" />
       </button>
     </div>
 
