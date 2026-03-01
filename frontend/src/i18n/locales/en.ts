@@ -33,6 +33,8 @@ const en: TranslationMessages = {
       openInBrowser: 'Open in Browser',
       openInBrowserShortcut: 'Open in Browser',
       refresh: 'Refresh',
+      refreshArticle: 'Force Refresh Article',
+      refreshSuccess: 'Article refreshed successfully',
       stopRefresh: 'Stop Refresh',
       refreshFeed: 'Refresh Feed',
       refreshFeedsShortcut: 'Refresh Feeds',
@@ -109,6 +111,7 @@ const en: TranslationMessages = {
       articleSummary: 'Article Summary',
       articleTooShort: 'Article content is too short',
       generatingSummaryTime: 'Generating summary took {time}',
+      serviceUnavailable: 'AI service temporarily unavailable',
     },
     toolbar: {
       addToFavorite: 'Add to Favorites',
@@ -132,6 +135,8 @@ const en: TranslationMessages = {
     placeholder: 'Describe what you want to find...',
     searchFailed: 'AI search failed. Please check your AI settings.',
     showingResults: 'Showing AI search results',
+    sortByRelevance: 'Sort by relevance',
+    sortByTime: 'Sort by time (newest first)',
   },
   common: {
     cancel: 'Cancel',
@@ -195,6 +200,7 @@ const en: TranslationMessages = {
       networkErrorCheckingUpdates:
         'Unable to connect to GitHub servers. If you are in mainland China, please try using a proxy or VPN.',
       reorderingFeed: 'Failed to reorder feed',
+      refreshingArticle: 'Failed to refresh article',
       savingSettings: 'Error saving settings',
       subscribingFeeds: 'Error subscribing to feeds',
       translating:
@@ -498,12 +504,26 @@ const en: TranslationMessages = {
       exportSuccess: 'OPML exported successfully.',
       import: 'Import Feeds',
     },
+    save: 'Save',
+    cancel: 'Cancel',
+    saved: 'Settings saved successfully',
+    cancelled: 'Changes discarded',
+    unsavedChanges: 'You have unsaved changes. Do you want to save them before closing?',
     update: {
       downloadUpdate: 'Download Update',
       newVersionAvailable: 'New version available',
     },
   },
   setting: {
+    save: 'Save',
+    cancel: 'Cancel',
+    saved: 'Settings saved successfully',
+    cancelled: 'Changes discarded',
+    unsavedChanges: 'You have unsaved changes. Do you want to save them before closing?',
+    unsavedChangesTitle: 'Unsaved Changes',
+    unsavedChangesMessage: 'You have unsaved changes. Do you want to save them before closing?',
+    saveAndClose: 'Save & Close',
+    discardAndClose: 'Discard & Close',
     about: {
       version: 'Version',
       viewOnGitHub: 'View on GitHub',

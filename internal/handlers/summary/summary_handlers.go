@@ -75,9 +75,10 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
-		ArticleID int64  `json:"article_id"`
-		Length    string `json:"length"`            // "short", "medium", "long"
-		Content   string `json:"content,omitempty"` // Optional: use provided content instead of fetching from DB
+		ArticleID     int64  `json:"article_id"`
+		Length        string `json:"length"`            // "short", "medium", "long"
+		Content       string `json:"content,omitempty"` // Optional: use provided content instead of fetching from DB
+		HighPriority  bool   `json:"high_priority"`     // Whether this request should be prioritized
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -154,8 +155,12 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 			usedFallback = true
 		} else {
 			// Use AI summarization
-			// Apply rate limiting for AI requests
-			h.AITracker.WaitForRateLimit()
+			// Apply rate limiting for AI requests with priority
+			if req.HighPriority {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh)
+			} else {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal)
+			}
 
 			// Try to get AI config from ProfileProvider first
 			var apiKey, endpoint, model string

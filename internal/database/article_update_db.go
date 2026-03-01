@@ -28,9 +28,30 @@ func (db *DB) ClearAllTranslations() error {
 	return err
 }
 
+// ClearArticleTranslation clears the translated title for a single article.
+func (db *DB) ClearArticleTranslation(id int64) error {
+	db.WaitForReady()
+	_, err := db.Exec("UPDATE articles SET translated_title = '' WHERE id = ?", id)
+	return err
+}
+
 // ClearAllSummaries clears all summaries from articles.
 func (db *DB) ClearAllSummaries() error {
 	db.WaitForReady()
 	_, err := db.Exec("UPDATE articles SET summary = ''")
+	return err
+}
+
+// ClearArticleSummary clears the summary for a single article.
+func (db *DB) ClearArticleSummary(id int64) error {
+	db.WaitForReady()
+	_, err := db.Exec("UPDATE articles SET summary = '' WHERE id = ?", id)
+	return err
+}
+
+// ClearArticleContent clears the content for a single article.
+func (db *DB) ClearArticleContent(id int64) error {
+	db.WaitForReady()
+	_, err := db.Exec("UPDATE articles SET content = '' WHERE id = ?", id)
 	return err
 }

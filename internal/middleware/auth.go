@@ -17,16 +17,29 @@ const (
 func AuthMiddleware(jwtManager *auth.JWTManager) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				http.Error(w, "authorization header required", http.StatusUnauthorized)
-				return
-			}
+			var token string
 
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-			if token == authHeader {
-				http.Error(w, "invalid authorization format", http.StatusUnauthorized)
-				return
+			// Priority 1: Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader != "" {
+				token = strings.TrimPrefix(authHeader, "Bearer ")
+				if token == authHeader {
+					http.Error(w, "invalid authorization format", http.StatusUnauthorized)
+					return
+				}
+			} else {
+				// Priority 2: Cookie (for media proxy and other resources)
+				cookie, err := r.Cookie("access_token")
+				if err == nil && cookie.Value != "" {
+					token = cookie.Value
+				} else {
+					// Priority 3: URL query parameter (fallback for backward compatibility)
+					token = r.URL.Query().Get("token")
+					if token == "" {
+						http.Error(w, "authorization header required", http.StatusUnauthorized)
+						return
+					}
+				}
 			}
 
 			claims, err := jwtManager.ValidateToken(token)

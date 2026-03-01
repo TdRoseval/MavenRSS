@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
-import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
 import ArticleDisplaySettings from './ArticleDisplaySettings.vue';
 import TypographySettings from './TypographySettings.vue';
 import ContentSettings from './ContentSettings.vue';
@@ -21,8 +20,8 @@ const emit = defineEmits<{
 // Create a computed ref that returns the settings object
 const settingsRef = computed(() => props.settings);
 
-// Use composable for auto-save with reactivity
-useSettingsAutoSave(settingsRef);
+// Note: Auto-save has been removed. Settings are now saved manually via the Save button in SettingsModal.
+// useSettingsAutoSave(settingsRef);
 
 // Handler for settings updates from child components
 function handleUpdateSettings(updatedSettings: SettingsData) {

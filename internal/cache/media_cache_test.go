@@ -70,3 +70,46 @@ func TestGetExtensionAndContentTypeHelpers(t *testing.T) {
 		t.Fatalf("unexpected ext: %s", ext)
 	}
 }
+
+func TestGetSmartReferer_ITHome(t *testing.T) {
+	testCases := []struct {
+		name     string
+		imageURL string
+		referer  string
+		expected string
+	}{
+		{
+			name:     "img.ithome.com with www.ithome.com referer",
+			imageURL: "https://img.ithome.com/newsuploadfiles/2026/2/image.jpg",
+			referer:  "https://www.ithome.com/0/839/839773.htm",
+			expected: "https://www.ithome.com",
+		},
+		{
+			name:     "img.ithome.com with ithome.com referer",
+			imageURL: "https://img.ithome.com/newsuploadfiles/2026/2/image.jpg",
+			referer:  "https://ithome.com/0/839/839773.htm",
+			expected: "https://www.ithome.com",
+		},
+		{
+			name:     "img.500px.me with different domain referer",
+			imageURL: "https://img.500px.me/image.jpg",
+			referer:  "https://rsshub.pseudoyu.com/feed",
+			expected: "https://img.500px.me",
+		},
+		{
+			name:     "same domain image",
+			imageURL: "https://www.ithome.com/images/logo.png",
+			referer:  "https://www.ithome.com/0/839/839773.htm",
+			expected: "https://www.ithome.com/0/839/839773.htm",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := getSmartReferer(tc.imageURL, tc.referer)
+			if result != tc.expected {
+				t.Errorf("getSmartReferer(%q, %q) = %q, want %q", tc.imageURL, tc.referer, result, tc.expected)
+			}
+		})
+	}
+}

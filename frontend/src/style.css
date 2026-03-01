@@ -120,6 +120,10 @@ textarea,
 /* Using both .prose and .prose-content to cover all cases (main content and translations) */
 .prose img,
 .prose-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  width: auto !important;
+  display: block !important;
   pointer-events: auto !important;
   cursor: pointer !important;
 }

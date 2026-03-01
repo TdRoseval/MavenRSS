@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { PhNewspaper, PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue';
+import { PhNewspaper, PhCaretLeft, PhCaretRight, PhX } from '@phosphor-icons/vue';
 import { useArticleDetail } from '@/composables/article/useArticleDetail';
 import ArticleToolbar from './ArticleToolbar.vue';
 import ArticleContent from './ArticleContent.vue';
 import ImageViewer from '../common/ImageViewer.vue';
 import FindInPage from '../common/FindInPage.vue';
 import { encodeURLSafe } from '@/utils/mediaProxy';
+import { useAuthStore } from '@/stores/auth';
 
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 
@@ -45,8 +46,16 @@ const {
   handleRetryLoadContent,
   goToPreviousArticle,
   goToNextArticle,
+  isRefreshing,
   t,
 } = useArticleDetail();
+
+const { refreshArticle: refreshArticleFromComposable } = useArticleDetail();
+
+async function refreshArticle() {
+  await refreshArticleFromComposable();
+  forceRefreshKey.value++;
+}
 
 function handleClose() {
   if (props.isMobile) {
@@ -57,11 +66,24 @@ function handleClose() {
 
 const showTranslations = ref(true);
 const showFindInPage = ref(false);
+const articleContentRef = ref<any>(null);
+const forceRefreshKey = ref(0);
 
 const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
   const urlB64 = encodeURLSafe(article.value.url);
-  return `/api/webpage/proxy?url_b64=${urlB64}`;
+  let proxyUrl = `/api/webpage/proxy?url_b64=${urlB64}`;
+  
+  try {
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      proxyUrl += `&token=${encodeURIComponent(authStore.accessToken)}`;
+    }
+  } catch (e) {
+    console.warn('Failed to get auth token for webpage proxy:', e);
+  }
+  
+  return proxyUrl;
 });
 
 function toggleTranslations() {
@@ -107,7 +129,7 @@ onBeforeUnmount(() => {
   <main
     :class="[
       'flex-1 bg-bg-primary flex flex-col h-full absolute w-full md:static md:w-auto z-30 transition-transform duration-300',
-      article ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+      article ? 'translate-x-0 md:translate-x-0' : 'translate-x-full',
     ]"
   >
     <!-- Mobile header with back button -->
@@ -115,14 +137,14 @@ onBeforeUnmount(() => {
       v-if="isMobile && article"
       class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-secondary"
     >
+      <span class="flex-1 truncate text-sm font-medium text-center pr-8">{{ article.title }}</span>
       <button
-        class="flex items-center justify-center p-2 -ml-2 rounded-lg hover:bg-bg-tertiary transition-colors"
+        class="flex items-center justify-center p-2 -mr-2 rounded-lg hover:bg-bg-tertiary transition-colors"
         :title="t('article.navigation.backToList') || 'Back to list'"
         @click="emit('close')"
       >
-        <PhCaretLeft :size="20" />
+        <PhX :size="20" />
       </button>
-      <span class="flex-1 truncate text-sm font-medium">{{ article.title }}</span>
     </div>
 
     <div
@@ -138,6 +160,7 @@ onBeforeUnmount(() => {
         :article="article"
         :show-content="showContent"
         :show-translations="showTranslations"
+        :is-refreshing="isRefreshing"
         @close="handleClose"
         @toggle-content-view="toggleContentView"
         @toggle-read="toggleRead"
@@ -147,6 +170,8 @@ onBeforeUnmount(() => {
         @toggle-translations="toggleTranslations"
         @export-to-obsidian="exportToObsidian"
         @export-to-notion="exportToNotion"
+        @refresh-article="refreshArticle"
+        @open-in-browser="openOriginal"
       />
 
       <!-- Original webpage view -->
@@ -160,46 +185,54 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- RSS content view -->
-      <ArticleContent
-        v-else
-        :article="article"
-        :article-content="articleContent"
-        :is-loading-content="isLoadingContent"
-        :attach-image-event-listeners="attachImageEventListeners"
-        :show-translations="showTranslations"
-        :show-content="showContent"
-        @retry-load-content="handleRetryLoadContent"
-      />
-
-      <!-- Navigation buttons - hidden on mobile -->
-      <div
-        v-if="(hasPreviousArticle || hasNextArticle) && !isMobile"
-        class="flex items-center justify-between bg-bg-primary px-3 py-1.5"
-      >
-        <button
-          v-if="hasPreviousArticle"
-          :title="t('article.navigation.previousArticle') || 'Previous article'"
-          class="flex items-center gap-1.5 px-2 py-1 rounded text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="goToPreviousArticle"
-        >
-          <PhCaretLeft :size="16" />
-          <span class="text-xs">{{ t('article.navigation.previousArticle') || 'Previous' }}</span>
-        </button>
-
-        <div v-else class="w-16"></div>
-
-        <button
-          v-if="hasNextArticle"
-          :title="t('article.navigation.nextArticle') || 'Next article'"
-          class="flex items-center gap-1.5 px-2 py-1 rounded text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="goToNextArticle"
-        >
-          <span class="text-xs">{{ t('article.navigation.nextArticle') || 'Next' }}</span>
-          <PhCaretRight :size="16" />
-        </button>
-
-        <div v-else class="w-16"></div>
+      <div v-else :class="isMobile ? 'flex-1 overflow-y-auto pb-16' : 'flex-1 overflow-y-auto'">
+        <ArticleContent
+          ref="articleContentRef"
+          :article="article"
+          :article-content="articleContent"
+          :is-loading-content="isLoadingContent"
+          :attach-image-event-listeners="attachImageEventListeners"
+          :show-translations="showTranslations"
+          :show-content="showContent"
+          :force-refresh-key="forceRefreshKey"
+          @retry-load-content="handleRetryLoadContent"
+        />
       </div>
+    </div>
+
+    <!-- Navigation buttons - placed outside flex container for fixed positioning -->
+    <div
+      v-if="hasPreviousArticle || hasNextArticle"
+      :class="[
+        'flex items-center bg-bg-primary px-3 py-1.5',
+        isMobile ? 'fixed bottom-0 left-0 right-0 border-t border-border z-20 justify-end gap-2' : 'absolute bottom-0 left-0 right-0 justify-between'
+      ]"
+    >
+      <button
+        v-if="hasPreviousArticle"
+        :title="t('article.navigation.previousArticle') || 'Previous article'"
+        :class="[
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+          isMobile ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50'
+        ]"
+        @click="goToPreviousArticle"
+      >
+        <PhCaretLeft :size="16" />
+        <span v-if="!isMobile" class="text-xs">{{ t('article.navigation.previousArticle') || 'Previous' }}</span>
+      </button>
+
+      <button
+        v-if="hasNextArticle"
+        :title="t('article.navigation.nextArticle') || 'Next article'"
+        :class="[
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+          isMobile ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50'
+        ]"
+        @click="goToNextArticle"
+      >
+        <span v-if="!isMobile" class="text-xs">{{ t('article.navigation.nextArticle') || 'Next' }}</span>
+        <PhCaretRight :size="16" />
+      </button>
     </div>
 
     <!-- Find in Page (only shown in content mode) -->

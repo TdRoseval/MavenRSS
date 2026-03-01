@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Article } from '@/types/models';
 import { authFetchJson, authPost } from '@/utils/authFetch';
+import { useAppStore } from '@/stores/app';
 
 interface TranslationSettings {
   enabled: boolean;
@@ -11,6 +12,7 @@ interface TranslationSettings {
 
 export function useArticleTranslation() {
   const { t } = useI18n();
+  const store = useAppStore();
   const translationSettings = ref<TranslationSettings>({
     enabled: false,
     targetLang: 'en',
@@ -94,6 +96,7 @@ export function useArticleTranslation() {
         article_id: article.id,
         title: article.title,
         target_language: translationSettings.value.targetLang,
+        high_priority: store.currentArticleId === article.id,
       };
 
       const data = await authPost('/api/articles/translate', requestBody);

@@ -1,8 +1,48 @@
 import { useAuthStore } from '@/stores/auth';
 
-/**
- * Authenticated fetch wrapper - automatically adds Authorization header
- */
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshTokens(): Promise<boolean> {
+  const authStore = useAuthStore();
+  
+  if (!authStore.refreshToken) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: authStore.refreshToken }),
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json();
+    authStore.setAuth(data.access_token, data.refresh_token, data.user);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+
+  isRefreshing = true;
+  refreshPromise = refreshTokens().finally(() => {
+    isRefreshing = false;
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+}
+
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const authStore = useAuthStore();
 
@@ -11,15 +51,32 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     headers.set('Authorization', `Bearer ${authStore.accessToken}`);
   }
 
-  return fetch(url, {
+  const response = await fetch(url, {
     ...options,
     headers,
   });
+
+  if (response.status === 401 && authStore.refreshToken) {
+    const refreshed = await tryRefreshToken();
+    
+    if (refreshed) {
+      const newHeaders = new Headers(options.headers);
+      if (authStore.accessToken) {
+        newHeaders.set('Authorization', `Bearer ${authStore.accessToken}`);
+      }
+      
+      return fetch(url, {
+        ...options,
+        headers: newHeaders,
+      });
+    } else {
+      authStore.clearStorage();
+    }
+  }
+
+  return response;
 }
 
-/**
- * Authenticated fetch that returns JSON
- */
 export async function authFetchJson<T = any>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await authFetch(url, options);
 
@@ -40,16 +97,10 @@ export async function authFetchJson<T = any>(url: string, options: RequestInit =
   return JSON.parse(text);
 }
 
-/**
- * Helper for GET requests with auth
- */
 export async function authGet<T = any>(url: string): Promise<T> {
   return authFetchJson<T>(url, { method: 'GET' });
 }
 
-/**
- * Helper for POST requests with auth
- */
 export async function authPost<T = any>(url: string, data?: any): Promise<T> {
   return authFetchJson<T>(url, {
     method: 'POST',
@@ -58,9 +109,6 @@ export async function authPost<T = any>(url: string, data?: any): Promise<T> {
   });
 }
 
-/**
- * Helper for PUT requests with auth
- */
 export async function authPut<T = any>(url: string, data?: any): Promise<T> {
   return authFetchJson<T>(url, {
     method: 'PUT',
@@ -69,9 +117,6 @@ export async function authPut<T = any>(url: string, data?: any): Promise<T> {
   });
 }
 
-/**
- * Helper for DELETE requests with auth
- */
 export async function authDelete<T = any>(url: string): Promise<T> {
   return authFetchJson<T>(url, { method: 'DELETE' });
 }

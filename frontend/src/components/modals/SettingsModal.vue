@@ -14,6 +14,7 @@ import RulesTab from './settings/rules/RulesTab.vue';
 import StatisticsTab from './settings/statistics/StatisticsTab.vue';
 import AboutTab from './settings/about/AboutTab.vue';
 import DiscoverAllFeedsModal from './discovery/DiscoverAllFeedsModal.vue';
+import ConfirmDialog from './common/ConfirmDialog.vue';
 import {
   PhGear,
   PhSlidersHorizontal,
@@ -27,18 +28,26 @@ import {
   PhKeyboard,
   PhChartBar,
   PhUserCircle,
+  PhCheck,
+  PhX,
 } from '@phosphor-icons/vue';
 import type { TabName } from '@/types/settings';
 import type { ThemePreference } from '@/stores/app';
 import { useSettings } from '@/composables/core/useSettings';
 import { useFeedManagement } from '@/composables/feed/useFeedManagement';
 import { useModalClose, LARGE_MODAL_Z_INDEX } from '@/composables/ui/useModalClose';
+import { useSettingsManualSave } from '@/composables/core/useSettingsManualSave';
 
 const store = useAppStore();
 const { t } = useI18n();
 
-// Modal close handling - use lower z-index for large modal so nested modals appear on top
-const { zIndex: modalZIndex } = useModalClose(() => emit('close'), LARGE_MODAL_Z_INDEX);
+const emit = defineEmits<{
+  close: [];
+}>();
+
+const activeTab: Ref<TabName> = ref('general');
+const showDiscoverAllModal = ref(false);
+const showCloseConfirm = ref(false);
 
 // Use composables
 const { settings, fetchSettings, applySettings } = useSettings();
@@ -56,17 +65,42 @@ const {
   handleBatchUnsetImageMode,
 } = useFeedManagement();
 
-const emit = defineEmits<{
-  close: [];
-}>();
+// Manual save handling
+const { hasChanges, isSaving, saveSettings, cancelChanges, saveOriginalSettings } =
+  useSettingsManualSave(settings);
 
-const activeTab: Ref<TabName> = ref('general');
-const showDiscoverAllModal = ref(false);
+function handleClose() {
+  if (hasChanges.value) {
+    showCloseConfirm.value = true;
+  } else {
+    emit('close');
+  }
+}
+
+function handleCloseConfirm() {
+  saveSettings().then((success) => {
+    if (success) {
+      showCloseConfirm.value = false;
+      emit('close');
+    }
+  });
+}
+
+function handleCloseCancel() {
+  showCloseConfirm.value = false;
+  cancelChanges();
+  emit('close');
+}
+
+// Modal close handling - use lower z-index for large modal so nested modals appear on top
+const { zIndex: modalZIndex } = useModalClose(handleClose, LARGE_MODAL_Z_INDEX);
 
 onMounted(async () => {
   try {
     const data = await fetchSettings();
     applySettings(data, (theme: string) => store.setTheme(theme as ThemePreference));
+    // Save original settings after loading
+    saveOriginalSettings();
   } catch (e) {
     console.error('Error loading settings:', e);
   }
@@ -74,6 +108,18 @@ onMounted(async () => {
 
 function handleDiscoverAll() {
   showDiscoverAllModal.value = true;
+}
+
+async function handleSave() {
+  const success = await saveSettings();
+  if (success) {
+    window.showToast?.(t('setting.saved'), 'success');
+  }
+}
+
+function handleCancel() {
+  cancelChanges();
+  window.showToast?.(t('setting.cancelled'), 'info');
 }
 </script>
 
@@ -92,11 +138,42 @@ function handleDiscoverAll() {
           <PhGear :size="20" :weight="'fill'" class="sm:w-6 sm:h-6" />
           {{ t('setting.tab.settingsTitle') }}
         </h3>
-        <span
-          class="text-2xl cursor-pointer text-text-secondary hover:text-text-primary"
-          @click="emit('close')"
-          >&times;</span
-        >
+        <div class="flex items-center gap-2">
+          <!-- Save/Cancel buttons -->
+          <div class="flex items-center gap-2 mr-4">
+            <button
+              :class="[
+                'btn-save',
+                hasChanges ? 'btn-save-active' : 'btn-save-disabled',
+                isSaving ? 'opacity-50 cursor-not-allowed' : '',
+              ]"
+              :disabled="!hasChanges || isSaving"
+              @click="handleSave"
+              :title="t('setting.save')"
+            >
+              <PhCheck :size="18" :weight="'bold'" />
+              <span class="ml-1">{{ t('setting.save') }}</span>
+            </button>
+            <button
+              :class="[
+                'btn-cancel',
+                hasChanges ? 'btn-cancel-active' : 'btn-cancel-disabled',
+                isSaving ? 'opacity-50 cursor-not-allowed' : '',
+              ]"
+              :disabled="!hasChanges || isSaving"
+              @click="handleCancel"
+              :title="t('setting.cancel')"
+            >
+              <PhX :size="18" :weight="'bold'" />
+              <span class="ml-1">{{ t('setting.cancel') }}</span>
+            </button>
+          </div>
+          <span
+            class="text-2xl cursor-pointer text-text-secondary hover:text-text-primary"
+            @click="handleClose"
+            >&times;</span
+          >
+        </div>
       </div>
 
       <div class="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row">
@@ -340,6 +417,21 @@ function handleDiscoverAll() {
   <Teleport to="body">
     <DiscoverAllFeedsModal :show="showDiscoverAllModal" @close="showDiscoverAllModal = false" />
   </Teleport>
+
+  <!-- Close Confirm Dialog -->
+  <Teleport to="body">
+    <ConfirmDialog
+      v-if="showCloseConfirm"
+      :title="t('setting.unsavedChangesTitle')"
+      :message="t('setting.unsavedChangesMessage')"
+      :confirm-text="t('setting.saveAndClose')"
+      :cancel-text="t('setting.discardAndClose')"
+      :z-index="9999"
+      @confirm="handleCloseConfirm"
+      @cancel="handleCloseCancel"
+      @close="showCloseConfirm = false"
+    />
+  </Teleport>
 </template>
 
 <style scoped>
@@ -389,6 +481,35 @@ function handleDiscoverAll() {
 
 .btn-primary {
   @apply bg-accent text-white border-none px-5 py-2.5 rounded-lg cursor-pointer font-semibold hover:bg-accent-hover transition-colors;
+}
+
+/* Save/Cancel button styles */
+.btn-save {
+  @apply flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all border;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.btn-save-active {
+  @apply bg-green-600 text-white border-green-600 hover:bg-green-700 cursor-pointer;
+}
+
+.btn-save-disabled {
+  @apply bg-gray-300 text-gray-500 border-gray-300 cursor-not-allowed opacity-60;
+}
+
+.btn-cancel {
+  @apply flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all border;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.btn-cancel-active {
+  @apply bg-gray-200 text-gray-700 border-gray-300 hover:bg-gray-300 cursor-pointer;
+}
+
+.btn-cancel-disabled {
+  @apply bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed;
 }
 
 .animate-fade-in {

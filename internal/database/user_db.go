@@ -155,6 +155,40 @@ func (db *DB) ListUsers() ([]*models.User, error) {
 	return users, nil
 }
 
+// ListActiveUsers returns all active users (excluding template users).
+func (db *DB) ListActiveUsers() ([]*models.User, error) {
+	query := `
+		SELECT id, username, email, password_hash, role, status, 
+			   inherited_from, has_inherited, created_at, updated_at
+		FROM users 
+		WHERE status = 'active' AND role != ?
+		ORDER BY created_at DESC
+	`
+	rows, err := db.Query(query, models.RoleTemplate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		var user models.User
+		var inheritedFrom sql.NullInt64
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.Status,
+			&inheritedFrom, &user.HasInherited, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if inheritedFrom.Valid {
+			user.InheritedFrom = &inheritedFrom.Int64
+		}
+		users = append(users, &user)
+	}
+	return users, nil
+}
+
 func (db *DB) ListUsersPaginated(page, pageSize int) ([]*models.User, int, error) {
 	offset := (page - 1) * pageSize
 

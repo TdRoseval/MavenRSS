@@ -222,7 +222,8 @@ function handleBatchUnsetImageMode() {
 
 function getFavicon(url: string): string {
   try {
-    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}`;
+    const hostname = new URL(url).hostname;
+    return `https://api.iowen.cn/favicon/${hostname}.png`;
   } catch {
     return '';
   }

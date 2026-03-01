@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import type { Article, Feed, Tag, UnreadCounts, RefreshProgress } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 import { useSettings } from '@/composables/core/useSettings';
-import { apiClient } from '@/utils/apiClient';
+import { apiClient, stopRefreshFeeds } from '@/utils/apiClient';
 
 export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | '';
 export type ThemePreference = 'light' | 'dark' | 'auto';
@@ -617,7 +617,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function stopRefresh(): Promise<void> {
     try {
-      await apiClient.stopRefreshFeeds();
+      await stopRefreshFeeds();
       refreshProgress.value.isRunning = false;
     } catch (e) {
       console.error('Error stopping refresh:', e);
