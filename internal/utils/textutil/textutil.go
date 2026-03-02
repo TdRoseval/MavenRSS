@@ -46,31 +46,49 @@ var (
 
 // CleanHTML sanitizes HTML content by fixing common malformed patterns
 // and removing unwanted inline styles, classes, and scripts.
+// Optimized version to reduce CPU load on 2-core systems.
 func CleanHTML(htmlContent string) string {
 	if htmlContent == "" {
 		return htmlContent
 	}
 
-	// Fix malformed opening tags like <p--> to <p>
-	htmlContent = malformedTagRegex.ReplaceAllString(htmlContent, "<$1>")
+	// Quick check: if no tags to fix or remove, return early
+	if !strings.Contains(htmlContent, "-->") && 
+	   !strings.Contains(htmlContent, " style=") && 
+	   !strings.Contains(htmlContent, " class=") &&
+	   !strings.Contains(htmlContent, "<style") &&
+	   !strings.Contains(htmlContent, "<script") {
+		return strings.TrimSpace(htmlContent)
+	}
 
-	// Fix malformed self-closing tags
-	htmlContent = malformedSelfClosingWithAttrs.ReplaceAllString(htmlContent, "<$1 $2>")
-	htmlContent = malformedSelfClosingNoAttrs.ReplaceAllString(htmlContent, "<$1>")
+	// Fix malformed opening tags like <p--> to <p>
+	if strings.Contains(htmlContent, "-->") {
+		htmlContent = malformedTagRegex.ReplaceAllString(htmlContent, "<$1>")
+		htmlContent = malformedSelfClosingWithAttrs.ReplaceAllString(htmlContent, "<$1 $2>")
+		htmlContent = malformedSelfClosingNoAttrs.ReplaceAllString(htmlContent, "<$1>")
+	}
 
 	// Remove inline style attributes
-	htmlContent = styleAttrRegex.ReplaceAllString(htmlContent, "")
-	htmlContent = styleAttrSingleQuoteRegex.ReplaceAllString(htmlContent, "")
+	if strings.Contains(htmlContent, " style=") {
+		htmlContent = styleAttrRegex.ReplaceAllString(htmlContent, "")
+		htmlContent = styleAttrSingleQuoteRegex.ReplaceAllString(htmlContent, "")
+	}
 
 	// Remove class attributes
-	htmlContent = classAttrRegex.ReplaceAllString(htmlContent, "")
-	htmlContent = classAttrSingleQuoteRegex.ReplaceAllString(htmlContent, "")
+	if strings.Contains(htmlContent, " class=") {
+		htmlContent = classAttrRegex.ReplaceAllString(htmlContent, "")
+		htmlContent = classAttrSingleQuoteRegex.ReplaceAllString(htmlContent, "")
+	}
 
 	// Remove <style> tags and their content
-	htmlContent = styleTagRegex.ReplaceAllString(htmlContent, "")
+	if strings.Contains(htmlContent, "<style") {
+		htmlContent = styleTagRegex.ReplaceAllString(htmlContent, "")
+	}
 
 	// Remove <script> tags and their content
-	htmlContent = scriptTagRegex.ReplaceAllString(htmlContent, "")
+	if strings.Contains(htmlContent, "<script") {
+		htmlContent = scriptTagRegex.ReplaceAllString(htmlContent, "")
+	}
 
 	return strings.TrimSpace(htmlContent)
 }

@@ -57,15 +57,55 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		}
 	}
 
-	// Check quota first before processing
+	// Generate all unique IDs first
+	uniqueIDs := make([]string, len(articles))
+	for i, article := range articles {
+		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+	}
+
+	// Check quota first before processing - using batch query optimization
 	if userID > 0 {
 		var newArticlesCount int64
-		for _, article := range articles {
-			uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
-			var existingID int64
-			err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&existingID)
-			if err != nil {
-				newArticlesCount++
+		
+		// Batch query to check which articles already exist
+		if len(uniqueIDs) > 0 {
+			// Build IN clause with placeholders
+			placeholders := make([]string, len(uniqueIDs))
+			args := make([]interface{}, len(uniqueIDs))
+			for i, id := range uniqueIDs {
+				placeholders[i] = "?"
+				args[i] = id
+			}
+			
+			query := "SELECT unique_id FROM articles WHERE unique_id IN (" + strings.Join(placeholders, ",") + ")"
+			rows, err := db.Query(query, args...)
+			if err == nil {
+				defer rows.Close()
+				
+				// Build a map of existing unique IDs
+				existingIDs := make(map[string]bool)
+				for rows.Next() {
+					var id string
+					if err := rows.Scan(&id); err == nil {
+						existingIDs[id] = true
+					}
+				}
+				
+				// Count new articles
+				for _, id := range uniqueIDs {
+					if !existingIDs[id] {
+						newArticlesCount++
+					}
+				}
+			} else {
+				// Fallback to individual queries if batch query fails
+				for _, id := range uniqueIDs {
+					var existingID int64
+					err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", id).Scan(&existingID)
+					if err != nil {
+						newArticlesCount++
+					}
+				}
 			}
 		}
 
@@ -105,7 +145,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	}
 	defer stmt.Close()
 
-	for _, article := range articles {
+	for i, article := range articles {
 		// Check context before each insert
 		select {
 		case <-ctx.Done():
@@ -113,8 +153,8 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		default:
 		}
 
-		// Generate unique_id for deduplication
-		uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+		// Use pre-generated unique_id for deduplication
+		uniqueID := uniqueIDs[i]
 		_, err := stmt.ExecContext(ctx, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
 		if err != nil {
 			log.Println("Error saving article in batch:", err)
