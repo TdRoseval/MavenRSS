@@ -2,6 +2,7 @@ package article
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,6 +14,12 @@ import (
 	"MavenRSS/internal/utils/httputil"
 )
 
+// markReadRequest represents the JSON body for mark read requests
+type markReadRequest struct {
+	ID   int64 `json:"id"`
+	Read bool  `json:"read"`
+}
+
 // HandleMarkReadWithImmediateSync marks an article as read/unread and immediately syncs to FreshRSS
 // @Summary      Mark article as read/unread with immediate FreshRSS sync
 // @Description  Mark a specific article as read or unread and immediately sync to FreshRSS if configured
@@ -22,20 +29,49 @@ import (
 // @Param        id   query     int64   true  "Article ID"
 // @Param        read query     string  true  "Read status: 'true', '1', 'false', or '0'"  Enums(true, 1, false, 0)
 // @Success      200  {string}  string  "Article marked and sync triggered successfully"
+// @Failure      401  {object}  map[string]string  "Unauthorized"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/mark-read-sync [post]
 func HandleMarkReadWithImmediateSync(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-
-	readStr := r.URL.Query().Get("read")
-	read := true
-	if readStr == "false" || readStr == "0" {
-		read = false
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
 	}
 
-	// Mark as read and get sync request
-	syncReq, err := h.DB.MarkArticleReadWithSync(id, read)
+	var id int64
+	var read bool = true
+
+	// First, try to parse from JSON body
+	if r.Body != nil && r.ContentLength > 0 {
+		var req markReadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.ID > 0 {
+			id = req.ID
+			read = req.Read
+		}
+	}
+
+	// Fallback: try to get from URL query parameters (for backward compatibility)
+	if id == 0 {
+		idStr := r.URL.Query().Get("id")
+		id, _ = strconv.ParseInt(idStr, 10, 64)
+	}
+
+	// Fallback: try to get read status from URL query parameters
+	if id > 0 {
+		readStr := r.URL.Query().Get("read")
+		if readStr == "false" || readStr == "0" {
+			read = false
+		}
+	}
+
+	// Mark as read and get sync request (with user validation)
+	syncReq, err := h.DB.MarkArticleReadWithSyncForUser(userID, id, read)
+	if err == database.ErrArticleNotFound {
+		response.Error(w, err, http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -49,6 +85,11 @@ func HandleMarkReadWithImmediateSync(h *core.Handler, w http.ResponseWriter, r *
 	}
 }
 
+// toggleFavoriteRequest represents the JSON body for toggle favorite requests
+type toggleFavoriteRequest struct {
+	ID int64 `json:"id"`
+}
+
 // HandleToggleFavoriteWithImmediateSync toggles favorite and immediately syncs to FreshRSS
 // @Summary      Toggle article favorite status with immediate FreshRSS sync
 // @Description  Toggle the favorite/starred status of an article and immediately sync to FreshRSS if configured
@@ -57,14 +98,39 @@ func HandleMarkReadWithImmediateSync(h *core.Handler, w http.ResponseWriter, r *
 // @Produce      json
 // @Param        id   query     int64   true  "Article ID"
 // @Success      200  {string}  string  "Favorite toggled and sync triggered successfully"
+// @Failure      401  {object}  map[string]string  "Unauthorized"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/toggle-favorite-sync [post]
 func HandleToggleFavoriteWithImmediateSync(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
 
-	// Toggle favorite and get sync request
-	syncReq, err := h.DB.ToggleFavoriteWithSync(id)
+	var id int64
+
+	// First, try to parse from JSON body
+	if r.Body != nil && r.ContentLength > 0 {
+		var req toggleFavoriteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.ID > 0 {
+			id = req.ID
+		}
+	}
+
+	// Fallback: try to get from URL query parameters (for backward compatibility)
+	if id == 0 {
+		idStr := r.URL.Query().Get("id")
+		id, _ = strconv.ParseInt(idStr, 10, 64)
+	}
+
+	// Toggle favorite and get sync request (with user validation)
+	syncReq, err := h.DB.ToggleFavoriteWithSyncForUser(userID, id)
+	if err == database.ErrArticleNotFound {
+		response.Error(w, err, http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return

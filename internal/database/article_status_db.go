@@ -1,6 +1,11 @@
 package database
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+)
+
+var ErrArticleNotFound = errors.New("article not found or does not belong to user")
 
 // MarkArticleRead marks an article as read or unread.
 // When marking as read, also removes from read later list.
@@ -96,5 +101,103 @@ func (db *DB) SetArticleReadLater(id int64, readLater bool) error {
 		return err
 	}
 	_, err := db.Exec("UPDATE articles SET is_read_later = 0 WHERE id = ?", id)
+	return err
+}
+
+// MarkArticleReadForUser marks an article as read or unread for a specific user.
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+// When marking as read, also removes from read later list.
+func (db *DB) MarkArticleReadForUser(userID int64, id int64, read bool) error {
+	db.WaitForReady()
+	isRead := 0
+	if read {
+		isRead = 1
+		result, err := db.Exec("UPDATE articles SET is_read = 1, is_read_later = 0 WHERE id = ? AND user_id = ?", id, userID)
+		if err != nil {
+			return err
+		}
+		rowsAffected, _ := result.RowsAffected()
+		if rowsAffected == 0 {
+			return ErrArticleNotFound
+		}
+		return nil
+	}
+	result, err := db.Exec("UPDATE articles SET is_read = ? WHERE id = ? AND user_id = ?", isRead, id, userID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return ErrArticleNotFound
+	}
+	return nil
+}
+
+// ToggleFavoriteForUser toggles the favorite status of an article for a specific user.
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+func (db *DB) ToggleFavoriteForUser(userID int64, id int64) error {
+	db.WaitForReady()
+	var isFav bool
+	err := db.QueryRow("SELECT is_favorite FROM articles WHERE id = ? AND user_id = ?", id, userID).Scan(&isFav)
+	if err == sql.ErrNoRows {
+		return ErrArticleNotFound
+	}
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ? AND user_id = ?", !isFav, id, userID)
+	return err
+}
+
+// SetArticleFavoriteForUser sets the favorite status of an article for a specific user.
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+func (db *DB) SetArticleFavoriteForUser(userID int64, id int64, favorite bool) error {
+	db.WaitForReady()
+	result, err := db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ? AND user_id = ?", favorite, id, userID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return ErrArticleNotFound
+	}
+	return nil
+}
+
+// ToggleArticleHiddenForUser toggles the is_hidden status of an article for a specific user.
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+func (db *DB) ToggleArticleHiddenForUser(userID int64, id int64) error {
+	db.WaitForReady()
+	var isHidden bool
+	err := db.QueryRow("SELECT is_hidden FROM articles WHERE id = ? AND user_id = ?", id, userID).Scan(&isHidden)
+	if err == sql.ErrNoRows {
+		return ErrArticleNotFound
+	}
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("UPDATE articles SET is_hidden = ? WHERE id = ? AND user_id = ?", !isHidden, id, userID)
+	return err
+}
+
+// ToggleReadLaterForUser toggles the read later status of an article for a specific user.
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+// When adding to read later, also marks article as unread.
+func (db *DB) ToggleReadLaterForUser(userID int64, id int64) error {
+	db.WaitForReady()
+	var isReadLater bool
+	err := db.QueryRow("SELECT is_read_later FROM articles WHERE id = ? AND user_id = ?", id, userID).Scan(&isReadLater)
+	if err == sql.ErrNoRows {
+		return ErrArticleNotFound
+	}
+	if err != nil {
+		return err
+	}
+	newState := !isReadLater
+	if newState {
+		_, err = db.Exec("UPDATE articles SET is_read_later = 1, is_read = 0 WHERE id = ? AND user_id = ?", id, userID)
+	} else {
+		_, err = db.Exec("UPDATE articles SET is_read_later = 0 WHERE id = ? AND user_id = ?", id, userID)
+	}
 	return err
 }
