@@ -17,9 +17,9 @@ func (db *DB) SaveArticle(article *models.Article) error {
 	db.WaitForReady()
 
 	// Check if article already exists
-	uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+	uniqueID := urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
 	var existingID int64
-	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&existingID)
+	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", article.UserID, uniqueID).Scan(&existingID)
 	if err == nil {
 		// Article already exists, skip
 		return nil
@@ -60,7 +60,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	// Generate all unique IDs first
 	uniqueIDs := make([]string, len(articles))
 	for i, article := range articles {
-		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
 	}
 
 	// Check quota first before processing - using batch query optimization
@@ -437,11 +437,11 @@ func (db *DB) GetArticlesByIDs(ids []int64) ([]models.Article, error) {
 // GetArticleIDByUniqueID retrieves an article's ID by its unique identifier.
 // This is the preferred method for looking up articles as it uses the title+feed_id+published_date based deduplication.
 // Note: Uses date only (YYYY-MM-DD) rather than full timestamp for better deduplication.
-func (db *DB) GetArticleIDByUniqueID(title string, feedID int64, publishedAt time.Time, hasValidPublishedTime bool) (int64, error) {
+func (db *DB) GetArticleIDByUniqueID(userID int64, title string, feedID int64, publishedAt time.Time, hasValidPublishedTime bool) (int64, error) {
 	db.WaitForReady()
-	uniqueID := urlutil.GenerateArticleUniqueID(title, feedID, publishedAt, hasValidPublishedTime)
+	uniqueID := urlutil.GenerateArticleUniqueID(userID, title, feedID, publishedAt, hasValidPublishedTime)
 	var id int64
-	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&id)
+	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", userID, uniqueID).Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
