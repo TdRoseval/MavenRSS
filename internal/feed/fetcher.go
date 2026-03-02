@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -47,7 +48,6 @@ type Fetcher struct {
 	cleanupManager    *CleanupManager
 	postProcessChan   chan *PostProcessTask
 	postProcessWg     sync.WaitGroup
-	postProcessStop   chan struct{}
 }
 
 func NewFetcher(db *database.DB) *Fetcher {
@@ -64,9 +64,9 @@ func NewFetcher(db *database.DB) *Fetcher {
 	// Create high priority parser without fixed HTTP client
 	highPriorityParser := gofeed.NewParser()
 
-	// Initialize post-processing channel with buffer (capacity 100)
-	postProcessChan := make(chan *PostProcessTask, 100)
-	postProcessStop := make(chan struct{})
+	// Initialize post-processing channel with larger buffer (capacity 500)
+	// Larger buffer prevents task loss during high load
+	postProcessChan := make(chan *PostProcessTask, 500)
 
 	fetcher := &Fetcher{
 		db:                db,
@@ -76,7 +76,6 @@ func NewFetcher(db *database.DB) *Fetcher {
 		emailFetcher:      NewEmailFetcher(db),
 		refreshCalculator: NewIntelligentRefreshCalculator(db),
 		postProcessChan:   postProcessChan,
-		postProcessStop:   postProcessStop,
 	}
 
 	// Initialize task manager with default capacity (increased from 5 to 10)
@@ -87,8 +86,19 @@ func NewFetcher(db *database.DB) *Fetcher {
 	fetcher.cleanupManager = NewCleanupManager(fetcher)
 	fetcher.cleanupManager.Start()
 
-	// Start post-processing workers (2 workers for 2-core CPU optimization)
-	fetcher.startPostProcessWorkers(2)
+	// Calculate optimal worker count based on CPU cores
+	// Formula: min(max(1, CPU_CORES), 4) - cap at 4 workers to prevent overload
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	if numWorkers > 4 {
+		numWorkers = 4
+	}
+	log.Printf("Starting %d post-processing workers (CPU cores: %d)", numWorkers, runtime.NumCPU())
+
+	// Start post-processing workers
+	fetcher.startPostProcessWorkers(numWorkers)
 
 	return fetcher
 }
@@ -107,19 +117,12 @@ func (f *Fetcher) postProcessWorker(workerID int) {
 
 	log.Printf("Post-process worker %d started", workerID)
 
-	for {
-		select {
-		case task, ok := <-f.postProcessChan:
-			if !ok {
-				log.Printf("Post-process worker %d stopped (channel closed)", workerID)
-				return
-			}
-			f.processPostTask(task)
-		case <-f.postProcessStop:
-			log.Printf("Post-process worker %d stopped (stop signal)", workerID)
-			return
-		}
+	// Simple loop: just read from channel until it's closed
+	for task := range f.postProcessChan {
+		f.processPostTask(task)
 	}
+
+	log.Printf("Post-process worker %d stopped (channel closed)", workerID)
 }
 
 // processPostTask processes a single post-process task
@@ -170,8 +173,9 @@ func (f *Fetcher) StopRefreshForUser(userID int64) {
 func (f *Fetcher) Stop() {
 	log.Println("Stopping fetcher...")
 	
-	// Stop post-processing workers
-	close(f.postProcessStop)
+	// Stop post-processing workers by closing the channel
+	// This is the clean way to stop workers - they'll finish
+	// all pending tasks first before exiting
 	close(f.postProcessChan)
 	f.postProcessWg.Wait()
 	log.Println("Post-processing workers stopped")
@@ -554,6 +558,7 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 		// Post-processing operations (content caching and rule application)
 		// Send to worker pool to avoid creating too many goroutines
 		if len(articlesWithContent) > 0 {
+			// Try to send to channel with timeout
 			select {
 			case f.postProcessChan <- &PostProcessTask{
 				ArticlesWithContent: articlesWithContent,
@@ -561,9 +566,21 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 				FeedTitle:           feed.Title,
 				UserID:              feed.UserID,
 			}:
-			default:
-				// Channel is full, just log and skip (these operations are non-critical)
-				log.Printf("Post-process channel full, skipping for feed %s", feed.Title)
+				// Successfully sent
+			case <-time.After(100 * time.Millisecond):
+				// Channel still full after short timeout, try once more with longer wait
+				select {
+				case f.postProcessChan <- &PostProcessTask{
+					ArticlesWithContent: articlesWithContent,
+					FeedID:              feed.ID,
+					FeedTitle:           feed.Title,
+					UserID:              feed.UserID,
+				}:
+					// Successfully sent on retry
+				case <-time.After(500 * time.Millisecond):
+					// Still full, log and skip (these operations are non-critical)
+					log.Printf("Post-process channel full after retries, skipping for feed %s", feed.Title)
+				}
 			}
 		}
 	}

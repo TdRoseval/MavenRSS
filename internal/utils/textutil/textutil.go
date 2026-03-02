@@ -52,45 +52,95 @@ func CleanHTML(htmlContent string) string {
 		return htmlContent
 	}
 
-	// Quick check: if no tags to fix or remove, return early
-	if !strings.Contains(htmlContent, "-->") && 
-	   !strings.Contains(htmlContent, " style=") && 
-	   !strings.Contains(htmlContent, " class=") &&
-	   !strings.Contains(htmlContent, "<style") &&
-	   !strings.Contains(htmlContent, "<script") {
+	needsProcessing := false
+	hasMalformedTags := false
+	hasStyleAttrs := false
+	hasClassAttrs := false
+	hasStyleTags := false
+	hasScriptTags := false
+
+	// Single pass to detect all needed operations
+	for i := 0; i < len(htmlContent); i++ {
+		// Check for malformed tags pattern "-->"
+		if i+2 < len(htmlContent) && htmlContent[i] == '-' && htmlContent[i+1] == '-' && htmlContent[i+2] == '>' {
+			hasMalformedTags = true
+			needsProcessing = true
+		}
+		// Check for " style="
+		if i+6 < len(htmlContent) && htmlContent[i] == ' ' && 
+		   htmlContent[i+1] == 's' && htmlContent[i+2] == 't' && 
+		   htmlContent[i+3] == 'y' && htmlContent[i+4] == 'l' && 
+		   htmlContent[i+5] == 'e' && htmlContent[i+6] == '=' {
+			hasStyleAttrs = true
+			needsProcessing = true
+		}
+		// Check for " class="
+		if i+6 < len(htmlContent) && htmlContent[i] == ' ' && 
+		   htmlContent[i+1] == 'c' && htmlContent[i+2] == 'l' && 
+		   htmlContent[i+3] == 'a' && htmlContent[i+4] == 's' && 
+		   htmlContent[i+5] == 's' && htmlContent[i+6] == '=' {
+			hasClassAttrs = true
+			needsProcessing = true
+		}
+		// Check for "<style"
+		if i+5 < len(htmlContent) && htmlContent[i] == '<' && 
+		   htmlContent[i+1] == 's' && htmlContent[i+2] == 't' && 
+		   htmlContent[i+3] == 'y' && htmlContent[i+4] == 'l' && 
+		   htmlContent[i+5] == 'e' {
+			hasStyleTags = true
+			needsProcessing = true
+		}
+		// Check for "<script"
+		if i+6 < len(htmlContent) && htmlContent[i] == '<' && 
+		   htmlContent[i+1] == 's' && htmlContent[i+2] == 'c' && 
+		   htmlContent[i+3] == 'r' && htmlContent[i+4] == 'i' && 
+		   htmlContent[i+5] == 'p' && htmlContent[i+6] == 't' {
+			hasScriptTags = true
+			needsProcessing = true
+		}
+		
+		// Early exit if we found everything already
+		if hasMalformedTags && hasStyleAttrs && hasClassAttrs && hasStyleTags && hasScriptTags {
+			break
+		}
+	}
+
+	if !needsProcessing {
 		return strings.TrimSpace(htmlContent)
 	}
 
+	result := htmlContent
+
 	// Fix malformed opening tags like <p--> to <p>
-	if strings.Contains(htmlContent, "-->") {
-		htmlContent = malformedTagRegex.ReplaceAllString(htmlContent, "<$1>")
-		htmlContent = malformedSelfClosingWithAttrs.ReplaceAllString(htmlContent, "<$1 $2>")
-		htmlContent = malformedSelfClosingNoAttrs.ReplaceAllString(htmlContent, "<$1>")
+	if hasMalformedTags {
+		result = malformedTagRegex.ReplaceAllString(result, "<$1>")
+		result = malformedSelfClosingWithAttrs.ReplaceAllString(result, "<$1 $2>")
+		result = malformedSelfClosingNoAttrs.ReplaceAllString(result, "<$1>")
 	}
 
 	// Remove inline style attributes
-	if strings.Contains(htmlContent, " style=") {
-		htmlContent = styleAttrRegex.ReplaceAllString(htmlContent, "")
-		htmlContent = styleAttrSingleQuoteRegex.ReplaceAllString(htmlContent, "")
+	if hasStyleAttrs {
+		result = styleAttrRegex.ReplaceAllString(result, "")
+		result = styleAttrSingleQuoteRegex.ReplaceAllString(result, "")
 	}
 
 	// Remove class attributes
-	if strings.Contains(htmlContent, " class=") {
-		htmlContent = classAttrRegex.ReplaceAllString(htmlContent, "")
-		htmlContent = classAttrSingleQuoteRegex.ReplaceAllString(htmlContent, "")
+	if hasClassAttrs {
+		result = classAttrRegex.ReplaceAllString(result, "")
+		result = classAttrSingleQuoteRegex.ReplaceAllString(result, "")
 	}
 
 	// Remove <style> tags and their content
-	if strings.Contains(htmlContent, "<style") {
-		htmlContent = styleTagRegex.ReplaceAllString(htmlContent, "")
+	if hasStyleTags {
+		result = styleTagRegex.ReplaceAllString(result, "")
 	}
 
 	// Remove <script> tags and their content
-	if strings.Contains(htmlContent, "<script") {
-		htmlContent = scriptTagRegex.ReplaceAllString(htmlContent, "")
+	if hasScriptTags {
+		result = scriptTagRegex.ReplaceAllString(result, "")
 	}
 
-	return strings.TrimSpace(htmlContent)
+	return strings.TrimSpace(result)
 }
 
 // RenderMarkdown converts markdown text to safe HTML.

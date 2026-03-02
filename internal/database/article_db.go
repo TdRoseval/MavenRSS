@@ -67,45 +67,54 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	if userID > 0 {
 		var newArticlesCount int64
 		
-		// Batch query to check which articles already exist
-		if len(uniqueIDs) > 0 {
-			// Build IN clause with placeholders
-			placeholders := make([]string, len(uniqueIDs))
-			args := make([]interface{}, len(uniqueIDs))
-			for i, id := range uniqueIDs {
-				placeholders[i] = "?"
-				args[i] = id
+		// Batch query to check which articles already exist - process in batches of 500
+		// SQLite has a default limit of 999 parameters in IN clause, so use 500 to be safe
+		const batchSize = 500
+		existingIDs := make(map[string]bool)
+		
+		for i := 0; i < len(uniqueIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(uniqueIDs) {
+				end = len(uniqueIDs)
+			}
+			batch := uniqueIDs[i:end]
+			
+			// Build IN clause for this batch
+			placeholders := make([]string, len(batch))
+			args := make([]interface{}, len(batch))
+			for j, id := range batch {
+				placeholders[j] = "?"
+				args[j] = id
 			}
 			
 			query := "SELECT unique_id FROM articles WHERE unique_id IN (" + strings.Join(placeholders, ",") + ")"
 			rows, err := db.Query(query, args...)
-			if err == nil {
-				defer rows.Close()
-				
-				// Build a map of existing unique IDs
-				existingIDs := make(map[string]bool)
+			if err != nil {
+				// Fallback to individual queries for this batch
+				log.Printf("Batch query failed, using individual queries for batch %d-%d: %v", i, end, err)
+				for _, id := range batch {
+					var existingID int64
+					err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", id).Scan(&existingID)
+					if err == nil {
+						existingIDs[id] = true
+					}
+				}
+			} else {
+				// Process results from batch query
 				for rows.Next() {
 					var id string
 					if err := rows.Scan(&id); err == nil {
 						existingIDs[id] = true
 					}
 				}
-				
-				// Count new articles
-				for _, id := range uniqueIDs {
-					if !existingIDs[id] {
-						newArticlesCount++
-					}
-				}
-			} else {
-				// Fallback to individual queries if batch query fails
-				for _, id := range uniqueIDs {
-					var existingID int64
-					err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", id).Scan(&existingID)
-					if err != nil {
-						newArticlesCount++
-					}
-				}
+				rows.Close()
+			}
+		}
+		
+		// Count new articles
+		for _, id := range uniqueIDs {
+			if !existingIDs[id] {
+				newArticlesCount++
 			}
 		}
 
