@@ -93,6 +93,18 @@ func (f *Fetcher) StopRefreshForUser(userID int64) {
 	f.taskManager.StopForUser(userID)
 }
 
+// Stop stops the fetcher and cleans up all resources
+func (f *Fetcher) Stop() {
+	log.Println("Stopping fetcher...")
+	if f.taskManager != nil {
+		f.taskManager.Stop()
+	}
+	if f.cleanupManager != nil {
+		f.cleanupManager.Stop()
+	}
+	log.Println("Fetcher stopped")
+}
+
 // GetCleanupManager returns the cleanup manager
 func (f *Fetcher) GetCleanupManager() *CleanupManager {
 	return f.cleanupManager

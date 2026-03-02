@@ -198,24 +198,23 @@ func (h *Handler) triggerGlobalRefresh(ctx context.Context, intelligentMode bool
 		len(refreshableFeeds), len(globalFeeds)-len(refreshableFeeds), intelligentMode)
 
 	if intelligentMode {
-		// In intelligent mode, schedule each feed individually with calculated intervals
-		calculator := h.Fetcher.GetIntelligentRefreshCalculator()
-		for _, feed := range refreshableFeeds {
-			interval := calculator.CalculateInterval(feed)
-			staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
+			// In intelligent mode, schedule each feed individually with calculated intervals
+			calculator := h.Fetcher.GetIntelligentRefreshCalculator()
+			for _, feed := range refreshableFeeds {
+				interval := calculator.CalculateInterval(feed)
+				staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
 
-			go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
-				time.Sleep(delay)
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					log.Printf("Auto-refreshing feed %s (intelligent mode, interval: %v)", f.Title, calculatedInterval)
-					h.Fetcher.FetchSingleFeed(ctx, f, false)
-				}
-			}(feed, staggerDelay, interval)
-		}
-	} else {
+				go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
+					select {
+					case <-time.After(delay):
+						log.Printf("Auto-refreshing feed %s (intelligent mode, interval: %v)", f.Title, calculatedInterval)
+						h.Fetcher.FetchSingleFeed(ctx, f, false)
+					case <-ctx.Done():
+						return
+					}
+				}(feed, staggerDelay, interval)
+			}
+		} else {
 		// In fixed mode, refresh all feeds together
 		h.Fetcher.FetchAll(ctx)
 	}
@@ -280,13 +279,12 @@ func (h *Handler) scheduleIndividualFeeds(ctx context.Context, intelligentMode b
 			// Schedule feed refresh
 			feedCopy := feed
 			go func(f models.Feed, delay time.Duration, interval time.Duration) {
-				time.Sleep(delay)
 				select {
-				case <-ctx.Done():
-					return
-				default:
+				case <-time.After(delay):
 					log.Printf("Auto-refreshing feed %s (custom interval: %v)", f.Title, interval)
 					h.Fetcher.FetchSingleFeed(ctx, f, false)
+				case <-ctx.Done():
+					return
 				}
 			}(feedCopy, staggerDelay, refreshInterval)
 		}
@@ -486,24 +484,23 @@ func (h *Handler) triggerUserRefresh(ctx context.Context, userID int64, intellig
 		userID, len(refreshableFeeds), len(globalFeeds)-len(refreshableFeeds), intelligentMode)
 
 	if intelligentMode {
-		// In intelligent mode, schedule each feed individually with calculated intervals
-		calculator := h.Fetcher.GetIntelligentRefreshCalculator()
-		for _, feed := range refreshableFeeds {
-			interval := calculator.CalculateInterval(feed)
-			staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
+			// In intelligent mode, schedule each feed individually with calculated intervals
+			calculator := h.Fetcher.GetIntelligentRefreshCalculator()
+			for _, feed := range refreshableFeeds {
+				interval := calculator.CalculateInterval(feed)
+				staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
 
-			go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
-				time.Sleep(delay)
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					log.Printf("User %d: Auto-refreshing feed %s (intelligent mode, interval: %v)", userID, f.Title, calculatedInterval)
-					h.Fetcher.FetchSingleFeed(ctx, f, false)
-				}
-			}(feed, staggerDelay, interval)
-		}
-	} else {
+				go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
+					select {
+					case <-time.After(delay):
+						log.Printf("User %d: Auto-refreshing feed %s (intelligent mode, interval: %v)", userID, f.Title, calculatedInterval)
+						h.Fetcher.FetchSingleFeed(ctx, f, false)
+					case <-ctx.Done():
+						return
+					}
+				}(feed, staggerDelay, interval)
+			}
+		} else {
 		// In fixed mode, refresh all feeds for this user
 		h.Fetcher.FetchAllForUser(ctx, userID)
 	}
@@ -561,13 +558,12 @@ func (h *Handler) scheduleUserIndividualFeeds(ctx context.Context, userID int64,
 			// Schedule feed refresh
 			feedCopy := feed
 			go func(f models.Feed, delay time.Duration, interval time.Duration) {
-				time.Sleep(delay)
 				select {
-				case <-ctx.Done():
-					return
-				default:
+				case <-time.After(delay):
 					log.Printf("User %d: Auto-refreshing feed %s (custom interval: %v)", userID, f.Title, interval)
 					h.Fetcher.FetchSingleFeed(ctx, f, false)
+				case <-ctx.Done():
+					return
 				}
 			}(feedCopy, staggerDelay, refreshInterval)
 		}

@@ -149,6 +149,16 @@ func (tm *TaskManager) Stop() {
 	tm.queue = make([]int64, 0)
 	tm.queueMutex.Unlock()
 
+	// Close log file if open
+	tm.logMutex.Lock()
+	if tm.logFile != nil {
+		tm.logFile.Sync()
+		tm.logFile.Close()
+		tm.logFile = nil
+		tm.logEnabled = false
+	}
+	tm.logMutex.Unlock()
+
 	log.Println("Task manager stopped")
 }
 
