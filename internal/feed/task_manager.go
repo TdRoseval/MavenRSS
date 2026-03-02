@@ -338,8 +338,19 @@ func (tm *TaskManager) AddToQueueTail(ctx context.Context, feed models.Feed, rea
 }
 
 // AddGlobalRefresh adds multiple feeds to the queue tail for global refresh
-// Used for: scheduled global refresh
+// Used for: scheduled global refresh (desktop mode - all users)
 func (tm *TaskManager) AddGlobalRefresh(ctx context.Context, feeds []models.Feed) {
+	tm.addGlobalRefreshInternal(ctx, feeds, 0, false)
+}
+
+// AddGlobalRefreshForUser adds multiple feeds to the queue tail for a specific user's global refresh
+// Used for: scheduled global refresh (server mode - single user)
+func (tm *TaskManager) AddGlobalRefreshForUser(ctx context.Context, feeds []models.Feed, userID int64) {
+	tm.addGlobalRefreshInternal(ctx, feeds, userID, true)
+}
+
+// addGlobalRefreshInternal is the internal implementation for global refresh
+func (tm *TaskManager) addGlobalRefreshInternal(ctx context.Context, feeds []models.Feed, userID int64, forUser bool) {
 	tm.stateMutex.RLock()
 	isStopped := tm.isStopped
 	tm.stateMutex.RUnlock()
@@ -393,9 +404,17 @@ func (tm *TaskManager) AddGlobalRefresh(ctx context.Context, feeds []models.Feed
 		log.Printf("ERROR: Failed to track feed refresh: %v", err)
 	}
 
-	// Clear all feed error marks in database
-	if err := tm.fetcher.db.ClearAllFeedErrors(); err != nil {
-		log.Printf("Failed to clear all feed errors: %v", err)
+	// Clear feed error marks in database
+	// In server mode, only clear errors for this user's feeds
+	// In desktop mode, clear all errors
+	if forUser {
+		if err := tm.fetcher.db.ClearFeedErrorsForUser(userID); err != nil {
+			log.Printf("Failed to clear feed errors for user %d: %v", userID, err)
+		}
+	} else {
+		if err := tm.fetcher.db.ClearAllFeedErrors(); err != nil {
+			log.Printf("Failed to clear all feed errors: %v", err)
+		}
 	}
 
 	// Add feeds to queue tail with deduplication
@@ -432,7 +451,11 @@ func (tm *TaskManager) AddGlobalRefresh(ctx context.Context, feeds []models.Feed
 		tm.logOperation("AR", feed.Title)
 	}
 
-	log.Printf("Added %d feeds to queue tail for global refresh", addedCount)
+	if forUser {
+		log.Printf("Added %d feeds to queue tail for user %d global refresh", addedCount, userID)
+	} else {
+		log.Printf("Added %d feeds to queue tail for global refresh", addedCount)
+	}
 
 	// Update stats
 	tm.updateStats()

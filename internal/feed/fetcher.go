@@ -328,7 +328,8 @@ func (f *Fetcher) FetchAllForUser(ctx context.Context, userID int64) {
 	f.taskManager.SetPoolCapacity(concurrency)
 
 	// Use task manager for refresh (all feeds go to queue tail)
-	f.taskManager.AddGlobalRefresh(ctx, filteredFeeds)
+	// Use AddGlobalRefreshForUser to ensure only this user's feed errors are cleared
+	f.taskManager.AddGlobalRefreshForUser(ctx, filteredFeeds, userID)
 }
 
 func (f *Fetcher) FetchFeed(ctx context.Context, feed models.Feed) {
