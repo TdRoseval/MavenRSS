@@ -554,6 +554,13 @@ func (db *DB) ClearAllFeedErrors() error {
 	return err
 }
 
+// ClearFeedErrorsForUser clears error messages for all feeds belonging to a specific user.
+func (db *DB) ClearFeedErrorsForUser(userID int64) error {
+	db.WaitForReady()
+	_, err := db.Exec("UPDATE feeds SET last_error = '' WHERE user_id = ?", userID)
+	return err
+}
+
 // UpdateFeedLastUpdated updates a feed's last_updated timestamp.
 func (db *DB) UpdateFeedLastUpdated(id int64) error {
 	db.WaitForReady()

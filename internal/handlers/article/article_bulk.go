@@ -217,15 +217,25 @@ func HandleClearReadLater(h *core.Handler, w http.ResponseWriter, r *http.Reques
 // @Success      200  {string}  string  "Refresh started successfully"
 // @Router       /articles/refresh [post]
 func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	// Update last_global_refresh to now
-	newUpdateTime := time.Now().Format(time.RFC3339)
-	if err := h.DB.SetSetting("last_global_refresh", newUpdateTime); err != nil {
-		log.Printf("Failed to update last_global_refresh: %v", err)
-	}
-	log.Printf("Manual refresh triggered, updated last_global_refresh to: %s", newUpdateTime)
-
 	// Get user ID from request
 	userID, ok := core.GetUserIDFromRequest(r)
+
+	// Update last_global_refresh to now
+	newUpdateTime := time.Now().Format(time.RFC3339)
+	if ok {
+		// In server mode, update user-specific timestamp
+		if err := h.DB.SetSettingForUser(userID, "last_global_refresh", newUpdateTime); err != nil {
+			log.Printf("Failed to update last_global_refresh for user %d: %v", userID, err)
+		}
+		log.Printf("Manual refresh triggered for user %d, updated last_global_refresh to: %s", userID, newUpdateTime)
+	} else {
+		// In desktop mode, update global timestamp
+		if err := h.DB.SetSetting("last_global_refresh", newUpdateTime); err != nil {
+			log.Printf("Failed to update last_global_refresh: %v", err)
+		}
+		log.Printf("Manual refresh triggered, updated last_global_refresh to: %s", newUpdateTime)
+	}
+
 	if !ok {
 		// Fall back to fetching all feeds if no user ID
 		taskManager := h.Fetcher.GetTaskManager()
@@ -258,15 +268,24 @@ func HandleStopRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Update last_global_refresh to now even when stopping
-	newUpdateTime := time.Now().Format(time.RFC3339)
-	if err := h.DB.SetSetting("last_global_refresh", newUpdateTime); err != nil {
-		log.Printf("Failed to update last_global_refresh on stop: %v", err)
-	}
-	log.Printf("Refresh stop requested, updated last_global_refresh to: %s", newUpdateTime)
-
 	// Get user ID from request
 	userID, ok := core.GetUserIDFromRequest(r)
+
+	// Update last_global_refresh to now even when stopping
+	newUpdateTime := time.Now().Format(time.RFC3339)
+	if ok {
+		// In server mode, update user-specific timestamp
+		if err := h.DB.SetSettingForUser(userID, "last_global_refresh", newUpdateTime); err != nil {
+			log.Printf("Failed to update last_global_refresh for user %d on stop: %v", userID, err)
+		}
+		log.Printf("Refresh stop requested for user %d, updated last_global_refresh to: %s", userID, newUpdateTime)
+	} else {
+		// In desktop mode, update global timestamp
+		if err := h.DB.SetSetting("last_global_refresh", newUpdateTime); err != nil {
+			log.Printf("Failed to update last_global_refresh on stop: %v", err)
+		}
+		log.Printf("Refresh stop requested, updated last_global_refresh to: %s", newUpdateTime)
+	}
 
 	if ok && fileutil.IsServerMode() {
 		// In server mode, only stop tasks for this specific user
