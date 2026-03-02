@@ -173,7 +173,9 @@ func SaveSettingsForUser(h *core.Handler, userID int64, settings map[string]stri
 				return err
 			}
 		} else if value != "" {
-			h.DB.SetSettingForUser(userID, key, value)
+			if err := h.DB.SetSettingForUser(userID, key, value); err != nil {
+				return fmt.Errorf("failed to save setting %s: %w", key, err)
+			}
 		}
 	}
 

@@ -1,10 +1,12 @@
 package article
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 
+	"MavenRSS/internal/database"
 	"MavenRSS/internal/handlers/core"
 	"MavenRSS/internal/handlers/response"
 )
@@ -85,22 +87,49 @@ func HandleArticles(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 // @Param        id   query     int64   true  "Article ID"
 // @Success      200  {object}  map[string]bool  "Success status"
 // @Failure      400  {object}  map[string]string  "Bad request"
+// @Failure      401  {object}  map[string]string  "Unauthorized"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/toggle-hide [post]
 func HandleToggleHideArticle(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		response.Error(w, err, http.StatusBadRequest)
-		return
+	var id int64
+
+	// First, try to parse from JSON body
+	if r.Body != nil && r.ContentLength > 0 {
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.ID > 0 {
+			id = req.ID
+		}
 	}
 
-	if err := h.DB.ToggleArticleHidden(id); err != nil {
+	// Fallback: try to get from URL query parameters (for backward compatibility)
+	if id == 0 {
+		idStr := r.URL.Query().Get("id")
+		var err error
+		id, err = strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			response.Error(w, err, http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err := h.DB.ToggleArticleHiddenForUser(userID, id); err == database.ErrArticleNotFound {
+		response.Error(w, err, http.StatusNotFound)
+		return
+	} else if err != nil {
 		log.Printf("Error toggling article hidden status: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -118,22 +147,49 @@ func HandleToggleHideArticle(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Param        id   query     int64   true  "Article ID"
 // @Success      200  {object}  map[string]bool  "Success status"
 // @Failure      400  {object}  map[string]string  "Bad request"
+// @Failure      401  {object}  map[string]string  "Unauthorized"
+// @Failure      404  {object}  map[string]string  "Article not found"
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /articles/toggle-read-later [post]
 func HandleToggleReadLater(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		response.Error(w, nil, http.StatusUnauthorized)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
 
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		response.Error(w, err, http.StatusBadRequest)
-		return
+	var id int64
+
+	// First, try to parse from JSON body
+	if r.Body != nil && r.ContentLength > 0 {
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.ID > 0 {
+			id = req.ID
+		}
 	}
 
-	if err := h.DB.ToggleReadLater(id); err != nil {
+	// Fallback: try to get from URL query parameters (for backward compatibility)
+	if id == 0 {
+		idStr := r.URL.Query().Get("id")
+		var err error
+		id, err = strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			response.Error(w, err, http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err := h.DB.ToggleReadLaterForUser(userID, id); err == database.ErrArticleNotFound {
+		response.Error(w, err, http.StatusNotFound)
+		return
+	} else if err != nil {
 		log.Printf("Error toggling article read later status: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
 		return

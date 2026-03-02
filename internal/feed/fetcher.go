@@ -308,8 +308,8 @@ func (f *Fetcher) FetchAllForUser(ctx context.Context, userID int64) {
 		// Update last global refresh time even if no standard feeds
 		newUpdateTime := time.Now().Format(time.RFC3339)
 		log.Printf("User %d refresh started (FreshRSS only), updating last_global_refresh to: %s", userID, newUpdateTime)
-		if err := f.db.SetSetting("last_global_refresh", newUpdateTime); err != nil {
-			log.Printf("ERROR: Failed to update last_global_refresh: %v", err)
+		if err := f.db.SetSettingForUser(userID, "last_global_refresh", newUpdateTime); err != nil {
+			log.Printf("ERROR: Failed to update last_global_refresh for user %d: %v", userID, err)
 		}
 
 		// Mark progress as completed since there's nothing to do
@@ -328,7 +328,8 @@ func (f *Fetcher) FetchAllForUser(ctx context.Context, userID int64) {
 	f.taskManager.SetPoolCapacity(concurrency)
 
 	// Use task manager for refresh (all feeds go to queue tail)
-	f.taskManager.AddGlobalRefresh(ctx, filteredFeeds)
+	// Use AddGlobalRefreshForUser to ensure only this user's feed errors are cleared
+	f.taskManager.AddGlobalRefreshForUser(ctx, filteredFeeds, userID)
 }
 
 func (f *Fetcher) FetchFeed(ctx context.Context, feed models.Feed) {

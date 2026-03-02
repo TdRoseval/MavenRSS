@@ -571,3 +571,100 @@ func (db *DB) collectSyncRequests(articles []articleInfo) []SyncRequest {
 
 	return syncRequests
 }
+
+// MarkArticleReadWithSyncForUser marks an article as read/unread for a specific user and returns sync request if FreshRSS is enabled
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+func (db *DB) MarkArticleReadWithSyncForUser(userID int64, id int64, read bool) (*SyncRequest, error) {
+	var url string
+	var feedID int64
+	err := db.QueryRow("SELECT url, feed_id FROM articles WHERE id = ? AND user_id = ?", id, userID).Scan(&url, &feedID)
+	if err == sql.ErrNoRows {
+		return nil, ErrArticleNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.MarkArticleReadForUser(userID, id, read)
+	if err != nil {
+		return nil, err
+	}
+
+	if read {
+		_ = db.IncrementStat("article_read")
+	}
+
+	var isFreshRSSFeed bool
+	err = db.QueryRow("SELECT COALESCE(is_freshrss_source, 0) FROM feeds WHERE id = ?", feedID).Scan(&isFreshRSSFeed)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	enabled, _ := db.GetSetting("freshrss_enabled")
+	if enabled == "true" && isFreshRSSFeed {
+		action := SyncActionMarkRead
+		if !read {
+			action = SyncActionMarkUnread
+		}
+		log.Printf("[FreshRSS Sync] Article %d needs sync: %s", id, action)
+		return &SyncRequest{
+			ArticleID:  id,
+			ArticleURL: url,
+			Action:     action,
+		}, nil
+	}
+
+	return nil, nil
+}
+
+// ToggleFavoriteWithSyncForUser toggles favorite status for a specific user and returns sync request if FreshRSS is enabled
+// Returns ErrArticleNotFound if the article doesn't belong to the user.
+func (db *DB) ToggleFavoriteWithSyncForUser(userID int64, id int64) (*SyncRequest, error) {
+	var isFav bool
+	var url string
+	var feedID int64
+	err := db.QueryRow("SELECT is_favorite, url, feed_id FROM articles WHERE id = ? AND user_id = ?", id, userID).Scan(&isFav, &url, &feedID)
+	if err == sql.ErrNoRows {
+		return nil, ErrArticleNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.ToggleFavoriteForUser(userID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isFav {
+		_ = db.IncrementStat("article_favorite")
+	}
+
+	var isFreshRSSFeed bool
+	err = db.QueryRow("SELECT COALESCE(is_freshrss_source, 0) FROM feeds WHERE id = ?", feedID).Scan(&isFreshRSSFeed)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	enabled, _ := db.GetSetting("freshrss_enabled")
+	if enabled == "true" && isFreshRSSFeed {
+		action := SyncActionStar
+		if isFav {
+			action = SyncActionUnstar
+		}
+		log.Printf("[FreshRSS Sync] Article %d needs sync: %s", id, action)
+		return &SyncRequest{
+			ArticleID:  id,
+			ArticleURL: url,
+			Action:     action,
+		}, nil
+	}
+
+	return nil, nil
+}
