@@ -387,8 +387,6 @@ func (h *Handler) startMultiUserScheduler(ctx context.Context) {
 						lastRefreshStr = lastRefresh.Format(time.RFC3339)
 						h.DB.SetSettingForUser(userID, "last_global_refresh", lastRefreshStr)
 						log.Printf("User %s: First run - initialized last_global_refresh to %v", user.Username, lastRefresh)
-						// Trigger initial refresh for first-time user
-						go h.triggerUserRefresh(ctx, userID, intelligentMode, &lastRefresh)
 					} else {
 						parsedTime, err := time.Parse(time.RFC3339, lastRefreshStr)
 						if err != nil {
@@ -401,13 +399,20 @@ func (h *Handler) startMultiUserScheduler(ctx context.Context) {
 					}
 					state = &userRefreshState{lastRefresh: lastRefresh}
 					userStates[userID] = state
+
+					// Trigger initial refresh for first-time user (after state is created)
+					if lastRefreshStr == "" || lastRefresh.Equal(time.Now()) {
+						go h.triggerUserRefresh(ctx, userID, intelligentMode, &state.lastRefresh)
+					}
 				}
 				stateMutex.Unlock()
 
 				// Get user's refresh interval
 				intervalStr, _ := h.DB.GetSettingForUser(userID, "update_interval")
+				source := "user"
 				if intervalStr == "" {
 					intervalStr, _ = h.DB.GetSetting("update_interval")
+					source = "global"
 				}
 				defaultIntervalStr := config.GetString("update_interval")
 				defaultInterval := 30
@@ -419,6 +424,7 @@ func (h *Handler) startMultiUserScheduler(ctx context.Context) {
 					interval = i
 				}
 				currentInterval := time.Duration(interval) * time.Minute
+				log.Printf("User %s: Refresh interval=%d minutes (source: %s, intervalStr=%s)", user.Username, interval, source, intervalStr)
 
 				// Check if we need to trigger refresh for this user
 				timeSinceLast := time.Since(state.lastRefresh)

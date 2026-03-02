@@ -385,12 +385,8 @@ func (tm *TaskManager) AddGlobalRefresh(ctx context.Context, feeds []models.Feed
 	tm.progress.Errors = make(map[int64]string)
 	tm.progressMutex.Unlock()
 
-	// Update last global refresh time when global refresh starts
-	newUpdateTime := time.Now().Format(time.RFC3339)
-	log.Printf("Global refresh started, updating last_global_refresh to: %s", newUpdateTime)
-	if err := tm.fetcher.db.SetSetting("last_global_refresh", newUpdateTime); err != nil {
-		log.Printf("ERROR: Failed to update last_global_refresh: %v", err)
-	}
+	// Note: last_global_refresh update is handled by the scheduler (triggerGlobalRefresh / triggerUserRefresh)
+	// to support multi-user scenarios where each user has their own refresh timestamp
 
 	// Track global refresh in statistics
 	if err := tm.fetcher.db.IncrementStat("feed_refresh"); err != nil {
