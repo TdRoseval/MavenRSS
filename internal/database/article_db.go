@@ -16,6 +16,9 @@ import (
 func (db *DB) SaveArticle(article *models.Article) error {
 	db.WaitForReady()
 
+	// Ensure published time is always in UTC to avoid timezone issues
+	article.PublishedAt = article.PublishedAt.UTC()
+
 	// Check if article already exists
 	uniqueID := urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
 	var existingID int64
@@ -57,9 +60,10 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		}
 	}
 
-	// Generate all unique IDs first
+	// Ensure all published times are in UTC and generate unique IDs
 	uniqueIDs := make([]string, len(articles))
 	for i, article := range articles {
+		article.PublishedAt = article.PublishedAt.UTC()
 		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
 	}
 
