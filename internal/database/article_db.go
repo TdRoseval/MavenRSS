@@ -16,10 +16,13 @@ import (
 func (db *DB) SaveArticle(article *models.Article) error {
 	db.WaitForReady()
 
+	// Ensure published time is always in UTC to avoid timezone issues
+	article.PublishedAt = article.PublishedAt.UTC()
+
 	// Check if article already exists
-	uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+	uniqueID := urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
 	var existingID int64
-	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&existingID)
+	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", article.UserID, uniqueID).Scan(&existingID)
 	if err == nil {
 		// Article already exists, skip
 		return nil
@@ -57,14 +60,64 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		}
 	}
 
-	// Check quota first before processing
+	// Ensure all published times are in UTC and generate unique IDs
+	uniqueIDs := make([]string, len(articles))
+	for i, article := range articles {
+		article.PublishedAt = article.PublishedAt.UTC()
+		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+	}
+
+	// Check quota first before processing - using batch query optimization
 	if userID > 0 {
 		var newArticlesCount int64
-		for _, article := range articles {
-			uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
-			var existingID int64
-			err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&existingID)
+		
+		// Batch query to check which articles already exist - process in batches of 500
+		// SQLite has a default limit of 999 parameters in IN clause, so use 500 to be safe
+		const batchSize = 500
+		existingIDs := make(map[string]bool)
+		
+		for i := 0; i < len(uniqueIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(uniqueIDs) {
+				end = len(uniqueIDs)
+			}
+			batch := uniqueIDs[i:end]
+			
+			// Build IN clause for this batch
+			placeholders := make([]string, len(batch))
+			args := make([]interface{}, len(batch))
+			for j, id := range batch {
+				placeholders[j] = "?"
+				args[j] = id
+			}
+			
+			query := "SELECT unique_id FROM articles WHERE unique_id IN (" + strings.Join(placeholders, ",") + ")"
+			rows, err := db.Query(query, args...)
 			if err != nil {
+				// Fallback to individual queries for this batch
+				log.Printf("Batch query failed, using individual queries for batch %d-%d: %v", i, end, err)
+				for _, id := range batch {
+					var existingID int64
+					err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", id).Scan(&existingID)
+					if err == nil {
+						existingIDs[id] = true
+					}
+				}
+			} else {
+				// Process results from batch query
+				for rows.Next() {
+					var id string
+					if err := rows.Scan(&id); err == nil {
+						existingIDs[id] = true
+					}
+				}
+				rows.Close()
+			}
+		}
+		
+		// Count new articles
+		for _, id := range uniqueIDs {
+			if !existingIDs[id] {
 				newArticlesCount++
 			}
 		}
@@ -105,7 +158,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	}
 	defer stmt.Close()
 
-	for _, article := range articles {
+	for i, article := range articles {
 		// Check context before each insert
 		select {
 		case <-ctx.Done():
@@ -113,8 +166,8 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		default:
 		}
 
-		// Generate unique_id for deduplication
-		uniqueID := urlutil.GenerateArticleUniqueID(article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+		// Use pre-generated unique_id for deduplication
+		uniqueID := uniqueIDs[i]
 		_, err := stmt.ExecContext(ctx, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
 		if err != nil {
 			log.Println("Error saving article in batch:", err)
@@ -388,11 +441,11 @@ func (db *DB) GetArticlesByIDs(ids []int64) ([]models.Article, error) {
 // GetArticleIDByUniqueID retrieves an article's ID by its unique identifier.
 // This is the preferred method for looking up articles as it uses the title+feed_id+published_date based deduplication.
 // Note: Uses date only (YYYY-MM-DD) rather than full timestamp for better deduplication.
-func (db *DB) GetArticleIDByUniqueID(title string, feedID int64, publishedAt time.Time, hasValidPublishedTime bool) (int64, error) {
+func (db *DB) GetArticleIDByUniqueID(userID int64, title string, feedID int64, publishedAt time.Time, hasValidPublishedTime bool) (int64, error) {
 	db.WaitForReady()
-	uniqueID := urlutil.GenerateArticleUniqueID(title, feedID, publishedAt, hasValidPublishedTime)
+	uniqueID := urlutil.GenerateArticleUniqueID(userID, title, feedID, publishedAt, hasValidPublishedTime)
 	var id int64
-	err := db.QueryRow("SELECT id FROM articles WHERE unique_id = ?", uniqueID).Scan(&id)
+	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", userID, uniqueID).Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil

@@ -2,7 +2,7 @@
 import { useAppStore } from './stores/app';
 import { useAuthStore } from './stores/auth';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue';
 import { saveLanguage } from './i18n';
 import Sidebar from './components/sidebar/Sidebar.vue';
 import ArticleList from './components/article/ArticleList.vue';
@@ -147,6 +147,48 @@ const { shortcuts } = useKeyboardShortcuts({
   },
 });
 
+// Event handler functions
+function handleShowAddFeed(): void {
+  showAddFeed.value = true;
+}
+
+function handleShowEditFeed(e: Event): void {
+  const customEvent = e as CustomEvent<any>;
+  feedToEdit.value = customEvent.detail;
+  showEditFeed.value = true;
+}
+
+function handleShowSettings(): void {
+  showSettings.value = true;
+}
+
+function handleShowDiscoverBlogs(e: Event): void {
+  const customEvent = e as CustomEvent<any>;
+  feedToDiscover.value = customEvent.detail;
+  showDiscoverBlogs.value = true;
+}
+
+function handleLayoutModeChanged(e: Event): void {
+  const customEvent = e as CustomEvent<{ mode: string }>;
+  const mode = customEvent.detail.mode;
+  const isCompactModeLayout = mode === 'compact';
+  isCardMode.value = mode === 'card';
+  setCompactMode(isCompactModeLayout);
+  if (!isCardMode.value) {
+    setArticleListWidth(isCompactModeLayout ? 600 : 400);
+  }
+}
+
+function handleOpenContextMenu(e: Event): void {
+  openContextMenu(e as CustomEvent<any>);
+}
+
+function handleShowUserManagement(): void {
+  if (isAdmin.value) {
+    showUserManagement.value = true;
+  }
+}
+
 onMounted(() => {
   // Load authentication state from storage
   authStore.loadFromStorage();
@@ -160,6 +202,15 @@ onMounted(() => {
   // Initialize mobile detection
   isMobile.value = checkIsMobile();
   window.addEventListener('resize', handleResize);
+
+  // Add event listeners inside onMounted
+  window.addEventListener('show-add-feed', handleShowAddFeed);
+  window.addEventListener('show-edit-feed', handleShowEditFeed);
+  window.addEventListener('show-settings', handleShowSettings);
+  window.addEventListener('show-discover-blogs', handleShowDiscoverBlogs);
+  window.addEventListener('layout-mode-changed', handleLayoutModeChanged);
+  window.addEventListener('open-context-menu', handleOpenContextMenu);
+  window.addEventListener('show-user-management', handleShowUserManagement);
 
   // If user is authenticated, load settings and data
   if (authStore.isAuthenticated) {
@@ -193,6 +244,22 @@ onMounted(() => {
       }, 500);
     }, 100);
   }
+});
+
+onBeforeUnmount(() => {
+  // Clean up all event listeners
+  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('show-add-feed', handleShowAddFeed);
+  window.removeEventListener('show-edit-feed', handleShowEditFeed);
+  window.removeEventListener('show-settings', handleShowSettings);
+  window.removeEventListener('show-discover-blogs', handleShowDiscoverBlogs);
+  window.removeEventListener('layout-mode-changed', handleLayoutModeChanged);
+  window.removeEventListener('open-context-menu', handleOpenContextMenu);
+  window.removeEventListener('show-user-management', handleShowUserManagement);
+  
+  // Clean up store timers
+  store.stopPollProgress();
+  store.stopFreshRSSStatusPolling();
 });
 
 async function loadInitialSettings() {
@@ -251,41 +318,6 @@ async function loadInitialSettings() {
   }
 }
 
-// Listen for events from Sidebar (moved outside onMounted to ensure proper capture)
-window.addEventListener('show-add-feed', () => {
-  showAddFeed.value = true;
-});
-window.addEventListener('show-edit-feed', (e) => {
-  const customEvent = e as CustomEvent<any>;
-  feedToEdit.value = customEvent.detail;
-  showEditFeed.value = true;
-});
-window.addEventListener('show-settings', () => {
-  showSettings.value = true;
-});
-window.addEventListener('show-discover-blogs', (e) => {
-  const customEvent = e as CustomEvent<any>;
-  feedToDiscover.value = customEvent.detail;
-  showDiscoverBlogs.value = true;
-});
-
-// Listen for compact mode changes to update article list width
-window.addEventListener('layout-mode-changed', (e) => {
-  const customEvent = e as CustomEvent<{ mode: string }>;
-  const mode = customEvent.detail.mode;
-  const isCompactModeLayout = mode === 'compact';
-  isCardMode.value = mode === 'card';
-  setCompactMode(isCompactModeLayout);
-  if (!isCardMode.value) {
-    setArticleListWidth(isCompactModeLayout ? 600 : 400);
-  }
-});
-
-// Global Context Menu Event Listener
-window.addEventListener('open-context-menu', (e) => {
-  openContextMenu(e as CustomEvent<any>);
-});
-
 // Check if we should trigger refresh based on last update time and interval
 // Note: This is now mainly for display purposes - actual auto-refresh is controlled by backend
 function shouldTriggerRefresh(lastUpdate: string, intervalMinutes: number): boolean {
@@ -316,13 +348,6 @@ function onLogin(): void {
   store.fetchFeeds();
   store.fetchArticles();
 }
-
-// Listen for user management event
-window.addEventListener('show-user-management', () => {
-  if (isAdmin.value) {
-    showUserManagement.value = true;
-  }
-});
 </script>
 
 <template>

@@ -325,8 +325,12 @@ func (s *BidirectionalSyncService) fetchAllArticles(ctx context.Context, streamI
 		}
 		continuation = result.Continuation
 
-		// Small delay to avoid overwhelming the server
-		time.Sleep(50 * time.Millisecond)
+		// Small delay to avoid overwhelming the server, but respect context cancellation
+				select {
+				case <-ctx.Done():
+					return allArticles, ctx.Err()
+				case <-time.After(50 * time.Millisecond):
+				}
 	}
 
 	log.Printf("Finished fetching %d total articles from stream %s (%d pages)",

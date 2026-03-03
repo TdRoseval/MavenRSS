@@ -482,6 +482,11 @@ func main() {
 	log.Println("Shutting down server...")
 	bgCancel()
 
+	// Stop fetcher to clean up task manager and cleanup manager
+	if fetcher != nil {
+		fetcher.Stop()
+	}
+
 	// Shutdown HTTP server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

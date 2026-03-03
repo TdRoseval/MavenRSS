@@ -604,6 +604,11 @@ func main() {
 	// Give some time for tasks to finish
 	time.Sleep(500 * time.Millisecond)
 
+	// Stop fetcher to clean up task manager and cleanup manager
+	if fetcher != nil {
+		fetcher.Stop()
+	}
+
 	// Close DB with timeout
 	done := make(chan struct{})
 	go func() {
