@@ -251,6 +251,9 @@ func (p *ClientPool) evictLRUClient() {
 		return
 	}
 	key := oldest.Value.(string)
+	if pc, exists := p.clients[key]; exists {
+		pc.transport.CloseIdleConnections()
+	}
 	delete(p.clients, key)
 	p.clientLRU.Remove(oldest)
 	delete(p.clientKeys, key)
@@ -266,6 +269,9 @@ func (p *ClientPool) evictLRUAIClient() {
 		return
 	}
 	key := oldest.Value.(string)
+	if pc, exists := p.aiClients[key]; exists {
+		pc.transport.CloseIdleConnections()
+	}
 	delete(p.aiClients, key)
 	p.aiClientLRU.Remove(oldest)
 	delete(p.aiClientKeys, key)
@@ -281,6 +287,9 @@ func (p *ClientPool) evictLRUUserAgentClient() {
 		return
 	}
 	key := oldest.Value.(string)
+	if pc, exists := p.userAgentClients[key]; exists {
+		pc.transport.CloseIdleConnections()
+	}
 	delete(p.userAgentClients, key)
 	p.userAgentClientLRU.Remove(oldest)
 	delete(p.userAgentClientKeys, key)
@@ -332,6 +341,15 @@ func (p *ClientPool) buildUserAgentKey(proxyURL string, userAgent string) string
 func (p *ClientPool) Clear() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	for _, pc := range p.clients {
+		pc.transport.CloseIdleConnections()
+	}
+	for _, pc := range p.aiClients {
+		pc.transport.CloseIdleConnections()
+	}
+	for _, pc := range p.userAgentClients {
+		pc.transport.CloseIdleConnections()
+	}
 	p.clients = make(map[string]*pooledClient)
 	p.aiClients = make(map[string]*pooledClient)
 	p.userAgentClients = make(map[string]*pooledClient)
@@ -341,6 +359,12 @@ func (p *ClientPool) Clear() {
 func (p *ClientPool) UpdateConfig(defaultConfig, aiConfig TransportConfig) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	for _, pc := range p.clients {
+		pc.transport.CloseIdleConnections()
+	}
+	for _, pc := range p.aiClients {
+		pc.transport.CloseIdleConnections()
+	}
 	p.defaultConfig = defaultConfig
 	p.aiConfig = aiConfig
 	p.clients = make(map[string]*pooledClient)
@@ -416,6 +440,16 @@ func (p *ClientPool) ClearAllClients() {
 	oldClientCount := len(p.clients)
 	oldAIClientCount := len(p.aiClients)
 	oldUserAgentClientCount := len(p.userAgentClients)
+	
+	for _, pc := range p.clients {
+		pc.transport.CloseIdleConnections()
+	}
+	for _, pc := range p.aiClients {
+		pc.transport.CloseIdleConnections()
+	}
+	for _, pc := range p.userAgentClients {
+		pc.transport.CloseIdleConnections()
+	}
 	
 	p.clients = make(map[string]*pooledClient)
 	p.aiClients = make(map[string]*pooledClient)

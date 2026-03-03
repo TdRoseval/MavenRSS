@@ -155,16 +155,16 @@ func (db *DB) ListUsers() ([]*models.User, error) {
 	return users, nil
 }
 
-// ListActiveUsers returns all active users (excluding template users).
+// ListActiveUsers returns all active users.
 func (db *DB) ListActiveUsers() ([]*models.User, error) {
 	query := `
 		SELECT id, username, email, password_hash, role, status, 
 			   inherited_from, has_inherited, created_at, updated_at
 		FROM users 
-		WHERE status = 'active' AND role != ?
+		WHERE status = 'active'
 		ORDER BY created_at DESC
 	`
-	rows, err := db.Query(query, models.RoleTemplate)
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}

@@ -120,7 +120,16 @@ func (h *Handler) startScheduler(ctx context.Context, intelligentMode bool) {
 	}
 
 	// Log initial interval
-	log.Printf("Global refresh interval: %v", getGlobalInterval())
+	currentGlobalInterval := getGlobalInterval()
+	log.Printf("Global refresh interval: %v", currentGlobalInterval)
+
+	// Check if we need to trigger a refresh immediately on startup
+	timeSinceLastGlobal := time.Since(lastGlobalRefresh)
+	if timeSinceLastGlobal >= currentGlobalInterval {
+		log.Printf("Time since last global refresh (%v) >= global interval (%v) on startup, triggering refresh immediately",
+			timeSinceLastGlobal, currentGlobalInterval)
+		go h.triggerGlobalRefresh(ctx, intelligentMode, &lastGlobalRefresh)
+	}
 
 	// Use a ticker to check every minute
 	ticker := time.NewTicker(1 * time.Minute)
@@ -132,6 +141,15 @@ func (h *Handler) startScheduler(ctx context.Context, intelligentMode bool) {
 			log.Println("Stopping scheduler")
 			return
 		case <-ticker.C:
+			// Reload last_global_refresh from database on every check (方案1)
+			// This ensures we pick up any manual refresh updates from frontend
+			lastGlobalRefreshStr, err := h.DB.GetSetting("last_global_refresh")
+			if err == nil && lastGlobalRefreshStr != "" {
+				if parsedTime, parseErr := time.Parse(time.RFC3339, lastGlobalRefreshStr); parseErr == nil {
+					lastGlobalRefresh = parsedTime
+				}
+			}
+
 			// Get latest global interval on every check
 			currentGlobalInterval := getGlobalInterval()
 			// Check if we need to trigger global refresh
@@ -177,16 +195,11 @@ func (h *Handler) triggerGlobalRefresh(ctx context.Context, intelligentMode bool
 		}
 	}
 
-	// If no refreshable feeds, skip updating last_global_refresh
-	// This allows the next refresh to be triggered when feeds are added
-	if len(refreshableFeeds) == 0 {
-		log.Printf("No refreshable feeds found (all %d feeds are FreshRSS sources), skipping global refresh", len(globalFeeds))
-		return
-	}
-
-	// Update in-memory timestamp and database setting
+	// Always update last_global_refresh, even if there are no refreshable feeds
+	// This ensures that the next refresh check will use the current time as the baseline,
+	// rather than repeatedly checking against an old timestamp
 	*lastGlobalRefresh = time.Now()
-	log.Printf("Global refresh triggered at %v", *lastGlobalRefresh)
+	log.Printf("Global refresh check at %v", *lastGlobalRefresh)
 
 	// Save to settings for persistence across restarts
 	lastGlobalRefreshStr := lastGlobalRefresh.Format(time.RFC3339)
@@ -194,28 +207,33 @@ func (h *Handler) triggerGlobalRefresh(ctx context.Context, intelligentMode bool
 		log.Printf("Failed to save last_global_refresh to settings: %v", err)
 	}
 
+	// If no refreshable feeds, skip the actual refresh but we've already updated the timestamp
+	if len(refreshableFeeds) == 0 {
+		log.Printf("No refreshable feeds found (all %d feeds are FreshRSS sources), skipping actual refresh", len(globalFeeds))
+		return
+	}
+
 	log.Printf("Triggering global refresh for %d refreshable feeds (skipped %d FreshRSS feeds, intelligent mode: %v)",
 		len(refreshableFeeds), len(globalFeeds)-len(refreshableFeeds), intelligentMode)
 
 	if intelligentMode {
-		// In intelligent mode, schedule each feed individually with calculated intervals
-		calculator := h.Fetcher.GetIntelligentRefreshCalculator()
-		for _, feed := range refreshableFeeds {
-			interval := calculator.CalculateInterval(feed)
-			staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
+			// In intelligent mode, schedule each feed individually with calculated intervals
+			calculator := h.Fetcher.GetIntelligentRefreshCalculator()
+			for _, feed := range refreshableFeeds {
+				interval := calculator.CalculateInterval(feed)
+				staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
 
-			go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
-				time.Sleep(delay)
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					log.Printf("Auto-refreshing feed %s (intelligent mode, interval: %v)", f.Title, calculatedInterval)
-					h.Fetcher.FetchSingleFeed(ctx, f, false)
-				}
-			}(feed, staggerDelay, interval)
-		}
-	} else {
+				go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
+					select {
+					case <-time.After(delay):
+						log.Printf("Auto-refreshing feed %s (intelligent mode, interval: %v)", f.Title, calculatedInterval)
+						h.Fetcher.FetchSingleFeed(ctx, f, false)
+					case <-ctx.Done():
+						return
+					}
+				}(feed, staggerDelay, interval)
+			}
+		} else {
 		// In fixed mode, refresh all feeds together
 		h.Fetcher.FetchAll(ctx)
 	}
@@ -280,13 +298,12 @@ func (h *Handler) scheduleIndividualFeeds(ctx context.Context, intelligentMode b
 			// Schedule feed refresh
 			feedCopy := feed
 			go func(f models.Feed, delay time.Duration, interval time.Duration) {
-				time.Sleep(delay)
 				select {
-				case <-ctx.Done():
-					return
-				default:
+				case <-time.After(delay):
 					log.Printf("Auto-refreshing feed %s (custom interval: %v)", f.Title, interval)
 					h.Fetcher.FetchSingleFeed(ctx, f, false)
+				case <-ctx.Done():
+					return
 				}
 			}(feedCopy, staggerDelay, refreshInterval)
 		}
@@ -375,33 +392,59 @@ func (h *Handler) startMultiUserScheduler(ctx context.Context) {
 
 				intelligentMode := refreshMode == "intelligent"
 
-				// Get or create user state
+				// Get or create user state, and reload from database on every check (方案1)
 				stateMutex.Lock()
 				state, exists := userStates[userID]
-				if !exists {
-					// Initialize user state
-					lastRefreshStr, _ := h.DB.GetSettingForUser(userID, "last_global_refresh")
-					var lastRefresh time.Time
-					if lastRefreshStr == "" {
+				// Always reload last_global_refresh from database on every check
+				lastRefreshStr, _ := h.DB.GetSettingForUser(userID, "last_global_refresh")
+				var lastRefresh time.Time
+				if lastRefreshStr == "" {
+					lastRefresh = time.Now()
+					lastRefreshStr = lastRefresh.Format(time.RFC3339)
+					h.DB.SetSettingForUser(userID, "last_global_refresh", lastRefreshStr)
+					log.Printf("User %s: First run - initialized last_global_refresh to %v", user.Username, lastRefresh)
+				} else {
+					parsedTime, err := time.Parse(time.RFC3339, lastRefreshStr)
+					if err != nil {
+						log.Printf("User %s: Failed to parse last_global_refresh (%s): %v, resetting to now", user.Username, lastRefreshStr, err)
 						lastRefresh = time.Now()
-						lastRefreshStr = lastRefresh.Format(time.RFC3339)
-						h.DB.SetSettingForUser(userID, "last_global_refresh", lastRefreshStr)
-						log.Printf("User %s: First run - initialized last_global_refresh to %v", user.Username, lastRefresh)
 					} else {
-						parsedTime, err := time.Parse(time.RFC3339, lastRefreshStr)
-						if err != nil {
-							log.Printf("User %s: Failed to parse last_global_refresh (%s): %v, resetting to now", user.Username, lastRefreshStr, err)
-							lastRefresh = time.Now()
-						} else {
-							lastRefresh = parsedTime
-							log.Printf("User %s: Loaded last_global_refresh from settings: %v", user.Username, lastRefresh)
-						}
+						lastRefresh = parsedTime
 					}
+				}
+				// Update or create state in memory
+				if !exists {
 					state = &userRefreshState{lastRefresh: lastRefresh}
 					userStates[userID] = state
+				} else {
+					state.lastRefresh = lastRefresh
+				}
 
-					// Trigger initial refresh for first-time user (after state is created)
-					if lastRefreshStr == "" || lastRefresh.Equal(time.Now()) {
+				// Check if we need to trigger refresh on first run
+				if !exists {
+					// Get user's refresh interval
+					intervalStr, _ := h.DB.GetSettingForUser(userID, "update_interval")
+					if intervalStr == "" {
+						intervalStr, _ = h.DB.GetSetting("update_interval")
+					}
+					defaultIntervalStr := config.GetString("update_interval")
+					defaultInterval := 30
+					if i, err := strconv.Atoi(defaultIntervalStr); err == nil && i > 0 {
+						defaultInterval = i
+					}
+					interval := defaultInterval
+					if i, err := strconv.Atoi(intervalStr); err == nil && i > 0 {
+						interval = i
+					}
+					currentInterval := time.Duration(interval) * time.Minute
+
+					// Trigger refresh if it's time, or if it's the first run
+					timeSinceLast := time.Since(lastRefresh)
+					if lastRefreshStr == "" || lastRefresh.Equal(time.Now()) || timeSinceLast >= currentInterval {
+						if timeSinceLast >= currentInterval {
+							log.Printf("User %s: Time since last refresh (%v) >= interval (%v) on startup, triggering refresh",
+								user.Username, timeSinceLast, currentInterval)
+						}
 						go h.triggerUserRefresh(ctx, userID, intelligentMode, &state.lastRefresh)
 					}
 				}
@@ -466,15 +509,11 @@ func (h *Handler) triggerUserRefresh(ctx context.Context, userID int64, intellig
 		}
 	}
 
-	// If no refreshable feeds, skip updating last_refresh
-	if len(refreshableFeeds) == 0 {
-		log.Printf("User %d: No refreshable feeds found (all %d feeds are FreshRSS sources), skipping refresh", userID, len(globalFeeds))
-		return
-	}
-
-	// Update in-memory timestamp and database setting
+	// Always update last_refresh, even if there are no refreshable feeds
+	// This ensures that the next refresh check will use the current time as the baseline,
+	// rather than repeatedly checking against an old timestamp
 	*lastRefresh = time.Now()
-	log.Printf("User %d: Refresh triggered at %v", userID, *lastRefresh)
+	log.Printf("User %d: Refresh check at %v", userID, *lastRefresh)
 
 	// Save to user settings for persistence across restarts
 	lastRefreshStr := lastRefresh.Format(time.RFC3339)
@@ -482,28 +521,33 @@ func (h *Handler) triggerUserRefresh(ctx context.Context, userID int64, intellig
 		log.Printf("User %d: Failed to save last_global_refresh to settings: %v", userID, err)
 	}
 
+	// If no refreshable feeds, skip the actual refresh but we've already updated the timestamp
+	if len(refreshableFeeds) == 0 {
+		log.Printf("User %d: No refreshable feeds found (all %d feeds are FreshRSS sources), skipping actual refresh", userID, len(globalFeeds))
+		return
+	}
+
 	log.Printf("User %d: Triggering refresh for %d refreshable feeds (skipped %d FreshRSS feeds, intelligent mode: %v)",
 		userID, len(refreshableFeeds), len(globalFeeds)-len(refreshableFeeds), intelligentMode)
 
 	if intelligentMode {
-		// In intelligent mode, schedule each feed individually with calculated intervals
-		calculator := h.Fetcher.GetIntelligentRefreshCalculator()
-		for _, feed := range refreshableFeeds {
-			interval := calculator.CalculateInterval(feed)
-			staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
+			// In intelligent mode, schedule each feed individually with calculated intervals
+			calculator := h.Fetcher.GetIntelligentRefreshCalculator()
+			for _, feed := range refreshableFeeds {
+				interval := calculator.CalculateInterval(feed)
+				staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
 
-			go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
-				time.Sleep(delay)
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					log.Printf("User %d: Auto-refreshing feed %s (intelligent mode, interval: %v)", userID, f.Title, calculatedInterval)
-					h.Fetcher.FetchSingleFeed(ctx, f, false)
-				}
-			}(feed, staggerDelay, interval)
-		}
-	} else {
+				go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
+					select {
+					case <-time.After(delay):
+						log.Printf("User %d: Auto-refreshing feed %s (intelligent mode, interval: %v)", userID, f.Title, calculatedInterval)
+						h.Fetcher.FetchSingleFeed(ctx, f, false)
+					case <-ctx.Done():
+						return
+					}
+				}(feed, staggerDelay, interval)
+			}
+		} else {
 		// In fixed mode, refresh all feeds for this user
 		h.Fetcher.FetchAllForUser(ctx, userID)
 	}
@@ -561,13 +605,12 @@ func (h *Handler) scheduleUserIndividualFeeds(ctx context.Context, userID int64,
 			// Schedule feed refresh
 			feedCopy := feed
 			go func(f models.Feed, delay time.Duration, interval time.Duration) {
-				time.Sleep(delay)
 				select {
-				case <-ctx.Done():
-					return
-				default:
+				case <-time.After(delay):
 					log.Printf("User %d: Auto-refreshing feed %s (custom interval: %v)", userID, f.Title, interval)
 					h.Fetcher.FetchSingleFeed(ctx, f, false)
+				case <-ctx.Done():
+					return
 				}
 			}(feedCopy, staggerDelay, refreshInterval)
 		}

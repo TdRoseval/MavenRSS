@@ -107,6 +107,9 @@ export const useAppStore = defineStore('app', () => {
   // AI Search results
   const aiSearchResults = ref<Article[]>([]);
 
+  // Refresh progress polling timer
+  let pollProgressInterval: ReturnType<typeof setInterval> | null = null;
+
   // Refresh progress
   const refreshProgress = ref<RefreshProgress>({ isRunning: false });
 
@@ -442,11 +445,14 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function pollProgress(): void {
+    // Clear any existing interval first
+    stopPollProgress();
+
     // Track previous pool/queue counts to detect task completion
     let previousPoolCount = 0;
     let previousQueueCount = 0;
 
-    const interval = setInterval(async () => {
+    pollProgressInterval = setInterval(async () => {
       try {
         const data: any = await apiClient.get('/progress');
         refreshProgress.value = {
@@ -480,7 +486,7 @@ export const useAppStore = defineStore('app', () => {
         previousQueueCount = currentQueueCount;
 
         if (!data.is_running) {
-          clearInterval(interval);
+          stopPollProgress();
           fetchFeeds();
           fetchArticles();
           fetchUnreadCounts();
@@ -494,10 +500,17 @@ export const useAppStore = defineStore('app', () => {
         }
       } catch (e) {
         console.error('Error polling progress:', e);
-        clearInterval(interval);
+        stopPollProgress();
         refreshProgress.value.isRunning = false;
       }
     }, 500);
+  }
+
+  function stopPollProgress(): void {
+    if (pollProgressInterval) {
+      clearInterval(pollProgressInterval);
+      pollProgressInterval = null;
+    }
   }
 
   // FreshRSS sync status monitoring
@@ -708,6 +721,7 @@ export const useAppStore = defineStore('app', () => {
     initTheme,
     refreshFeeds,
     pollProgress,
+    stopPollProgress,
     startFreshRSSStatusPolling,
     stopFreshRSSStatusPolling,
     checkForAppUpdates,

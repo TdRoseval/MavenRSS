@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -26,6 +27,14 @@ type FeedParser interface {
 	ParseURLWithContext(url string, ctx context.Context) (*gofeed.Feed, error)
 }
 
+// PostProcessTask represents a task for content caching and rule application
+type PostProcessTask struct {
+	ArticlesWithContent []*ArticleWithContent
+	FeedID              int64
+	FeedTitle           string
+	UserID              int64
+}
+
 type Fetcher struct {
 	db                *database.DB
 	fp                FeedParser
@@ -37,6 +46,8 @@ type Fetcher struct {
 	refreshCalculator *IntelligentRefreshCalculator
 	taskManager       *TaskManager
 	cleanupManager    *CleanupManager
+	postProcessChan   chan *PostProcessTask
+	postProcessWg     sync.WaitGroup
 }
 
 func NewFetcher(db *database.DB) *Fetcher {
@@ -53,6 +64,10 @@ func NewFetcher(db *database.DB) *Fetcher {
 	// Create high priority parser without fixed HTTP client
 	highPriorityParser := gofeed.NewParser()
 
+	// Initialize post-processing channel with larger buffer (capacity 500)
+	// Larger buffer prevents task loss during high load
+	postProcessChan := make(chan *PostProcessTask, 500)
+
 	fetcher := &Fetcher{
 		db:                db,
 		fp:                parser,
@@ -60,6 +75,7 @@ func NewFetcher(db *database.DB) *Fetcher {
 		scriptExecutor:    executor,
 		emailFetcher:      NewEmailFetcher(db),
 		refreshCalculator: NewIntelligentRefreshCalculator(db),
+		postProcessChan:   postProcessChan,
 	}
 
 	// Initialize task manager with default capacity (increased from 5 to 10)
@@ -70,7 +86,67 @@ func NewFetcher(db *database.DB) *Fetcher {
 	fetcher.cleanupManager = NewCleanupManager(fetcher)
 	fetcher.cleanupManager.Start()
 
+	// Calculate optimal worker count based on CPU cores
+	// Formula: min(max(1, CPU_CORES), 4) - cap at 4 workers to prevent overload
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	if numWorkers > 4 {
+		numWorkers = 4
+	}
+	log.Printf("Starting %d post-processing workers (CPU cores: %d)", numWorkers, runtime.NumCPU())
+
+	// Start post-processing workers
+	fetcher.startPostProcessWorkers(numWorkers)
+
 	return fetcher
+}
+
+// startPostProcessWorkers starts the post-processing worker pool
+func (f *Fetcher) startPostProcessWorkers(numWorkers int) {
+	for i := 0; i < numWorkers; i++ {
+		f.postProcessWg.Add(1)
+		go f.postProcessWorker(i)
+	}
+}
+
+// postProcessWorker is a worker that processes post-process tasks
+func (f *Fetcher) postProcessWorker(workerID int) {
+	defer f.postProcessWg.Done()
+
+	log.Printf("Post-process worker %d started", workerID)
+
+	// Simple loop: just read from channel until it's closed
+	for task := range f.postProcessChan {
+		f.processPostTask(task)
+	}
+
+	log.Printf("Post-process worker %d stopped (channel closed)", workerID)
+}
+
+// processPostTask processes a single post-process task
+func (f *Fetcher) processPostTask(task *PostProcessTask) {
+	// Cache article contents
+	f.cacheArticleContents(task.ArticlesWithContent)
+
+	// Apply rules
+	if len(task.ArticlesWithContent) > 0 {
+		savedArticles, err := f.db.GetArticlesForUser(task.UserID, "", task.FeedID, "", false, len(task.ArticlesWithContent), 0)
+		if err != nil {
+			log.Printf("Error getting articles for rule application: %v", err)
+			return
+		}
+		if len(savedArticles) > 0 {
+			engine := rules.NewEngine(f.db)
+			affected, err := engine.ApplyRulesToArticles(savedArticles)
+			if err != nil {
+				log.Printf("Error applying rules for feed %s: %v", task.FeedTitle, err)
+			} else if affected > 0 {
+				utils.DebugLog("Applied rules to %d articles in feed %s", affected, task.FeedTitle)
+			}
+		}
+	}
 }
 
 // GetIntelligentRefreshCalculator returns the refresh calculator
@@ -91,6 +167,26 @@ func (f *Fetcher) GetTaskManager() *TaskManager {
 // StopRefreshForUser stops the refresh tasks for a specific user
 func (f *Fetcher) StopRefreshForUser(userID int64) {
 	f.taskManager.StopForUser(userID)
+}
+
+// Stop stops the fetcher and cleans up all resources
+func (f *Fetcher) Stop() {
+	log.Println("Stopping fetcher...")
+	
+	// Stop post-processing workers by closing the channel
+	// This is the clean way to stop workers - they'll finish
+	// all pending tasks first before exiting
+	close(f.postProcessChan)
+	f.postProcessWg.Wait()
+	log.Println("Post-processing workers stopped")
+	
+	if f.taskManager != nil {
+		f.taskManager.Stop()
+	}
+	if f.cleanupManager != nil {
+		f.cleanupManager.Stop()
+	}
+	log.Println("Fetcher stopped")
 }
 
 // GetCleanupManager returns the cleanup manager
@@ -460,30 +556,33 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 		}
 
 		// Post-processing operations (content caching and rule application)
-		// These are non-critical and run asynchronously to avoid blocking the feed refresh
-		// Even if they fail or are slow, the feed has already been successfully saved
-		go func() {
-			// Cache article content from RSS feed
-			f.cacheArticleContents(articlesWithContent)
-
-			// Apply rules to newly saved articles
-			savedArticles, err := f.db.GetArticles("", feed.ID, "", false, len(articlesToSave), 0)
-			if err != nil {
-				log.Printf("Error getting articles for rule application: %v", err)
-				return
+		// Send to worker pool to avoid creating too many goroutines
+		if len(articlesWithContent) > 0 {
+			// Try to send to channel with timeout
+			select {
+			case f.postProcessChan <- &PostProcessTask{
+				ArticlesWithContent: articlesWithContent,
+				FeedID:              feed.ID,
+				FeedTitle:           feed.Title,
+				UserID:              feed.UserID,
+			}:
+				// Successfully sent
+			case <-time.After(100 * time.Millisecond):
+				// Channel still full after short timeout, try once more with longer wait
+				select {
+				case f.postProcessChan <- &PostProcessTask{
+					ArticlesWithContent: articlesWithContent,
+					FeedID:              feed.ID,
+					FeedTitle:           feed.Title,
+					UserID:              feed.UserID,
+				}:
+					// Successfully sent on retry
+				case <-time.After(500 * time.Millisecond):
+					// Still full, log and skip (these operations are non-critical)
+					log.Printf("Post-process channel full after retries, skipping for feed %s", feed.Title)
+				}
 			}
-			if len(savedArticles) == 0 {
-				return
-			}
-
-			engine := rules.NewEngine(f.db)
-			affected, err := engine.ApplyRulesToArticles(savedArticles)
-			if err != nil {
-				log.Printf("Error applying rules for feed %s: %v", feed.Title, err)
-			} else if affected > 0 {
-				utils.DebugLog("Applied rules to %d articles in feed %s", affected, feed.Title)
-			}
-		}()
+		}
 	}
 	return nil
 }
@@ -543,7 +642,7 @@ func (f *Fetcher) cacheArticleContents(articlesWithContent []*ArticleWithContent
 		}
 
 		// Get article ID by unique_id (article was just saved, so it should exist)
-		articleID, err := f.db.GetArticleIDByUniqueID(awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
+		articleID, err := f.db.GetArticleIDByUniqueID(awc.Article.UserID, awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
 		if err != nil {
 			// Article might not exist yet (race condition) or other error
 			utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)
