@@ -300,8 +300,7 @@ export function useSidebar() {
         isDanger: true,
       });
       if (confirmed) {
-        const response = await authPost(`/api/articles/clear-for-feed?feed_id=${feed.id}`);
-        const data = await response.json();
+        const data = await authPost(`/api/articles/clear-for-feed?feed_id=${feed.id}`);
         store.fetchArticles();
         store.fetchUnreadCounts();
         window.showToast(t('modal.feed.articlesCleared', { count: data.deleted }), 'success');
