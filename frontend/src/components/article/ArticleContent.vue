@@ -523,13 +523,15 @@ async function translateContentParagraphs(content: string) {
       hyperlinks,
     } = extractTextWithPlaceholders(htmlEl);
 
-    if (!textWithPlaceholders || textWithPlaceholders.length < 2) continue;
+    // Even very short text should be translated (e.g., single words in quotes)
+    // Only skip completely empty text
+    if (!textWithPlaceholders || textWithPlaceholders.trim().length === 0) continue;
 
     // Translate the text (with placeholders and link markers)
-    const translation = await translateText(textWithPlaceholders);
+    // Always use force: true for individual paragraphs
+    // This ensures each paragraph gets translated, even if language detection is uncertain
+    const translation = await translateText(textWithPlaceholders, true);
     const translatedText = translation.text;
-
-    // Skip if translation is same as original or empty
     if (!translatedText || translatedText === textWithPlaceholders) {
       continue;
     }
