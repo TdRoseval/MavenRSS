@@ -17,14 +17,13 @@ let mediaProxyFallbackCache: boolean | null = null;
  */
 export function encodeURLSafe(str: string): string {
   if (!str) return '';
-  // First, decode any existing URL encoding to avoid double-encoding
   try {
     str = decodeURIComponent(str);
   } catch {
-    // If decode fails, just use the original string
   }
-  // Then convert to Base64 and make it URL-safe
-  const encoded = btoa(str);
+  const bytes = new TextEncoder().encode(str);
+  const binaryString = String.fromCharCode(...bytes);
+  const encoded = btoa(binaryString);
   return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -34,16 +33,19 @@ export function encodeURLSafe(str: string): string {
  * @returns Decoded string
  */
 export function decodeURLSafe(str: string): string {
-  // Restore padding if needed
   let padded = str.replace(/-/g, '+').replace(/_/g, '/');
   while (padded.length % 4) {
     padded += '=';
   }
-  // Decode Base64 and then decode URI component
   try {
-    return decodeURIComponent(atob(padded));
+    const binaryString = atob(padded);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
   } catch {
-    return atob(padded);
+    return str;
   }
 }
 
