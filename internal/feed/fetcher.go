@@ -641,8 +641,18 @@ func (f *Fetcher) cacheArticleContents(articlesWithContent []*ArticleWithContent
 			continue
 		}
 
-		// Get article ID by unique_id (article was just saved, so it should exist)
-		articleID, err := f.db.GetArticleIDByUniqueID(awc.Article.UserID, awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
+		// Get article ID by raw unique_id (article was just saved, so it should exist)
+		// We use the pre-calculated UniqueID field from the article to avoid recalculating
+		var articleID int64
+		var err error
+		if awc.Article.UniqueID != "" {
+			// If we already have the unique_id, use it directly (faster and more reliable)
+			articleID, err = f.db.GetArticleIDByRawUniqueID(awc.Article.UserID, awc.Article.UniqueID)
+		} else {
+			// Fallback to recalculating if unique_id is not available
+			articleID, err = f.db.GetArticleIDByUniqueID(awc.Article.UserID, awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
+		}
+		
 		if err != nil {
 			// Article might not exist yet (race condition) or other error
 			utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)

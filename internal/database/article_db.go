@@ -17,10 +17,10 @@ func (db *DB) SaveArticle(article *models.Article) error {
 	db.WaitForReady()
 
 	// Ensure published time is always in UTC to avoid timezone issues
-	article.PublishedAt = article.PublishedAt.UTC()
+	originalPublishedAt := article.PublishedAt.UTC()
 
-	// Check if article already exists
-	uniqueID := urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+	// Check if article already exists (use original time to generate unique ID)
+	uniqueID := urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, originalPublishedAt, article.HasValidPublishedTime)
 	var existingID int64
 	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", article.UserID, uniqueID).Scan(&existingID)
 	if err == nil {
@@ -35,9 +35,36 @@ func (db *DB) SaveArticle(article *models.Article) error {
 		}
 	}
 
+	// 对于新文章，检查两种情况：
+	// 1. 原始发布时间只有日期（00:00:00）
+	// 2. 原始发布时间是未来时间
+	now := time.Now().UTC()
+	needToUpdate := false
+	
+	// 检查情况 1：时间只有日期（00:00:00）
+	hour, min, sec := originalPublishedAt.Clock()
+	if hour == 0 && min == 0 && sec == 0 {
+		needToUpdate = true
+	}
+	
+	// 检查情况 2：时间是未来时间
+	if originalPublishedAt.After(now) {
+		needToUpdate = true
+	}
+	
+	if needToUpdate {
+		// 需要更新发布时间为当前刷新时间
+		article.PublishedAt = now
+		article.HasValidPublishedTime = true
+	}
+
 	// Generate unique_id for deduplication
 	query := `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = db.Exec(query, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
+	
+	// 把 unique_id 设置回文章的 UniqueID 字段，这样后续操作可以直接使用
+	article.UniqueID = uniqueID
+	
 	return err
 }
 
@@ -60,21 +87,28 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		}
 	}
 
-	// Ensure all published times are in UTC and generate unique IDs
+	// 第一步：保存原始发布时间，并用它来生成 unique ID
+	type ArticleOriginalInfo struct {
+		originalPublishedAt time.Time
+	}
+	originalInfos := make([]ArticleOriginalInfo, len(articles))
 	uniqueIDs := make([]string, len(articles))
+	
 	for i, article := range articles {
 		article.PublishedAt = article.PublishedAt.UTC()
-		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, article.PublishedAt, article.HasValidPublishedTime)
+		originalInfos[i].originalPublishedAt = article.PublishedAt
+		
+		// 用原始时间生成 unique_id
+		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, originalInfos[i].originalPublishedAt, article.HasValidPublishedTime)
+		article.UniqueID = uniqueIDs[i]
 	}
 
-	// Check quota first before processing - using batch query optimization
+	// 第二步：检查哪些文章已经存在
+	var existingIDs map[string]bool
+	var newArticlesCount int64
 	if userID > 0 {
-		var newArticlesCount int64
-		
-		// Batch query to check which articles already exist - process in batches of 500
-		// SQLite has a default limit of 999 parameters in IN clause, so use 500 to be safe
 		const batchSize = 500
-		existingIDs := make(map[string]bool)
+		existingIDs = make(map[string]bool)
 		
 		for i := 0; i < len(uniqueIDs); i += batchSize {
 			end := i + batchSize
@@ -83,7 +117,6 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 			}
 			batch := uniqueIDs[i:end]
 			
-			// Build IN clause for this batch
 			placeholders := make([]string, len(batch))
 			args := make([]interface{}, len(batch))
 			for j, id := range batch {
@@ -94,7 +127,6 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 			query := "SELECT unique_id FROM articles WHERE unique_id IN (" + strings.Join(placeholders, ",") + ")"
 			rows, err := db.Query(query, args...)
 			if err != nil {
-				// Fallback to individual queries for this batch
 				log.Printf("Batch query failed, using individual queries for batch %d-%d: %v", i, end, err)
 				for _, id := range batch {
 					var existingID int64
@@ -104,7 +136,6 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 					}
 				}
 			} else {
-				// Process results from batch query
 				for rows.Next() {
 					var id string
 					if err := rows.Scan(&id); err == nil {
@@ -115,7 +146,6 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 			}
 		}
 		
-		// Count new articles
 		for _, id := range uniqueIDs {
 			if !existingIDs[id] {
 				newArticlesCount++
@@ -125,6 +155,36 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		if newArticlesCount > 0 {
 			if ok, qErr := db.CheckArticleQuota(userID, newArticlesCount); !ok {
 				return qErr
+			}
+		}
+	} else {
+		existingIDs = make(map[string]bool)
+	}
+
+	// 第三步：核心逻辑！对于所有新文章，检查两种情况：
+	// 1. 原始发布时间只有日期（00:00:00）
+	// 2. 原始发布时间是未来时间
+	now := time.Now().UTC()
+	for i, article := range articles {
+		if !existingIDs[uniqueIDs[i]] {
+			// 这是一篇新文章
+			needToUpdate := false
+			
+			// 检查情况 1：时间只有日期（00:00:00）
+			hour, min, sec := originalInfos[i].originalPublishedAt.Clock()
+			if hour == 0 && min == 0 && sec == 0 {
+				needToUpdate = true
+			}
+			
+			// 检查情况 2：时间是未来时间
+			if originalInfos[i].originalPublishedAt.After(now) {
+				needToUpdate = true
+			}
+			
+			if needToUpdate {
+				// 需要更新发布时间为当前刷新时间
+				article.PublishedAt = now
+				article.HasValidPublishedTime = true
 			}
 		}
 	}
@@ -444,6 +504,21 @@ func (db *DB) GetArticlesByIDs(ids []int64) ([]models.Article, error) {
 func (db *DB) GetArticleIDByUniqueID(userID int64, title string, feedID int64, publishedAt time.Time, hasValidPublishedTime bool) (int64, error) {
 	db.WaitForReady()
 	uniqueID := urlutil.GenerateArticleUniqueID(userID, title, feedID, publishedAt, hasValidPublishedTime)
+	var id int64
+	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", userID, uniqueID).Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return id, nil
+}
+
+// GetArticleIDByRawUniqueID retrieves an article's ID directly by its raw unique_id string (without recalculating).
+// This is faster when you already have the unique_id string (e.g., from article.UniqueID field).
+func (db *DB) GetArticleIDByRawUniqueID(userID int64, uniqueID string) (int64, error) {
+	db.WaitForReady()
 	var id int64
 	err := db.QueryRow("SELECT id FROM articles WHERE user_id = ? AND unique_id = ?", userID, uniqueID).Scan(&id)
 	if err != nil {
