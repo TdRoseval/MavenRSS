@@ -316,6 +316,12 @@ async function sendMessage() {
                 thinking: data.thinking,
               };
             }
+            // Update currentSessionId if server returned one
+            if (data.session_id && !currentSessionId.value) {
+              currentSessionId.value = data.session_id;
+              // Reload sessions to show the new one
+              await loadSessions();
+            }
             eventName = null;
             await nextTick();
             scrollToBottom();

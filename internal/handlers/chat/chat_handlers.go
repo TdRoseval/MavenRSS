@@ -22,6 +22,8 @@ type ChatMessage struct {
 }
 
 type ChatRequest struct {
+	SessionID      int64         `json:"session_id,omitempty"`
+	ArticleID      int64         `json:"article_id,omitempty"`
 	Messages       []ChatMessage `json:"messages"`
 	ArticleTitle   string        `json:"article_title,omitempty"`
 	ArticleURL     string        `json:"article_url,omitempty"`
@@ -93,6 +95,33 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if len(req.Messages) == 0 {
 		response.Error(w, nil, http.StatusBadRequest)
 		return
+	}
+
+	// Get or create session
+	sessionID := req.SessionID
+	var err error
+	if sessionID == 0 {
+		// Create new session if no session ID provided
+		if req.ArticleID == 0 {
+			response.Error(w, fmt.Errorf("article_id is required when creating a new session"), http.StatusBadRequest)
+			return
+		}
+		sessionID, err = h.DB.CreateChatSession(userID, req.ArticleID, "New Chat")
+		if err != nil {
+			response.Error(w, fmt.Errorf("failed to create chat session: %w", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Save user message (last message in the list is the new user message)
+	if len(req.Messages) > 0 {
+		lastMessage := req.Messages[len(req.Messages)-1]
+		if lastMessage.Role == "user" {
+			_, err = h.DB.CreateChatMessage(sessionID, lastMessage.Role, lastMessage.Content, "")
+			if err != nil {
+				log.Printf("Failed to save user message: %v", err)
+			}
+		}
 	}
 
 	chatEnabled, _ := h.DB.GetSettingWithFallback(userID, "ai_chat_enabled")
@@ -185,7 +214,23 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	_ = h.DB.IncrementStat("ai_chat")
 
-	response.JSON(w, ChatResponse{Response: respContent, HTML: htmlResponse})
+	// Save AI response
+	_, err = h.DB.CreateChatMessage(sessionID, "assistant", respContent, thinking)
+	if err != nil {
+		log.Printf("Failed to save AI message: %v", err)
+	}
+
+	// Return response with session ID
+	type ChatResponseWithSession struct {
+		Response   string `json:"response"`
+		HTML       string `json:"html,omitempty"`
+		SessionID  int64  `json:"session_id"`
+	}
+	response.JSON(w, ChatResponseWithSession{
+		Response: respContent,
+		HTML:     htmlResponse,
+		SessionID: sessionID,
+	})
 }
 
 func optimizeChatContext(messages []ChatMessage, articleTitle, articleURL, articleContent string, isFirstMessage bool) []ChatMessage {
@@ -258,6 +303,33 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	if len(req.Messages) == 0 {
 		response.Error(w, nil, http.StatusBadRequest)
 		return
+	}
+
+	// Get or create session
+	sessionID := req.SessionID
+	var err error
+	if sessionID == 0 {
+		// Create new session if no session ID provided
+		if req.ArticleID == 0 {
+			response.Error(w, fmt.Errorf("article_id is required when creating a new session"), http.StatusBadRequest)
+			return
+		}
+		sessionID, err = h.DB.CreateChatSession(userID, req.ArticleID, "New Chat")
+		if err != nil {
+			response.Error(w, fmt.Errorf("failed to create chat session: %w", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Save user message (last message in the list is the new user message)
+	if len(req.Messages) > 0 {
+		lastMessage := req.Messages[len(req.Messages)-1]
+		if lastMessage.Role == "user" {
+			_, err = h.DB.CreateChatMessage(sessionID, lastMessage.Role, lastMessage.Content, "")
+			if err != nil {
+				log.Printf("Failed to save user message: %v", err)
+			}
+		}
 	}
 
 	chatEnabled, _ := h.DB.GetSettingWithFallback(userID, "ai_chat_enabled")
@@ -419,16 +491,23 @@ sendComplete:
 		log.Printf("AI chat stream thinking: %s", thinking)
 	}
 
-	// Send completion event with full content and HTML
+	// Send completion event with full content, HTML, and session ID
 	completeEvent := map[string]interface{}{
 		"done":     true,
 		"response": respContent,
 		"html":     htmlResponse,
 		"thinking": thinking,
+		"session_id": sessionID,
 	}
 	if data, err := json.Marshal(completeEvent); err == nil {
 		fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
 		flusher.Flush()
+	}
+
+	// Save AI response
+	_, err = h.DB.CreateChatMessage(sessionID, "assistant", respContent, thinking)
+	if err != nil {
+		log.Printf("Failed to save AI message: %v", err)
 	}
 
 	// Track usage
