@@ -291,6 +291,21 @@ export function useSidebar() {
       }
     } else if (action === 'discover') {
       window.dispatchEvent(new CustomEvent('show-discover-blogs', { detail: feed }));
+    } else if (action === 'clearArticles') {
+      const confirmed = await window.showConfirm({
+        title: t('modal.feed.clearArticlesConfirmTitle'),
+        message: t('modal.feed.clearArticlesConfirmMessage', { name: feed.title }),
+        confirmText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        isDanger: true,
+      });
+      if (confirmed) {
+        const response = await authPost(`/api/articles/clear-for-feed?feed_id=${feed.id}`);
+        const data = await response.json();
+        store.fetchArticles();
+        store.fetchUnreadCounts();
+        window.showToast(t('modal.feed.articlesCleared', { count: data.deleted }), 'success');
+      }
     }
   }
 
@@ -339,9 +354,15 @@ export function useSidebar() {
       });
     }
 
-    // Only add edit and delete options for non-FreshRSS feeds
+    // Only add edit, clear articles, and delete options for non-FreshRSS feeds
     if (!feed.is_freshrss_source) {
       items.push({ separator: true });
+      items.push({
+        label: t('modal.feed.clearArticles'),
+        action: 'clearArticles',
+        icon: 'PhEraser',
+        danger: true,
+      });
       items.push({ label: t('modal.feed.editSubscription'), action: 'edit', icon: 'PhPencil' });
       items.push({
         label: t('common.action.unsubscribe'),

@@ -96,6 +96,49 @@ func (db *DB) DeleteAllArticles(userID int64) (int64, error) {
 	return result.RowsAffected()
 }
 
+// DeleteArticlesForFeed removes all articles for a specific feed
+// This keeps the feed itself intact
+// If userID is 0, ignores user filtering (legacy behavior)
+func (db *DB) DeleteArticlesForFeed(feedID int64, userID int64) (int64, error) {
+	db.WaitForReady()
+	var result sql.Result
+	var err error
+	
+	// First delete article contents for the feed's articles
+	if userID > 0 {
+		_, err = db.Exec(`
+			DELETE FROM article_contents
+			WHERE article_id IN (
+				SELECT id FROM articles WHERE feed_id = ? AND user_id = ?
+			)
+		`, feedID, userID)
+	} else {
+		_, err = db.Exec(`
+			DELETE FROM article_contents
+			WHERE article_id IN (
+				SELECT id FROM articles WHERE feed_id = ?
+			)
+		`, feedID)
+	}
+	
+	if err != nil {
+		return 0, err
+	}
+	
+	// Then delete the articles themselves
+	if userID > 0 {
+		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ? AND user_id = ?`, feedID, userID)
+	} else {
+		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ?`, feedID)
+	}
+	
+	if err != nil {
+		return 0, err
+	}
+	
+	return result.RowsAffected()
+}
+
 // CleanupUnimportantArticles removes all articles except read, favorited, and read later ones for a specific user
 // If userID is 0, removes all (legacy behavior)
 func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {

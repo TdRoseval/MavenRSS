@@ -378,6 +378,52 @@ func HandleCleanupArticleContent(h *core.Handler, w http.ResponseWriter, r *http
 	})
 }
 
+// HandleClearArticlesForFeed clears all articles for a specific feed.
+// This keeps the feed itself intact, only deleting its articles and contents.
+// @Summary      Clear articles for a specific feed
+// @Description  Delete all articles and article contents for a specific feed (feed remains)
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Param        feed_id  query     int64  true  "Feed ID to clear articles for"
+// @Success      200  {object}  map[string]interface{}  "Cleanup statistics (deleted, articles, contents, type)"
+// @Failure      400  {object}  map[string]string  "Bad request (invalid feed_id)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /articles/clear-feed [post]
+func HandleClearArticlesForFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get feed ID from query
+	feedIDStr := r.URL.Query().Get("feed_id")
+	feedID, err := strconv.ParseInt(feedIDStr, 10, 64)
+	if err != nil || feedID <= 0 {
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	// Get user ID from request
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	// Delete articles and article contents for the feed
+	articleCount, err := h.DB.DeleteArticlesForFeed(feedID, userID)
+	if err != nil {
+		log.Printf("Error deleting articles for feed %d: %v", feedID, err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Cleared %d articles for feed %d", articleCount, feedID)
+	response.JSON(w, map[string]interface{}{
+		"deleted":  articleCount,
+		"articles": articleCount,
+		"type":     "feed",
+		"feed_id":  feedID,
+	})
+}
+
 // HandleGetArticleContentCacheInfo returns information about article content cache.
 // @Summary      Get article content cache info
 // @Description  Get statistics about the article content cache
