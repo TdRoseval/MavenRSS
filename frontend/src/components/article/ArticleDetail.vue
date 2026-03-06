@@ -205,7 +205,16 @@ onBeforeUnmount(() => {
       v-if="hasPreviousArticle || hasNextArticle"
       :class="[
         'flex items-center bg-bg-primary px-3 py-1.5',
-        isMobile ? 'fixed bottom-0 left-0 right-0 border-t border-border z-20 justify-end gap-2' : 'absolute bottom-0 left-0 right-0 justify-between'
+        isMobile
+          ? 'fixed bottom-0 left-0 right-0 border-t border-border z-20 justify-end gap-2'
+          : [
+              'absolute bottom-0 left-0 right-0',
+              hasPreviousArticle && hasNextArticle
+                ? 'justify-between'
+                : hasPreviousArticle
+                  ? 'justify-start'
+                  : 'justify-end'
+            ]
       ]"
     >
       <button
