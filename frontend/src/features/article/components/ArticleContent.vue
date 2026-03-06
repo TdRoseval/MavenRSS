@@ -259,15 +259,20 @@ async function fetchFullArticle(showErrors: boolean = true) {
   try {
     const data = await authPost<any>(`/api/articles/fetch-full?id=${props.article.id}`);
     let content = data.content || '';
+    // console.log('[fetchFullArticle] Raw content from API:', content);
 
     // Proxy images and iframes if media proxy is enabled (cache or fallback)
+    // We've modified proxyImgAttribute to skip already proxied URLs (those containing '/api/')
     const proxyEnabled = await shouldProxyMedia();
+    // console.log('[fetchFullArticle] proxyEnabled:', proxyEnabled);
     if (proxyEnabled && content) {
       // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
       const feedUrl = data.feed_url || props.article.url;
       // Pass feed ID for feed-specific proxy settings
       const feedId = props.article.feed_id;
+      // console.log('[fetchFullArticle] Calling proxyMediaInHtml with feedUrl:', feedUrl, 'feedId:', feedId);
       content = proxyMediaInHtml(content, feedUrl, undefined, feedId);
+      // console.log('[fetchFullArticle] Content after proxyMediaInHtml:', content);
     }
 
     fullArticleContent.value = content;

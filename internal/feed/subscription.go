@@ -175,6 +175,14 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, f
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
+	// Set caching headers if available
+	if feed.ETag != "" {
+		req.Header.Set("If-None-Match", feed.ETag)
+	}
+	if feed.LastModified != "" {
+		req.Header.Set("If-Modified-Since", feed.LastModified)
+	}
+
 	debugTimer.LogWithTime("Sending HTTP request to %s", feedURL)
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -184,9 +192,29 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, f
 	defer resp.Body.Close()
 	debugTimer.Stage("HTTP request completed")
 
+	if resp.StatusCode == http.StatusNotModified {
+		debugTimer.LogWithTime("HTTP 304 Not Modified")
+		return "", ErrNotModified
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		debugTimer.LogWithTime("HTTP status not OK: %d", resp.StatusCode)
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	// Update caching info if headers present
+	etag := resp.Header.Get("ETag")
+	lastModified := resp.Header.Get("Last-Modified")
+	if etag != "" || lastModified != "" {
+		// We can't update DB directly here easily as we don't have db access in this method context easily
+		// without casting f.db (which is private).
+		// But f is *Fetcher, and Fetcher has db.
+		if feed.ID > 0 {
+			// Update only if it's an existing feed
+			if err := f.db.UpdateFeedCachingInfo(feed.ID, etag, lastModified); err != nil {
+				debugTimer.LogWithTime("Failed to update caching info: %v", err)
+			}
+		}
 	}
 
 	debugTimer.LogWithTime("Reading response body")

@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"MavenRSS/internal/cache"
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/cache"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
 )
@@ -296,7 +296,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Build proxy URL - check feed-specific settings first, then fall back to global
 	var proxyURL string
-	
+
 	// Check if feed_id is provided for feed-specific proxy settings
 	feedIDStr := r.URL.Query().Get("feed_id")
 	if feedIDStr != "" {
@@ -489,15 +489,15 @@ func writeWebpageError(w http.ResponseWriter, err error, status int, originalURL
 	w.WriteHeader(status)
 
 	// Determine if this is a blocking error that warrants automatic fallback
-	isBlockingError := status == http.StatusForbidden || 
-		status == http.StatusUnauthorized || 
+	isBlockingError := status == http.StatusForbidden ||
+		status == http.StatusUnauthorized ||
 		status == http.StatusNotAcceptable ||
 		status == http.StatusTooManyRequests ||
 		status == http.StatusServiceUnavailable
 
 	autoRedirectScript := ""
 	redirectMessage := ""
-	
+
 	if isBlockingError && originalURL != "" {
 		redirectMessage = `<p class="redirect-msg">Proxy access denied. Attempting to load directly...</p>`
 		autoRedirectScript = fmt.Sprintf(`
@@ -603,7 +603,7 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	// Build proxy URL - check feed-specific settings first, then fall back to global
 	var proxyURL string
-	
+
 	// Check if feed_id is provided for feed-specific proxy settings
 	feedIDStr := r.URL.Query().Get("feed_id")
 	if feedIDStr != "" {
@@ -678,18 +678,18 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	if referer := r.Header.Get("Referer"); referer != "" {
 		req.Header.Set("Referer", referer)
 	}
-	
+
 	// Forward authorization header if present (for services that require auth)
 	// This is needed for some RSS sources like wechat2rss that require authentication
 	if auth := r.Header.Get("Authorization"); auth != "" {
 		req.Header.Set("Authorization", auth)
 	}
-	
+
 	// Forward cookie header if present
 	if cookie := r.Header.Get("Cookie"); cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
-	
+
 	// Special handling for wechat2rss.bestlogs.dev - it requires authorization header
 	// If the referer is from wechat2rss, we need to forward the auth header
 	if strings.Contains(webpageURL, "wechat2rss.bestlogs.dev") {
@@ -795,10 +795,10 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		bodyBytes = rewriteHTMLContent(bodyBytes, webpageURL, token)
 	}
 
-	// Set response headers to allow framing and remove CORS restrictions
+	// Set response headers to allow framing from any origin (for dev server)
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("X-Frame-Options", "SAMEORIGIN") // Allow framing from same origin
-	w.Header().Set("Content-Security-Policy", "")   // Remove CSP to allow resources
+	w.Header().Del("X-Frame-Options")             // Remove X-Frame-Options entirely to allow any origin
+	w.Header().Set("Content-Security-Policy", "") // Remove CSP to allow resources
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 
@@ -1153,7 +1153,7 @@ func rewriteHTMLContent(bodyBytes []byte, baseURL, token string) []byte {
 
 	// Rewrite iframe src attributes
 	content = rewriteAttribute(content, "iframe", "src", baseURL, token)
-	
+
 	// Remove 'web-share' from iframe allow attributes to prevent browser warnings
 	content = removeWebShareFromIframes(content)
 
@@ -1408,10 +1408,10 @@ func removeWebShareFromIframes(content string) string {
 			newValue := strings.ReplaceAll(value, "web-share", "")
 			// Cleanup extra spaces
 			newValue = strings.Join(strings.Fields(newValue), " ")
-			
+
 			return fmt.Sprintf("%s%s%s%s", prefix, quote, newValue, suffix)
 		})
-		
+
 		// Also handle unquoted allow attribute if any (though rare in HTML5)
 		allowUnquotedRe := regexp.MustCompile(`(allow\s*=\s*)([^"'\s>]+)`)
 		match = allowUnquotedRe.ReplaceAllStringFunc(match, func(allowMatch string) string {
@@ -1421,7 +1421,7 @@ func removeWebShareFromIframes(content string) string {
 			}
 			prefix := matches[1]
 			value := matches[2]
-			
+
 			// If unquoted value contains web-share, remove it?
 			// Usually unquoted values don't contain spaces, so "web-share" is unlikely unless it's the ONLY value
 			if strings.Contains(value, "web-share") {
@@ -2083,7 +2083,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Referer", referer)
 	req.Header.Set("Accept", "*/*")
-	
+
 	// Forward authorization and cookie headers if present (for services that require auth)
 	// These might be needed for some RSS sources that require authentication
 	if r.Header.Get("Authorization") != "" {
@@ -2092,7 +2092,7 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	if r.Header.Get("Cookie") != "" {
 		req.Header.Set("Cookie", r.Header.Get("Cookie"))
 	}
-	
+
 	// Special handling for wechat2rss - add additional headers it might expect
 	if isWechat2RSS {
 		// wechat2rss may expect these headers for image proxying
@@ -2189,9 +2189,9 @@ func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// Set CORS headers to allow loading from the same origin
+	// Set CORS headers to allow loading from any origin
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Del("X-Frame-Options") // Remove X-Frame-Options entirely to allow any origin
 
 	// Set the correct content type
 	w.Header().Set("Content-Type", contentType)

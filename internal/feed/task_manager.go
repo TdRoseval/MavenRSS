@@ -604,6 +604,13 @@ func (tm *TaskManager) processQueue(ctx context.Context) {
 		default:
 		}
 
+		// Check performance mode for pacing
+		perfMode, _ := tm.fetcher.db.GetSetting("performance_mode")
+		if perfMode == "eco" {
+			// Add 500ms pacing delay in Eco mode to smooth out CPU usage
+			time.Sleep(500 * time.Millisecond)
+		}
+
 		// Check if we can start a new task
 		tm.queueMutex.Lock()
 		tm.poolMutex.Lock()

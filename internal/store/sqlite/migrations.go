@@ -158,6 +158,10 @@ func runMigrations(db *sql.DB) error {
 	// Migration: Add translate_articles column to feeds table
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN translate_articles BOOLEAN DEFAULT 0`)
 
+	// Migration: Add etag and last_modified columns to feeds table for 304 caching
+	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN etag TEXT DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN last_modified TEXT DEFAULT ''`)
+
 	return nil
 }
 

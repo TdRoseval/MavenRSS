@@ -892,6 +892,13 @@ const en: TranslationMessages = {
       networkSettingsDescription:
         'Automatic network speed detection to optimize parallel feed refresh performance',
       reDetectNetwork: 'Re-detect',
+      performanceMode: {
+        title: 'Performance Mode',
+        standard: 'Standard Mode',
+        standardDesc: 'Dynamic concurrency, suitable for most environments',
+        eco: 'Eco Mode',
+        ecoDesc: 'Limited concurrency and resources, suitable for low-spec devices',
+      },
     },
     freshrss: {
       apiPassword: 'API Password',

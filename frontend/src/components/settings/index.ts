@@ -14,6 +14,7 @@ export { default as InputControl } from '@/shared/ui/form/InputControl.vue';
 export { default as NumberControl } from '@/shared/ui/form/NumberControl.vue';
 export { default as TextAreaControl } from '@/shared/ui/form/TextAreaControl.vue';
 export { default as ButtonControl } from '@/shared/ui/form/ButtonControl.vue';
+export { default as RadioGroup } from '@/shared/ui/form/RadioGroup.vue';
 
 // Composite Components
 export { default as SettingWithToggle } from './composite/SettingWithToggle.vue';

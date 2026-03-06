@@ -29,7 +29,7 @@ function handleUpdateSettings(updatedSettings: SettingsData) {
 
 <template>
   <div class="space-y-4 sm:space-y-6">
-    <NetworkSettings />
+    <NetworkSettings :settings="settings" @update:settings="handleUpdateSettings" />
 
     <ProxySettings :settings="settings" @update:settings="handleUpdateSettings" />
   </div>

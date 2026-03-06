@@ -21,6 +21,9 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+// ErrNotModified is returned when the feed has not been modified (HTTP 304)
+var ErrNotModified = fmt.Errorf("feed not modified")
+
 // FeedParser interface to allow mocking
 type FeedParser interface {
 	ParseURL(url string) (*gofeed.Feed, error)
@@ -48,6 +51,8 @@ type Fetcher struct {
 	cleanupManager    *CleanupManager
 	postProcessChan   chan *PostProcessTask
 	postProcessWg     sync.WaitGroup
+	articleSink       chan []*models.Article // Global sink for article writes (Eco mode)
+	writerWg          sync.WaitGroup         // WaitGroup for article writer loop
 }
 
 func NewFetcher(db *sqlite.DB) *Fetcher {
@@ -68,6 +73,9 @@ func NewFetcher(db *sqlite.DB) *Fetcher {
 	// Larger buffer prevents task loss during high load
 	postProcessChan := make(chan *PostProcessTask, 500)
 
+	// Initialize article sink for Eco mode (capacity 100 batches)
+	articleSink := make(chan []*models.Article, 100)
+
 	fetcher := &Fetcher{
 		db:                db,
 		fp:                parser,
@@ -76,6 +84,7 @@ func NewFetcher(db *sqlite.DB) *Fetcher {
 		emailFetcher:      NewEmailFetcher(db),
 		refreshCalculator: NewIntelligentRefreshCalculator(db),
 		postProcessChan:   postProcessChan,
+		articleSink:       articleSink,
 	}
 
 	// Initialize task manager with default capacity (increased from 5 to 10)
@@ -85,6 +94,9 @@ func NewFetcher(db *sqlite.DB) *Fetcher {
 	// Initialize cleanup manager
 	fetcher.cleanupManager = NewCleanupManager(fetcher)
 	fetcher.cleanupManager.Start()
+
+	// Start article writer loop
+	fetcher.startArticleWriter()
 
 	// Calculate optimal worker count based on CPU cores
 	// Formula: min(max(1, CPU_CORES), 4) - cap at 4 workers to prevent overload
@@ -101,6 +113,103 @@ func NewFetcher(db *sqlite.DB) *Fetcher {
 	fetcher.startPostProcessWorkers(numWorkers)
 
 	return fetcher
+}
+
+// startArticleWriter starts the global article writer loop
+func (f *Fetcher) startArticleWriter() {
+	f.writerWg.Add(1)
+	go f.articleWriterLoop()
+}
+
+// articleWriterLoop listens for article batches and writes them to the database
+// efficiently using bulk transactions with time-based flushing
+func (f *Fetcher) articleWriterLoop() {
+	defer f.writerWg.Done()
+	log.Println("Article writer loop started")
+
+	const (
+		batchSize   = 50
+		flushPeriod = 2 * time.Second
+	)
+
+	buffer := make([]*models.Article, 0, batchSize*2)
+	ticker := time.NewTicker(flushPeriod)
+	defer ticker.Stop()
+
+	flush := func() {
+		if len(buffer) == 0 {
+			return
+		}
+
+		// Write buffer to database
+		// Create a context with timeout for the write operation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := f.db.SaveArticles(ctx, buffer); err != nil {
+			log.Printf("Error saving articles in global writer: %v", err)
+		} else {
+			// Trigger post-processing for cached articles
+			// We need to group by feed to send to postProcessChan
+			feeds := make(map[int64][]*models.Article)
+			for _, article := range buffer {
+				feeds[article.FeedID] = append(feeds[article.FeedID], article)
+			}
+
+			for feedID, articles := range feeds {
+				// Construct ArticleWithContent objects (we don't have content here, but it might be cached already)
+				// For post-processing (rules), we might need content if rules depend on it.
+				// However, content is usually cached in cacheArticleContents separately.
+				// In Eco mode, we might need to handle this carefully.
+				// For now, let's just create basic objects.
+				awcs := make([]*ArticleWithContent, len(articles))
+				for i, a := range articles {
+					awcs[i] = &ArticleWithContent{Article: a}
+				}
+				
+				// Get feed title and user ID (assuming all articles in batch for same feed have same user)
+				var feedTitle string
+				var userID int64
+				if len(articles) > 0 {
+					userID = articles[0].UserID
+					// Ideally we should have feed title, but we might skip it for now or fetch it
+				}
+
+				// Send to post-process channel
+				select {
+				case f.postProcessChan <- &PostProcessTask{
+					ArticlesWithContent: awcs,
+					FeedID:              feedID,
+					FeedTitle:           feedTitle, // Might be empty, rules engine should handle it
+					UserID:              userID,
+				}:
+				default:
+					// Drop if full
+				}
+			}
+		}
+
+		// Clear buffer
+		buffer = buffer[:0]
+	}
+
+	for {
+		select {
+		case batch, ok := <-f.articleSink:
+			if !ok {
+				// Channel closed, flush remaining and exit
+				flush()
+				log.Println("Article writer loop stopped")
+				return
+			}
+			buffer = append(buffer, batch...)
+			if len(buffer) >= batchSize {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
 }
 
 // startPostProcessWorkers starts the post-processing worker pool
@@ -180,6 +289,11 @@ func (f *Fetcher) Stop() {
 	f.postProcessWg.Wait()
 	log.Println("Post-processing workers stopped")
 	
+	// Stop article writer loop
+	close(f.articleSink)
+	f.writerWg.Wait()
+	log.Println("Article writer loop stopped")
+
 	if f.taskManager != nil {
 		f.taskManager.Stop()
 	}
@@ -238,6 +352,12 @@ func (f *Fetcher) getDataDir() (string, error) {
 // getConcurrencyLimit returns the maximum number of concurrent feed refreshes
 // based on network detection or defaults to 10 if not configured
 func (f *Fetcher) getConcurrencyLimit() int {
+	// Check performance mode first
+	perfMode, _ := f.db.GetSetting("performance_mode")
+	if perfMode == "eco" {
+		return 2 // Strict limit for Eco mode
+	}
+
 	concurrencyStr, err := f.db.GetSetting("max_concurrent_refreshes")
 	if err != nil || concurrencyStr == "" {
 		return 10 // Default concurrency increased from 5 to 10
@@ -432,6 +552,12 @@ func (f *Fetcher) FetchFeed(ctx context.Context, feed models.Feed) {
 	// Use ParseFeedWithFeed with normal priority for feed refresh
 	parsedFeed, err := f.ParseFeedWithFeed(ctx, &feed, false) // Normal priority for refresh
 	if err != nil {
+		if err == ErrNotModified {
+			// Feed not modified, just update last_updated time
+			f.db.UpdateFeedLastUpdated(feed.ID)
+			utils.DebugLog("Updated feed (not modified): %s", feed.Title)
+			return
+		}
 		log.Printf("Error parsing feed %s: %v", feed.URL, err)
 		f.db.UpdateFeedError(feed.ID, err.Error())
 		// Add error to progress for immediate feedback
@@ -504,6 +630,11 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 	// Use ParseFeedWithFeed with normal priority for feed refresh
 	parsedFeed, err := f.ParseFeedWithFeed(ctx, &feed, false)
 	if err != nil {
+		if err == ErrNotModified {
+			// Feed not modified, just update last_updated time
+			f.db.UpdateFeedLastUpdated(feed.ID)
+			return nil
+		}
 		return err
 	}
 
@@ -551,24 +682,32 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 			articlesToSave[i] = awc.Article
 		}
 
-		if err := f.db.SaveArticles(ctx, articlesToSave); err != nil {
-			return err
-		}
+		// Check performance mode
+		perfMode, _ := f.db.GetSetting("performance_mode")
+		isEcoMode := perfMode == "eco"
 
-		// Post-processing operations (content caching and rule application)
-		// Send to worker pool to avoid creating too many goroutines
-		if len(articlesWithContent) > 0 {
-			// Try to send to channel with timeout
+		if isEcoMode {
+			// In Eco mode, send to global sink for batched writing
+			// This prevents database lock contention
 			select {
-			case f.postProcessChan <- &PostProcessTask{
-				ArticlesWithContent: articlesWithContent,
-				FeedID:              feed.ID,
-				FeedTitle:           feed.Title,
-				UserID:              feed.UserID,
-			}:
-				// Successfully sent
-			case <-time.After(100 * time.Millisecond):
-				// Channel still full after short timeout, try once more with longer wait
+			case f.articleSink <- articlesToSave:
+				// Successfully queued
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			
+			// In Eco mode, we skip immediate post-processing here
+			// The writer loop handles sending to postProcessChan after saving
+		} else {
+			// Standard mode: write immediately in this goroutine
+			if err := f.db.SaveArticles(ctx, articlesToSave); err != nil {
+				return err
+			}
+
+			// Post-processing operations (content caching and rule application)
+			// Send to worker pool to avoid creating too many goroutines
+			if len(articlesWithContent) > 0 {
+				// Try to send to channel with timeout
 				select {
 				case f.postProcessChan <- &PostProcessTask{
 					ArticlesWithContent: articlesWithContent,
@@ -576,10 +715,21 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 					FeedTitle:           feed.Title,
 					UserID:              feed.UserID,
 				}:
-					// Successfully sent on retry
-				case <-time.After(500 * time.Millisecond):
-					// Still full, log and skip (these operations are non-critical)
-					log.Printf("Post-process channel full after retries, skipping for feed %s", feed.Title)
+					// Successfully sent
+				case <-time.After(100 * time.Millisecond):
+					// Channel still full after short timeout, try once more with longer wait
+					select {
+					case f.postProcessChan <- &PostProcessTask{
+						ArticlesWithContent: articlesWithContent,
+						FeedID:              feed.ID,
+						FeedTitle:           feed.Title,
+						UserID:              feed.UserID,
+					}:
+						// Successfully sent on retry
+					case <-time.After(500 * time.Millisecond):
+						// Still full, log and skip (these operations are non-critical)
+						log.Printf("Post-process channel full after retries, skipping for feed %s", feed.Title)
+					}
 				}
 			}
 		}

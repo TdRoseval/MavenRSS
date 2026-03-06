@@ -23,11 +23,18 @@ var baseFrameSources = []string{
 func SecurityHeaders() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check if this is a webpage proxy route
+			isWebpageProxyRoute := strings.HasPrefix(r.URL.Path, "/api/webpage/")
+			
 			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.Header().Set("X-Frame-Options", "DENY")
+			if !isWebpageProxyRoute {
+				w.Header().Set("X-Frame-Options", "DENY")
+			}
 			w.Header().Set("X-XSS-Protection", "1; mode=block")
 			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			w.Header().Set("Content-Security-Policy", buildCSP(r))
+			if !isWebpageProxyRoute {
+				w.Header().Set("Content-Security-Policy", buildCSP(r))
+			}
 			w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 			
 			next.ServeHTTP(w, r)

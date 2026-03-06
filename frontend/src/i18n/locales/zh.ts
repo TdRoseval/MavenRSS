@@ -873,6 +873,13 @@ const zh: TranslationMessages = {
       networkSettings: '网络设置',
       networkSettingsDescription: '自动检测网络速度以优化并行刷新订阅源的性能',
       reDetectNetwork: '重新检测',
+      performanceMode: {
+        title: '性能模式',
+        standard: '标准模式',
+        standardDesc: '动态并发，适合大多数环境',
+        eco: '节能模式',
+        ecoDesc: '限制并发和资源，适合低配置设备',
+      },
     },
     freshrss: {
       apiPassword: 'API 密码',

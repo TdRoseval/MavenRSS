@@ -340,6 +340,10 @@ function proxyImgAttribute(html: string, attrName: string, referer?: string, tok
   const imgRegex = new RegExp(`<img([^>]+)${attrName}\\s*=\\s*(['"]?)([^"'\\s>]+)\\2`, 'gi');
 
   return html.replace(imgRegex, (match, _attrs, quote, src) => {
+    // Skip data URLs, blob URLs, and already proxied URLs
+    if (src.startsWith('data:') || src.startsWith('blob:') || src.includes('/api/')) {
+      return match;
+    }
     // CRITICAL FIX: Decode HTML entities before processing the URL
     // HTML attributes contain &amp; which should be decoded to & before URL encoding
     // For example: &amp; becomes &, then gets properly URL-encoded as %26

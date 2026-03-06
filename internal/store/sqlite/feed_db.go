@@ -287,6 +287,7 @@ func (db *DB) GetFeeds() ([]models.Feed, error) {
 			COALESCE(f.email_last_uid, 0), COALESCE(f.is_freshrss_source, 0),
 			COALESCE(f.freshrss_stream_id, ''),
 			COALESCE(f.translate_articles, 0),
+			COALESCE(f.etag, ''), COALESCE(f.last_modified, ''),
 			(SELECT MAX(a.published_at) FROM articles a WHERE a.feed_id = f.id) as latest_article_time,
 			CAST(COALESCE((
 				SELECT
@@ -318,7 +319,7 @@ func (db *DB) GetFeeds() ([]models.Feed, error) {
 	for rows.Next() {
 		var f models.Feed
 		var translateArticles bool
-		var link, category, imageURL, lastError, scriptPath, proxyURL, feedType, xpathItem, xpathItemTitle, xpathItemContent, xpathItemUri, xpathItemAuthor, xpathItemTimestamp, xpathItemTimeFormat, xpathItemThumbnail, xpathItemCategories, xpathItemUid, articleViewMode, autoExpandContent, emailAddress, emailIMAPServer, emailUsername, emailPassword, emailFolder, freshRSSStreamID, latestArticleTimeStr sql.NullString
+		var link, category, imageURL, lastError, scriptPath, proxyURL, feedType, xpathItem, xpathItemTitle, xpathItemContent, xpathItemUri, xpathItemAuthor, xpathItemTimestamp, xpathItemTimeFormat, xpathItemThumbnail, xpathItemCategories, xpathItemUid, articleViewMode, autoExpandContent, emailAddress, emailIMAPServer, emailUsername, emailPassword, emailFolder, freshRSSStreamID, latestArticleTimeStr, etag, lastModified sql.NullString
 		var lastUpdated sql.NullTime
 		if err := rows.Scan(
 			&f.ID, &f.UserID, &f.Title, &f.URL, &link, &f.Description, &category, &imageURL,
@@ -329,10 +330,14 @@ func (db *DB) GetFeeds() ([]models.Feed, error) {
 			&xpathItemThumbnail, &xpathItemCategories, &xpathItemUid, &articleViewMode,
 			&autoExpandContent, &emailAddress, &emailIMAPServer, &f.EmailIMAPPort,
 			&emailUsername, &emailPassword, &emailFolder, &f.EmailLastUID,
-			&f.IsFreshRSSSource, &freshRSSStreamID, &translateArticles, &latestArticleTimeStr, &f.ArticlesPerMonth,
+			&f.IsFreshRSSSource, &freshRSSStreamID, &translateArticles, &etag, &lastModified, &latestArticleTimeStr, &f.ArticlesPerMonth,
 		); err != nil {
 			return nil, err
 		}
+
+		// Set etag and last_modified
+		f.ETag = etag.String
+		f.LastModified = lastModified.String
 
 		// Set translate_articles
 		f.TranslateArticles = translateArticles
@@ -429,7 +434,7 @@ func (db *DB) GetFeedByID(id int64) (*models.Feed, error) {
 // GetFeedByIDForUser retrieves a specific feed by its ID for a specific user.
 func (db *DB) GetFeedByIDForUser(userID int64, id int64) (*models.Feed, error) {
 	db.WaitForReady()
-	baseQuery := "SELECT id, user_id, title, url, link, description, category, image_url, COALESCE(position, 0), last_updated, last_error, COALESCE(discovery_completed, 0), COALESCE(script_path, ''), COALESCE(hide_from_timeline, 0), COALESCE(proxy_url, ''), COALESCE(proxy_enabled, 0), COALESCE(refresh_interval, 0), COALESCE(is_image_mode, 0), COALESCE(type, ''), COALESCE(xpath_item, ''), COALESCE(xpath_item_title, ''), COALESCE(xpath_item_content, ''), COALESCE(xpath_item_uri, ''), COALESCE(xpath_item_author, ''), COALESCE(xpath_item_timestamp, ''), COALESCE(xpath_item_time_format, ''), COALESCE(xpath_item_thumbnail, ''), COALESCE(xpath_item_categories, ''), COALESCE(xpath_item_uid, ''), COALESCE(article_view_mode, 'global'), COALESCE(auto_expand_content, 'global'), COALESCE(email_address, ''), COALESCE(email_imap_server, ''), COALESCE(email_imap_port, 993), COALESCE(email_username, ''), COALESCE(email_password, ''), COALESCE(email_folder, 'INBOX'), COALESCE(email_last_uid, 0), COALESCE(is_freshrss_source, 0), COALESCE(freshrss_stream_id, ''), COALESCE(translate_articles, 0) FROM feeds WHERE id = ?"
+	baseQuery := "SELECT id, user_id, title, url, link, description, category, image_url, COALESCE(position, 0), last_updated, last_error, COALESCE(discovery_completed, 0), COALESCE(script_path, ''), COALESCE(hide_from_timeline, 0), COALESCE(proxy_url, ''), COALESCE(proxy_enabled, 0), COALESCE(refresh_interval, 0), COALESCE(is_image_mode, 0), COALESCE(type, ''), COALESCE(xpath_item, ''), COALESCE(xpath_item_title, ''), COALESCE(xpath_item_content, ''), COALESCE(xpath_item_uri, ''), COALESCE(xpath_item_author, ''), COALESCE(xpath_item_timestamp, ''), COALESCE(xpath_item_time_format, ''), COALESCE(xpath_item_thumbnail, ''), COALESCE(xpath_item_categories, ''), COALESCE(xpath_item_uid, ''), COALESCE(article_view_mode, 'global'), COALESCE(auto_expand_content, 'global'), COALESCE(email_address, ''), COALESCE(email_imap_server, ''), COALESCE(email_imap_port, 993), COALESCE(email_username, ''), COALESCE(email_password, ''), COALESCE(email_folder, 'INBOX'), COALESCE(email_last_uid, 0), COALESCE(is_freshrss_source, 0), COALESCE(freshrss_stream_id, ''), COALESCE(translate_articles, 0), COALESCE(etag, ''), COALESCE(last_modified, '') FROM feeds WHERE id = ?"
 
 	var args []interface{}
 	args = append(args, id)
@@ -441,10 +446,10 @@ func (db *DB) GetFeedByIDForUser(userID int64, id int64) (*models.Feed, error) {
 	row := db.QueryRow(baseQuery, args...)
 
 	var f models.Feed
-	var link, category, imageURL, lastError, scriptPath, proxyURL, feedType, xpathItem, xpathItemTitle, xpathItemContent, xpathItemUri, xpathItemAuthor, xpathItemTimestamp, xpathItemTimeFormat, xpathItemThumbnail, xpathItemCategories, xpathItemUid, articleViewMode, autoExpandContent, emailAddress, emailIMAPServer, emailUsername, emailPassword, emailFolder, freshRSSStreamID sql.NullString
+	var link, category, imageURL, lastError, scriptPath, proxyURL, feedType, xpathItem, xpathItemTitle, xpathItemContent, xpathItemUri, xpathItemAuthor, xpathItemTimestamp, xpathItemTimeFormat, xpathItemThumbnail, xpathItemCategories, xpathItemUid, articleViewMode, autoExpandContent, emailAddress, emailIMAPServer, emailUsername, emailPassword, emailFolder, freshRSSStreamID, etag, lastModified sql.NullString
 	var lastUpdated sql.NullTime
 	var translateArticles sql.NullBool
-	if err := row.Scan(&f.ID, &f.UserID, &f.Title, &f.URL, &link, &f.Description, &category, &imageURL, &f.Position, &lastUpdated, &lastError, &f.DiscoveryCompleted, &scriptPath, &f.HideFromTimeline, &proxyURL, &f.ProxyEnabled, &f.RefreshInterval, &f.IsImageMode, &feedType, &xpathItem, &xpathItemTitle, &xpathItemContent, &xpathItemUri, &xpathItemAuthor, &xpathItemTimestamp, &xpathItemTimeFormat, &xpathItemThumbnail, &xpathItemCategories, &xpathItemUid, &articleViewMode, &autoExpandContent, &emailAddress, &emailIMAPServer, &f.EmailIMAPPort, &emailUsername, &emailPassword, &emailFolder, &f.EmailLastUID, &f.IsFreshRSSSource, &freshRSSStreamID, &translateArticles); err != nil {
+	if err := row.Scan(&f.ID, &f.UserID, &f.Title, &f.URL, &link, &f.Description, &category, &imageURL, &f.Position, &lastUpdated, &lastError, &f.DiscoveryCompleted, &scriptPath, &f.HideFromTimeline, &proxyURL, &f.ProxyEnabled, &f.RefreshInterval, &f.IsImageMode, &feedType, &xpathItem, &xpathItemTitle, &xpathItemContent, &xpathItemUri, &xpathItemAuthor, &xpathItemTimestamp, &xpathItemTimeFormat, &xpathItemThumbnail, &xpathItemCategories, &xpathItemUid, &articleViewMode, &autoExpandContent, &emailAddress, &emailIMAPServer, &f.EmailIMAPPort, &emailUsername, &emailPassword, &emailFolder, &f.EmailLastUID, &f.IsFreshRSSSource, &freshRSSStreamID, &translateArticles, &etag, &lastModified); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -453,6 +458,8 @@ func (db *DB) GetFeedByIDForUser(userID int64, id int64) (*models.Feed, error) {
 	f.Link = link.String
 	f.Category = category.String
 	f.ImageURL = imageURL.String
+	f.ETag = etag.String
+	f.LastModified = lastModified.String
 	if lastUpdated.Valid {
 		f.LastUpdated = lastUpdated.Time
 	} else {
@@ -579,6 +586,13 @@ func (db *DB) ClearFeedErrorsForUser(userID int64) error {
 func (db *DB) UpdateFeedLastUpdated(id int64) error {
 	db.WaitForReady()
 	_, err := db.Exec("UPDATE feeds SET last_updated = datetime('now') WHERE id = ?", id)
+	return err
+}
+
+// UpdateFeedCachingInfo updates a feed's ETag and Last-Modified headers.
+func (db *DB) UpdateFeedCachingInfo(id int64, etag, lastModified string) error {
+	db.WaitForReady()
+	_, err := db.Exec("UPDATE feeds SET etag = ?, last_modified = ? WHERE id = ?", etag, lastModified, id)
 	return err
 }
 
