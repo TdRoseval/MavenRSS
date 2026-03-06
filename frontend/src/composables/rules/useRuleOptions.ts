@@ -1,5 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
-import { useAppStore } from '@/stores/app';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 export interface Condition {
   id: number;
@@ -24,7 +25,8 @@ export interface ActionOption {
 }
 
 export function useRuleOptions() {
-  const store = useAppStore();
+  const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 
   // Field options for conditions
   const fieldOptions: FieldOption[] = [
@@ -150,13 +152,13 @@ export function useRuleOptions() {
 
   // Feed names for multi-select
   const feedNames: ComputedRef<string[]> = computed(() => {
-    return store.feeds.map((f) => f.title);
+    return feedStore.feeds.map((f) => f.title);
   });
 
   // Feed categories for multi-select
   const feedCategories: ComputedRef<string[]> = computed(() => {
     const categories = new Set<string>();
-    store.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f) => {
       if (f.category) {
         categories.add(f.category);
       }
@@ -168,7 +170,7 @@ export function useRuleOptions() {
   // Type codes: "regular", "freshrss", "rsshub", "script", "xpath", "email"
   const feedTypes: ComputedRef<string[]> = computed(() => {
     const typeSet = new Set<string>();
-    store.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f) => {
       // Determine feed type based on feed properties
       let typeCode: string;
       if (f.is_freshrss_source) {
@@ -194,7 +196,7 @@ export function useRuleOptions() {
   // Feed tags for multi-select
   const feedTags: ComputedRef<string[]> = computed(() => {
     const tagSet = new Set<string>();
-    store.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f) => {
       f.tags?.forEach((t) => tagSet.add(t.name));
     });
     return Array.from(tagSet);

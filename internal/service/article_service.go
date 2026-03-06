@@ -3,18 +3,18 @@ package service
 import (
 	"context"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 )
 
 // articleService implements ArticleService interface
 type articleService struct {
 	registry *Registry
-	db       *database.DB
+	db       *sqlite.DB
 }
 
 // NewArticleService creates a new article service
-func NewArticleService(registry *Registry, db *database.DB) ArticleService {
+func NewArticleService(registry *Registry, db *sqlite.DB) ArticleService {
 	return &articleService{
 		registry: registry,
 		db:       db,

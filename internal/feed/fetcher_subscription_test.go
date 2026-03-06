@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"context"
 	"testing"
 
@@ -9,7 +9,7 @@ import (
 )
 
 func TestAddSubscription(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestAddSubscription(t *testing.T) {
 }
 
 func TestFetchFeed(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestFetchFeed(t *testing.T) {
 }
 
 func TestFetchFeedWithMissingTitle(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestFetchFeedWithMissingTitle(t *testing.T) {
 }
 
 func TestFetchFeedWithMissingTitleLongContent(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}

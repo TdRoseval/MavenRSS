@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"testing"
 	"time"
@@ -358,7 +358,7 @@ func TestExtractImageURLWithMediaRSS(t *testing.T) {
 
 func TestProcessArticlesWithYouTubeFeed(t *testing.T) {
 	// Create a mock database
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}

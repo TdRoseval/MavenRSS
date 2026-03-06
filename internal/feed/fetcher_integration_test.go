@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 )
 
 func TestFetchFeed_SavesArticlesAndAppliesRules(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}

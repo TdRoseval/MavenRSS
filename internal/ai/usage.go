@@ -18,11 +18,14 @@ const (
 	PriorityNormal PriorityLevel = 0
 	// PriorityHigh is for user-initiated requests on selected articles
 	PriorityHigh PriorityLevel = 1
+	// PriorityPreemptive is for force re-translate requests that should preempt all others
+	PriorityPreemptive PriorityLevel = 2
 )
 
 // Request represents a queued AI request with priority
 type Request struct {
 	priority PriorityLevel
+	userID   int64     // User ID for per-user queue management
 	index    int       // The index of the item in the heap
 	ready    chan bool // Channel to signal when the request is ready to proceed
 }
@@ -153,13 +156,14 @@ func (t *UsageTracker) processQueue() {
 
 // WaitForRateLimit blocks until a request can be made with normal priority.
 func (t *UsageTracker) WaitForRateLimit() {
-	t.WaitForRateLimitWithPriority(PriorityNormal)
+	t.WaitForRateLimitWithPriority(PriorityNormal, 0)
 }
 
 // WaitForRateLimitWithPriority blocks until a request can be made with specified priority.
-func (t *UsageTracker) WaitForRateLimitWithPriority(priority PriorityLevel) {
+func (t *UsageTracker) WaitForRateLimitWithPriority(priority PriorityLevel, userID int64) {
 	req := &Request{
 		priority: priority,
+		userID:   userID,
 		ready:    make(chan bool, 1),
 	}
 
@@ -261,6 +265,45 @@ func (t *UsageTracker) AddUsage(tokens int64) error {
 
 	newUsage := current + tokens
 	return t.settings.SetSetting("ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+}
+
+// ClearQueue clears all queued requests (global).
+func (t *UsageTracker) ClearQueue() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	// Clear the priority queue
+	t.pq = make(PriorityQueue, 0)
+	heap.Init(&t.pq)
+	log.Printf("[UsageTracker] Cleared all queued AI requests")
+}
+
+// ClearQueueForUser clears all queued requests for a specific user.
+// This allows per-user preemption without affecting other users.
+func (t *UsageTracker) ClearQueueForUser(userID int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	// Create a new queue without the specified user's requests
+	newPQ := make(PriorityQueue, 0)
+	clearedCount := 0
+	
+	for _, req := range t.pq {
+		if req.userID != userID {
+			newPQ = append(newPQ, req)
+		} else {
+			clearedCount++
+			// Signal to the waiting goroutine that its request was cancelled
+			select {
+			case req.ready <- false:
+			default:
+			}
+		}
+	}
+	
+	t.pq = newPQ
+	heap.Init(&t.pq)
+	log.Printf("[UsageTracker] Cleared %d queued AI requests for user %d", clearedCount, userID)
 }
 
 // ResetUsage resets the usage counter to zero.

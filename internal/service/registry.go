@@ -5,7 +5,7 @@ import (
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/cache"
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/discovery"
 	"MavenRSS/internal/feed"
 	"MavenRSS/internal/statistics"
@@ -16,7 +16,7 @@ import (
 // Registry is the central service registry that manages all application services.
 // It provides lazy initialization and thread-safe access to services.
 type Registry struct {
-	db   *database.DB
+	db   *sqlite.DB
 	once sync.Once
 
 	// Core dependencies
@@ -37,7 +37,7 @@ type Registry struct {
 }
 
 // NewRegistry creates a new service registry.
-func NewRegistry(db *database.DB, fetcher *feed.Fetcher, translator translation.Translator) *Registry {
+func NewRegistry(db *sqlite.DB, fetcher *feed.Fetcher, translator translation.Translator) *Registry {
 	return &Registry{
 		db:         db,
 		fetcher:    fetcher,
@@ -124,7 +124,7 @@ func (r *Registry) Settings() SettingsService {
 }
 
 // DB returns the database instance (for backward compatibility)
-func (r *Registry) DB() *database.DB {
+func (r *Registry) DB() *sqlite.DB {
 	return r.db
 }
 

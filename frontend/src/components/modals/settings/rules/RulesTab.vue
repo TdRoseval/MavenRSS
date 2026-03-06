@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, watch, type Ref } from 'vue';
 import { PhLightning, PhPlus } from '@phosphor-icons/vue';
@@ -8,9 +7,10 @@ import RuleItem from './RuleItem.vue';
 import type { Condition } from '@/composables/rules/useRuleOptions';
 import type { SettingsData } from '@/types/settings';
 import { ButtonControl, SettingGroup, SettingItem } from '@/components/settings';
-import { authPost } from '@/utils/authFetch';
+import { authPost } from '@/shared/lib/authFetch';
+import { useArticleStore } from '@/features/article/store';
 
-const store = useAppStore();
+const articleStore = useArticleStore();
 const { t } = useI18n();
 
 interface Rule {
@@ -167,8 +167,8 @@ async function applyRule(rule: Rule): Promise<void> {
     // No transformation needed - feed_type values are already codes
     const data = await authPost('/api/rules/apply', rule);
     window.showToast(t('modal.rule.ruleAppliedSuccess', { count: data.affected }), 'success');
-    store.fetchArticles();
-    store.fetchUnreadCounts();
+    articleStore.fetchArticles();
+    articleStore.fetchUnreadCounts();
   } catch (e) {
     console.error('Error applying rule:', e);
     window.showToast(t('common.errors.savingSettings'), 'error');

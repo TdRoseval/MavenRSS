@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted } from 'vue';
-import { checkServerMode } from '@/utils/serverMode';
-import { authFetchJson, authPost } from '@/utils/authFetch';
+import { checkServerMode } from '@/shared/lib/serverMode';
+import { authFetchJson, authPost } from '@/shared/lib/authFetch';
 
 interface WindowState {
   x: number;

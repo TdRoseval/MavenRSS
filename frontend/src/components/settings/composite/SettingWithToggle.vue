@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue';
 import SettingItem from '../base/SettingItem.vue';
-import ToggleControl from '../base/SettingControl/ToggleControl.vue';
+import ToggleControl from '@/shared/ui/form/ToggleControl.vue';
 
 interface Props {
   icon?: Component;

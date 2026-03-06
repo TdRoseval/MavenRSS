@@ -24,7 +24,7 @@ import {
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { maskSensitiveValue } from '@/utils/settingsEncryption';
+import { maskSensitiveValue } from '@/shared/lib/settingsEncryption';
 
 const { t } = useI18n();
 

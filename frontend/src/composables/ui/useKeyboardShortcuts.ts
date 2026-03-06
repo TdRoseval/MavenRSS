@@ -1,7 +1,8 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { useAppStore } from '@/stores/app';
-import { openInBrowser } from '@/utils/browser';
-import { authPost } from '@/utils/authFetch';
+import { openInBrowser } from '@/shared/lib/browser';
+import { authPost } from '@/shared/lib/authFetch';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 export interface KeyboardShortcuts {
   nextArticle: string;
@@ -34,7 +35,8 @@ export interface KeyboardShortcutCallbacks {
 }
 
 export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
-  const store = useAppStore();
+  const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 
   const shortcutsEnabled = ref(true);
   const shortcuts = ref<KeyboardShortcuts>({
@@ -78,11 +80,11 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function navigateArticle(direction: number): void {
-    const articles = store.articles;
+    const articles = articleStore.articles;
     if (!articles || articles.length === 0) return;
 
-    const currentIndex = store.currentArticleId
-      ? articles.findIndex((a) => a.id === store.currentArticleId)
+    const currentIndex = articleStore.currentArticleId
+      ? articles.findIndex((a) => a.id === articleStore.currentArticleId)
       : -1;
 
     let newIndex: number;
@@ -98,16 +100,16 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function selectArticleByIndex(index: number): void {
-    const article = store.articles[index];
+    const article = articleStore.articles[index];
     if (!article) return;
 
-    store.currentArticleId = article.id;
+    articleStore.currentArticleId = article.id;
 
     // Mark as read
     if (!article.is_read) {
       article.is_read = true;
       authPost(`/api/articles/read?id=${article.id}&read=true`)
-        .then(() => store.fetchUnreadCounts())
+        .then(() => articleStore.fetchUnreadCounts())
         .catch((e) => console.error('Error marking as read:', e));
     }
 
@@ -121,13 +123,13 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function toggleCurrentArticleRead(): void {
-    const article = store.articles.find((a) => a.id === store.currentArticleId);
+    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
     if (!article) return;
 
     const newState = !article.is_read;
     article.is_read = newState;
     authPost(`/api/articles/read?id=${article.id}&read=${newState}`)
-      .then(() => store.fetchUnreadCounts())
+      .then(() => articleStore.fetchUnreadCounts())
       .catch((e) => {
         console.error('Error toggling read:', e);
         article.is_read = !newState;
@@ -135,7 +137,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function toggleCurrentArticleFavorite(): void {
-    const article = store.articles.find((a) => a.id === store.currentArticleId);
+    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
     if (!article) return;
 
     const newState = !article.is_favorite;
@@ -147,7 +149,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function toggleCurrentArticleReadLater(): void {
-    const article = store.articles.find((a) => a.id === store.currentArticleId);
+    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
     if (!article) return;
 
     const newState = !article.is_read_later;
@@ -157,7 +159,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
       article.is_read = false;
     }
     authPost(`/api/articles/toggle-read-later?id=${article.id}`)
-      .then(() => store.fetchUnreadCounts())
+      .then(() => articleStore.fetchUnreadCounts())
       .catch((e) => {
         console.error('Error toggling read later:', e);
         article.is_read_later = !newState;
@@ -165,7 +167,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function openCurrentArticleInBrowser(): void {
-    const article = store.articles.find((a) => a.id === store.currentArticleId);
+    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
     if (article && article.url) {
       openInBrowser(article.url);
     }
@@ -181,7 +183,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   // Check if an article detail panel is open and scrollable
   function isArticleDetailOpen(): boolean {
     // Check if there's a current article selected
-    if (!store.currentArticleId) return false;
+    if (!articleStore.currentArticleId) return false;
 
     // Check if the article detail panel is visible
     const articleDetail = document.querySelector('main[class*="flex-1 bg-bg-primary"]');
@@ -323,8 +325,8 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
       if (!hasOpenModal) {
         // No modals open, handle article close
-        if (store.currentArticleId) {
-          store.currentArticleId = null;
+        if (articleStore.currentArticleId) {
+          articleStore.currentArticleId = null;
           e.preventDefault();
         }
       }
@@ -359,7 +361,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
         navigateArticle(-1);
         break;
       case 'openArticle':
-        if (store.articles.length > 0 && !store.currentArticleId) {
+        if (articleStore.articles.length > 0 && !articleStore.currentArticleId) {
           selectArticleByIndex(0);
         }
         break;
@@ -379,7 +381,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
         window.dispatchEvent(new CustomEvent('toggle-content-view'));
         break;
       case 'refreshFeeds':
-        store.refreshFeeds();
+        feedStore.refreshFeeds();
         break;
       case 'markAllRead':
         callbacks.onMarkAllRead();
@@ -397,16 +399,16 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
         window.dispatchEvent(new CustomEvent('toggle-filter'));
         break;
       case 'goToAllArticles':
-        store.setFilter('all');
+        articleStore.setFilter('all');
         break;
       case 'goToUnread':
-        store.setFilter('unread');
+        articleStore.setFilter('unread');
         break;
       case 'goToFavorites':
-        store.setFilter('favorites');
+        articleStore.setFilter('favorites');
         break;
       case 'goToReadLater':
-        store.setFilter('readLater');
+        articleStore.setFilter('readLater');
         break;
     }
   }

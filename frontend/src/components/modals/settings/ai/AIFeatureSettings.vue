@@ -18,7 +18,7 @@ import {
 import AIProfileSelector from './AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { authDelete } from '@/utils/authFetch';
+import { authDelete } from '@/shared/lib/authFetch';
 
 const { t } = useI18n();
 

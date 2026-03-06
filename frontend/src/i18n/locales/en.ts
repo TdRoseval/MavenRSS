@@ -51,6 +51,8 @@ const en: TranslationMessages = {
       viewModeRendered: 'View as Rendered Content',
       viewModeExternal: 'Open in Browser',
       viewOriginal: 'View Original',
+      forceReTranslate: 'Force Re-translate',
+      forceTranslateSuccess: 'Article re-translated successfully',
     },
     audioPlayer: {
       audioPlaybackError:
@@ -356,6 +358,10 @@ const en: TranslationMessages = {
       articlesDeleted: '{count} articles deleted',
       articlesRemoved: '{count} entries removed',
       filesRemoved: '{count} files removed',
+      clearArticles: 'Clear Articles',
+      clearArticlesConfirmMessage: 'Are you sure you want to clear all articles from this feed?',
+      clearArticlesConfirmTitle: 'Clear Articles',
+      articlesCleared: '{count} articles cleared',
       feedDiscovery: 'Feed Discovery',
       feedName: 'Feed Name',
       feedReordered: 'Feed reordered successfully',
@@ -389,6 +395,8 @@ const en: TranslationMessages = {
       refreshMode: 'Refresh Mode',
       refreshModeDesc: 'How this feed should be refreshed',
       refreshSettings: 'Feed Refresh Settings',
+      translateArticles: 'Translate Articles',
+      translateArticlesDesc: 'When enabled, articles from this feed will be automatically translated (requires global translation setting to be enabled)',
       rssUrl: 'RSS URL',
       sourceUrl: 'Source URL',
       sourceUrlPlaceholder: 'https://example.com/blog',
@@ -884,6 +892,13 @@ const en: TranslationMessages = {
       networkSettingsDescription:
         'Automatic network speed detection to optimize parallel feed refresh performance',
       reDetectNetwork: 'Re-detect',
+      performanceMode: {
+        title: 'Performance Mode',
+        standard: 'Standard Mode',
+        standardDesc: 'Dynamic concurrency, suitable for most environments',
+        eco: 'Eco Mode',
+        ecoDesc: 'Limited concurrency and resources, suitable for low-spec devices',
+      },
     },
     freshrss: {
       apiPassword: 'API Password',

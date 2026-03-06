@@ -5,7 +5,7 @@ import { PhTextT, PhTextIndent, PhTextAa } from '@phosphor-icons/vue';
 import { SettingGroup, SettingItem, NumberControl } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { getRecommendedFonts } from '@/utils/fontDetector';
+import { getRecommendedFonts } from '@/shared/lib/fontDetector';
 
 const { t } = useI18n();
 

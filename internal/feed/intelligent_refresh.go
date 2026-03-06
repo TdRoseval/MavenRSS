@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"math"
 	"time"
@@ -18,11 +18,11 @@ const (
 
 // IntelligentRefreshCalculator calculates optimal refresh intervals based on feed activity
 type IntelligentRefreshCalculator struct {
-	db *database.DB
+	db *sqlite.DB
 }
 
 // NewIntelligentRefreshCalculator creates a new calculator
-func NewIntelligentRefreshCalculator(db *database.DB) *IntelligentRefreshCalculator {
+func NewIntelligentRefreshCalculator(db *sqlite.DB) *IntelligentRefreshCalculator {
 	return &IntelligentRefreshCalculator{db: db}
 }
 

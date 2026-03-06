@@ -3,12 +3,16 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhLink, PhUser, PhKey, PhArrowClockwise, PhCloudCheck } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
-import { useAppStore } from '@/stores/app';
 import { NestedSettingsContainer, SubSettingItem, InputControl } from '@/components/settings';
-import { authGet, authPost } from '@/utils/authFetch';
-import { maskSensitiveValue } from '@/utils/settingsEncryption';
+import { authGet, authPost } from '@/shared/lib/authFetch';
+import { maskSensitiveValue } from '@/shared/lib/settingsEncryption';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
+import { useAppStore } from '@/stores/app';
 
 const { t } = useI18n();
+const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 const appStore = useAppStore();
 
 interface Props {
@@ -149,17 +153,17 @@ watch(
     if (oldBool && !newBool) {
       // FreshRSS was just disabled, cleanup will happen on backend
       // Stop global polling
-      appStore.stopFreshRSSStatusPolling();
+      feedStore.stopFreshRSSStatusPolling();
       // Wait a bit for cleanup to complete, then refresh
       setTimeout(async () => {
-        await appStore.fetchFeeds();
-        await appStore.fetchArticles();
-        await appStore.fetchUnreadCounts();
+        await feedStore.fetchFeeds();
+        await articleStore.fetchArticles();
+        await articleStore.fetchUnreadCounts();
         stopStatusPolling();
       }, 1000);
     } else if (!oldBool && newBool) {
       // FreshRSS was just enabled, start global polling
-      await appStore.startFreshRSSStatusPolling();
+      await feedStore.startFreshRSSStatusPolling();
       startStatusPolling(); // Also start local polling for UI display
       emit('settings-changed');
     }

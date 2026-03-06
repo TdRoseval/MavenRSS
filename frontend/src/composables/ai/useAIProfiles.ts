@@ -8,7 +8,7 @@ import {
   authPost,
   authPut,
   authDelete,
-} from '@/utils/authFetch';
+} from '@/shared/lib/authFetch';
 
 // Shared state for AI profiles
 const profiles = ref<AIProfile[]>([]);

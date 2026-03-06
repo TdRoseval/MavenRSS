@@ -27,8 +27,8 @@ import {
 import AIProfileSelector from '@/components/modals/settings/ai/AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { authPost } from '@/utils/authFetch';
-import { maskSensitiveValue } from '@/utils/settingsEncryption';
+import { authPost } from '@/shared/lib/authFetch';
+import { maskSensitiveValue } from '@/shared/lib/settingsEncryption';
 
 const { t } = useI18n();
 

@@ -12,8 +12,8 @@ import {
 } from '@/composables/rules/useRuleOptions';
 import { useRuleConditions } from '@/composables/rules/useRuleConditions';
 import { useRuleActions } from '@/composables/rules/useRuleActions';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
 
 const { t } = useI18n();
 

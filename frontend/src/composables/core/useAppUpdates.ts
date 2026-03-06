@@ -3,7 +3,7 @@
  */
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { authFetchJson, authPost } from '@/utils/authFetch';
+import { authFetchJson, authPost } from '@/shared/lib/authFetch';
 import type { UpdateInfo, DownloadResponse, InstallResponse } from '@/types/settings';
 
 export function useAppUpdates() {

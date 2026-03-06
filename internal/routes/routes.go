@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"MavenRSS/internal/auth"
-	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/middleware"
 )
 

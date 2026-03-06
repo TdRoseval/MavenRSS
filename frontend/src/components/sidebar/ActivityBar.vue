@@ -16,13 +16,13 @@ import {
 import { useAuthStore } from '@/stores/auth';
 import { computed } from 'vue';
 import { ref, onMounted } from 'vue';
-import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
-import { useArticleFilter } from '@/composables/article/useArticleFilter';
-import { authFetchJson } from '@/utils/authFetch';
+import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
+import { authFetchJson } from '@/shared/lib/authFetch';
 import LogoSvg from '../../../public/assets/logo.svg';
+import { useArticleStore } from '@/features/article/store';
 
-const store = useAppStore();
+const articleStore = useArticleStore();
 const authStore = useAuthStore();
 const { t } = useI18n();
 const { clearAllFilters } = useArticleFilter();
@@ -150,7 +150,7 @@ onMounted(async () => {
 
 function handleNavClick(item: NavItem) {
   clearAllFilters();
-  store.setFilter(item.filterType);
+  articleStore.setFilter(item.filterType);
   emit('select-filter', item.filterType);
 }
 
@@ -218,7 +218,7 @@ defineExpose({
             :key="item.id"
             :class="[
               'relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent',
-              store.currentFilter === item.filterType ? 'text-accent' : '',
+              articleStore.currentFilter === item.filterType ? 'text-accent' : '',
             ]"
             style="width: 44px; height: 44px"
             :title="item.label"
@@ -226,22 +226,22 @@ defineExpose({
           >
             <component
               :is="
-                store.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon
+                articleStore.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon
               "
               :size="24"
-              :weight="store.currentFilter === item.filterType ? 'fill' : 'regular'"
+              :weight="articleStore.currentFilter === item.filterType ? 'fill' : 'regular'"
               :class="[
-                store.currentFilter === item.filterType ? 'text-accent scale-105' : '',
+                articleStore.currentFilter === item.filterType ? 'text-accent scale-105' : '',
                 'transition-all',
               ]"
             />
 
             <span
-              v-if="item.id === 'all' && store.unreadCounts?.total > 0"
+              v-if="item.id === 'all' && articleStore.unreadCounts?.total > 0"
               class="absolute bottom-0.5 right-0.5 min-w-[14px] h-[14px] px-0.5 text-[9px] font-medium flex items-center justify-center rounded-full text-white"
               style="background-color: #999999"
             >
-              {{ store.unreadCounts?.total > 99 ? '99+' : store.unreadCounts?.total }}
+              {{ articleStore.unreadCounts?.total > 99 ? '99+' : articleStore.unreadCounts?.total }}
             </span>
           </button>
         </TransitionGroup>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, type Ref } from 'vue';
 import GeneralTab from './settings/general/GeneralTab.vue';
@@ -13,8 +12,8 @@ import ShortcutsTab from './settings/shortcuts/ShortcutsTab.vue';
 import RulesTab from './settings/rules/RulesTab.vue';
 import StatisticsTab from './settings/statistics/StatisticsTab.vue';
 import AboutTab from './settings/about/AboutTab.vue';
-import DiscoverAllFeedsModal from './discovery/DiscoverAllFeedsModal.vue';
-import ConfirmDialog from './common/ConfirmDialog.vue';
+import DiscoverAllFeedsModal from '@/features/discovery/components/DiscoverAllFeedsModal.vue';
+import ConfirmDialog from '@/shared/ui/ConfirmDialog.vue';
 import {
   PhGear,
   PhSlidersHorizontal,
@@ -34,11 +33,14 @@ import {
 import type { TabName } from '@/types/settings';
 import type { ThemePreference } from '@/stores/app';
 import { useSettings } from '@/composables/core/useSettings';
-import { useFeedManagement } from '@/composables/feed/useFeedManagement';
+import { useFeedManagement } from '@/features/feed/composables/useFeedManagement';
 import { useModalClose, LARGE_MODAL_Z_INDEX } from '@/composables/ui/useModalClose';
 import { useSettingsManualSave } from '@/composables/core/useSettingsManualSave';
+import { useFeedStore } from '@/features/feed/store';
+import { useAppStore } from '@/stores/app';
 
-const store = useAppStore();
+const feedStore = useFeedStore();
+const appStore = useAppStore();
 const { t } = useI18n();
 
 const emit = defineEmits<{
@@ -98,7 +100,7 @@ const { zIndex: modalZIndex } = useModalClose(handleClose, LARGE_MODAL_Z_INDEX);
 onMounted(async () => {
   try {
     const data = await fetchSettings();
-    applySettings(data, (theme: string) => store.setTheme(theme as ThemePreference));
+    applySettings(data, (theme: string) => appStore.setTheme(theme as ThemePreference));
     // Save original settings after loading
     saveOriginalSettings();
   } catch (e) {

@@ -10,7 +10,7 @@ import {
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { formatDate } from '@/utils/date';
+import { formatDate } from '@/shared/lib/date';
 
 const { t } = useI18n();
 
