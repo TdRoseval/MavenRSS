@@ -49,6 +49,8 @@ const zh: TranslationMessages = {
       viewModeRendered: '以渲染查看',
       viewModeExternal: '在浏览器中打开',
       viewOriginal: '查看原文',
+      forceReTranslate: '强制重新翻译',
+      forceTranslateSuccess: '文章重新翻译成功',
     },
     audioPlayer: {
       audioPlaybackError: '无法播放音频。文件可能不可用或格式不受支持。',

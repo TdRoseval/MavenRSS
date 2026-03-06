@@ -12,6 +12,7 @@ interface Props {
   translationEnabled: boolean;
   translationSkipped?: boolean;
   isTranslatingContent?: boolean;
+  forceTranslated?: boolean; // 是否是强制翻译的
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -34,7 +35,7 @@ const formatDateWithI18n = (dateStr: string): string => {
 // Computed: check if we should show bilingual title
 const showBilingualTitle = computed(() => {
   return (
-    props.translationEnabled &&
+    (props.translationEnabled || props.forceTranslated) &&
     props.translatedTitle &&
     props.translatedTitle !== props.article?.title
   );

@@ -274,12 +274,12 @@ async function sendMessage() {
     let eventName: string | null = null;
     let chunkCount = 0;
 
-    console.log('Starting to read SSE stream...');
+    // console.log('Starting to read SSE stream...');
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        console.log('Stream done, total chunks:', chunkCount);
+        // console.log('Stream done, total chunks:', chunkCount);
         break;
       }
 
@@ -293,7 +293,7 @@ async function sendMessage() {
 
         if (trimmed.startsWith('event: ')) {
           eventName = trimmed.slice(7);
-          console.log('Received event:', eventName);
+          // console.log('Received event:', eventName);
           continue;
         }
 
@@ -304,10 +304,10 @@ async function sendMessage() {
 
         try {
           const data = JSON.parse(dataStr);
-          console.log('Received data:', data);
+          // console.log('Received data:', data);
 
           if (eventName === 'done' || data.done) {
-            console.log('Stream completed, final data:', data);
+            // console.log('Stream completed, final data:', data);
             if (data.response) {
               messages.value[assistantMessageIndex] = {
                 ...messages.value[assistantMessageIndex],
@@ -333,9 +333,9 @@ async function sendMessage() {
               content: fullContent,
               html: '',
             };
-            if (chunkCount % 10 === 0) {
-              console.log('Processed', chunkCount, 'chunks');
-            }
+            // if (chunkCount % 10 === 0) {
+            //   console.log('Processed', chunkCount, 'chunks');
+            // }
             await nextTick();
             scrollToBottom();
           }

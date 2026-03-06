@@ -28,15 +28,15 @@ onMounted(async () => {
 interface Props {
   article: Article;
   showContent: boolean;
-  showTranslations?: boolean;
   isModal?: boolean;
   isRefreshing?: boolean;
+  isForceTranslating?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
-  showTranslations: true,
   isModal: false,
   isRefreshing: false,
+  isForceTranslating: false,
 });
 
 defineEmits<{
@@ -45,7 +45,7 @@ defineEmits<{
   toggleRead: [];
   toggleFavorite: [];
   toggleReadLater: [];
-  toggleTranslations: [];
+  forceTranslate: [];
   exportToObsidian: [];
   exportToNotion: [];
   refreshArticle: [];
@@ -70,19 +70,16 @@ defineEmits<{
     </button>
     <div class="flex gap-1 sm:gap-2 ml-auto">
       <button
-        v-if="showContent && settings.translation_enabled && !settings.translation_only_mode"
+        v-if="showContent && settings.translation_enabled"
         class="action-btn"
-        :title="
-          showTranslations
-            ? t('setting.reading.hideTranslations')
-            : t('setting.reading.showTranslations')
-        "
-        @click="$emit('toggleTranslations')"
+        :title="t('article.action.forceReTranslate')"
+        :disabled="isForceTranslating"
+        @click="$emit('forceTranslate')"
       >
         <PhTranslate
           :size="18"
           class="sm:w-5 sm:h-5"
-          :weight="showTranslations ? 'fill' : 'regular'"
+          :class="{ 'animate-spin': isForceTranslating }"
         />
       </button>
       <button

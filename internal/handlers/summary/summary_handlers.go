@@ -157,9 +157,9 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 			// Use AI summarization
 			// Apply rate limiting for AI requests with priority
 			if req.HighPriority {
-				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh)
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh, userID)
 			} else {
-				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal)
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal, userID)
 			}
 
 			// Try to get AI config from ProfileProvider first

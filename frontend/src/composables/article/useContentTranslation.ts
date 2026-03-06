@@ -274,9 +274,9 @@ export function hasOnlyPreservedContent(element: HTMLElement): boolean {
   // Note: We do NOT remove hyperlinks because they contain translatable text
   // Hyperlinks should be translated along with their text content
 
-  // Check if there's any meaningful text left
+  // Check if there's any meaningful text left - 放宽条件，只在真正完全没有文本时才返回true
   const remainingText = clone.textContent?.trim() || '';
-  return remainingText.length < 2;
+  return remainingText.length === 0;
 }
 
 /**

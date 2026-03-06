@@ -137,10 +137,13 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
-		ArticleID     int64  `json:"article_id"`
-		Title         string `json:"title"`
-		TargetLang    string `json:"target_language"`
-		HighPriority  bool   `json:"high_priority"` // Whether this request should be prioritized
+		ArticleID         int64  `json:"article_id"`
+		Title             string `json:"title"`
+		TargetLang        string `json:"target_language"`
+		HighPriority      bool   `json:"high_priority"`      // Whether this request should be prioritized
+		Force             bool   `json:"force"`              // Force re-translation even if exists
+		SkipPersistence   bool   `json:"skip_persistence"`   // Skip saving translation to DB
+		Preemptive        bool   `json:"preemptive"`         // Preempt all other queued requests
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -153,10 +156,16 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Step -1: If preemptive flag is set, clear all queued requests for this user only
+	if req.Preemptive {
+		log.Printf("[TranslateArticle] Preemptive request - clearing queued AI requests for user %d", userID)
+		h.AITracker.ClearQueueForUser(userID)
+	}
+
 	// Step 0: Check if article already has a translation in database
-	// This prevents re-translating already translated content
+	// Skip this check if force flag is set
 	article, err := h.DB.GetArticleByID(req.ArticleID)
-	if err == nil && article != nil {
+	if !req.Force && err == nil && article != nil {
 		if article.TranslatedTitle != "" && article.TranslatedTitle != article.Title {
 			// Translation already exists and is different from original
 			response.JSON(w, map[string]interface{}{
@@ -212,10 +221,12 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 			translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
 		} else {
 			// Apply rate limiting for AI requests with priority
-			if req.HighPriority {
-				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh)
+			if req.Preemptive {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityPreemptive, userID)
+			} else if req.HighPriority {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh, userID)
 			} else {
-				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal)
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal, userID)
 			}
 
 			// Create AI translator directly with user-specific settings
@@ -276,10 +287,12 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Update the article with the translated title
-	if updateErr := h.DB.UpdateArticleTranslation(req.ArticleID, translatedTitle); updateErr != nil {
-		response.Error(w, updateErr, http.StatusInternalServerError)
-		return
+	// Update the article with the translated title only if not skipping persistence
+	if !req.SkipPersistence {
+		if updateErr := h.DB.UpdateArticleTranslation(req.ArticleID, translatedTitle); updateErr != nil {
+			response.Error(w, updateErr, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	response.JSON(w, map[string]interface{}{
@@ -339,6 +352,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 		TargetLang   string `json:"target_language"`
 		Force        bool   `json:"force"`
 		HighPriority bool   `json:"high_priority"` // Whether this request should be prioritized
+		Preemptive   bool   `json:"preemptive"`     // Preempt all other queued requests
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -353,7 +367,13 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	log.Printf("[TranslateText] Text length: %d, TargetLang: %s, Force: %v", len(req.Text), req.TargetLang, req.Force)
+	log.Printf("[TranslateText] Text length: %d, TargetLang: %s, Force: %v, Preemptive: %v", len(req.Text), req.TargetLang, req.Force, req.Preemptive)
+
+	// Step -1: If preemptive flag is set, clear all queued requests for this user only
+	if req.Preemptive {
+		log.Printf("[TranslateText] Preemptive request - clearing queued AI requests for user %d", userID)
+		h.AITracker.ClearQueueForUser(userID)
+	}
 
 	// Step 1: Pre-translation language detection to avoid unnecessary API calls
 	detector := translation.GetLanguageDetector()
@@ -392,10 +412,12 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 			translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
 		} else {
 			// Apply rate limiting for AI requests with priority
-			if req.HighPriority {
-				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh)
+			if req.Preemptive {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityPreemptive, userID)
+			} else if req.HighPriority {
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityHigh, userID)
 			} else {
-				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal)
+				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal, userID)
 			}
 
 			// Create AI translator directly with user-specific settings

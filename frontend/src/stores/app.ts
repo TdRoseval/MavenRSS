@@ -393,7 +393,7 @@ export const useAppStore = defineStore('app', () => {
           await apiClient.post('/freshrss/sync');
         } catch (e) {
           // If FreshRSS sync fails, it's okay - just log it
-          console.log('FreshRSS sync failed:', e);
+          // console.log('FreshRSS sync failed:', e);
         }
       }
 
@@ -429,7 +429,7 @@ export const useAppStore = defineStore('app', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const data: any = await apiClient.get('/progress');
-      console.log('Initial progress update:', data);
+      // console.log('Initial progress update:', data);
       refreshProgress.value = {
         ...refreshProgress.value,
         isRunning: data.is_running,
@@ -438,7 +438,7 @@ export const useAppStore = defineStore('app', () => {
         article_click_count: data.article_click_count,
         queue_task_count: data.queue_task_count,
       };
-      console.log('Initial refreshProgress:', refreshProgress.value);
+      // console.log('Initial refreshProgress:', refreshProgress.value);
     } catch (e) {
       console.error('Error fetching initial progress:', e);
     }
@@ -548,7 +548,7 @@ export const useAppStore = defineStore('app', () => {
           lastKnownFreshRSSSyncTime !== null &&
           data.last_sync_time !== lastKnownFreshRSSSyncTime
         ) {
-          console.log('[FreshRSS] Sync completed detected, refreshing data...');
+          // console.log('[FreshRSS] Sync completed detected, refreshing data...');
           // Refresh all data
           await fetchFeeds();
           await fetchArticles();
@@ -579,13 +579,13 @@ export const useAppStore = defineStore('app', () => {
         // Check if auto-update is enabled before downloading
         const { settings } = useSettings();
 
-        console.log('[DEBUG] Update found, auto_update =', settings.value.auto_update);
+        // console.log('[DEBUG] Update found, auto_update =', settings.value.auto_update);
         if (settings.value.auto_update) {
-          console.log('[DEBUG] Auto-downloading update...');
+          // console.log('[DEBUG] Auto-downloading update...');
           // Auto download and install in background
           autoDownloadAndInstall(data.download_url, data.asset_name);
         } else {
-          console.log('[DEBUG] Auto-update disabled, showing notification only');
+          // console.log('[DEBUG] Auto-update disabled, showing notification only');
           // Just show notification that update is available
           if (window.showToast) {
             window.showToast(`Update available: v${data.latest_version}`, 'info');

@@ -17,6 +17,7 @@ import {
   extractTextWithPlaceholders,
   restorePreservedElements,
   hasOnlyPreservedContent,
+  getTranslatableText,
 } from '@/composables/article/useContentTranslation';
 import { useSettings } from '@/composables/core/useSettings';
 import { useAppStore } from '@/stores/app';
@@ -40,13 +41,11 @@ interface Props {
   articleContent: string;
   isLoadingContent: boolean;
   attachImageEventListeners?: () => void;
-  showTranslations?: boolean;
   showContent?: boolean;
   forceRefreshKey?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  showTranslations: true,
   attachImageEventListeners: undefined,
   showContent: true,
   forceRefreshKey: 0,
@@ -183,6 +182,9 @@ const isTranslatingContent = ref(false);
 const lastTranslatedArticleId = ref<number | null>(null);
 const lastTranslatedContentHash = ref<string>(''); // Track translated content by hash
 const translationSkipped = ref(false);
+const forceTranslated = ref(false); // 是否是强制翻译的
+const isForceTranslating = ref(false); // 是否正在进行强制翻译
+const translationRequestId = ref(0); // 翻译请求ID，用于识别过时的翻译结果
 
 // Computed: whether translation is effectively enabled (global + feed setting)
 const effectiveTranslationEnabled = computed(() => {
@@ -200,7 +202,8 @@ async function loadSettings() {
 // Translate text using the API
 async function translateText(
   text: string,
-  force: boolean = false
+  force: boolean = false,
+  preemptive: boolean = false
 ): Promise<{ text: string; html: string }> {
   if (!text || !translationEnabled.value) {
     return { text: '', html: '' };
@@ -211,6 +214,7 @@ async function translateText(
     target_language: targetLanguage.value,
     force: force,
     high_priority: true, // Article content is always high priority
+    preemptive: preemptive,
   };
 
   try {
@@ -375,15 +379,22 @@ function simpleHash(str: string): string {
 
 // Translate content paragraphs while preserving inline elements (formulas, code, images)
 async function translateContentParagraphs(content: string) {
-  console.log('[ArticleContent] translateContentParagraphs called:', {
-    translationEnabled: translationEnabled.value,
-    contentLength: content?.length,
-    lastTranslatedArticleId: lastTranslatedArticleId.value,
-    currentArticleId: props.article?.id,
-  });
+  // console.log('[ArticleContent] translateContentParagraphs called:', {
+  //   translationEnabled: translationEnabled.value,
+  //   contentLength: content?.length,
+  //   lastTranslatedArticleId: lastTranslatedArticleId.value,
+  //   currentArticleId: props.article?.id,
+  //   isForceTranslating: isForceTranslating.value,
+  // });
 
   if (!translationEnabled.value || !content) {
-    console.log('[ArticleContent] Translation skipped: disabled or no content');
+    // console.log('[ArticleContent] Translation skipped: disabled or no content');
+    return;
+  }
+
+  // 如果正在进行强制翻译，则自动翻译立即停止
+  if (isForceTranslating.value) {
+    // console.log('[ArticleContent] translateContentParagraphs skipped: force translation in progress');
     return;
   }
 
@@ -391,7 +402,7 @@ async function translateContentParagraphs(content: string) {
   const feed = store.feedMap.get(props.article?.feed_id);
   const feedTranslateArticles = feed?.translate_articles ?? false;
   if (!feedTranslateArticles) {
-    console.log('[ArticleContent] Translation skipped: feed does not require translation');
+    // console.log('[ArticleContent] Translation skipped: feed does not require translation');
     return;
   }
 
@@ -401,7 +412,7 @@ async function translateContentParagraphs(content: string) {
     lastTranslatedArticleId.value === props.article?.id &&
     lastTranslatedContentHash.value === contentHash
   ) {
-    console.log('[ArticleContent] Translation skipped: already translated');
+    // console.log('[ArticleContent] Translation skipped: already translated');
     return;
   }
 
@@ -487,6 +498,12 @@ async function translateContentParagraphs(content: string) {
   for (const el of allElements) {
     const htmlEl = el as HTMLElement;
 
+    // 如果正在进行强制翻译，则立即停止自动翻译
+    if (isForceTranslating.value) {
+      // console.log('[ArticleContent] translateContentParagraphs stopping: force translation started');
+      break;
+    }
+
     // Skip if inside a translation element
     if (htmlEl.closest('.translation-text')) continue;
 
@@ -531,11 +548,11 @@ async function translateContentParagraphs(content: string) {
       continue;
     }
 
-    // Skip elements that only contain preserved content (no translatable text)
-    if (hasOnlyPreservedContent(htmlEl)) {
-      continue;
-    }
-
+    // Skip elements that only contain preserved content - 放宽条件
+    const onlyPreserved = hasOnlyPreservedContent(htmlEl);
+    const translatableText = getTranslatableText(htmlEl);
+    // console.log(`[AutoTranslation] Processing element ${htmlEl.tagName}, onlyPreserved=${onlyPreserved}, translatableText="${translatableText}", length=${translatableText.length}`);
+    
     // Extract text with placeholders for inline elements (formulas, code, images) and hyperlinks
     const {
       text: textWithPlaceholders,
@@ -545,14 +562,32 @@ async function translateContentParagraphs(content: string) {
 
     // Even very short text should be translated (e.g., single words in quotes)
     // Only skip completely empty text
-    if (!textWithPlaceholders || textWithPlaceholders.trim().length === 0) continue;
+    if (!textWithPlaceholders || textWithPlaceholders.trim().length === 0) {
+      // console.log(`[AutoTranslation] Skipping empty text`);
+      continue;
+    }
+
+    // Skip if translation was already added by another concurrent translation
+    if (htmlEl.querySelector('.translation-text') || htmlEl.closest('.translation-text')) {
+      continue;
+    }
 
     // Translate the text (with placeholders and link markers)
     // Always use force: true for individual paragraphs
     // This ensures each paragraph gets translated, even if language detection is uncertain
     const translation = await translateText(textWithPlaceholders, true);
+    
+    // Skip if translation was already added by another concurrent translation
+    if (htmlEl.querySelector('.translation-text') || htmlEl.closest('.translation-text')) {
+      continue;
+    }
+    
     const translatedText = translation.text;
-    if (!translatedText || translatedText === textWithPlaceholders) {
+    // console.log(`[AutoTranslation] Original="${textWithPlaceholders.substring(0, 50)}...", Translated="${translatedText.substring(0, 50)}..."`);
+    
+    // 放宽条件：即使译文和原文相同（可能因为语言检测问题），也尝试显示译文
+    if (!translatedText) {
+      // console.log(`[AutoTranslation] Skipping empty translation result`);
       continue;
     }
 
@@ -692,6 +727,8 @@ watch(
       translatedTitle.value = '';
       lastTranslatedArticleId.value = null; // Reset translation tracking
       fullArticleContent.value = ''; // Reset full article content when switching articles
+      forceTranslated.value = false; // Reset force translated flag
+      isForceTranslating.value = false; // Reset force translating flag
 
       if (props.article) {
         // Check if article has a cached summary first
@@ -749,16 +786,16 @@ watch(
     const translationJustEnabled =
       oldTranslationEnabled === false && newTranslationEnabled === true;
 
-    console.log('[ArticleContent] Translation watch triggered:', {
-      isFirstRun,
-      articleChanged,
-      contentJustLoaded,
-      translationJustEnabled,
-      newArticleId,
-      newContent: newContent?.substring(0, 50),
-      newTranslationEnabled,
-      oldTranslationEnabled,
-    });
+    // console.log('[ArticleContent] Translation watch triggered:', {
+    //   isFirstRun,
+    //   articleChanged,
+    //   contentJustLoaded,
+    //   translationJustEnabled,
+    //   newArticleId,
+    //   newContent: newContent?.substring(0, 50),
+    //   newTranslationEnabled,
+    //   oldTranslationEnabled,
+    // });
 
     const shouldTrigger =
       newContent && newArticleId && (articleChanged || contentJustLoaded || translationJustEnabled || (isFirstRun && newTranslationEnabled));
@@ -898,6 +935,267 @@ watch(
   }
 );
 
+// Force translate all content (title + all text blocks)
+async function forceTranslateAll() {
+  if (!props.article || !translationEnabled.value) return;
+  
+  // console.log('[ArticleContent] Starting force translate all');
+  
+  // 设置正在进行强制翻译的标志
+  isForceTranslating.value = true;
+  
+  // Mark as force translated
+  forceTranslated.value = true;
+  
+  // Reset translation tracking to force retranslation
+  lastTranslatedArticleId.value = null;
+  lastTranslatedContentHash.value = '';
+  
+  // Clear existing translations in DOM
+  const proseContainer = document.querySelector('.prose-content');
+  if (proseContainer) {
+    const existingTranslations = proseContainer.querySelectorAll('.translation-text');
+    existingTranslations.forEach((el) => el.remove());
+  }
+  
+  // First request with preemptive=true to clear all other queued requests
+  let firstRequest = true;
+  
+  try {
+    // Force translate title (ignore feed setting and cache)
+    if (props.article.title) {
+      isTranslatingTitle.value = true;
+      try {
+        const translation = await translateText(props.article.title, true, firstRequest);
+        firstRequest = false;
+        translatedTitle.value = translation.text;
+      } finally {
+        isTranslatingTitle.value = false;
+      }
+    }
+    
+    // Force translate content (ignore feed setting and cache, translate everything)
+    const contentToTranslate = fullArticleContent.value || props.articleContent;
+    if (contentToTranslate) {
+      await forceTranslateContentParagraphs(contentToTranslate, firstRequest);
+    }
+    
+    window.showToast(t('article.action.forceTranslateSuccess'), 'success');
+  } finally {
+    // 确保始终清除强制翻译标志
+    isForceTranslating.value = false;
+  }
+}
+
+// Force translate content paragraphs with no restrictions
+async function forceTranslateContentParagraphs(content: string, firstRequest: boolean = false) {
+  // console.log('[ArticleContent] forceTranslateContentParagraphs called, firstRequest:', firstRequest);
+  
+  if (!translationEnabled.value || !content) {
+    return;
+  }
+  
+  // Do NOT check feed translation setting - force translation regardless
+  
+  isTranslatingContent.value = true;
+  lastTranslatedArticleId.value = props.article?.id || null;
+  lastTranslatedContentHash.value = simpleHash(content);
+  
+  // Wait for content to render
+  await nextTick();
+  
+  // Find all text elements in the prose content
+  const proseContainer = document.querySelector('.prose-content');
+  if (!proseContainer) {
+    isTranslatingContent.value = false;
+    return;
+  }
+  
+  // Clear existing translations in DOM again - double-check to prevent duplicate translations
+  const existingTranslations = proseContainer.querySelectorAll('.translation-text');
+  existingTranslations.forEach((el) => el.remove());
+  
+  // Check if content is plain text (no HTML tags) and wrap it in <p> tags
+  const hasHTMLTags = /<[^>]+>/.test(proseContainer.innerHTML);
+  if (!hasHTMLTags && proseContainer.textContent && proseContainer.textContent.trim().length > 0) {
+    const textContent = proseContainer.innerHTML;
+    proseContainer.innerHTML = `<p>${textContent}</p>`;
+  }
+  
+  // Find all translatable elements - use standard tags
+  const textTags = [
+    'P',
+    'H1',
+    'H2',
+    'H3',
+    'H4',
+    'H5',
+    'H6',
+    'LI',
+    'TD',
+    'TH',
+    'FIGCAPTION',
+    'DT',
+    'DD',
+  ];
+  
+  // Track which elements we've already translated to avoid duplicates
+  const translatedElements = new Set<HTMLElement>();
+  
+  // Get all elements and sort them by depth
+  const allElements = Array.from(proseContainer.querySelectorAll(textTags.join(',')));
+  
+  // Sort by depth (shallowest first)
+  allElements.sort((a, b) => {
+    const getDepth = (el: Element): number => {
+      let depth = 0;
+      let parent = el.parentElement;
+      while (parent && parent !== proseContainer) {
+        depth++;
+        parent = parent.parentElement;
+      }
+      return depth;
+    };
+    return getDepth(a) - getDepth(b);
+  });
+  
+  // Helper function to check if an element can contain nested translatable content
+  const canContainNestedTranslatableElements = (el: HTMLElement): boolean => {
+    const nestableTags = ['LI', 'BLOCKQUOTE', 'DD', 'DT', 'TD', 'TH'];
+    return nestableTags.includes(el.tagName);
+  };
+  
+  // Helper function to get nested translatable children
+  const getNestedTranslatableChildren = (el: HTMLElement): Element[] => {
+    return Array.from(el.children).filter((child) => textTags.includes(child.tagName));
+  };
+  
+  for (const el of allElements) {
+    const htmlEl = el as HTMLElement;
+    
+    // 如果强制翻译被中断（例如用户快速切换文章等），则立即停止
+    if (!isForceTranslating.value) {
+      // console.log('[ArticleContent] forceTranslateContentParagraphs stopping: isForceTranslating became false');
+      break;
+    }
+    
+    // Skip if inside a translation element
+    if (htmlEl.closest('.translation-text')) continue;
+    
+    // Skip if already has translation inside
+    if (htmlEl.querySelector('.translation-text')) continue;
+    
+    // Skip if we've already translated this element
+    if (translatedElements.has(htmlEl)) continue;
+    
+    // Skip if this element's parent or any ancestor was already translated
+    let hasTranslatedAncestor = false;
+    let ancestor = htmlEl.parentElement;
+    while (ancestor && ancestor !== proseContainer) {
+      if (translatedElements.has(ancestor)) {
+        if (canContainNestedTranslatableElements(htmlEl)) {
+          const ancestorNested = getNestedTranslatableChildren(ancestor as HTMLElement);
+          if (ancestorNested.length > 0) {
+            ancestor = ancestor.parentElement;
+            continue;
+          }
+        }
+        hasTranslatedAncestor = true;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    if (hasTranslatedAncestor) continue;
+    
+    // Skip elements that are entirely technical content
+    if (
+      htmlEl.closest('pre') ||
+      htmlEl.tagName === 'CODE' ||
+      htmlEl.closest('kbd') ||
+      htmlEl.classList.contains('katex') ||
+      htmlEl.classList.contains('katex-display') ||
+      htmlEl.classList.contains('katex-inline')
+    ) {
+      continue;
+    }
+    
+    // Skip elements that only contain preserved content - 放宽条件
+    const onlyPreserved = hasOnlyPreservedContent(htmlEl);
+    const translatableText = getTranslatableText(htmlEl);
+    // console.log(`[Translation] Processing element ${htmlEl.tagName}, onlyPreserved=${onlyPreserved}, translatableText="${translatableText}", length=${translatableText.length}`);
+    
+    // Extract text with placeholders
+    const {
+      text: textWithPlaceholders,
+      preservedElements,
+      hyperlinks,
+    } = extractTextWithPlaceholders(htmlEl);
+    
+    // Only skip completely empty text
+    if (!textWithPlaceholders || textWithPlaceholders.trim().length === 0) {
+      // console.log(`[Translation] Skipping empty text`);
+      continue;
+    }
+    
+    // Always use force: true
+    // Use preemptive flag only on first request
+    const translation = await translateText(textWithPlaceholders, true, firstRequest);
+    firstRequest = false;
+    
+    const translatedText = translation.text;
+    // console.log(`[Translation] Original="${textWithPlaceholders.substring(0, 50)}...", Translated="${translatedText.substring(0, 50)}..."`);
+    
+    // 放宽条件：即使译文和原文相同（可能因为语言检测问题），也尝试显示译文
+    if (!translatedText) {
+      // console.log(`[Translation] Skipping empty translation result`);
+      continue;
+    }
+    
+    // Restore preserved elements and hyperlinks
+    const translatedHTML = restorePreservedElements(translatedText, preservedElements, hyperlinks);
+    
+    // Determine how to insert translation
+    const tagName = htmlEl.tagName;
+    
+    if (
+      tagName === 'LI' ||
+      tagName === 'TD' ||
+      tagName === 'TH' ||
+      tagName === 'DD' ||
+      tagName === 'DT'
+    ) {
+      const translationEl = document.createElement('div');
+      translationEl.className = 'translation-text translation-inline';
+      translationEl.innerHTML = translatedHTML;
+      htmlEl.appendChild(translationEl);
+    } else if (htmlEl.closest('blockquote')) {
+      const translationEl = document.createElement('div');
+      translationEl.className = 'translation-text translation-blockquote';
+      translationEl.innerHTML = translatedHTML;
+      htmlEl.appendChild(translationEl);
+    } else {
+      const translationEl = document.createElement('div');
+      translationEl.className = 'translation-text';
+      translationEl.innerHTML = translatedHTML;
+      htmlEl.parentNode?.insertBefore(translationEl, htmlEl.nextSibling);
+    }
+    
+    translatedElements.add(htmlEl);
+  }
+  
+  // Re-apply rendering enhancements
+  await nextTick();
+  proseContainer.querySelectorAll('.translation-text').forEach((el) => {
+    renderMathFormulas(el as HTMLElement);
+    highlightCodeBlocks(el as HTMLElement);
+  });
+  
+  // Re-attach event listeners
+  await reattachImageInteractions();
+  
+  isTranslatingContent.value = false;
+}
+
 // Clean up event listeners
 onBeforeUnmount(() => {
   // Cancel any ongoing summary generation
@@ -912,6 +1210,11 @@ onBeforeUnmount(() => {
 
   window.removeEventListener('summary-settings-changed', onSummarySettingsChanged as EventListener);
 });
+
+// Expose methods to parent component
+defineExpose({
+  forceTranslateAll,
+});
 </script>
 
 <template>
@@ -922,7 +1225,6 @@ onBeforeUnmount(() => {
     <div
       class="max-w-3xl mx-auto bg-bg-primary pb-12"
       :class="{
-        'hide-translations': !showTranslations,
         'translation-only-mode': translationSettings.translationOnlyMode,
       }"
     >
@@ -933,6 +1235,7 @@ onBeforeUnmount(() => {
         :translation-enabled="effectiveTranslationEnabled"
         :translation-skipped="translationSkipped"
         :is-translating-content="isTranslatingContent"
+        :force-translated="forceTranslated"
         @force-translate="forceTranslateContent"
       />
 

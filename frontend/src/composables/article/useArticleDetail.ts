@@ -296,11 +296,11 @@ export function useArticleDetail() {
 
       // Proxy images if media proxy is enabled (cache or fallback)
       const proxyEnabled = await shouldProxyMedia();
-      console.log('[useArticleDetail] proxyEnabled:', proxyEnabled, 'content length:', content?.length);
+      // console.log('[useArticleDetail] proxyEnabled:', proxyEnabled, 'content length:', content?.length);
       if (proxyEnabled && content) {
         // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
         const feedUrl = data.feed_url || article.value.url;
-        console.log('[useArticleDetail] Calling proxyImagesInHtml with feedUrl:', feedUrl);
+        // console.log('[useArticleDetail] Calling proxyImagesInHtml with feedUrl:', feedUrl);
         content = proxyImagesInHtml(content, feedUrl);
       }
 

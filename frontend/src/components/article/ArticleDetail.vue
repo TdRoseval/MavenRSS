@@ -64,10 +64,10 @@ function handleClose() {
   close();
 }
 
-const showTranslations = ref(true);
 const showFindInPage = ref(false);
 const articleContentRef = ref<any>(null);
 const forceRefreshKey = ref(0);
+const isForceTranslating = ref(false);
 
 const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
@@ -86,8 +86,17 @@ const webpageProxyUrl = computed(() => {
   return proxyUrl;
 });
 
-function toggleTranslations() {
-  showTranslations.value = !showTranslations.value;
+async function forceTranslateArticle() {
+  if (!articleContentRef.value || !articleContentRef.value.forceTranslateAll) {
+    return;
+  }
+  
+  isForceTranslating.value = true;
+  try {
+    await articleContentRef.value.forceTranslateAll();
+  } finally {
+    isForceTranslating.value = false;
+  }
 }
 
 function openFindInPage() {
@@ -159,15 +168,15 @@ onBeforeUnmount(() => {
       <ArticleToolbar
         :article="article"
         :show-content="showContent"
-        :show-translations="showTranslations"
         :is-refreshing="isRefreshing"
+        :is-force-translating="isForceTranslating"
         @close="handleClose"
         @toggle-content-view="toggleContentView"
         @toggle-read="toggleRead"
         @toggle-favorite="toggleFavorite"
         @toggle-read-later="toggleReadLater"
         @open-original="openOriginal"
-        @toggle-translations="toggleTranslations"
+        @force-translate="forceTranslateArticle"
         @export-to-obsidian="exportToObsidian"
         @export-to-notion="exportToNotion"
         @refresh-article="refreshArticle"
@@ -192,7 +201,6 @@ onBeforeUnmount(() => {
           :article-content="articleContent"
           :is-loading-content="isLoadingContent"
           :attach-image-event-listeners="attachImageEventListeners"
-          :show-translations="showTranslations"
           :show-content="showContent"
           :force-refresh-key="forceRefreshKey"
           @retry-load-content="handleRetryLoadContent"

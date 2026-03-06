@@ -51,6 +51,8 @@ const en: TranslationMessages = {
       viewModeRendered: 'View as Rendered Content',
       viewModeExternal: 'Open in Browser',
       viewOriginal: 'View Original',
+      forceReTranslate: 'Force Re-translate',
+      forceTranslateSuccess: 'Article re-translated successfully',
     },
     audioPlayer: {
       audioPlaybackError:

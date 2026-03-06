@@ -118,12 +118,12 @@ export async function isMediaCacheEnabled(): Promise<boolean> {
       const response = await fetch('/api/settings');
       if (response.ok) {
         const settings = await response.json();
-        console.log('[MediaProxy] Settings response:', settings.media_cache_enabled, settings.media_proxy_fallback);
+        // console.log('[MediaProxy] Settings response:', settings.media_cache_enabled, settings.media_proxy_fallback);
         mediaCacheEnabledCache =
           settings.media_cache_enabled === 'true' || settings.media_cache_enabled === true;
         mediaProxyFallbackCache =
           settings.media_proxy_fallback === 'true' || settings.media_proxy_fallback === true;
-        console.log('[MediaProxy] Parsed values: cache=', mediaCacheEnabledCache, ', fallback=', mediaProxyFallbackCache);
+        // console.log('[MediaProxy] Parsed values: cache=', mediaCacheEnabledCache, ', fallback=', mediaProxyFallbackCache);
         return mediaCacheEnabledCache;
       }
     } catch (error) {
@@ -148,8 +148,8 @@ export async function shouldProxyMedia(): Promise<boolean> {
     await isMediaCacheEnabled();
   }
   const result = mediaCacheEnabledCache === true || mediaProxyFallbackCache === true;
-  console.log('[MediaProxy] shouldProxyMedia:', result, 
-    '(cache:', mediaCacheEnabledCache, ', fallback:', mediaProxyFallbackCache, ')');
+  // console.log('[MediaProxy] shouldProxyMedia:', result, 
+  //   '(cache:', mediaCacheEnabledCache, ', fallback:', mediaProxyFallbackCache, ')');
   return result;
 }
 
@@ -172,7 +172,7 @@ export function clearMediaCacheEnabledCache(): void {
 export function proxyImagesInHtml(html: string, referer?: string, token?: string): string {
   if (!html) return html;
 
-  console.log('[MediaProxy] proxyImagesInHtml called, referer:', referer);
+  // console.log('[MediaProxy] proxyImagesInHtml called, referer:', referer);
 
   // First, convert lazy-loaded images to normal images
   // This ensures images load immediately without waiting for lazy loading scripts
@@ -181,7 +181,7 @@ export function proxyImagesInHtml(html: string, referer?: string, token?: string
   // Then proxy the src attributes
   processed = proxyImgAttribute(processed, 'src', referer, token);
 
-  console.log('[MediaProxy] proxyImagesInHtml done');
+  // console.log('[MediaProxy] proxyImagesInHtml done');
 
   return processed;
 }
