@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue';
 import SettingItem from '../base/SettingItem.vue';
-import SelectControl from '../base/SettingControl/SelectControl.vue';
+import SelectControl from '@/shared/ui/form/SelectControl.vue';
 
 interface Option {
   value: string | number;

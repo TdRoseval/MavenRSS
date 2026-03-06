@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"MavenRSS/internal/auth"
-	auth_handlers "MavenRSS/internal/handlers/auth"
+	auth_handlers "MavenRSS/internal/api/auth"
 	"MavenRSS/internal/middleware"
 )
 

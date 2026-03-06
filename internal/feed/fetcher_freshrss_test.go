@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	ff "MavenRSS/internal/feed"
 	"MavenRSS/internal/models"
 )
@@ -13,7 +13,7 @@ import (
 // TestFetchAll_OnlyFreshRSSFeeds_IncrementsStatistics tests that when all feeds are FreshRSS sources,
 // the global refresh still increments statistics and updates last refresh time
 func TestFetchAll_OnlyFreshRSSFeeds_IncrementsStatistics(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestFetchAll_OnlyFreshRSSFeeds_IncrementsStatistics(t *testing.T) {
 // TestFetchAll_NoFeeds_DoesNotIncrementStatistics tests that when there are no feeds,
 // the global refresh does not increment statistics
 func TestFetchAll_NoFeeds_DoesNotIncrementStatistics(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestFetchAll_NoFeeds_DoesNotIncrementStatistics(t *testing.T) {
 // TestFetchAll_MixedFeeds_IncrementsStatistics tests that with a mix of FreshRSS and regular feeds,
 // the global refresh increments statistics
 func TestFetchAll_MixedFeeds_IncrementsStatistics(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB: %v", err)
 	}

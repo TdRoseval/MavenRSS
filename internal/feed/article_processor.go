@@ -47,9 +47,18 @@ func (f *Fetcher) processArticles(feed models.Feed, items []*gofeed.Item) []*Art
 	for _, item := range items {
 		var published time.Time
 		var hasValidPublishedTime bool
+		
 		if item.PublishedParsed != nil {
 			published = *item.PublishedParsed
-			hasValidPublishedTime = true
+			// 检查时间是否只有日期而没有具体时间（00:00:00）
+			hour, min, sec := published.Clock()
+			if hour == 0 && min == 0 && sec == 0 {
+				// 只有日期，没有具体时间
+				// 先不修改发布时间，保持原始时间
+				hasValidPublishedTime = false
+			} else {
+				hasValidPublishedTime = true
+			}
 		} else {
 			published = time.Now() // Still set for database storage
 			hasValidPublishedTime = false

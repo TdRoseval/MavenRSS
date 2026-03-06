@@ -7,8 +7,8 @@ import type { SavedFilter } from '@/types/filter';
 import { useFilterFields } from '@/composables/filter/useFilterFields';
 import { useFilterConditions } from '@/composables/filter/useFilterConditions';
 import RuleConditionItem from '../rules/RuleConditionItem.vue';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
 
 const { t } = useI18n();
 

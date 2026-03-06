@@ -18,7 +18,7 @@ import {
   PhCalendarStar,
 } from '@phosphor-icons/vue';
 import { ButtonControl } from '@/components/settings';
-import { authGet, authDelete } from '@/utils/authFetch';
+import { authGet, authDelete } from '@/shared/lib/authFetch';
 
 const { t } = useI18n();
 

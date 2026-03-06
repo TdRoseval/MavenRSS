@@ -36,16 +36,18 @@ type DBInterfaceWithFallback interface {
 func CreateHTTPClientWithProxy(db DBInterface, timeout time.Duration) (*http.Client, error) {
 	var proxyURL string
 
-	// Check if global proxy is enabled
-	proxyEnabled, _ := db.GetSetting("proxy_enabled")
-	if proxyEnabled == "true" {
-		// Build proxy URL from global settings
-		proxyType, _ := db.GetSetting("proxy_type")
-		proxyHost, _ := db.GetSetting("proxy_host")
-		proxyPort, _ := db.GetSetting("proxy_port")
-		proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
-		proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
-		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	// Check if global proxy is enabled, but only if db is provided
+	if db != nil {
+		proxyEnabled, _ := db.GetSetting("proxy_enabled")
+		if proxyEnabled == "true" {
+			// Build proxy URL from global settings
+			proxyType, _ := db.GetSetting("proxy_type")
+			proxyHost, _ := db.GetSetting("proxy_host")
+			proxyPort, _ := db.GetSetting("proxy_port")
+			proxyUsername, _ := db.GetEncryptedSetting("proxy_username")
+			proxyPassword, _ := db.GetEncryptedSetting("proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
 	}
 
 	// Get pooled HTTP client with or without proxy

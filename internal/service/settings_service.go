@@ -1,16 +1,16 @@
 package service
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 )
 
 // settingsService implements SettingsService interface
 type settingsService struct {
-	db *database.DB
+	db *sqlite.DB
 }
 
 // NewSettingsService creates a new settings service
-func NewSettingsService(db *database.DB) SettingsService {
+func NewSettingsService(db *sqlite.DB) SettingsService {
 	return &settingsService{db: db}
 }
 

@@ -1,12 +1,12 @@
 package feed
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"testing"
 )
 
 func TestNewFetcherSanity(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}

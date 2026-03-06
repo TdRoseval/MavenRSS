@@ -3,10 +3,10 @@ package routes
 import (
 	"net/http"
 
-	article "MavenRSS/internal/handlers/article"
-	"MavenRSS/internal/handlers/core"
-	summary "MavenRSS/internal/handlers/summary"
-	translationhandlers "MavenRSS/internal/handlers/translation"
+	article "MavenRSS/internal/api/article"
+	"MavenRSS/internal/api/core"
+	summary "MavenRSS/internal/api/summary"
+	translationhandlers "MavenRSS/internal/api/translation"
 	"MavenRSS/internal/middleware"
 )
 
@@ -43,6 +43,7 @@ func registerArticleRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	registerProtectedRoute(mux, "/api/articles/cleanup-content", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleCleanupArticleContent(h, w, r) })
 	registerProtectedRoute(mux, "/api/articles/content-cache-info", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleGetArticleContentCacheInfo(h, w, r) })
 	registerProtectedRoute(mux, "/api/articles/refresh", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleRefreshArticle(h, w, r) })
+	registerProtectedRoute(mux, "/api/articles/clear-for-feed", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleClearArticlesForFeed(h, w, r) })
 
 	// Translation
 	registerProtectedRoute(mux, "/api/articles/translate", authMiddleware, func(w http.ResponseWriter, r *http.Request) { translationhandlers.HandleTranslateArticle(h, w, r) })

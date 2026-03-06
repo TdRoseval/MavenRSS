@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"context"
 	"testing"
 	"time"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestFetchFeedWithAudioEnclosure(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestFetchFeedWithAudioEnclosure(t *testing.T) {
 }
 
 func TestFetchFeedWithImageEnclosure(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestFetchFeedWithImageEnclosure(t *testing.T) {
 }
 
 func TestFetchFeedWithMultipleEnclosures(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create db: %v", err)
 	}

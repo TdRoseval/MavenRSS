@@ -18,7 +18,7 @@ import {
 } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { authGet, authPost } from '@/utils/authFetch';
+import { authGet, authPost } from '@/shared/lib/authFetch';
 
 const { t } = useI18n();
 

@@ -9,17 +9,17 @@ import (
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/config"
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/utils/httputil"
 )
 
 type aiService struct {
 	registry *Registry
-	db       *database.DB
+	db       *sqlite.DB
 }
 
-func NewAIService(registry *Registry, db *database.DB) AIService {
+func NewAIService(registry *Registry, db *sqlite.DB) AIService {
 	return &aiService{
 		registry: registry,
 		db:       db,

@@ -9,9 +9,9 @@ import {
   InputControl,
   TipBox,
 } from '@/components/settings';
-import { checkServerMode } from '@/utils/serverMode';
+import { checkServerMode } from '@/shared/lib/serverMode';
 import { ref, onMounted } from 'vue';
-import { maskSensitiveValue } from '@/utils/settingsEncryption';
+import { maskSensitiveValue } from '@/shared/lib/settingsEncryption';
 
 const { t } = useI18n();
 

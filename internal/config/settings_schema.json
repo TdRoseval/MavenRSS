@@ -522,6 +522,13 @@
       "encrypted": false,
       "frontend_key": "maxConcurrentRefreshes"
     },
+    "performance_mode": {
+      "type": "string",
+      "default": "standard",
+      "category": "network",
+      "encrypted": false,
+      "frontend_key": "performanceMode"
+    },
     "max_idle_conns": {
       "type": "int",
       "default": 100,

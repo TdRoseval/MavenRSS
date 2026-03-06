@@ -8,7 +8,7 @@ import {
   InputControl,
   TipBox,
 } from '@/components/settings';
-import { checkServerMode } from '@/utils/serverMode';
+import { checkServerMode } from '@/shared/lib/serverMode';
 import { ref, onMounted } from 'vue';
 
 const { t } = useI18n();

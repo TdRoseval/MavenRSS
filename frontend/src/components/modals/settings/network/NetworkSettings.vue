@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PhNetwork, PhArrowClockwise } from '@phosphor-icons/vue';
-import { SettingGroup, StatusBoxGroup, TipBox } from '@/components/settings';
+import { PhNetwork, PhArrowClockwise, PhGauge, PhLeaf } from '@phosphor-icons/vue';
+import { SettingGroup, StatusBoxGroup, TipBox, RadioGroup } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { NetworkInfo } from '@/types/settings';
-import { authGet, authPost } from '@/utils/authFetch';
+import type { SettingsData } from '@/types/settings.generated';
+import { authGet, authPost } from '@/shared/lib/authFetch';
+import { useAuthStore } from '@/stores/auth';
+
+const props = defineProps<{
+  settings: SettingsData;
+}>();
+
+const emit = defineEmits<{
+  (e: 'update:settings', settings: SettingsData): void;
+}>();
 
 const { t } = useI18n();
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 const networkInfo = ref<NetworkInfo>({
   speed_level: 'medium',
@@ -86,6 +98,28 @@ function formatTime(timeStr: string): string {
   }
 }
 
+const performanceModeOptions = computed(() => [
+  {
+    value: 'standard',
+    label: t('setting.network.performanceMode.standard'),
+    description: t('setting.network.performanceMode.standardDesc'),
+    icon: PhGauge,
+  },
+  {
+    value: 'eco',
+    label: t('setting.network.performanceMode.eco'),
+    description: t('setting.network.performanceMode.ecoDesc'),
+    icon: PhLeaf,
+  },
+]);
+
+function handlePerformanceModeChange(value: string) {
+  emit('update:settings', {
+    ...props.settings,
+    performance_mode: value,
+  });
+}
+
 onMounted(() => {
   loadNetworkInfo();
 });
@@ -100,6 +134,18 @@ onMounted(() => {
     <TipBox type="tip" :title="t('setting.network.tunModeInfoTitle')">
       {{ t('setting.network.tunModeInfo') }}
     </TipBox>
+
+    <!-- Performance Mode Selection (Admin Only) -->
+    <div v-if="isAdmin" class="mb-6">
+      <div class="text-sm font-medium text-text-primary mb-2">
+        {{ t('setting.network.performanceMode.title') }}
+      </div>
+      <RadioGroup
+        :model-value="props.settings.performance_mode"
+        :options="performanceModeOptions"
+        @update:model-value="handlePerformanceModeChange"
+      />
+    </div>
 
     <!-- Network Status Display -->
     <StatusBoxGroup

@@ -78,6 +78,7 @@ export interface SettingsData {
   obsidian_enabled: boolean;
   obsidian_vault: string;
   obsidian_vault_path: string;
+  performance_mode: string;
   proxy_enabled: boolean;
   proxy_host: string;
   proxy_password: string;

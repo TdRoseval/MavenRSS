@@ -48,12 +48,12 @@ func generateTitleFromRoute(route string) string {
 // This is a specialized handler for RSSHub routes, similar to script subscriptions.
 // Deprecated: Use AddRSSHubSubscriptionWithUserID instead
 func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTitle string) (int64, error) {
-	return f.AddRSSHubSubscriptionWithUserID(route, category, customTitle, 0)
+	return f.AddRSSHubSubscriptionWithUserID(route, category, customTitle, false, 0)
 }
 
 // AddRSSHubSubscriptionWithUserID adds a new RSSHub feed subscription and returns the feed ID.
 // This is a specialized handler for RSSHub routes, similar to script subscriptions.
-func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string, customTitle string, userID int64) (int64, error) {
+func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string, customTitle string, translateArticles bool, userID int64) (int64, error) {
 	utils.DebugLog("AddRSSHubSubscriptionWithUserID: Adding RSSHub feed with route: %s, userID: %v", route, userID)
 
 	// Validate route
@@ -105,14 +105,15 @@ func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string,
 	useProxy := proxyEnabled == "true"
 
 	feed := &models.Feed{
-		Title:        title,
-		URL:          url,
-		Link:         client.BuildURL(route), // Store the actual RSSHub URL as link
-		Description:  fmt.Sprintf("RSSHub route: %s", route),
-		Category:     category,
-		ProxyEnabled: useProxy,
-		ProxyURL:     proxyURL,
-		UserID:       userID,
+		Title:            title,
+		URL:              url,
+		Link:             client.BuildURL(route), // Store the actual RSSHub URL as link
+		Description:      fmt.Sprintf("RSSHub route: %s", route),
+		Category:         category,
+		ProxyEnabled:     useProxy,
+		ProxyURL:         proxyURL,
+		UserID:           userID,
+		TranslateArticles: translateArticles,
 	}
 
 	if userID > 0 {
@@ -174,6 +175,14 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, f
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
+	// Set caching headers if available
+	if feed.ETag != "" {
+		req.Header.Set("If-None-Match", feed.ETag)
+	}
+	if feed.LastModified != "" {
+		req.Header.Set("If-Modified-Since", feed.LastModified)
+	}
+
 	debugTimer.LogWithTime("Sending HTTP request to %s", feedURL)
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -183,9 +192,29 @@ func (f *Fetcher) fetchAndSanitizeFeed(ctx context.Context, feed *models.Feed, f
 	defer resp.Body.Close()
 	debugTimer.Stage("HTTP request completed")
 
+	if resp.StatusCode == http.StatusNotModified {
+		debugTimer.LogWithTime("HTTP 304 Not Modified")
+		return "", ErrNotModified
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		debugTimer.LogWithTime("HTTP status not OK: %d", resp.StatusCode)
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	// Update caching info if headers present
+	etag := resp.Header.Get("ETag")
+	lastModified := resp.Header.Get("Last-Modified")
+	if etag != "" || lastModified != "" {
+		// We can't update DB directly here easily as we don't have db access in this method context easily
+		// without casting f.db (which is private).
+		// But f is *Fetcher, and Fetcher has db.
+		if feed.ID > 0 {
+			// Update only if it's an existing feed
+			if err := f.db.UpdateFeedCachingInfo(feed.ID, etag, lastModified); err != nil {
+				debugTimer.LogWithTime("Failed to update caching info: %v", err)
+			}
+		}
 	}
 
 	debugTimer.LogWithTime("Reading response body")

@@ -79,7 +79,8 @@ func TestGetFavicon(t *testing.T) {
 	blogURL := "https://example.com/blog"
 	favicon := service.getFavicon(blogURL)
 
-	expected := "https://www.google.com/s2/favicons?domain=example.com"
+	// Update expectation to match implementation in rss_detector.go
+	expected := "https://api.iowen.cn/favicon/example.com.png"
 	if favicon != expected {
 		t.Errorf("getFavicon(%q) = %q; want %q", blogURL, favicon, expected)
 	}
@@ -120,7 +121,8 @@ func TestProgressCallbackCalled(t *testing.T) {
 	}
 
 	// Test with a non-existent feed URL - progress callback should still be called
-	_, _ = service.DiscoverFromFeedWithProgress(ctx, "https://nonexistent-feed-url-12345.com/feed", progressCb)
+	// Updated signature: ctx, url, maxRSSConcurrency, maxPathConcurrency, progressCb
+	_, _ = service.DiscoverFromFeedWithProgress(ctx, "https://nonexistent-feed-url-12345.com/feed", 0, 0, progressCb)
 
 	if !progressCalled {
 		t.Error("Progress callback should have been called at least once")
@@ -228,7 +230,8 @@ func TestFindRSSFeed_LinkInHead(t *testing.T) {
 	defer srv.Close()
 
 	s := newServiceWithClient(srv.Client())
-	feedURL, err := s.findRSSFeed(context.Background(), srv.URL)
+	// Updated signature: ctx, url, maxPathConcurrency
+	feedURL, err := s.findRSSFeed(context.Background(), srv.URL, 0)
 	if err != nil {
 		t.Fatalf("findRSSFeed error: %v", err)
 	}
@@ -258,7 +261,8 @@ func TestGetFaviconAndResolveURLAndExtractLinks(t *testing.T) {
 
 	// getFavicon
 	fav := s.getFavicon(srv.URL)
-	if fav == "" || !strings.Contains(fav, "google.com/s2/favicons") {
+	// Expectation updated to match implementation
+	if fav == "" || !strings.Contains(fav, "iowen.cn/favicon") {
 		t.Fatalf("unexpected favicon: %s", fav)
 	}
 

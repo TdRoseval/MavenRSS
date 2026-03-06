@@ -226,12 +226,10 @@ func containsMeaningfulWords(key string) bool {
 func GenerateArticleUniqueID(userID int64, title string, feedID int64, publishedAt time.Time, hasValidPublishedTime bool) string {
 	title = strings.TrimSpace(title)
 
+	// 无论是否有有效发布时间，都使用日期部分（YYYY-MM-DD）来生成唯一ID
+	// 这样可以确保同一天的同一篇文章被识别为相同的文章，不会被重复添加
 	var dateStr string
-	if hasValidPublishedTime {
-		dateStr = publishedAt.Format("2006-01-02")
-	} else {
-		dateStr = ""
-	}
+	dateStr = publishedAt.Format("2006-01-02")
 
 	data := fmt.Sprintf("%d|%s|%d|%s", userID, title, feedID, dateStr)
 	hash := md5.Sum([]byte(data))

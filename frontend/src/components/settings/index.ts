@@ -8,12 +8,13 @@ export { default as StatusBox } from './base/StatusBox.vue';
 export { default as StatusBoxGroup } from './base/StatusBoxGroup.vue';
 
 // Setting Controls
-export { default as ToggleControl } from './base/SettingControl/ToggleControl.vue';
-export { default as SelectControl } from './base/SettingControl/SelectControl.vue';
-export { default as InputControl } from './base/SettingControl/InputControl.vue';
-export { default as NumberControl } from './base/SettingControl/NumberControl.vue';
-export { default as TextAreaControl } from './base/SettingControl/TextAreaControl.vue';
-export { default as ButtonControl } from './base/SettingControl/ButtonControl.vue';
+export { default as ToggleControl } from '@/shared/ui/form/ToggleControl.vue';
+export { default as SelectControl } from '@/shared/ui/form/SelectControl.vue';
+export { default as InputControl } from '@/shared/ui/form/InputControl.vue';
+export { default as NumberControl } from '@/shared/ui/form/NumberControl.vue';
+export { default as TextAreaControl } from '@/shared/ui/form/TextAreaControl.vue';
+export { default as ButtonControl } from '@/shared/ui/form/ButtonControl.vue';
+export { default as RadioGroup } from '@/shared/ui/form/RadioGroup.vue';
 
 // Composite Components
 export { default as SettingWithToggle } from './composite/SettingWithToggle.vue';

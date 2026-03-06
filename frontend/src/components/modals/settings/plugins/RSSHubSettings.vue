@@ -3,18 +3,18 @@ import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhLink, PhKey, PhTestTube } from '@phosphor-icons/vue';
 import type { SettingsData } from '@/types/settings';
-import { useAppStore } from '@/stores/app';
 import {
   NestedSettingsContainer,
   SubSettingItem,
   InputControl,
   TipBox,
 } from '@/components/settings';
-import { authPost } from '@/utils/authFetch';
-import { maskSensitiveValue } from '@/utils/settingsEncryption';
+import { authPost } from '@/shared/lib/authFetch';
+import { maskSensitiveValue } from '@/shared/lib/settingsEncryption';
+import { useFeedStore } from '@/features/feed/store';
 
 const { t } = useI18n();
-const store = useAppStore();
+const feedStore = useFeedStore();
 
 interface Props {
   settings: SettingsData;
@@ -51,7 +51,7 @@ const isTesting = ref(false);
 
 // Check if there are any RSSHub feeds
 const hasRSSHubFeeds = computed(() => {
-  return store.feeds && store.feeds.some((f) => f.url.startsWith('rsshub://'));
+  return feedStore.feeds && feedStore.feeds.some((f) => f.url.startsWith('rsshub://'));
 });
 
 // Handle RSSHub toggle - prevent disabling if there are RSSHub feeds

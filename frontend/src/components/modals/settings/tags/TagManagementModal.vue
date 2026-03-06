@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAppStore } from '@/stores/app';
 import type { Tag } from '@/types/models';
 import { PhPlus, PhPencil, PhTrash } from '@phosphor-icons/vue';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
 import TagFormModal from './TagFormModal.vue';
-import { authGet, authPost } from '@/utils/authFetch';
+import { authGet, authPost } from '@/shared/lib/authFetch';
+import { useFeedStore } from '@/features/feed/store';
 
 const { t } = useI18n();
-const store = useAppStore();
+const feedStore = useFeedStore();
 
 const emit = defineEmits<{
   close: [];
@@ -64,7 +64,7 @@ async function handleSaveTag(name: string, color: string) {
     editingTag.value = null;
 
     // Refresh store tags
-    await store.fetchTags();
+    await feedStore.fetchTags();
   } catch (e) {
     console.error('Failed to save tag:', e);
   }
@@ -81,14 +81,14 @@ async function deleteTag(tag: Tag) {
     await fetchTags();
 
     // Refresh store tags
-    await store.fetchTags();
+    await feedStore.fetchTags();
   } catch (e) {
     console.error('Failed to delete tag:', e);
   }
 }
 
 function getFeedCount(tag: Tag): number {
-  return store.feeds.filter((f) => f.tags?.some((t) => t.id === tag.id)).length;
+  return feedStore.feeds.filter((f) => f.tags?.some((t) => t.id === tag.id)).length;
 }
 
 function handleEditTag(tag: Tag) {

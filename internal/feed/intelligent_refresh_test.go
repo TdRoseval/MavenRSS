@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 )
 
 func TestIntelligentRefreshCalculator_NoArticles(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.db"
-	db, err := database.NewDB(tmpFile)
+	db, err := sqlite.NewDB(tmpFile)
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestIntelligentRefreshCalculator_ConstantValues(t *testing.T) {
 
 func TestIntelligentRefreshCalculator_Bounds(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.db"
-	db, err := database.NewDB(tmpFile)
+	db, err := sqlite.NewDB(tmpFile)
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestIntelligentRefreshCalculator_Bounds(t *testing.T) {
 
 func TestIntelligentRefreshCalculator_LowFrequency(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.db"
-	db, err := database.NewDB(tmpFile)
+	db, err := sqlite.NewDB(tmpFile)
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestGetStaggeredDelay(t *testing.T) {
 
 func TestIntelligentRefreshCalculator_WithArticles(t *testing.T) {
 	tmpFile := t.TempDir() + "/test.db"
-	db, err := database.NewDB(tmpFile)
+	db, err := sqlite.NewDB(tmpFile)
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}

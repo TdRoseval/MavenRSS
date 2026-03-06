@@ -3,7 +3,7 @@
  * This is a shared singleton that caches the setting value to avoid duplicate API calls
  */
 import { ref, readonly } from 'vue';
-import { authFetchJson } from '@/utils/authFetch';
+import { authFetchJson } from '@/shared/lib/authFetch';
 
 // Shared state across all component instances
 const showPreviewImages = ref(true);

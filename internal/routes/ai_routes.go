@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	aihandlers "MavenRSS/internal/handlers/ai"
-	chat "MavenRSS/internal/handlers/chat"
-	"MavenRSS/internal/handlers/core"
-	"MavenRSS/internal/handlers/response"
+	aihandlers "MavenRSS/internal/api/ai"
+	chat "MavenRSS/internal/api/chat"
+	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/api/response"
 	"MavenRSS/internal/middleware"
 )
 

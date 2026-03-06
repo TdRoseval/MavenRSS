@@ -4,15 +4,17 @@
  */
 import { ref, type Ref, computed, isRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAppStore } from '@/stores/app';
 import type { SettingsData } from '@/types/settings';
 import { settingsDefaults } from '@/config/defaults';
-import { authPost } from '@/utils/authFetch';
+import { authPost } from '@/shared/lib/authFetch';
 import { saveLanguage } from '@/i18n';
+import { useArticleStore } from '@/features/article/store';
+import { useAppStore } from '@/stores/app';
 
 export function useSettingsManualSave(settings: Ref<SettingsData> | (() => SettingsData)) {
   const { locale } = useI18n();
-  const store = useAppStore();
+  const articleStore = useArticleStore();
+const appStore = useAppStore();
   const isSaving = ref(false);
   const hasChanges = ref(false);
 
@@ -100,7 +102,7 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
       // Apply UI changes immediately (theme, language)
       locale.value = settingsRef.value.language;
       saveLanguage(settingsRef.value.language as any);
-      store.setTheme(settingsRef.value.theme as 'light' | 'dark' | 'auto');
+      appStore.setTheme(settingsRef.value.theme as 'light' | 'dark' | 'auto');
 
       // Notify components about default view mode change
       window.dispatchEvent(
@@ -135,7 +137,7 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
           })
         );
         // Refresh articles
-        store.fetchArticles();
+        articleStore.fetchArticles();
       }
 
       // Refresh articles if show_hidden_articles changed
@@ -143,7 +145,7 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
         originalSettings &&
         originalSettings.show_hidden_articles !== settingsRef.value.show_hidden_articles
       ) {
-        store.fetchArticles();
+        articleStore.fetchArticles();
       }
 
       // Notify about other setting changes
@@ -233,7 +235,7 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
 
     locale.value = originalSettings.language as string;
     saveLanguage(originalSettings.language as any);
-    store.setTheme(originalSettings.theme as 'light' | 'dark' | 'auto');
+    appStore.setTheme(originalSettings.theme as 'light' | 'dark' | 'auto');
 
     hasChanges.value = false;
   }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/freshrss"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/rsshub"
@@ -69,11 +69,11 @@ type Rule struct {
 
 // Engine handles rule application
 type Engine struct {
-	db *database.DB
+	db *sqlite.DB
 }
 
 // NewEngine creates a new rules engine
-func NewEngine(db *database.DB) *Engine {
+func NewEngine(db *sqlite.DB) *Engine {
 	return &Engine{db: db}
 }
 
@@ -409,7 +409,7 @@ func matchMultiSelectTags(articleTags []string, values []string, singleValue str
 
 // applyAction applies an action to an article with FreshRSS sync if enabled
 func (e *Engine) applyAction(articleID int64, action string) error {
-	var syncReq *database.SyncRequest
+	var syncReq *sqlite.SyncRequest
 	var err error
 
 	// Apply the action and get sync request if applicable
@@ -448,7 +448,7 @@ func (e *Engine) applyAction(articleID int64, action string) error {
 }
 
 // performImmediateSync performs an immediate sync to FreshRSS in a background goroutine
-func (e *Engine) performImmediateSync(syncReq *database.SyncRequest) {
+func (e *Engine) performImmediateSync(syncReq *sqlite.SyncRequest) {
 	// Check if FreshRSS is enabled and configured
 	enabled, _ := e.db.GetSetting("freshrss_enabled")
 	if enabled != "true" {

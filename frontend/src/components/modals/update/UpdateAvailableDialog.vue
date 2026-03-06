@@ -2,8 +2,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhArrowCircleUp, PhDownloadSimple, PhCircleNotch, PhGear } from '@phosphor-icons/vue';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
 
 interface UpdateInfo {
   has_update: boolean;

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAppStore } from '@/stores/app';
 import { PhX, PhPlus } from '@phosphor-icons/vue';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
 import TagFormModal from '../tags/TagFormModal.vue';
-import { authFetch } from '@/utils/authFetch';
+import { authFetch } from '@/shared/lib/authFetch';
+import { useFeedStore } from '@/features/feed/store';
 
 interface Props {
   show: boolean;
@@ -20,11 +20,11 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const store = useAppStore();
+const feedStore = useFeedStore();
 
 const selectedTags = ref<number[]>([]);
 
-const availableTags = computed(() => store.tags || []);
+const availableTags = computed(() => feedStore.tags || []);
 
 // New tag creation state
 const showNewTagModal = ref(false);
@@ -70,7 +70,7 @@ async function handleSaveTag(name: string, color: string) {
     if (res.ok) {
       const newTag = await res.json();
       // Refresh tags in store
-      await store.fetchTags();
+      await feedStore.fetchTags();
       // Auto-select the newly created tag
       selectedTags.value = [...selectedTags.value, newTag.id];
       closeNewTagModal();
@@ -118,9 +118,9 @@ function handleClose() {
           v-for="tagId in selectedTags"
           :key="tagId"
           class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded text-white"
-          :style="{ backgroundColor: store.tagMap.get(tagId)?.color || '#3B82F6' }"
+          :style="{ backgroundColor: feedStore.tagMap.get(tagId)?.color || '#3B82F6' }"
         >
-          {{ store.tagMap.get(tagId)?.name }}
+          {{ feedStore.tagMap.get(tagId)?.name }}
           <button class="hover:text-gray-200" @click="removeTag(tagId)">
             <PhX :size="14" />
           </button>

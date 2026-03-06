@@ -1,9 +1,10 @@
 import { computed, ref, watch, type Ref } from 'vue';
-import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
-import { openInBrowser } from '@/utils/browser';
+import { openInBrowser } from '@/shared/lib/browser';
 import type { Feed } from '@/types/models';
-import { authFetch, authPost, authFetchJson } from '@/utils/authFetch';
+import { authFetch, authPost, authFetchJson } from '@/shared/lib/authFetch';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 interface TreeNode {
   _feeds: Feed[];
@@ -18,7 +19,8 @@ interface TreeData {
 }
 
 export function useSidebar() {
-  const store = useAppStore();
+  const articleStore = useArticleStore();
+const feedStore = useFeedStore();
   const { t } = useI18n();
 
   // Load saved category state from localStorage
@@ -35,12 +37,12 @@ export function useSidebar() {
     const uncategorized: Feed[] = [];
     const categories = new Set<string>();
 
-    if (!store.feeds) return { tree: {}, uncategorized: [], categories };
+    if (!feedStore.feeds) return { tree: {}, uncategorized: [], categories };
 
     const query = searchQuery.value.toLowerCase().trim();
 
     // Determine which filter counts to use based on currentFilter
-    const currentFilterType = store.currentFilter;
+    const currentFilterType = articleStore.currentFilter;
     const filterTypeMap: Record<string, string> = {
       unread: 'unread',
       favorites: 'favorites',
@@ -49,7 +51,7 @@ export function useSidebar() {
     };
     const filterKey = filterTypeMap[currentFilterType] || '';
 
-    store.feeds.forEach((feed: Feed) => {
+    feedStore.feeds.forEach((feed: Feed) => {
       const matchesSearch =
         query === '' ||
         feed.title.toLowerCase().includes(query) ||
@@ -59,7 +61,7 @@ export function useSidebar() {
 
       // Filter by currentFilter if applicable
       if (currentFilterType && filterKey) {
-        const feedCount = store.filterCounts[filterKey]?.[feed.id] || 0;
+        const feedCount = articleStore.filterCounts[filterKey]?.[feed.id] || 0;
         if (feedCount === 0) return;
       }
 
@@ -90,30 +92,30 @@ export function useSidebar() {
   // Compute unread counts for categories based on current filter
   const categoryUnreadCounts = computed<Record<string, number>>(() => {
     const counts: Record<string, number> = {};
-    if (!store.feeds || !store.unreadCounts.feedCounts) return counts;
+    if (!feedStore.feeds || !articleStore.unreadCounts.feedCounts) return counts;
 
     // Determine which counts to use based on current filter
     let countsSource: Record<number | string, number>;
-    switch (store.currentFilter) {
+    switch (articleStore.currentFilter) {
       case 'favorites':
-        countsSource = store.filterCounts.favorites_unread;
+        countsSource = articleStore.filterCounts.favorites_unread;
         break;
       case 'readLater':
-        countsSource = store.filterCounts.read_later_unread;
+        countsSource = articleStore.filterCounts.read_later_unread;
         break;
       case 'unread':
-        countsSource = store.filterCounts.unread;
+        countsSource = articleStore.filterCounts.unread;
         break;
       case 'imageGallery':
-        countsSource = store.filterCounts.images_unread;
+        countsSource = articleStore.filterCounts.images_unread;
         break;
       default:
         // For 'all' or empty filter, use regular unread counts
-        countsSource = store.unreadCounts.feedCounts;
+        countsSource = articleStore.unreadCounts.feedCounts;
         break;
     }
 
-    store.feeds.forEach((feed: Feed) => {
+    feedStore.feeds.forEach((feed: Feed) => {
       if (feed.category) {
         const unreadCount = countsSource[feed.id] || 0;
         if (unreadCount > 0) {
@@ -123,7 +125,7 @@ export function useSidebar() {
     });
 
     // Calculate uncategorized count
-    const uncategorizedFeeds = store.feeds.filter((f) => !f.category);
+    const uncategorizedFeeds = feedStore.feeds.filter((f) => !f.category);
     counts['uncategorized'] = uncategorizedFeeds.reduce((sum, feed) => {
       return sum + (countsSource[feed.id] || 0);
     }, 0);
@@ -133,21 +135,21 @@ export function useSidebar() {
 
   // Compute feed unread counts based on current filter (for displaying on individual feeds)
   const feedUnreadCounts = computed<Record<number, number>>(() => {
-    if (!store.feeds) return {};
+    if (!feedStore.feeds) return {};
 
     // Determine which counts to use based on current filter
-    switch (store.currentFilter) {
+    switch (articleStore.currentFilter) {
       case 'favorites':
-        return store.filterCounts.favorites_unread;
+        return articleStore.filterCounts.favorites_unread;
       case 'readLater':
-        return store.filterCounts.read_later_unread;
+        return articleStore.filterCounts.read_later_unread;
       case 'unread':
-        return store.filterCounts.unread;
+        return articleStore.filterCounts.unread;
       case 'imageGallery':
-        return store.filterCounts.images_unread;
+        return articleStore.filterCounts.images_unread;
       default:
         // For 'all' or empty filter, use regular unread counts
-        return store.unreadCounts.feedCounts;
+        return articleStore.unreadCounts.feedCounts;
     }
   });
 
@@ -207,19 +209,19 @@ export function useSidebar() {
   // Feed actions
   async function handleFeedAction(action: string, feed: Feed): Promise<void> {
     if (action === 'markAllRead') {
-      await store.markAllAsRead(feed.id);
+      await articleStore.markAllAsRead(feed.id);
       window.showToast(t('article.action.markedAllAsRead'), 'success');
     } else if (action === 'refreshFeed') {
       await authPost(`/api/feeds/refresh?id=${feed.id}`);
       window.showToast(t('modal.feed.feedRefreshStarted'), 'success');
       // Start polling for progress as the backend is now fetching articles for this feed
-      store.pollProgress();
+      feedStore.pollProgress();
     } else if (action === 'syncFeed') {
       // Sync individual FreshRSS feed
       await authPost(`/api/freshrss/sync-feed?stream_id=${feed.freshrss_stream_id}`);
       window.showToast(t('modal.feed.syncFeedStarted'), 'success');
       // Start polling for progress
-      store.pollProgress();
+      feedStore.pollProgress();
     } else if (action === 'delete') {
       const confirmed = await window.showConfirm({
         title: t('modal.feed.unsubscribeTitle'),
@@ -230,8 +232,8 @@ export function useSidebar() {
       });
       if (confirmed) {
         await authPost(`/api/feeds/delete?id=${feed.id}`);
-        store.fetchFeeds();
-        store.fetchArticles();
+        feedStore.fetchFeeds();
+        articleStore.fetchArticles();
         window.showToast(t('modal.feed.unsubscribedSuccess'), 'success');
       }
     } else if (action === 'edit') {
@@ -291,6 +293,20 @@ export function useSidebar() {
       }
     } else if (action === 'discover') {
       window.dispatchEvent(new CustomEvent('show-discover-blogs', { detail: feed }));
+    } else if (action === 'clearArticles') {
+      const confirmed = await window.showConfirm({
+        title: t('modal.feed.clearArticlesConfirmTitle'),
+        message: t('modal.feed.clearArticlesConfirmMessage', { name: feed.title }),
+        confirmText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        isDanger: true,
+      });
+      if (confirmed) {
+        const data = await authPost(`/api/articles/clear-for-feed?feed_id=${feed.id}`);
+        articleStore.fetchArticles();
+        articleStore.fetchUnreadCounts();
+        window.showToast(t('modal.feed.articlesCleared', { count: data.deleted }), 'success');
+      }
     }
   }
 
@@ -339,9 +355,15 @@ export function useSidebar() {
       });
     }
 
-    // Only add edit and delete options for non-FreshRSS feeds
+    // Only add edit, clear articles, and delete options for non-FreshRSS feeds
     if (!feed.is_freshrss_source) {
       items.push({ separator: true });
+      items.push({
+        label: t('modal.feed.clearArticles'),
+        action: 'clearArticles',
+        icon: 'PhEraser',
+        danger: true,
+      });
       items.push({ label: t('modal.feed.editSubscription'), action: 'edit', icon: 'PhPencil' });
       items.push({
         label: t('common.action.unsubscribe'),
@@ -370,7 +392,7 @@ export function useSidebar() {
       // Use the category parameter for the API call
       const category = categoryName === 'uncategorized' ? '' : categoryName;
       await authPost(`/api/articles/mark-all-read?category=${encodeURIComponent(category)}`);
-      store.fetchUnreadCounts();
+      articleStore.fetchUnreadCounts();
       window.showToast(t('article.action.markedAllAsRead'), 'success');
     } else if (action === 'rename') {
       const newName = await window.showInput({
@@ -381,7 +403,7 @@ export function useSidebar() {
         cancelText: t('common.action.cancel'),
       });
       if (newName && newName !== categoryName) {
-        const feedsToUpdate = store.feeds.filter(
+        const feedsToUpdate = feedStore.feeds.filter(
           (f) => f.category === categoryName || f.category.startsWith(categoryName + '/')
         );
 
@@ -402,7 +424,7 @@ export function useSidebar() {
         });
 
         await Promise.all(promises);
-        store.fetchFeeds();
+        feedStore.fetchFeeds();
       }
     }
   }

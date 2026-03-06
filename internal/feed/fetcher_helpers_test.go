@@ -1,7 +1,7 @@
 package feed
 
 import (
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/utils/httputil"
 	"context"
@@ -25,9 +25,9 @@ func (m *MockParser) ParseURLWithContext(url string, ctx context.Context) (*gofe
 	return m.Feed, m.Err
 }
 
-func setupDBForFeedTests(t *testing.T) *database.DB {
+func setupDBForFeedTests(t *testing.T) *sqlite.DB {
 	t.Helper()
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB error: %v", err)
 	}

@@ -74,7 +74,7 @@ func main() {
 		fmt.Printf("Error generating settings_base.go: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✓ Generated internal/handlers/settings/settings_base.go")
+	fmt.Println("✓ Generated internal/api/settings/settings_base.go")
 
 	if err := generateFrontendTypes(&schema); err != nil {
 		fmt.Printf("Error generating frontend types: %v\n", err)
@@ -300,7 +300,7 @@ func generateSettingsBaseGo(schema *SettingsSchema) error {
 package settings
 
 import (
-	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/api/core"
 )
 
 // SettingDef defines a single setting's metadata
@@ -371,7 +371,7 @@ func IsEncryptedSetting(key string) bool {
 `
 
 	content := fmt.Sprintf(tmpl, strings.Join(settingDefs, "\n"))
-	return os.WriteFile("internal/handlers/settings/settings_base.go", []byte(content), 0644)
+	return os.WriteFile("internal/api/settings/settings_base.go", []byte(content), 0644)
 }
 
 func generateFrontendTypes(schema *SettingsSchema) error {

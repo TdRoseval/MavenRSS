@@ -4,8 +4,8 @@ import PhosphorIcons from '@phosphor-icons/vue';
 import i18n, { locale } from './i18n';
 import './style.css';
 import App from './App.vue';
-import { setCachedServerMode } from './utils/serverMode';
-import { register as registerServiceWorker } from './utils/serviceWorker';
+import { setCachedServerMode } from '@/shared/lib/serverMode';
+import { register as registerServiceWorker } from '@/shared/lib/serviceWorker';
 
 const app = createApp(App);
 const pinia = createPinia();
