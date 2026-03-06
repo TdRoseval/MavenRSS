@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 )
 
@@ -16,7 +16,7 @@ func setupTestEngine(t *testing.T) *Engine {
 	dbFile := "test_rules.db"
 	t.Cleanup(func() { os.Remove(dbFile) })
 
-	db, err := database.NewDB(dbFile)
+	db, err := sqlite.NewDB(dbFile)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}

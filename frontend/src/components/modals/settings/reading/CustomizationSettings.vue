@@ -6,9 +6,9 @@ import { PhPalette, PhUpload, PhTrash, PhCheck, PhBookOpen } from '@phosphor-ico
 import { SettingGroup, SettingItem } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { openInBrowser } from '@/utils/browser';
-import { checkServerMode } from '@/utils/serverMode';
-import { authFetch } from '@/utils/authFetch';
+import { openInBrowser } from '@/shared/lib/browser';
+import { checkServerMode } from '@/shared/lib/serverMode';
+import { authFetch } from '@/shared/lib/authFetch';
 
 const { t, locale } = useI18n();
 const { fetchSettings } = useSettings();

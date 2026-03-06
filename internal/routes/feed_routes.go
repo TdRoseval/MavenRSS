@@ -4,12 +4,12 @@ package routes
 import (
 	"net/http"
 
-	"MavenRSS/internal/handlers/core"
-	discovery "MavenRSS/internal/handlers/discovery"
-	feedhandlers "MavenRSS/internal/handlers/feed"
-	filter_category "MavenRSS/internal/handlers/filter_category"
-	rsshubHandler "MavenRSS/internal/handlers/rsshub"
-	taghandlers "MavenRSS/internal/handlers/tags"
+	"MavenRSS/internal/api/core"
+	discovery "MavenRSS/internal/api/discovery"
+	feedhandlers "MavenRSS/internal/api/feed"
+	filter_category "MavenRSS/internal/api/filter_category"
+	rsshubHandler "MavenRSS/internal/api/rsshub"
+	taghandlers "MavenRSS/internal/api/tags"
 	"MavenRSS/internal/middleware"
 )
 

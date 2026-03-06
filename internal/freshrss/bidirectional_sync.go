@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 )
 
@@ -26,16 +26,16 @@ type SyncResult struct {
 // BidirectionalSyncService handles bidirectional synchronization
 type BidirectionalSyncService struct {
 	client *Client
-	db     *database.DB
+	db     *sqlite.DB
 }
 
 // NewBidirectionalSyncService creates a new bidirectional sync service
-func NewBidirectionalSyncService(serverURL, username, password string, db *database.DB) *BidirectionalSyncService {
+func NewBidirectionalSyncService(serverURL, username, password string, db *sqlite.DB) *BidirectionalSyncService {
 	return NewBidirectionalSyncServiceWithProxy(serverURL, username, password, "", db)
 }
 
 // NewBidirectionalSyncServiceWithProxy creates a new bidirectional sync service with proxy support
-func NewBidirectionalSyncServiceWithProxy(serverURL, username, password, proxyURL string, db *database.DB) *BidirectionalSyncService {
+func NewBidirectionalSyncServiceWithProxy(serverURL, username, password, proxyURL string, db *sqlite.DB) *BidirectionalSyncService {
 	return &BidirectionalSyncService{
 		client: NewClientWithProxy(serverURL, username, password, proxyURL),
 		db:     db,
@@ -123,7 +123,7 @@ func (s *BidirectionalSyncService) SyncFeed(ctx context.Context, streamID string
 // This is called when user manually marks an article as read/unread or starred/unstarred
 // Logic: Immediately push local status to server, overwriting remote
 // If sync fails, the change is added to the queue for later retry
-func (s *BidirectionalSyncService) SyncArticleStatus(ctx context.Context, articleID int64, articleURL string, action database.SyncAction) error {
+func (s *BidirectionalSyncService) SyncArticleStatus(ctx context.Context, articleID int64, articleURL string, action sqlite.SyncAction) error {
 	// Login to FreshRSS
 	if err := s.client.Login(ctx); err != nil {
 		return fmt.Errorf("login failed: %w", err)
@@ -150,13 +150,13 @@ func (s *BidirectionalSyncService) SyncArticleStatus(ctx context.Context, articl
 
 	var syncErr error
 	switch action {
-	case database.SyncActionMarkRead:
+	case sqlite.SyncActionMarkRead:
 		syncErr = s.client.MarkAsReadBatch(ctx, []string{identifier})
-	case database.SyncActionMarkUnread:
+	case sqlite.SyncActionMarkUnread:
 		syncErr = s.client.MarkAsUnreadBatch(ctx, []string{identifier})
-	case database.SyncActionStar:
+	case sqlite.SyncActionStar:
 		syncErr = s.client.StarBatch(ctx, []string{identifier})
-	case database.SyncActionUnstar:
+	case sqlite.SyncActionUnstar:
 		syncErr = s.client.UnstarBatch(ctx, []string{identifier})
 	}
 
@@ -358,10 +358,10 @@ func (s *BidirectionalSyncService) applyServerStatus(articleURL string, status b
 			switch column {
 			case "is_favorite":
 				// Star/unstar actions conflict with favorite status changes
-				isConflictingAction = (item.Action == database.SyncActionStar || item.Action == database.SyncActionUnstar)
+				isConflictingAction = (item.Action == sqlite.SyncActionStar || item.Action == sqlite.SyncActionUnstar)
 			case "is_read":
 				// Mark read/unread actions conflict with read status changes
-				isConflictingAction = (item.Action == database.SyncActionMarkRead || item.Action == database.SyncActionMarkUnread)
+				isConflictingAction = (item.Action == sqlite.SyncActionMarkRead || item.Action == sqlite.SyncActionMarkUnread)
 			}
 
 			if isConflictingAction {
@@ -1015,7 +1015,7 @@ func (s *BidirectionalSyncService) pushToServer(ctx context.Context) (int, error
 }
 
 // pushPendingItems pushes items that failed previously (from the queue)
-func (s *BidirectionalSyncService) pushPendingItems(ctx context.Context, pendingChanges []database.SyncQueueItem) (int, error) {
+func (s *BidirectionalSyncService) pushPendingItems(ctx context.Context, pendingChanges []sqlite.SyncQueueItem) (int, error) {
 	totalChanges := 0
 
 	// Group changes by action type
@@ -1059,13 +1059,13 @@ func (s *BidirectionalSyncService) pushPendingItems(ctx context.Context, pending
 		}
 
 		switch item.Action {
-		case database.SyncActionMarkRead:
+		case sqlite.SyncActionMarkRead:
 			readIDs = append(readIDs, identifier)
-		case database.SyncActionMarkUnread:
+		case sqlite.SyncActionMarkUnread:
 			unreadIDs = append(unreadIDs, identifier)
-		case database.SyncActionStar:
+		case sqlite.SyncActionStar:
 			starIDs = append(starIDs, identifier)
-		case database.SyncActionUnstar:
+		case sqlite.SyncActionUnstar:
 			unstarIDs = append(unstarIDs, identifier)
 		}
 	}
@@ -1137,6 +1137,6 @@ func extractImageURLFromHTML(htmlContent string) string {
 }
 
 // GetFailedItems returns items that failed to sync
-func (s *BidirectionalSyncService) GetFailedItems(limit int) ([]database.SyncQueueItem, error) {
+func (s *BidirectionalSyncService) GetFailedItems(limit int) ([]sqlite.SyncQueueItem, error) {
 	return s.db.GetFailedSyncItems(limit)
 }

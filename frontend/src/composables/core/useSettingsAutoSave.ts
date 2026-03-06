@@ -3,16 +3,18 @@
  */
 import { ref, watch, onMounted, onUnmounted, type Ref, computed, isRef } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAppStore } from '@/stores/app';
 import type { SettingsData } from '@/types/settings';
 import { settingsDefaults } from '@/config/defaults';
 import { buildAutoSavePayload } from './useSettings.generated';
-import { authPost } from '@/utils/authFetch';
+import { authPost } from '@/shared/lib/authFetch';
 import { saveLanguage } from '@/i18n';
+import { useArticleStore } from '@/features/article/store';
+import { useAppStore } from '@/stores/app';
 
 export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => SettingsData)) {
   const { locale } = useI18n();
-  const store = useAppStore();
+  const articleStore = useArticleStore();
+const appStore = useAppStore();
 
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   let isInitialLoad = true;
@@ -99,7 +101,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
       // even if validation fails - these don't require API keys
       locale.value = settingsRef.value.language;
       saveLanguage(settingsRef.value.language as any);
-      store.setTheme(settingsRef.value.theme as 'light' | 'dark' | 'auto');
+      appStore.setTheme(settingsRef.value.theme as 'light' | 'dark' | 'auto');
 
       // Notify components about default view mode change
       window.dispatchEvent(
@@ -139,7 +141,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
           })
         );
         // Refresh articles to show without translations, then re-translate if enabled
-        store.fetchArticles();
+        articleStore.fetchArticles();
       }
 
       // Refresh articles if show_hidden_articles changed
@@ -147,7 +149,7 @@ export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => Setting
         settingsRef.value.show_hidden_articles !==
         prevArticleDisplaySettings.value.showHiddenArticles
       ) {
-        store.fetchArticles();
+        articleStore.fetchArticles();
         // Update tracking
         prevArticleDisplaySettings.value.showHiddenArticles =
           settingsRef.value.show_hidden_articles;

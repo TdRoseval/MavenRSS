@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { useAppStore } from './stores/app';
 import { useAuthStore } from './stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue';
 import { saveLanguage } from './i18n';
 import Sidebar from './components/sidebar/Sidebar.vue';
-import ArticleList from './components/article/ArticleList.vue';
-import ArticleDetail from './components/article/ArticleDetail.vue';
-import ImageGalleryView from './components/article/imageGallery/index.vue';
-import Toast from './components/common/Toast.vue';
+import ArticleList from '@/features/article/components/ArticleList.vue';
+import ArticleDetail from '@/features/article/components/ArticleDetail.vue';
+import ImageGalleryView from '@/features/article/components/imageGallery/index.vue';
+import Toast from '@/shared/ui/Toast.vue';
 import LoginPage from './components/auth/LoginPage.vue';
 import AdminUserManagement from './components/auth/AdminUserManagement.vue';
 import { useNotifications } from './composables/ui/useNotifications';
@@ -17,35 +16,41 @@ import { useContextMenu } from './composables/ui/useContextMenu';
 import { useResizablePanels } from './composables/ui/useResizablePanels';
 import { useWindowState } from './composables/core/useWindowState';
 import { useAppUpdates } from './composables/core/useAppUpdates';
-import { apiClient } from './utils/apiClient';
-import { authFetchJson } from './utils/authFetch';
+import { apiClient } from '@/shared/lib/apiClient';
+import { authFetchJson } from '@/shared/lib/authFetch';
 import type { Feed } from './types/models';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
+import { useAppStore } from '@/stores/app';
+
 
 const AddFeedModal = defineAsyncComponent(
-  () => import('./components/modals/feed/AddFeedModal.vue')
+  () => import('@/features/feed/components/AddFeedModal.vue')
 );
 const EditFeedModal = defineAsyncComponent(
-  () => import('./components/modals/feed/EditFeedModal.vue')
+  () => import('@/features/feed/components/EditFeedModal.vue')
 );
 const SettingsModal = defineAsyncComponent(() => import('./components/modals/SettingsModal.vue'));
 const DiscoverFeedsModal = defineAsyncComponent(
-  () => import('./components/modals/discovery/DiscoverFeedsModal.vue')
+  () => import('@/features/discovery/components/DiscoverFeedsModal.vue')
 );
 const UpdateAvailableDialog = defineAsyncComponent(
   () => import('./components/modals/update/UpdateAvailableDialog.vue')
 );
-const ContextMenu = defineAsyncComponent(() => import('./components/common/ContextMenu.vue'));
+const ContextMenu = defineAsyncComponent(() => import('@/shared/ui/ContextMenu.vue'));
 const ConfirmDialog = defineAsyncComponent(
-  () => import('./components/modals/common/ConfirmDialog.vue')
+  () => import('@/shared/ui/ConfirmDialog.vue')
 );
 const InputDialog = defineAsyncComponent(
-  () => import('./components/modals/common/InputDialog.vue')
+  () => import('@/shared/ui/InputDialog.vue')
 );
 const MultiSelectDialog = defineAsyncComponent(
-  () => import('./components/modals/common/MultiSelectDialog.vue')
+  () => import('@/shared/ui/MultiSelectDialog.vue')
 );
 
-const store = useAppStore();
+const articleStore = useArticleStore();
+const feedStore = useFeedStore();
+const appStore = useAppStore();
 const authStore = useAuthStore();
 const { t, locale } = useI18n();
 
@@ -85,13 +90,13 @@ function openArticleOnMobile(articleId: number): void {
 }
 
 function closeArticleOnMobile(): void {
-  store.currentArticleId = null;
+  articleStore.currentArticleId = null;
   currentArticleIdOnMobile.value = null;
   mobileView.value = 'list';
 }
 
 // Check if we're in image gallery mode
-const isImageGalleryMode = computed(() => store.currentFilter === 'imageGallery');
+const isImageGalleryMode = computed(() => articleStore.currentFilter === 'imageGallery');
 
 // Check if we're in card mode
 const isCardMode = ref(false);
@@ -142,7 +147,7 @@ const { shortcuts } = useKeyboardShortcuts({
     showAddFeed.value = true;
   },
   onMarkAllRead: async () => {
-    await store.markAllAsRead();
+    await articleStore.markAllAsRead();
     window.showToast(t('article.action.markedAllAsRead'), 'success');
   },
 });
@@ -197,7 +202,7 @@ onMounted(() => {
   installGlobalHandlers();
 
   // Initialize theme system immediately (lightweight)
-  store.initTheme();
+  appStore.initTheme();
 
   // Initialize mobile detection
   isMobile.value = checkIsMobile();
@@ -220,22 +225,22 @@ onMounted(() => {
 
     // Load feeds and articles in background
     setTimeout(() => {
-      store.fetchFeeds();
-      store.fetchArticles();
+      feedStore.fetchFeeds();
+      articleStore.fetchArticles();
 
       setTimeout(async () => {
         try {
           const progressData = await authFetchJson('/api/progress');
 
           if (progressData.is_running) {
-            store.refreshProgress = {
-              ...store.refreshProgress,
+            feedStore.refreshProgress = {
+              ...feedStore.refreshProgress,
               isRunning: true,
               pool_task_count: progressData.pool_task_count,
               article_click_count: progressData.article_click_count,
               queue_task_count: progressData.queue_task_count,
             };
-            store.pollProgress();
+            feedStore.pollProgress();
             return;
           }
         } catch (e) {
@@ -258,8 +263,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('show-user-management', handleShowUserManagement);
   
   // Clean up store timers
-  store.stopPollProgress();
-  store.stopFreshRSSStatusPolling();
+  feedStore.stopPollProgress();
+  feedStore.stopFreshRSSStatusPolling();
 });
 
 async function loadInitialSettings() {
@@ -278,7 +283,7 @@ async function loadInitialSettings() {
     window.dispatchEvent(new CustomEvent('settings-loaded'));
 
     if (data.theme) {
-      store.setTheme(data.theme);
+      appStore.setTheme(data.theme);
     }
 
     if (data.language) {
@@ -311,7 +316,7 @@ async function loadInitialSettings() {
 
     const shouldRefresh = shouldTriggerRefresh(latestLastGlobalRefresh, updateInterval);
     if (shouldRefresh) {
-      store.refreshFeeds();
+      feedStore.refreshFeeds();
     }
   } catch (e) {
     console.error('Error loading initial settings:', e);
@@ -331,22 +336,22 @@ function toggleSidebar(): void {
 }
 
 function onFeedAdded(): void {
-  store.fetchFeeds();
+  feedStore.fetchFeeds();
   // Start polling for progress as the backend is now fetching articles for the new feed
-  store.pollProgress();
+  feedStore.pollProgress();
 }
 
 function onFeedUpdated(): void {
-  store.fetchFeeds();
+  feedStore.fetchFeeds();
   // Refresh articles to immediately apply hide_from_timeline changes
-  store.fetchArticles();
+  articleStore.fetchArticles();
 }
 
 function onLogin(): void {
   // After login, load settings and data
   loadInitialSettings();
-  store.fetchFeeds();
-  store.fetchArticles();
+  feedStore.fetchFeeds();
+  articleStore.fetchArticles();
 }
 </script>
 

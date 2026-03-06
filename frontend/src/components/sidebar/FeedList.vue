@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { useDragDrop } from '@/composables/ui/useDragDrop';
 import { useSidebar } from '@/composables/core/useSidebar';
 import { useSettings } from '@/composables/core/useSettings';
-import { useArticleFilter } from '@/composables/article/useArticleFilter';
-import { useSavedFilters } from '@/composables/article/useSavedFilters';
+import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
+import { useSavedFilters } from '@/features/article/composables/useSavedFilters';
 import SidebarCategory from './SidebarCategory.vue';
 import SavedFilterItem from './SavedFilterItem.vue';
 import SavedFilterModal from '@/components/modals/filter/SavedFilterModal.vue';
@@ -21,6 +20,8 @@ import {
 } from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
 import type { FilterCondition, SavedFilter } from '@/types/filter';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 const props = defineProps<{
   isExpanded?: boolean;
@@ -34,7 +35,8 @@ const emit = defineEmits<{
   unpin: [];
 }>();
 
-const store = useAppStore();
+const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 const authStore = useAuthStore();
 const { t } = useI18n();
 const { settings, fetchSettings } = useSettings();
@@ -184,7 +186,7 @@ let shouldCollapseAfterSelection = false;
 
 // Watch for feed/category selection to auto-collapse
 watch(
-  () => store.currentFeedId,
+  () => articleStore.currentFeedId,
   (newVal, oldVal) => {
     // Only collapse if:
     // 1. Not pinned
@@ -201,7 +203,7 @@ watch(
 );
 
 watch(
-  () => store.currentCategory,
+  () => articleStore.currentCategory,
   (newVal, oldVal) => {
     // Only collapse if:
     // 1. Not pinned
@@ -227,12 +229,12 @@ function handleFeedOrCategorySelect() {
 // Wrapper functions for feed/category selection
 function handleSelectFeed(feedId: number) {
   handleFeedOrCategorySelect();
-  store.setFeed(feedId);
+  articleStore.setFeed(feedId);
 }
 
 function handleSelectCategory(category: string) {
   handleFeedOrCategorySelect();
-  store.setCategory(category);
+  articleStore.setCategory(category);
 }
 
 // Drag and drop functionality
@@ -249,7 +251,7 @@ const {
 
 // Handle drag events
 function handleDragStart(feedId: number, event: Event) {
-  const feed = store.feeds?.find((f) => f.id === feedId);
+  const feed = feedStore.feeds?.find((f) => f.id === feedId);
   if (feed?.is_freshrss_source) {
     event.preventDefault();
     window.showToast(t('setting.freshrss.feedLocked'), 'info');
@@ -284,7 +286,7 @@ async function handleDrop(categoryName: string, feeds: any[]) {
 
   dropHandled = true;
 
-  const draggedFeed = store.feeds?.find((f) => f.id === draggingFeedId.value);
+  const draggedFeed = feedStore.feeds?.find((f) => f.id === draggingFeedId.value);
 
   // Prevent dropping into FreshRSS categories
   const targetCategoryFeeds = feeds.filter(
@@ -314,7 +316,7 @@ async function handleDrop(categoryName: string, feeds: any[]) {
     const result = await onDrop(categoryName, feeds);
 
     if (result.success) {
-      await store.fetchFeeds();
+      await feedStore.fetchFeeds();
       window.showToast(t('modal.feed.feedReordered'), 'success');
     } else {
       window.showToast(t('common.errors.reorderingFeed') + ': ' + result.error, 'error');
@@ -355,7 +357,7 @@ watch(draggingFeedId, (newValue, oldValue) => {
 
 // Drawer type based on current filter
 const drawerType = computed(() => {
-  switch (store.currentFilter) {
+  switch (articleStore.currentFilter) {
     case 'all':
     case 'unread':
     case 'favorites':
@@ -371,7 +373,7 @@ const drawerType = computed(() => {
 const filteredTree = computed(() => {
   if (drawerType.value !== 'feeds' || !tree.value) return { tree: {}, uncategorized: [] };
 
-  const imageModeOnly = store.currentFilter === 'imageGallery';
+  const imageModeOnly = articleStore.currentFilter === 'imageGallery';
 
   // Filter feeds in categories
   const filteredTree: Record<string, any> = {};
@@ -665,9 +667,9 @@ function handleFilterDragEnd() {
               :children="data._children"
               :level="0"
               :is-open="checkIsCategoryOpen(name)"
-              :is-active="store.currentCategory === name"
+              :is-active="articleStore.currentCategory === name"
               :unread-count="categoryUnreadCounts[name] || 0"
-              :current-feed-id="store.currentFeedId"
+              :current-feed-id="articleStore.currentFeedId"
               :feed-unread-counts="feedUnreadCounts"
               :is-drag-over="dragOverCategory === name"
               :is-edit-mode="isEditMode"
@@ -702,10 +704,10 @@ function handleFilterDragEnd() {
                 checkIsCategoryOpen('uncategorized') ||
                 (filteredTree.uncategorized.length === 0 && isDragging)
               "
-              :is-active="store.currentCategory === ''"
+              :is-active="articleStore.currentCategory === ''"
               :is-uncategorized="true"
               :unread-count="categoryUnreadCounts['uncategorized'] || 0"
-              :current-feed-id="store.currentFeedId"
+              :current-feed-id="articleStore.currentFeedId"
               :feed-unread-counts="feedUnreadCounts"
               :is-drag-over="dragOverCategory === 'uncategorized'"
               :is-edit-mode="isEditMode"
@@ -734,7 +736,7 @@ function handleFilterDragEnd() {
           <!-- Saved Filters Section - positioned at bottom, only show when viewing All Articles -->
           <div
             v-if="
-              store.currentFilter === 'all' && (hasActiveFilters || safeSavedFilters.length > 0)
+              articleStore.currentFilter === 'all' && (hasActiveFilters || safeSavedFilters.length > 0)
             "
             class="flex-shrink-0 max-h-[50%] flex flex-col border-t border-border"
           >

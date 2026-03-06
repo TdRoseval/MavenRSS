@@ -3,18 +3,18 @@ package service
 import (
 	"context"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 )
 
 // feedService implements FeedService interface
 type feedService struct {
 	registry *Registry
-	db       *database.DB
+	db       *sqlite.DB
 }
 
 // NewFeedService creates a new feed service
-func NewFeedService(registry *Registry, db *database.DB) FeedService {
+func NewFeedService(registry *Registry, db *sqlite.DB) FeedService {
 	return &feedService{
 		registry: registry,
 		db:       db,

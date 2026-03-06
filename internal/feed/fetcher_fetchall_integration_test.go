@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	ff "MavenRSS/internal/feed"
 	"MavenRSS/internal/models"
 )
 
 // Test that FetchAll respects concurrency limits
 func TestFetchAll_RespectsConcurrency(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestFetchAll_RespectsConcurrency(t *testing.T) {
 
 // Test that FetchAll cancels promptly when context is cancelled
 func TestFetchAll_RespectsCancellation(t *testing.T) {
-	db, err := database.NewDB(":memory:")
+	db, err := sqlite.NewDB(":memory:")
 	if err != nil {
 		t.Fatalf("NewDB: %v", err)
 	}

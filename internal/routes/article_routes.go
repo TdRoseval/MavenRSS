@@ -3,10 +3,10 @@ package routes
 import (
 	"net/http"
 
-	article "MavenRSS/internal/handlers/article"
-	"MavenRSS/internal/handlers/core"
-	summary "MavenRSS/internal/handlers/summary"
-	translationhandlers "MavenRSS/internal/handlers/translation"
+	article "MavenRSS/internal/api/article"
+	"MavenRSS/internal/api/core"
+	summary "MavenRSS/internal/api/summary"
+	translationhandlers "MavenRSS/internal/api/translation"
 	"MavenRSS/internal/middleware"
 )
 

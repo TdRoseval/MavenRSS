@@ -2,15 +2,17 @@
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { PhUser, PhEnvelope, PhGithubLogo, PhDownloadSimple } from '@phosphor-icons/vue';
-import { openInBrowser } from '@/utils/browser';
-import { authApi } from '@/utils/authApi';
+import { openInBrowser } from '@/shared/lib/browser';
+import { authApi } from '@/shared/lib/authApi';
 import { ref, onMounted } from 'vue';
-import { useAppStore } from '@/stores/app';
 import { useSettings } from '@/composables/core/useSettings';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
-const store = useAppStore();
+const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 const { fetchSettings } = useSettings();
 
 const templateAvailable = ref(false);
@@ -56,8 +58,8 @@ async function handleInheritTemplate() {
     authStore.updateUser(meResult.user);
     templateAvailable.value = false;
 
-    store.fetchFeeds();
-    store.fetchArticles();
+    feedStore.fetchFeeds();
+    articleStore.fetchArticles();
 
     // Directly refresh settings to show the inherited AI configuration
     await fetchSettings();

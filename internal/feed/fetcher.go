@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/rsshub"
 	"MavenRSS/internal/rules"
@@ -36,7 +36,7 @@ type PostProcessTask struct {
 }
 
 type Fetcher struct {
-	db                *database.DB
+	db                *sqlite.DB
 	fp                FeedParser
 	highPriorityFp    FeedParser // High priority parser for content fetching
 	scriptExecutor    *ScriptExecutor
@@ -50,7 +50,7 @@ type Fetcher struct {
 	postProcessWg     sync.WaitGroup
 }
 
-func NewFetcher(db *database.DB) *Fetcher {
+func NewFetcher(db *sqlite.DB) *Fetcher {
 	// Initialize script executor with scripts directory
 	scriptsDir, err := fileutil.GetScriptsDir()
 	var executor *ScriptExecutor

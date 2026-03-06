@@ -300,7 +300,7 @@ func generateSettingsBaseGo(schema *SettingsSchema) error {
 package settings
 
 import (
-	"MavenRSS/internal/handlers/core"
+	"MavenRSS/internal/api/core"
 )
 
 // SettingDef defines a single setting's metadata

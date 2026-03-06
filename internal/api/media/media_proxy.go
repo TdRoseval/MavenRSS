@@ -1,0 +1,2424 @@
+package media
+
+import (
+	"bytes"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"html"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"MavenRSS/internal/cache"
+	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/utils/fileutil"
+	"MavenRSS/internal/utils/httputil"
+)
+
+const (
+	proxyMaxRetries = 3
+)
+
+// decodeURLSafeBase64 decodes URL-safe Base64 strings
+// This handles both standard Base64 and URL-safe Base64 (with - and _ instead of + and /)
+func decodeURLSafeBase64(encoded string) ([]byte, error) {
+	standard := strings.ReplaceAll(encoded, "-", "+")
+	standard = strings.ReplaceAll(standard, "_", "/")
+
+	switch len(standard) % 4 {
+	case 2:
+		standard += "=="
+	case 3:
+		standard += "="
+	}
+
+	return base64.StdEncoding.DecodeString(standard)
+}
+
+// validateMediaURL validates that the URL is HTTP/HTTPS and properly formatted
+func validateMediaURL(urlStr string) error {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return errors.New("invalid URL format")
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errors.New("URL must use HTTP or HTTPS")
+	}
+
+	return nil
+}
+
+// ProxyImagesInHTML replaces image URLs in HTML with proxied versions
+func ProxyImagesInHTML(htmlContent, referer string) string {
+	if htmlContent == "" || referer == "" {
+		return htmlContent
+	}
+
+	// Parse the referer URL once for resolving relative URLs
+	baseURL, err := url.Parse(referer)
+	if err != nil {
+		log.Printf("Failed to parse referer URL: %v", err)
+		return htmlContent
+	}
+
+	// Use regex to find and replace img src attributes
+	// This handles various formats: src="url", src='url', src=url (unquoted)
+	re := regexp.MustCompile(`<img[^>]*src\s*=\s*(?:['"]\s*)?([^'"\s>]+)(?:\s*['"])?[^>]*>`)
+	htmlContent = re.ReplaceAllStringFunc(htmlContent, func(match string) string {
+		// Extract the src URL from the match
+		re := regexp.MustCompile(`src\s*=\s*(?:['"]\s*)?([^'"\s>]+)(?:\s*['"])?`)
+		srcMatch := re.FindStringSubmatch(match)
+		if len(srcMatch) < 2 {
+			return match // No valid src found, return unchanged
+		}
+
+		srcURL := srcMatch[1]
+
+		// Skip data URLs, blob URLs, and already proxied URLs
+		if strings.HasPrefix(srcURL, "data:") ||
+			strings.HasPrefix(srcURL, "blob:") ||
+			strings.Contains(srcURL, "/api/media/proxy") {
+			return match
+		}
+
+		// CRITICAL FIX: Decode HTML entities before processing the URL
+		// HTML attributes contain &amp; which should be decoded to & before URL encoding
+		// For example: ?key=val&amp;other=val becomes ?key=val&other=val
+		srcURL = html.UnescapeString(srcURL)
+
+		// Resolve relative URLs against the referer
+		// Handles: images/photo.jpg, ./img.png, ../assets/image.gif, /static/img.png
+		if !strings.HasPrefix(srcURL, "http://") && !strings.HasPrefix(srcURL, "https://") {
+			parsedURL, err := url.Parse(srcURL)
+			if err != nil {
+				log.Printf("Failed to parse image URL %s: %v", srcURL, err)
+				return match
+			}
+			srcURL = baseURL.ResolveReference(parsedURL).String()
+		}
+
+		// SPECIAL HANDLING for wechat2rss.bestlogs.dev
+		// This service proxies WeChat official account images, but requires authorization
+		// Instead of using their proxy, we extract the original image URL and proxy it directly
+		imageReferer := referer // Default to original referer
+		if strings.Contains(srcURL, "wechat2rss.bestlogs.dev") && strings.Contains(srcURL, "/img-proxy/") {
+			// Try to extract the original image URL from the wechat2rss proxy URL
+			// Format: https://wechat2rss.bestlogs.dev/img-proxy/?url=<encoded_url>&referer=<encoded_referer>
+			if parsed, err := url.Parse(srcURL); err == nil {
+				originalURL := parsed.Query().Get("url")
+				if originalURL != "" {
+					log.Printf("[ProxyImagesInHTML] Extracted original WeChat image URL: %s", originalURL)
+					srcURL = originalURL // Use the original URL directly
+					// Use the original image domain as referer
+					if imgParsed, err := url.Parse(originalURL); err == nil {
+						if imgParsed.Hostname() != "" {
+							imageReferer = fmt.Sprintf("%s://%s", imgParsed.Scheme, imgParsed.Host)
+						}
+					}
+				}
+			}
+		}
+
+		// CRITICAL FIX: Use base64 encoding to avoid all URL encoding issues
+		// This prevents double-encoding problems with special characters
+		// Base64 encoding is safe for URLs and doesn't interfere with query parameter parsing
+		proxyURL := fmt.Sprintf("/api/media/proxy?url_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(srcURL)))
+
+		// CRITICAL FIX: Determine if we should use the referer or not
+		// Some sites block requests from certain referers (e.g., RSS hubs)
+		// We use smart referer logic to handle this
+		proxyReferer := getSmartReferer(srcURL, imageReferer)
+
+		// Add referer if provided (also base64-encoded)
+		if proxyReferer != "" {
+			proxyURL += fmt.Sprintf("&referer_b64=%s",
+				base64.StdEncoding.EncodeToString([]byte(proxyReferer)))
+		}
+
+		// Replace the src attribute
+		return strings.Replace(match, srcMatch[0], fmt.Sprintf(`src="%s"`, proxyURL), 1)
+	})
+
+	return htmlContent
+}
+
+// getSmartReferer determines the appropriate referer to use for a given image URL
+// For third-party images (different domain than the referer), we use the image's own domain
+// as the referer to avoid anti-hotlinking issues
+func getSmartReferer(imageURL, originalReferer string) string {
+	// Parse the image URL to get its hostname
+	imgURL, err := url.Parse(imageURL)
+	if err != nil {
+		// If we can't parse the image URL, use the original referer
+		return originalReferer
+	}
+
+	// Parse the original referer to get its hostname
+	refURL, err := url.Parse(originalReferer)
+	if err != nil {
+		// If we can't parse the referer, use no referer
+		return ""
+	}
+
+	imgHost := imgURL.Hostname()
+	refHost := refURL.Hostname()
+
+	// Special handling for known CDN domains that require specific referers
+	// For example: img.ithome.com should use www.ithome.com as referer
+	// This check must happen BEFORE the same-domain check
+	imgHostLower := strings.ToLower(imgHost)
+	if strings.HasPrefix(imgHostLower, "img.") {
+		// Extract the main domain (e.g., img.ithome.com -> ithome.com)
+		mainDomain := strings.TrimPrefix(imgHostLower, "img.")
+		// Check if the original referer is from the same main domain family
+		if strings.HasSuffix(refHost, "."+mainDomain) || refHost == mainDomain {
+			// Use the original referer's domain with the main site's www subdomain
+			// If referer already has www, keep it; otherwise use www
+			if strings.HasPrefix(refHost, "www.") {
+				return fmt.Sprintf("%s://%s", refURL.Scheme, refHost)
+			}
+			return fmt.Sprintf("%s://www.%s", refURL.Scheme, mainDomain)
+		}
+	}
+
+	// If the image host and referer host are the same domain, use the original referer
+	// This handles same-origin images (e.g., images hosted on the same site as the article)
+	if imgHost == refHost || strings.HasSuffix(imgHost, "."+refHost) || strings.HasSuffix(refHost, "."+imgHost) {
+		return originalReferer
+	}
+
+	// For third-party images (different domain), use the image's own domain as referer
+	// This avoids anti-hotlinking issues when the article's referer is blocked
+	// For example: img.500px.me/image.jpg with referer from rsshub.pseudoyu.com
+	// will use https://img.500px.me as the referer
+	return fmt.Sprintf("%s://%s", imgURL.Scheme, imgURL.Host)
+}
+
+// HandleMediaProxy serves cached media or downloads and caches it
+// HandleMediaProxy proxies media files with optional caching
+// @Summary      Proxy media file
+// @Description  Proxy and cache media files (images, videos, audio) from external URLs
+// @Tags         media
+// @Accept       json
+// @Produce      application/octet-stream
+// @Param        url         query     string  true  "Media URL to proxy"
+// @Param        referer     query     string  false  "Referer URL for hotlink protection"
+// @Param        force_cache query     bool    false  "Force caching even if globally disabled"
+// @Param        feed_id     query     int     false  "Feed ID for feed-specific proxy settings"
+// @Success      200  {file}  file  "Media file"
+// @Failure      400  {object}  map[string]string  "Bad request (missing or invalid URL)"
+// @Failure      403  {object}  map[string]string  "Media proxy is disabled"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /media/proxy [get]
+func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	// Get URL from query parameter (support both direct and base64-encoded)
+	mediaURL := r.URL.Query().Get("url")
+	mediaURLBase64 := r.URL.Query().Get("url_b64")
+
+	// Use base64-encoded URL if provided, otherwise use direct URL
+	if mediaURLBase64 != "" {
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(mediaURLBase64)
+		if err != nil {
+			log.Printf("Failed to decode base64 URL '%s': %v", mediaURLBase64, err)
+			response.Error(w, err, http.StatusBadRequest)
+			return
+		}
+		mediaURL = string(decodedBytes)
+		// Decode URL-encoded characters (handle potential double-encoding)
+		mediaURL, err = url.QueryUnescape(mediaURL)
+		if err != nil {
+			log.Printf("[MediaProxy] Failed to unescape URL '%s': %v", mediaURL, err)
+		}
+	}
+
+	if mediaURL == "" {
+		response.Error(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest)
+		return
+	}
+
+	// Validate mediaURL (must be HTTP/HTTPS and valid format)
+	if err := validateMediaURL(mediaURL); err != nil {
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	// Check if media cache is enabled (优先用户设置，回退全局)
+	mediaCacheEnabled, _ := h.DB.GetSettingWithFallback(userID, "media_cache_enabled")
+	mediaProxyFallback, _ := h.DB.GetSettingWithFallback(userID, "media_proxy_fallback")
+
+	// Check if force_cache parameter is set (for image mode feeds)
+	forceCache := r.URL.Query().Get("force_cache") == "true"
+
+	// If force_cache is true, enable caching for this request
+	if forceCache {
+		mediaCacheEnabled = "true"
+	}
+
+	// If neither cache nor fallback is enabled (and not forced), return error
+	if mediaCacheEnabled != "true" && mediaProxyFallback != "true" {
+		response.Error(w, fmt.Errorf("media proxy is disabled"), http.StatusForbidden)
+		return
+	}
+
+	// Get optional referer from query parameter (support both direct and base64-encoded)
+	referer := r.URL.Query().Get("referer")
+	refererBase64 := r.URL.Query().Get("referer_b64")
+	if refererBase64 != "" {
+		// Decode base64 referer (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(refererBase64)
+		if err != nil {
+			log.Printf("Failed to decode base64 referer '%s': %v", refererBase64, err)
+			// Fall back to unencoded referer
+		} else {
+			referer = string(decodedBytes)
+			// Decode URL-encoded characters
+			referer, _ = url.QueryUnescape(referer)
+		}
+	}
+
+	// Build proxy URL - check feed-specific settings first, then fall back to global
+	var proxyURL string
+	
+	// Check if feed_id is provided for feed-specific proxy settings
+	feedIDStr := r.URL.Query().Get("feed_id")
+	if feedIDStr != "" {
+		feedID, err := strconv.ParseInt(feedIDStr, 10, 64)
+		if err == nil && feedID > 0 {
+			// Get feed-specific proxy settings
+			feed, err := h.DB.GetFeedByID(feedID)
+			if err == nil && feed != nil {
+				// If feed has proxy enabled, use feed-specific proxy
+				if feed.ProxyEnabled && feed.ProxyURL != "" {
+					proxyURL = feed.ProxyURL
+					log.Printf("[MediaProxy] Using feed-specific proxy for feed %d: %s", feedID, proxyURL)
+				} else if feed.ProxyEnabled {
+					// Feed has proxy enabled but no custom URL, use global proxy
+					proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+					if proxyEnabled == "true" {
+						proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+						proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+						proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+						proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+						proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+						proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+						log.Printf("[MediaProxy] Feed %d has proxy enabled, using global proxy", feedID)
+					}
+				} else {
+					// Feed has proxy disabled, don't use any proxy
+					log.Printf("[MediaProxy] Feed %d has proxy disabled, skipping proxy", feedID)
+					proxyURL = ""
+				}
+			} else {
+				// Feed not found, fall back to global settings
+				log.Printf("[MediaProxy] Feed %d not found, falling back to global proxy settings", feedID)
+				proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+				if proxyEnabled == "true" {
+					proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+					proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+					proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+					proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+					proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+					proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+				}
+			}
+		}
+	} else {
+		// No feed_id provided, use global proxy settings
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	}
+
+	// Try cache first if enabled
+	if mediaCacheEnabled == "true" {
+		// Get media cache directory
+		cacheDir, err := fileutil.GetMediaCacheDir()
+		if err != nil {
+			log.Printf("Failed to get media cache directory: %v", err)
+			// Continue to fallback if enabled
+		} else {
+			// Initialize media cache with proxy support
+			mediaCache, err := cache.NewMediaCacheWithProxy(cacheDir, proxyURL)
+			if err != nil {
+				log.Printf("Failed to initialize media cache: %v", err)
+				// Continue to fallback if enabled
+			} else {
+				// Get media (from cache or download)
+				data, contentType, err := mediaCache.Get(mediaURL, referer)
+				if err == nil {
+					// Success! Serve from cache
+					w.Header().Set("Content-Type", contentType)
+					w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+					w.Header().Set("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+					w.Header().Set("X-Media-Source", "cache")
+					w.Write(data)
+					return
+				}
+				log.Printf("Cache failed for %s: %v, trying fallback", mediaURL, err)
+			}
+		}
+	}
+
+	// Fallback: Direct proxy if enabled
+	if mediaProxyFallback == "true" {
+		err := proxyMediaDirectly(mediaURL, referer, proxyURL, w)
+		if err == nil {
+			return // Success
+		}
+		log.Printf("Direct proxy failed for %s: %v", mediaURL, err)
+	}
+
+	// All methods failed
+	response.Error(w, fmt.Errorf("failed to fetch media"), http.StatusInternalServerError)
+}
+
+// HandleMediaCacheCleanup performs manual cleanup of media cache
+// @Summary      Cleanup media cache
+// @Description  Clean up the media cache by age and size
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        all  query     bool  false  "Clean all files (ignores age/size settings)"  default(false)
+// @Success      200  {object}  map[string]interface{}  "Cleanup result (success, files_cleaned)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /media/cache/cleanup [post]
+func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get media cache directory
+	cacheDir, err := fileutil.GetMediaCacheDir()
+	if err != nil {
+		log.Printf("Failed to get media cache directory: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize media cache
+	mediaCache, err := cache.NewMediaCache(cacheDir)
+	if err != nil {
+		log.Printf("Failed to initialize media cache: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Check if this is a manual cleanup (clean all) or automatic cleanup (respect settings)
+	cleanAll := r.URL.Query().Get("all") == "true"
+
+	var maxAgeDays int
+	var maxSizeMB int
+
+	if cleanAll {
+		// Manual cleanup: remove all files
+		maxAgeDays = 0
+		maxSizeMB = 0 // Will skip size-based cleanup
+	} else {
+		// Automatic cleanup: use settings
+		maxAgeDaysStr, _ := h.DB.GetSetting("media_cache_max_age_days")
+		maxSizeMBStr, _ := h.DB.GetSetting("media_cache_max_size_mb")
+
+		maxAgeDays, err = strconv.Atoi(maxAgeDaysStr)
+		if err != nil || maxAgeDays < 0 {
+			maxAgeDays = 7 // Default
+		}
+
+		maxSizeMB, err = strconv.Atoi(maxSizeMBStr)
+		if err != nil || maxSizeMB <= 0 {
+			maxSizeMB = 100 // Default
+		}
+	}
+
+	// Cleanup by age
+	ageCount, err := mediaCache.CleanupOldFiles(maxAgeDays)
+	if err != nil {
+		log.Printf("Failed to cleanup old media files: %v", err)
+	}
+
+	// Cleanup by size (only for automatic cleanup)
+	sizeCount := 0
+	if !cleanAll {
+		sizeCount, err = mediaCache.CleanupBySize(maxSizeMB)
+		if err != nil {
+			log.Printf("Failed to cleanup media files by size: %v", err)
+		}
+	}
+
+	totalCleaned := ageCount + sizeCount
+	log.Printf("Media cache cleanup: removed %d files (clean_all: %v)", totalCleaned, cleanAll)
+
+	response.JSON(w, map[string]interface{}{
+		"success":       true,
+		"files_cleaned": totalCleaned,
+	})
+}
+
+// writeWebpageError writes an HTML error response for the webpage proxy
+// This ensures that errors are displayed correctly in the iframe instead of being blocked by X-Frame-Options
+func writeWebpageError(w http.ResponseWriter, err error, status int, originalURL string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// CRITICAL: Remove X-Frame-Options to allow framing from any origin (including dev server)
+	// The middleware sets it to DENY, so we must delete it to allow the error page to show in the iframe
+	w.Header().Del("X-Frame-Options")
+	w.Header().Set("Content-Security-Policy", "")
+	w.WriteHeader(status)
+
+	// Determine if this is a blocking error that warrants automatic fallback
+	isBlockingError := status == http.StatusForbidden || 
+		status == http.StatusUnauthorized || 
+		status == http.StatusNotAcceptable ||
+		status == http.StatusTooManyRequests ||
+		status == http.StatusServiceUnavailable
+
+	autoRedirectScript := ""
+	redirectMessage := ""
+	
+	if isBlockingError && originalURL != "" {
+		redirectMessage = `<p class="redirect-msg">Proxy access denied. Attempting to load directly...</p>`
+		autoRedirectScript = fmt.Sprintf(`
+		setTimeout(function() {
+			window.location.replace("%s");
+		}, 1500);
+		`, originalURL)
+	}
+
+	htmlContent := fmt.Sprintf(`
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<title>Proxy Error</title>
+		<style>
+			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; text-align: center; color: #333; background-color: #f5f5f5; }
+			.error-container { max-width: 600px; margin: 0 auto; background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+			h1 { color: #d32f2f; font-size: 24px; margin-bottom: 16px; }
+			p { font-size: 16px; line-height: 1.6; color: #555; margin-bottom: 20px; }
+			.redirect-msg { color: #1976d2; font-weight: 500; }
+			.details { font-family: monospace; background: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #e9ecef; color: #666; font-size: 14px; word-break: break-all; margin-bottom: 20px; }
+			.actions { display: flex; justify-content: center; gap: 10px; margin-top: 20px; }
+			.btn { display: inline-block; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: 500; transition: background-color 0.2s; cursor: pointer; border: none; font-size: 14px; }
+			.retry-btn { background-color: #f5f5f5; color: #333; border: 1px solid #ddd; }
+			.retry-btn:hover { background-color: #e0e0e0; }
+			.direct-btn { background-color: #1976d2; color: white; }
+			.direct-btn:hover { background-color: #1565c0; }
+		</style>
+	</head>
+	<body>
+		<div class="error-container">
+			<h1>Unable to Load Webpage via Proxy</h1>
+			<p>The proxy server could not retrieve the requested content. The target website may be blocking the request.</p>
+			%s
+			<div class="details">%s (Status: %d)</div>
+			<div class="actions">
+				<a href="javascript:location.reload()" class="btn retry-btn">Retry Proxy</a>
+				<a href="%s" class="btn direct-btn">Load Directly</a>
+				<a href="%s" target="_blank" class="btn retry-btn">Open in New Tab</a>
+			</div>
+		</div>
+		<script>
+			%s
+		</script>
+	</body>
+	</html>
+	`, redirectMessage, html.EscapeString(err.Error()), status, originalURL, originalURL, autoRedirectScript)
+
+	w.Write([]byte(htmlContent))
+}
+
+// HandleWebpageProxy proxies webpage content to bypass CORS restrictions in iframes
+// @Summary      Proxy webpage content
+// @Description  Proxy webpage HTML content and rewrite resource URLs to bypass CORS restrictions
+// @Tags         media
+// @Accept       json
+// @Produce      html
+// @Param        url      query     string  false  "Webpage URL to proxy (direct)"
+// @Param        url_b64  query     string  false  "Webpage URL to proxy (base64-encoded)"
+// @Param        feed_id  query     int     false  "Feed ID for feed-specific proxy settings"
+// @Success      200  {string}  string  "Webpage HTML content"
+// @Failure      400  {object}  map[string]string  "Bad request (missing or invalid URL)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /media/proxy-webpage [get]
+func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeWebpageError(w, fmt.Errorf("method not allowed"), http.StatusMethodNotAllowed, "")
+		return
+	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	const maxWebpageSize = 10 * 1024 * 1024 // 10MB limit for webpages
+
+	// Get URL from query parameter (support both direct and base64-encoded)
+	webpageURL := r.URL.Query().Get("url")
+	webpageURLBase64 := r.URL.Query().Get("url_b64")
+
+	// Use base64-encoded URL if provided, otherwise use direct URL
+	if webpageURLBase64 != "" {
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(webpageURLBase64)
+		if err != nil {
+			log.Printf("Failed to decode base64 URL: %v", err)
+			writeWebpageError(w, err, http.StatusBadRequest, "")
+			return
+		}
+		webpageURL = string(decodedBytes)
+		// Decode URL-encoded characters
+		webpageURL, _ = url.QueryUnescape(webpageURL)
+	}
+
+	if webpageURL == "" {
+		writeWebpageError(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest, "")
+		return
+	}
+
+	// Validate webpageURL (must be HTTP/HTTPS and valid format)
+	if err := validateMediaURL(webpageURL); err != nil {
+		writeWebpageError(w, err, http.StatusBadRequest, webpageURL)
+		return
+	}
+
+	// Build proxy URL - check feed-specific settings first, then fall back to global
+	var proxyURL string
+	
+	// Check if feed_id is provided for feed-specific proxy settings
+	feedIDStr := r.URL.Query().Get("feed_id")
+	if feedIDStr != "" {
+		feedID, err := strconv.ParseInt(feedIDStr, 10, 64)
+		if err == nil && feedID > 0 {
+			// Get feed-specific proxy settings
+			feed, err := h.DB.GetFeedByID(feedID)
+			if err == nil && feed != nil {
+				// If feed has proxy enabled, use feed-specific proxy
+				if feed.ProxyEnabled && feed.ProxyURL != "" {
+					proxyURL = feed.ProxyURL
+					log.Printf("[WebpageProxy] Using feed-specific proxy for feed %d: %s", feedID, proxyURL)
+				} else if feed.ProxyEnabled {
+					// Feed has proxy enabled but no custom URL, use global proxy
+					proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+					if proxyEnabled == "true" {
+						proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+						proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+						proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+						proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+						proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+						proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+						log.Printf("[WebpageProxy] Feed %d has proxy enabled, using global proxy", feedID)
+					}
+				} else {
+					// Feed has proxy disabled, don't use any proxy
+					log.Printf("[WebpageProxy] Feed %d has proxy disabled, skipping proxy", feedID)
+					proxyURL = ""
+				}
+			} else {
+				// Feed not found, fall back to global settings
+				log.Printf("[WebpageProxy] Feed %d not found, falling back to global proxy settings", feedID)
+				proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+				if proxyEnabled == "true" {
+					proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+					proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+					proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+					proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+					proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+					proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+				}
+			}
+		}
+	} else {
+		// No feed_id provided, use global proxy settings
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
+	}
+
+	// Get pooled HTTP client with proxy support
+	client := httputil.GetPooledHTTPClient(proxyURL, httputil.DefaultWebpageProxyTimeout)
+
+	// Create request to the target URL
+	req, err := http.NewRequestWithContext(r.Context(), "GET", webpageURL, nil)
+	if err != nil {
+		log.Printf("Failed to create request: %v", err)
+		writeWebpageError(w, err, http.StatusInternalServerError, webpageURL)
+		return
+	}
+
+	// Set User-Agent to mimic a regular browser
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	// Forward important headers from the original request
+	if referer := r.Header.Get("Referer"); referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	
+	// Forward authorization header if present (for services that require auth)
+	// This is needed for some RSS sources like wechat2rss that require authentication
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	
+	// Forward cookie header if present
+	if cookie := r.Header.Get("Cookie"); cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+	
+	// Special handling for wechat2rss.bestlogs.dev - it requires authorization header
+	// If the referer is from wechat2rss, we need to forward the auth header
+	if strings.Contains(webpageURL, "wechat2rss.bestlogs.dev") {
+		// Check if there's an authorization header in the request
+		// If not, the RSS feed might need to be configured with credentials
+		log.Printf("[WebpageProxy] Accessing wechat2rss resource, URL: %s", webpageURL)
+	}
+
+	// Execute the request with retry
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
+		select {
+		case <-r.Context().Done():
+			log.Printf("[WebpageProxy] Request cancelled for %s", webpageURL)
+			writeWebpageError(w, r.Context().Err(), http.StatusRequestTimeout, webpageURL)
+			return
+		default:
+		}
+
+		reqCopy := req.Clone(r.Context())
+
+		resp, err = client.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
+				backoff := calculateProxyBackoff(attempt)
+				log.Printf("[WebpageProxy] Network error on attempt %d/%d for %s, retrying in %v: %v",
+					attempt+1, proxyMaxRetries, webpageURL, backoff, err)
+				select {
+				case <-r.Context().Done():
+					log.Printf("[WebpageProxy] Request cancelled during backoff for %s", webpageURL)
+					writeWebpageError(w, r.Context().Err(), http.StatusRequestTimeout, webpageURL)
+					return
+				case <-time.After(backoff):
+				}
+				continue
+			}
+			log.Printf("Failed to fetch webpage %s: %v", webpageURL, err)
+			writeWebpageError(w, err, http.StatusInternalServerError, webpageURL)
+			return
+		}
+
+		// Retry on server errors
+		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
+			resp.Body.Close()
+			backoff := calculateProxyBackoff(attempt)
+			log.Printf("[WebpageProxy] Server error %d on attempt %d/%d for %s, retrying in %v",
+				resp.StatusCode, attempt+1, proxyMaxRetries, webpageURL, backoff)
+			select {
+			case <-r.Context().Done():
+				log.Printf("[WebpageProxy] Request cancelled during backoff for %s", webpageURL)
+				writeWebpageError(w, r.Context().Err(), http.StatusRequestTimeout, webpageURL)
+				return
+			case <-time.After(backoff):
+			}
+			continue
+		}
+
+		break
+	}
+
+	if resp == nil {
+		writeWebpageError(w, fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr), http.StatusInternalServerError, webpageURL)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Webpage returned status %d: %s", resp.StatusCode, webpageURL)
+		// For 403/404 errors from the target, we still want to show an HTML error page
+		writeWebpageError(w, fmt.Errorf("target website returned error"), resp.StatusCode, webpageURL)
+		return
+	}
+
+	// Get content type
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "text/html; charset=utf-8"
+	}
+
+	// Read response body with size limit
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxWebpageSize+1))
+	if err != nil {
+		log.Printf("Failed to read response body: %v", err)
+		writeWebpageError(w, err, http.StatusInternalServerError, webpageURL)
+		return
+	}
+
+	// Check if we exceeded the size limit
+	if len(bodyBytes) > maxWebpageSize {
+		log.Printf("Webpage too large (exceeds %d MB): %s", maxWebpageSize/(1024*1024), webpageURL)
+		writeWebpageError(w, fmt.Errorf("webpage too large (max %d MB)", maxWebpageSize/(1024*1024)), http.StatusRequestEntityTooLarge, webpageURL)
+		return
+	}
+
+	// If this is HTML content, rewrite all resource URLs
+	if strings.Contains(strings.ToLower(contentType), "text/html") {
+		// Get token from query parameter to propagate to resources
+		token := r.URL.Query().Get("token")
+		bodyBytes = rewriteHTMLContent(bodyBytes, webpageURL, token)
+	}
+
+	// Set response headers to allow framing and remove CORS restrictions
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN") // Allow framing from same origin
+	w.Header().Set("Content-Security-Policy", "")   // Remove CSP to allow resources
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+
+	// Write modified response body
+	_, err = w.Write(bodyBytes)
+	if err != nil {
+		log.Printf("Failed to write response body: %v", err)
+	}
+}
+
+// rewriteHTMLContent rewrites HTML to proxy all external resources
+func rewriteHTMLContent(bodyBytes []byte, baseURL, token string) []byte {
+	// Validate base URL
+	if _, err := url.Parse(baseURL); err != nil {
+		log.Printf("Failed to parse base URL: %v", err)
+		return bodyBytes
+	}
+
+	// Convert to string for manipulation
+	content := string(bodyBytes)
+
+	// Inject our script FIRST - before anything else
+	// This script must run before any other scripts to intercept API calls early
+	tokenVar := ""
+	if token != "" {
+		tokenVar = fmt.Sprintf("const AUTH_TOKEN = '%s';", token)
+	} else {
+		tokenVar = "const AUTH_TOKEN = '';"
+	}
+
+	interceptionScript := `<script>
+	// Use immediately-invoked function with strict error suppression
+	(function() {
+		'use strict';
+		const ORIGINAL_BASE_URL = ` + fmt.Sprintf("'%s'", baseURL) + `;
+		const PROXY_ORIGIN = window.location.origin;
+		` + tokenVar + `
+
+		// DEBUG: Log that interceptor is loaded
+		console.log('[Proxy] Interceptor loaded for:', ORIGINAL_BASE_URL);
+
+		// Override History API BEFORE anything else with try-catch to suppress ALL errors
+		try {
+			const originalPushState = History.prototype.pushState;
+			History.prototype.pushState = function(state, title, url) {
+				try {
+					if (url && typeof url === 'string' && (url.indexOf('http://') === 0 || url.indexOf('https://') === 0)) {
+						// Silently block - don't even log to avoid console spam
+						return undefined;
+					}
+				} catch(e) { /* Suppress all errors */ }
+				try {
+					return originalPushState.call(this, state, title, url);
+				} catch(e) { /* Suppress errors from original call */ }
+			};
+		} catch(e) { /* Suppress errors during override */ }
+
+		try {
+			const originalReplaceState = History.prototype.replaceState;
+			History.prototype.replaceState = function(state, title, url) {
+				try {
+					if (url && typeof url === 'string' && (url.indexOf('http://') === 0 || url.indexOf('https://') === 0)) {
+						// Silently block
+						return undefined;
+					}
+				} catch(e) { /* Suppress all errors */ }
+				try {
+					return originalReplaceState.call(this, state, title, url);
+				} catch(e) { /* Suppress errors from original call */ }
+			};
+		} catch(e) { /* Suppress errors during override */ }
+
+		// Also override on window.history for direct access
+		try {
+			if (window.history && window.history.pushState) {
+				const originalPushState = window.history.pushState;
+				window.history.pushState = function(state, title, url) {
+					try {
+						if (url && typeof url === 'string' && (url.indexOf('http://') === 0 || url.indexOf('https://') === 0)) {
+							return undefined;
+						}
+					} catch(e) { }
+					try {
+						return originalPushState.call(this, state, title, url);
+					} catch(e) { }
+				};
+			}
+		} catch(e) { }
+
+		try {
+			if (window.history && window.history.replaceState) {
+				const originalReplaceState = window.history.replaceState;
+				window.history.replaceState = function(state, title, url) {
+					try {
+						if (url && typeof url === 'string' && (url.indexOf('http://') === 0 || url.indexOf('https://') === 0)) {
+							return undefined;
+						}
+					} catch(e) { }
+					try {
+						return originalReplaceState.call(this, state, title, url);
+					} catch(e) { }
+				};
+			}
+		} catch(e) { }
+
+		// Helper function to resolve relative URLs
+		function resolveRelativeURL(url) {
+			try {
+				// If already absolute, return as-is
+				if (url.indexOf('http://') === 0 || url.indexOf('https://') === 0) {
+					return url;
+				}
+				// Protocol-relative URL
+				if (url.indexOf('//') === 0) {
+					return 'https:' + url;
+				}
+				// Relative URL - resolve against base URL
+				const base = new URL(ORIGINAL_BASE_URL);
+				return new URL(url, base).href;
+			} catch(e) {
+				return url;
+			}
+		}
+
+		// List of domains to skip proxying (analytics, ads, tracking)
+		const SKIP_PROXY_DOMAINS = [
+			'google-analytics.com',
+			'googletagmanager.com',
+			'googlesyndication.com',
+			'googleadservices.com',
+			'doubleclick.net',
+			'facebook.com/tr',
+			'connect.facebook.net',
+			'analytics.twitter.com',
+			't.co',
+			'adform.net',
+			'adnxs.com',
+			'rubiconproject.com',
+			'pubmatic.com',
+			'criteo.com',
+			'crwdcntrl.net',
+			'cookielaw.org',
+			'onetrust.com',
+			'clarity.ms',
+			'bing.com'
+		];
+
+		// Helper function to check if URL should be skipped
+		function shouldSkipProxy(url) {
+			try {
+				const urlObj = new URL(url);
+				const hostname = urlObj.hostname.toLowerCase();
+				return SKIP_PROXY_DOMAINS.some(domain =>
+					hostname === domain || hostname.endsWith('.' + domain)
+				);
+			} catch(e) {
+				return false;
+			}
+		}
+
+		// Intercept fetch() with error suppression
+		try {
+			const originalFetch = window.fetch;
+			window.fetch = function(input, ...args) {
+				let modifiedInput = input;
+				try {
+					let url = input;
+					// Handle Request objects
+					if (input && typeof input === 'object' && input.url) {
+						url = input.url;
+					}
+					if (typeof url === 'string') {
+						// Resolve relative URLs to absolute
+						const absoluteUrl = resolveRelativeURL(url);
+
+						// Only intercept external URLs (not our own proxy)
+						if (absoluteUrl.indexOf(PROXY_ORIGIN) !== 0) {
+							// Skip known analytics/ad/tracking domains
+							if (shouldSkipProxy(absoluteUrl)) {
+								// Don't intercept - let it fail naturally
+								return originalFetch.call(this, input, ...args);
+							}
+
+							// Reduce noise - only log important requests
+							if (!absoluteUrl.includes('/analytics') && !absoluteUrl.includes('/collect') && !absoluteUrl.includes('/rum')) {
+								console.log('[Proxy] Intercepting fetch:', url, '->', absoluteUrl);
+							}
+							try {
+								// Use base64 encoding to avoid URL encoding issues
+								let proxyUrl = PROXY_ORIGIN + '/api/webpage/resource?url_b64=' + btoa(absoluteUrl) + '&referer_b64=' + btoa(ORIGINAL_BASE_URL);
+								if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+									proxyUrl += '&token=' + encodeURIComponent(AUTH_TOKEN);
+								}
+								if (input && typeof input === 'object' && input.url) {
+									modifiedInput = new Request(proxyUrl, input);
+								} else {
+									modifiedInput = proxyUrl;
+								}
+							} catch(e) { }
+						}
+					}
+				} catch(e) { }
+				try {
+					return originalFetch.call(this, modifiedInput, ...args);
+				} catch(e) {
+					return Promise.reject(e);
+				}
+			};
+			console.log('[Proxy] Fetch interceptor installed');
+		} catch(e) { }
+
+		// Intercept XMLHttpRequest with error suppression
+		try {
+			const originalXHROpen = XMLHttpRequest.prototype.open;
+			XMLHttpRequest.prototype.open = function(method, url, ...args) {
+				let modifiedUrl = url;
+				try {
+					if (typeof url === 'string') {
+						// Resolve relative URLs to absolute
+						const absoluteUrl = resolveRelativeURL(url);
+
+						// Only intercept external URLs (not our own proxy)
+						if (absoluteUrl.indexOf(PROXY_ORIGIN) !== 0) {
+							// Skip known analytics/ad/tracking domains
+							if (shouldSkipProxy(absoluteUrl)) {
+								// Don't intercept - let it fail naturally
+								return originalXHROpen.call(this, method, url, ...args);
+							}
+
+							// Reduce noise - only log important requests
+							if (!absoluteUrl.includes('/analytics') && !absoluteUrl.includes('/collect') && !absoluteUrl.includes('/rum')) {
+								console.log('[Proxy] Intercepting XHR:', method, url, '->', absoluteUrl);
+							}
+							try {
+								// Use base64 encoding to avoid URL encoding issues
+								modifiedUrl = PROXY_ORIGIN + '/api/webpage/resource?url_b64=' + btoa(absoluteUrl) + '&referer_b64=' + btoa(ORIGINAL_BASE_URL);
+								if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+									modifiedUrl += '&token=' + encodeURIComponent(AUTH_TOKEN);
+								}
+							} catch(e) { }
+						}
+					}
+				} catch(e) { }
+				try {
+					return originalXHROpen.call(this, method, modifiedUrl, ...args);
+				} catch(e) {
+					throw e;
+				}
+			};
+			console.log('[Proxy] XHR interceptor installed');
+		} catch(e) { }
+
+		// Intercept all link clicks to open in external browser
+		try {
+			document.addEventListener('click', function(e) {
+				try {
+					// Check if clicked element or its parents is a link with our marker
+					let target = e.target;
+					while (target && target !== document) {
+						if (target.tagName === 'A' && target.hasAttribute('data-proxy-link')) {
+							// This is our proxied link
+							const href = target.getAttribute('href');
+							if (href && href.startsWith('BROWSER-OPEN:')) {
+								e.preventDefault();
+								e.stopPropagation();
+								e.stopImmediatePropagation();
+
+								const urlToOpen = href.substring('BROWSER-OPEN:'.length);
+								console.log('[Proxy] Opening link in browser:', urlToOpen);
+
+								// Call our backend to open the URL
+								let browserOpenUrl = PROXY_ORIGIN + '/api/browser/open?url=' + encodeURIComponent(urlToOpen);
+								if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+									browserOpenUrl += '&token=' + encodeURIComponent(AUTH_TOKEN);
+								}
+								fetch(browserOpenUrl, {
+									method: 'GET',
+									mode: 'cors'
+								}).catch(err => {
+									console.error('[Proxy] Failed to open URL:', err);
+								});
+
+								return false;
+							}
+						}
+						target = target.parentElement;
+					}
+				} catch(err) {
+					console.error('[Proxy] Error handling click:', err);
+				}
+			}, true); // Use capture phase
+			console.log('[Proxy] Link click interceptor installed');
+		} catch(e) {
+			console.error('[Proxy] Failed to install link interceptor:', e);
+		}
+	})();
+	</script>`
+
+	// Add meta tags to block manifest and other external resource requests
+	metaTags := `<meta name="manifest" content=""><link rel="manifest" href="about:blank">`
+
+	// CRITICAL: DON'T use <base> tag - it causes issues with link resolution
+	// Instead, we'll convert ALL relative URLs to absolute URLs in the backend
+	// This ensures both resources and links work correctly
+	baseTag := ``
+
+	// Find <head> tag and insert our interception script FIRST, then meta tags (no base tag)
+	headIndex := strings.Index(strings.ToLower(content), "<head>")
+	if headIndex == -1 {
+		// If no <head>, look for <html>
+		htmlIndex := strings.Index(strings.ToLower(content), "<html>")
+		if htmlIndex != -1 {
+			htmlEndIndex := htmlIndex + strings.Index(content[htmlIndex:], ">") + 1
+			content = content[:htmlEndIndex] + "<head>" + interceptionScript + baseTag + metaTags + "</head>" + content[htmlEndIndex:]
+		}
+	} else {
+		headEndIndex := headIndex + strings.Index(content[headIndex:], ">") + 1
+		// Insert interception script FIRST, then meta tags (no base tag)
+		content = content[:headEndIndex] + interceptionScript + baseTag + metaTags + content[headEndIndex:]
+	}
+
+	// Rewrite script src attributes
+	// log.Printf("[HTML Rewrite] Rewriting script src attributes...")
+	content = rewriteAttribute(content, "script", "src", baseURL, token)
+
+	// Rewrite link href attributes (for stylesheets)
+	// log.Printf("[HTML Rewrite] Rewriting link href attributes...")
+	content = rewriteLinkHref(content, baseURL, token)
+
+	// DEBUG: Log a sample of the rewritten HTML to verify it's working
+	// if strings.Contains(content, "/static/") || strings.Contains(content, "/cdn-cgi/") {
+	// 	log.Printf("[HTML Rewrite] DEBUG: Found potential unrewritten URLs in HTML!")
+	// 	// Find and log the first occurrence
+	// 	if idx := strings.Index(content, "/static/"); idx != -1 {
+	// 		start := max(idx - 100, 0)
+	// 		end := min(idx + 200, len(content))
+	// 		log.Printf("[HTML Rewrite] Context around /static/: %s", content[start:end])
+	// 	}
+	// 	if idx := strings.Index(content, "/cdn-cgi/"); idx != -1 {
+	// 		start := max(idx - 100, 0)
+	// 		end := min(idx + 200, len(content))
+	// 		log.Printf("[HTML Rewrite] Context around /cdn-cgi/: %s", content[start:end])
+	// 	}
+	// }
+
+	// First, convert lazy-loaded images to normal images
+	// This ensures images load immediately without waiting for lazy loading scripts
+	content = convertLazyImages(content)
+
+	// Then rewrite img src attributes (now including the converted lazy images)
+	content = rewriteAttribute(content, "img", "src", baseURL, token)
+
+	// Rewrite iframe src attributes
+	content = rewriteAttribute(content, "iframe", "src", baseURL, token)
+	
+	// Remove 'web-share' from iframe allow attributes to prevent browser warnings
+	content = removeWebShareFromIframes(content)
+
+	// Rewrite video src and poster attributes
+	content = rewriteAttribute(content, "video", "src", baseURL, token)
+	content = rewriteAttribute(content, "video", "poster", baseURL, token)
+
+	// Rewrite audio src attributes
+	content = rewriteAttribute(content, "audio", "src", baseURL, token)
+
+	// Rewrite source src attributes (for video/audio)
+	content = rewriteAttribute(content, "source", "src", baseURL, token)
+
+	// Rewrite track src attributes
+	content = rewriteAttribute(content, "track", "src", baseURL, token)
+
+	// Rewrite embed src attributes
+	content = rewriteAttribute(content, "embed", "src", baseURL, token)
+
+	// Rewrite object data attributes
+	content = rewriteAttribute(content, "object", "data", baseURL, token)
+
+	// Rewrite action attributes in forms
+	content = rewriteAttribute(content, "form", "action", baseURL, token)
+
+	// Rewrite href attributes in anchor tags (for absolute URLs only)
+	content = rewriteAnchorHref(content, baseURL, token)
+
+	// Rewrite CSS in style tags
+	content = rewriteStyleTags(content, baseURL, token)
+
+	// Rewrite inline style attributes
+	content = rewriteInlineStyles(content, baseURL, token)
+
+	return []byte(content)
+}
+
+// convertLazyImages converts lazy-loaded images to normal images
+// For images with data-original or data-src attributes, move those URLs to src
+// This prevents lazy loading and ensures immediate display
+func convertLazyImages(content string) string {
+	// Match img tags with lazy loading attributes
+	// We need to match any img tag that contains data-original or data-src
+	// Use a two-step approach: find all img tags, then check if they have lazy attributes
+	re := regexp.MustCompile(`<img[^>]*>`)
+
+	return re.ReplaceAllStringFunc(content, func(match string) string {
+		// Check if this img tag has data-original or data-src attribute
+		// Try double quotes first: data-original="..."
+		doubleQuoteRe := regexp.MustCompile(`\s(data-original|data-src)\s*=\s*"([^"]*)"`)
+		doubleQuoteMatch := doubleQuoteRe.FindStringSubmatch(match)
+
+		var lazySrc, lazyQuote string
+
+		if len(doubleQuoteMatch) >= 3 {
+			// Found double-quoted attribute
+			lazySrc = doubleQuoteMatch[2]
+			lazyQuote = `"`
+		} else {
+			// Try single quotes: data-original='...'
+			singleQuoteRe := regexp.MustCompile(`\s(data-original|data-src)\s*=\s*'([^']*)'`)
+			singleQuoteMatch := singleQuoteRe.FindStringSubmatch(match)
+			if len(singleQuoteMatch) >= 3 {
+				lazySrc = singleQuoteMatch[2]
+				lazyQuote = `'`
+			} else {
+				// Try unquoted: data-original=...
+				unquotedRe := regexp.MustCompile(`\s(data-original|data-src)\s*=\s*([^\s>]+)`)
+				unquotedMatch := unquotedRe.FindStringSubmatch(match)
+				if len(unquotedMatch) >= 3 {
+					lazySrc = unquotedMatch[2]
+					lazyQuote = ""
+				} else {
+					// No lazy attribute found
+					return match
+				}
+			}
+		}
+
+		// Build new img tag
+		var newTag strings.Builder
+		newTag.WriteString("<img ")
+
+		// Copy all attributes except src, data-original, data-src, and lazy class
+		// Parse attributes manually since Go regex has limitations
+		attrs := parseHTMLAttributes(match)
+
+		for _, attr := range attrs {
+			// Skip lazy loading attributes
+			if attr.Name == "data-original" || attr.Name == "data-src" {
+				continue
+			}
+
+			// Handle class attribute - remove "lazy" from it
+			if attr.Name == "class" {
+				// Remove "lazy" from class value
+				classValue := strings.ReplaceAll(attr.Value, "lazy", "")
+				classValue = strings.TrimSpace(classValue)
+				classValue = strings.ReplaceAll(classValue, "  ", " ")
+
+				if classValue != "" {
+					newTag.WriteString(fmt.Sprintf(`class="%s" `, classValue))
+				}
+				continue
+			}
+
+			// Skip the old src attribute, we'll add the new one
+			if attr.Name == "src" {
+				continue
+			}
+
+			// Copy other attributes (preserve original quote style)
+			if attr.Quote == "" {
+				newTag.WriteString(fmt.Sprintf(`%s=%s `, attr.Name, attr.Value))
+			} else {
+				newTag.WriteString(fmt.Sprintf(`%s=%s%s%s `, attr.Name, attr.Quote, attr.Value, attr.Quote))
+			}
+		}
+
+		// Add the new src attribute with the lazy-loaded image URL
+		if lazyQuote == "" {
+			newTag.WriteString(fmt.Sprintf(`src=%s`, lazySrc))
+		} else {
+			newTag.WriteString(fmt.Sprintf(`src=%s%s%s`, lazyQuote, lazySrc, lazyQuote))
+		}
+
+		// Close the tag
+		newTag.WriteString(">")
+
+		return newTag.String()
+	})
+}
+
+// htmlAttribute represents a parsed HTML attribute
+type htmlAttribute struct {
+	Name  string
+	Value string
+	Quote string // " or ' or empty for unquoted
+}
+
+// parseHTMLAttributes parses attributes from an HTML tag
+// This is a simple parser that handles quoted and unquoted attributes
+func parseHTMLAttributes(tag string) []htmlAttribute {
+	// Remove "<img" and ">" from the tag
+	content := strings.TrimPrefix(tag, "<img")
+	content = strings.TrimSuffix(content, ">")
+	content = strings.TrimSpace(content)
+
+	var attrs []htmlAttribute
+	var currentAttr strings.Builder
+	var inQuote rune
+	var attrName, attrValue, attrQuote strings.Builder
+
+	i := 0
+	for i < len(content) {
+		ch := rune(content[i])
+
+		if inQuote != 0 {
+			// We're inside a quoted value
+			if ch == inQuote {
+				// Closing quote
+				inQuote = 0
+				attrValue.WriteString(string(ch))
+			} else {
+				attrValue.WriteString(string(ch))
+			}
+			i++
+			continue
+		}
+
+		switch ch {
+		case '=':
+			// End of attribute name
+			attrName.WriteString(currentAttr.String())
+			currentAttr.Reset()
+			i++
+			// Skip whitespace after =
+			for i < len(content) && content[i] == ' ' {
+				i++
+			}
+			// Check for quote
+			if i < len(content) && (content[i] == '"' || content[i] == '\'') {
+				inQuote = rune(content[i])
+				attrQuote.WriteRune(inQuote)
+				attrValue.WriteRune(inQuote)
+				i++
+			}
+		case ' ', '\t', '\n', '\r':
+			if currentAttr.Len() > 0 {
+				// End of attribute value (unquoted)
+				if attrName.Len() > 0 {
+					attrs = append(attrs, htmlAttribute{
+						Name:  strings.TrimSpace(attrName.String()),
+						Value: currentAttr.String(),
+						Quote: "",
+					})
+					attrName.Reset()
+				}
+				currentAttr.Reset()
+				attrQuote.Reset()
+			}
+			i++
+		default:
+			if attrName.Len() == 0 {
+				currentAttr.WriteRune(ch)
+			} else {
+				attrValue.WriteRune(ch)
+			}
+			i++
+		}
+	}
+
+	// Don't forget the last attribute
+	if attrName.Len() > 0 {
+		attrs = append(attrs, htmlAttribute{
+			Name:  strings.TrimSpace(attrName.String()),
+			Value: strings.TrimSpace(attrValue.String()),
+			Quote: attrQuote.String(),
+		})
+	} else if currentAttr.Len() > 0 {
+		// Boolean attribute or attribute without value
+		attrs = append(attrs, htmlAttribute{
+			Name:  currentAttr.String(),
+			Value: "",
+			Quote: "",
+		})
+	}
+
+	return attrs
+}
+
+// removeWebShareFromIframes removes 'web-share' from iframe allow attributes
+func removeWebShareFromIframes(content string) string {
+	// Match iframe tags
+	tagRe := regexp.MustCompile(`<iframe[^>]*>`)
+
+	return tagRe.ReplaceAllStringFunc(content, func(match string) string {
+		// Find allow attribute
+		// Match allow="value" or allow='value' or allow=value
+		allowRe := regexp.MustCompile(`(allow\s*=\s*)(["'])([^"']*)(["'])`)
+		match = allowRe.ReplaceAllStringFunc(match, func(allowMatch string) string {
+			matches := allowRe.FindStringSubmatch(allowMatch)
+			if len(matches) < 4 {
+				return allowMatch
+			}
+			prefix := matches[1]
+			quote := matches[2]
+			value := matches[3]
+			suffix := matches[4]
+
+			// Remove web-share
+			newValue := strings.ReplaceAll(value, "web-share", "")
+			// Cleanup extra spaces
+			newValue = strings.Join(strings.Fields(newValue), " ")
+			
+			return fmt.Sprintf("%s%s%s%s", prefix, quote, newValue, suffix)
+		})
+		
+		// Also handle unquoted allow attribute if any (though rare in HTML5)
+		allowUnquotedRe := regexp.MustCompile(`(allow\s*=\s*)([^"'\s>]+)`)
+		match = allowUnquotedRe.ReplaceAllStringFunc(match, func(allowMatch string) string {
+			matches := allowUnquotedRe.FindStringSubmatch(allowMatch)
+			if len(matches) < 3 {
+				return allowMatch
+			}
+			prefix := matches[1]
+			value := matches[2]
+			
+			// If unquoted value contains web-share, remove it?
+			// Usually unquoted values don't contain spaces, so "web-share" is unlikely unless it's the ONLY value
+			if strings.Contains(value, "web-share") {
+				newValue := strings.ReplaceAll(value, "web-share", "")
+				if newValue == "" {
+					return "" // Remove attribute if empty? Or leave empty allow=
+				}
+				return fmt.Sprintf("%s%s", prefix, newValue)
+			}
+			return allowMatch
+		})
+
+		return match
+	})
+}
+
+// rewriteAttribute rewrites a specific attribute in HTML tags
+func rewriteAttribute(content, tag, attr, baseURL, token string) string {
+	// Match all tags first
+	tagRe := regexp.MustCompile(fmt.Sprintf(`<%s[^>]*>`, tag))
+
+	matchCount := 0
+	rewriteCount := 0
+
+	result := tagRe.ReplaceAllStringFunc(content, func(match string) string {
+		matchCount++
+		// Try to find the attribute with double quotes
+		doubleQuoteRe := regexp.MustCompile(fmt.Sprintf(`\s%s\s*=\s*"([^"]*)"`, attr))
+		doubleQuoteMatch := doubleQuoteRe.FindStringSubmatch(match)
+
+		var urlValue, quote string
+
+		if len(doubleQuoteMatch) >= 2 {
+			// Found double-quoted attribute
+			urlValue = doubleQuoteMatch[1]
+			quote = `"`
+		} else {
+			// Try single quotes
+			singleQuoteRe := regexp.MustCompile(fmt.Sprintf(`\s%s\s*=\s*'([^']*)'`, attr))
+			singleQuoteMatch := singleQuoteRe.FindStringSubmatch(match)
+			if len(singleQuoteMatch) >= 2 {
+				urlValue = singleQuoteMatch[1]
+				quote = `'`
+			} else {
+				// Try unquoted
+				unquotedRe := regexp.MustCompile(fmt.Sprintf(`\s%s\s*=\s*([^\s>]+)`, attr))
+				unquotedMatch := unquotedRe.FindStringSubmatch(match)
+				if len(unquotedMatch) >= 2 {
+					urlValue = unquotedMatch[1]
+					quote = ""
+				} else {
+					// Attribute not found
+					return match
+				}
+			}
+		}
+
+		// Skip data: URLs, blob: URLs, and already proxied URLs
+		if strings.HasPrefix(urlValue, "data:") ||
+			strings.HasPrefix(urlValue, "blob:") ||
+			strings.HasPrefix(urlValue, "/api/") ||
+			strings.HasPrefix(urlValue, "#") {
+			return match
+		}
+
+		rewriteCount++
+		// if tag == "script" || tag == "link" {
+		// 	log.Printf("[%s Rewrite] Rewriting %s %d: %s", strings.ToUpper(tag), attr, rewriteCount, urlValue)
+		// }
+
+		// Resolve relative URLs
+		resolvedURL := resolveURL(urlValue, baseURL)
+
+		// Create proxied URL with base64 encoding
+		proxiedURL := fmt.Sprintf("/api/webpage/resource?url_b64=%s&referer_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(resolvedURL)),
+			base64.StdEncoding.EncodeToString([]byte(baseURL)))
+
+		if token != "" {
+			proxiedURL += fmt.Sprintf("&token=%s", url.QueryEscape(token))
+		}
+
+		// Replace the URL in the match
+		// Use regex to replace attribute value more reliably
+		if quote != "" {
+			// Quoted value - replace using regex for more flexibility
+			attrPattern := regexp.MustCompile(`(` + attr + `)\s*=\s*` + regexp.QuoteMeta(quote) + regexp.QuoteMeta(urlValue) + regexp.QuoteMeta(quote))
+			replacement := fmt.Sprintf(`%s=%s%s%s`, attr, quote, proxiedURL, quote)
+			return attrPattern.ReplaceAllString(match, replacement)
+		} else {
+			// Unquoted value - match until whitespace or > character
+			// We need to capture the delimiter (space or >) to preserve it
+			attrPattern := regexp.MustCompile(`(` + attr + `)\s*=\s*` + regexp.QuoteMeta(urlValue) + `([\s>])`)
+			replacement := fmt.Sprintf(`%s="%s"$2`, attr, proxiedURL)
+			return attrPattern.ReplaceAllString(match, replacement)
+		}
+	})
+
+	// if matchCount > 0 && (tag == "script" || tag == "link") {
+	// 	log.Printf("[%s Rewrite] Found %d %s tags, rewrote %d %s attributes", strings.ToUpper(tag), matchCount, tag, rewriteCount, attr)
+	// }
+
+	return result
+}
+
+// rewriteLinkHref rewrites href attributes in link tags
+func rewriteLinkHref(content, baseURL, token string) string {
+	// Match all link tags
+	tagRe := regexp.MustCompile(`<link[^>]*>`)
+
+	matchCount := 0
+	rewriteCount := 0
+
+	result := tagRe.ReplaceAllStringFunc(content, func(match string) string {
+		matchCount++
+		// Try to find the href attribute with double quotes
+		doubleQuoteRe := regexp.MustCompile(`\shref\s*=\s*"([^"]*)"`)
+		doubleQuoteMatch := doubleQuoteRe.FindStringSubmatch(match)
+
+		var urlValue, quote string
+
+		if len(doubleQuoteMatch) >= 2 {
+			// Found double-quoted attribute
+			urlValue = doubleQuoteMatch[1]
+			quote = `"`
+		} else {
+			// Try single quotes
+			singleQuoteRe := regexp.MustCompile(`\shref\s*=\s*'([^']*)'`)
+			singleQuoteMatch := singleQuoteRe.FindStringSubmatch(match)
+			if len(singleQuoteMatch) >= 2 {
+				urlValue = singleQuoteMatch[1]
+				quote = `'`
+			} else {
+				// Try unquoted
+				unquotedRe := regexp.MustCompile(`\shref\s*=\s*([^\s>]+)`)
+				unquotedMatch := unquotedRe.FindStringSubmatch(match)
+				if len(unquotedMatch) >= 2 {
+					urlValue = unquotedMatch[1]
+					quote = ""
+				} else {
+					// href attribute not found
+					return match
+				}
+			}
+		}
+
+		// Skip data: URLs, blob: URLs, and already proxied URLs
+		if strings.HasPrefix(urlValue, "data:") ||
+			strings.HasPrefix(urlValue, "blob:") ||
+			strings.HasPrefix(urlValue, "/api/") ||
+			strings.HasPrefix(urlValue, "#") {
+			return match
+		}
+
+		rewriteCount++
+		// log.Printf("[Link Rewrite] Rewriting link %d: %s", rewriteCount, urlValue)
+
+		// Resolve relative URLs
+		resolvedURL := resolveURL(urlValue, baseURL)
+
+		// Create proxied URL with base64 encoding
+		proxiedURL := fmt.Sprintf("/api/webpage/resource?url_b64=%s&referer_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(resolvedURL)),
+			base64.StdEncoding.EncodeToString([]byte(baseURL)))
+
+		if token != "" {
+			proxiedURL += fmt.Sprintf("&token=%s", url.QueryEscape(token))
+		}
+
+		// Replace the URL in the match
+		// Use regex to replace href attribute value more reliably
+		if quote != "" {
+			// Quoted value - replace using regex for more flexibility
+			hrefPattern := regexp.MustCompile(`(href)\s*=\s*` + regexp.QuoteMeta(quote) + regexp.QuoteMeta(urlValue) + regexp.QuoteMeta(quote))
+			replacement := fmt.Sprintf(`href=%s%s%s`, quote, proxiedURL, quote)
+			return hrefPattern.ReplaceAllString(match, replacement)
+		} else {
+			// Unquoted value - match and capture the trailing delimiter
+			// Go's regexp doesn't support lookahead, so we match and preserve the trailing char
+			hrefPattern := regexp.MustCompile(`(href)\s*=\s*` + regexp.QuoteMeta(urlValue) + `([\s>])`)
+			replacement := fmt.Sprintf(`href="%s"$2`, proxiedURL)
+			return hrefPattern.ReplaceAllString(match, replacement)
+		}
+	})
+
+	// if matchCount > 0 {
+	// 	log.Printf("[Link Rewrite] Found %d link tags, rewrote %d", matchCount, rewriteCount)
+	// }
+
+	return result
+}
+
+// rewriteAnchorHref rewrites href attributes in anchor tags
+func rewriteAnchorHref(content, baseURL, token string) string {
+	// Match all anchor tags with href attribute
+	// This pattern matches any <a> tag that contains an href attribute
+	re := regexp.MustCompile(`<a\s+[^>]*href[^>]*>`)
+
+	// Count matches for debugging
+	matchCount := 0
+	proxiedCount := 0
+
+	result := re.ReplaceAllStringFunc(content, func(match string) string {
+		matchCount++
+
+		// Extract href value using a more flexible regex
+		hrefRe := regexp.MustCompile(`href\s*=\s*(?:["']([^"']+)["']|([^"'\s>]+))`)
+		hrefMatch := hrefRe.FindStringSubmatch(match)
+
+		if len(hrefMatch) < 2 {
+			return match
+		}
+
+		// Get the URL (first captured group is quoted, second is unquoted)
+		var urlValue string
+		if hrefMatch[1] != "" {
+			urlValue = hrefMatch[1]
+		} else if hrefMatch[2] != "" {
+			urlValue = hrefMatch[2]
+		} else {
+			return match
+		}
+
+		// Skip mailto:, tel:, javascript:, and other special protocols
+		if strings.HasPrefix(urlValue, "mailto:") ||
+			strings.HasPrefix(urlValue, "tel:") ||
+			strings.HasPrefix(urlValue, "javascript:") ||
+			strings.HasPrefix(urlValue, "data:") ||
+			strings.HasPrefix(urlValue, "blob:") ||
+			strings.HasPrefix(urlValue, "#") {
+			return match
+		}
+
+		// Skip already proxied URLs (both relative and absolute)
+		if strings.HasPrefix(urlValue, "/api/") ||
+			strings.HasPrefix(urlValue, "http://") && strings.Contains(urlValue, "/api/") ||
+			strings.HasPrefix(urlValue, "https://") && strings.Contains(urlValue, "/api/") {
+			return match
+		}
+
+		// Resolve relative URLs to absolute URLs
+		var resolvedURL string
+		if strings.HasPrefix(urlValue, "http://") || strings.HasPrefix(urlValue, "https://") {
+			// Already absolute
+			resolvedURL = urlValue
+		} else if strings.HasPrefix(urlValue, "//") {
+			// Protocol-relative URL (//example.com) - add https:
+			resolvedURL = "https:" + urlValue
+		} else {
+			// Relative URL - resolve against baseURL
+			resolvedURL = resolveURL(urlValue, baseURL)
+		}
+
+		// Only proxy HTTP/HTTPS URLs
+		if !strings.HasPrefix(resolvedURL, "http://") && !strings.HasPrefix(resolvedURL, "https://") {
+			return match
+		}
+
+		proxiedCount++
+
+		// CRITICAL FIX: Use absolute URL for the proxy endpoint
+		// We must use window.location.origin (which will be our backend) + the endpoint path
+		// This is handled by JavaScript in the iframe, but we need to ensure the href is absolute
+		// Format: https://localhost:9245/api/browser/open?url=...
+		// Since we don't know our backend origin here, we use a protocol-relative URL starting with //
+		// But actually, the iframe's window.location.origin IS our backend, so we just need to ensure
+		// the path starts with / and it will be resolved correctly... wait, that's the problem!
+
+		// The real solution: We need to construct an absolute URL or use JavaScript to handle clicks
+		// For now, let's use a data URL or JavaScript approach, but simpler: make it absolute by using
+		// the current origin. Since we're in an iframe served from our backend, we can use:
+
+		// Option 1: Use JavaScript: href (blocked by CSP usually)
+		// Option 2: Inject a <base> tag pointing to our backend (might break other resources)
+		// Option 3: Use absolute URL with placeholder that JavaScript will fix
+		// Option 4: Intercept clicks via event delegation (best approach)
+
+		// Let's use a special marker that our injected script will recognize
+		proxiedURL := fmt.Sprintf("BROWSER-OPEN:%s", resolvedURL)
+		// log.Printf("[Link Proxy] Proxied link %d: %s -> %s (marker: %s)", proxiedCount, urlValue, resolvedURL, proxiedURL)
+
+		// Replace the href attribute value by finding and replacing the exact value
+		// We need to handle different quote styles
+		if hrefMatch[1] != "" {
+			// Was quoted - replace with quoted version
+			// Find the original href attribute with its quotes and value
+			oldHref := fmt.Sprintf(`href="%s"`, urlValue)
+			oldHrefSingle := fmt.Sprintf(`href='%s'`, urlValue)
+			if strings.Contains(match, oldHref) {
+				newMatch := strings.Replace(match, oldHref, fmt.Sprintf(`href="%s"`, proxiedURL), 1)
+				// Add target="_self" and a special data attribute for our script
+				if !strings.Contains(newMatch, "target=") {
+					newMatch = strings.Replace(newMatch, ">", ` target="_self" data-proxy-link="true">`, 1)
+				} else {
+					newMatch = strings.Replace(newMatch, ">", ` data-proxy-link="true">`, 1)
+				}
+				return newMatch
+			} else if strings.Contains(match, oldHrefSingle) {
+				newMatch := strings.Replace(match, oldHrefSingle, fmt.Sprintf(`href='%s'`, proxiedURL), 1)
+				if !strings.Contains(newMatch, "target=") {
+					newMatch = strings.Replace(newMatch, ">", ` target="_self" data-proxy-link="true">`, 1)
+				} else {
+					newMatch = strings.Replace(newMatch, ">", ` data-proxy-link="true">`, 1)
+				}
+				return newMatch
+			}
+		} else {
+			// Was unquoted
+			oldHref := fmt.Sprintf(`href=%s`, urlValue)
+			newMatch := strings.Replace(match, oldHref, fmt.Sprintf(`href="%s"`, proxiedURL), 1)
+			if !strings.Contains(newMatch, "target=") {
+				newMatch = strings.Replace(newMatch, ">", ` target="_self" data-proxy-link="true">`, 1)
+			} else {
+				newMatch = strings.Replace(newMatch, ">", ` data-proxy-link="true">`, 1)
+			}
+			return newMatch
+		}
+
+		// Fallback: use regex replacement
+		newMatch := hrefRe.ReplaceAllString(match, fmt.Sprintf(`href="%s"`, proxiedURL))
+		if !strings.Contains(newMatch, "target=") {
+			newMatch = strings.Replace(newMatch, ">", ` target="_self" data-proxy-link="true">`, 1)
+		} else {
+			newMatch = strings.Replace(newMatch, ">", ` data-proxy-link="true">`, 1)
+		}
+		return newMatch
+	})
+
+	// if matchCount > 0 {
+	// 	log.Printf("[Link Proxy] Found %d anchor tags, proxied %d links", matchCount, proxiedCount)
+	// }
+
+	return result
+}
+
+// rewriteStyleTags rewrites CSS URLs in <style> tags
+func rewriteStyleTags(content, baseURL, token string) string {
+	pattern := `<style[^>]*>(.*?)</style>`
+	re := regexp.MustCompile(`(?is)` + pattern)
+
+	return re.ReplaceAllStringFunc(content, func(match string) string {
+		// Extract the CSS content
+		subRe := regexp.MustCompile(`(?is)<style[^>]*>(.*?)</style>`)
+		matches := subRe.FindStringSubmatch(match)
+		if len(matches) < 2 {
+			return match
+		}
+
+		cssContent := matches[1]
+		// Rewrite @font-face rules first
+		cssContent = rewriteFontFaceRules(cssContent, baseURL, token)
+		// Then rewrite all other url() references
+		rewrittenCSS := rewriteCSSURLs(cssContent, baseURL, token)
+
+		return strings.Replace(match, cssContent, rewrittenCSS, 1)
+	})
+}
+
+// rewriteInlineStyles rewrites style attribute values
+func rewriteInlineStyles(content, baseURL, token string) string {
+	pattern := `style\s*=\s*(["'])(.*?)\1`
+	pattern = strings.ReplaceAll(pattern, `\1`, `\$1`) // Fix backreference
+	re := regexp.MustCompile(pattern)
+
+	return re.ReplaceAllStringFunc(content, func(match string) string {
+		subPattern := `style\s*=\s*(["'])(.*?)\1`
+		subPattern = strings.ReplaceAll(subPattern, `\1`, `\$1`) // Fix backreference
+		subRe := regexp.MustCompile(subPattern)
+		matches := subRe.FindStringSubmatch(match)
+		if len(matches) < 3 {
+			return match
+		}
+
+		quote := matches[1]
+		styleContent := matches[2]
+		// Rewrite @font-face rules first
+		styleContent = rewriteFontFaceRules(styleContent, baseURL, token)
+		// Then rewrite all other url() references
+		rewrittenStyle := rewriteCSSURLs(styleContent, baseURL, token)
+
+		return fmt.Sprintf(`style=%s%s%s`, quote, rewrittenStyle, quote)
+	})
+}
+
+// rewriteCSSURLs rewrites url() references in CSS
+func rewriteCSSURLs(css, baseURL, token string) string {
+	// First, handle @import rules
+	// @import can be: @import "url"; or @import url("url");
+	// We need to handle multiple patterns separately
+	importRe1 := regexp.MustCompile(`@import\s+url\(['"]([^'"]+)['"]\)`)
+	css = importRe1.ReplaceAllStringFunc(css, func(match string) string {
+		subMatches := importRe1.FindStringSubmatch(match)
+		if len(subMatches) < 2 {
+			return match
+		}
+
+		urlValue := subMatches[1]
+
+		// Skip data: URLs and already proxied URLs
+		if strings.HasPrefix(urlValue, "data:") ||
+			strings.HasPrefix(urlValue, "/api/") {
+			return match
+		}
+
+		// Resolve relative URLs
+		resolvedURL := resolveURL(urlValue, baseURL)
+
+		// Create proxied URL with base64 encoding
+		proxiedURL := fmt.Sprintf("/api/webpage/resource?url_b64=%s&referer_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(resolvedURL)),
+			base64.StdEncoding.EncodeToString([]byte(baseURL)))
+
+		if token != "" {
+			proxiedURL += fmt.Sprintf("&token=%s", url.QueryEscape(token))
+		}
+
+		return fmt.Sprintf(`@import url("%s")`, proxiedURL)
+	})
+
+	importRe2 := regexp.MustCompile(`@import\s+['"]([^'"]+)['"]`)
+	css = importRe2.ReplaceAllStringFunc(css, func(match string) string {
+		subMatches := importRe2.FindStringSubmatch(match)
+		if len(subMatches) < 2 {
+			return match
+		}
+
+		urlValue := subMatches[1]
+
+		// Skip data: URLs and already proxied URLs
+		if strings.HasPrefix(urlValue, "data:") ||
+			strings.HasPrefix(urlValue, "/api/") {
+			return match
+		}
+
+		// Resolve relative URLs
+		resolvedURL := resolveURL(urlValue, baseURL)
+
+		// Create proxied URL with base64 encoding
+		proxiedURL := fmt.Sprintf("/api/webpage/resource?url_b64=%s&referer_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(resolvedURL)),
+			base64.StdEncoding.EncodeToString([]byte(baseURL)))
+
+		if token != "" {
+			proxiedURL += fmt.Sprintf("&token=%s", url.QueryEscape(token))
+		}
+
+		return fmt.Sprintf(`@import url("%s")`, proxiedURL)
+	})
+
+	// Then handle url(...) patterns in CSS
+	pattern := `url\((['"]?)([^'")]+)\1\)`
+	pattern = strings.ReplaceAll(pattern, `\1`, `\$1`) // Fix backreference
+	re := regexp.MustCompile(pattern)
+
+	return re.ReplaceAllStringFunc(css, func(match string) string {
+		subMatches := re.FindStringSubmatch(match)
+		if len(subMatches) < 3 {
+			return match
+		}
+
+		urlValue := subMatches[2]
+
+		// Skip data: URLs and already proxied URLs
+		if strings.HasPrefix(urlValue, "data:") ||
+			strings.HasPrefix(urlValue, "/api/") {
+			return match
+		}
+
+		// Resolve relative URLs
+		resolvedURL := resolveURL(urlValue, baseURL)
+
+		// Create proxied URL with base64 encoding
+		proxiedURL := fmt.Sprintf("/api/webpage/resource?url_b64=%s&referer_b64=%s",
+			base64.StdEncoding.EncodeToString([]byte(resolvedURL)),
+			base64.StdEncoding.EncodeToString([]byte(baseURL)))
+
+		if token != "" {
+			proxiedURL += fmt.Sprintf("&token=%s", url.QueryEscape(token))
+		}
+
+		return fmt.Sprintf(`url(%s)`, proxiedURL)
+	})
+}
+
+// rewriteFontFaceRules rewrites @font-face rules in CSS
+func rewriteFontFaceRules(css, baseURL, token string) string {
+	// Match @font-face blocks
+	pattern := `@font-face\s*\{[^}]*\}`
+	re := regexp.MustCompile(`(?is)` + pattern)
+
+	return re.ReplaceAllStringFunc(css, func(match string) string {
+		// Rewrite url() within this @font-face block
+		return rewriteCSSURLs(match, baseURL, token)
+	})
+}
+
+// resolveURL resolves a URL relative to a base URL
+func resolveURL(urlStr, baseURL string) string {
+	if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
+		return urlStr
+	}
+
+	parsedBase, err := url.Parse(baseURL)
+	if err != nil {
+		return urlStr
+	}
+
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return urlStr
+	}
+
+	return parsedBase.ResolveReference(parsedURL).String()
+}
+
+// HandleWebpageResource proxies individual webpage resources (CSS, JS, images, etc.)
+// @Summary      Proxy webpage resource
+// @Description  Proxy individual resources (CSS, JS, images, fonts, etc.) from a webpage
+// @Tags         media
+// @Accept       json
+// @Produce      application/octet-stream
+// @Param        url      query     string  true  "Resource URL to proxy"
+// @Param        referer  query     string  true  "Referer URL for the webpage"
+// @Success      200  {file}  file  "Resource file"
+// @Failure      400  {object}  map[string]string  "Bad request (missing or invalid URL)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /webpage/resource [get]
+func HandleWebpageResource(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	// Handle CORS preflight requests
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	// Get URL from query parameter (support both direct and base64-encoded)
+	resourceURL := r.URL.Query().Get("url")
+	resourceURLBase64 := r.URL.Query().Get("url_b64")
+
+	// Use base64-encoded URL if provided, otherwise use direct URL
+	if resourceURLBase64 != "" {
+		// Decode base64 URL (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(resourceURLBase64)
+		if err != nil {
+			log.Printf("Failed to decode base64 URL: %v", err)
+			response.Error(w, err, http.StatusBadRequest)
+			return
+		}
+		resourceURL = string(decodedBytes)
+		// Decode URL-encoded characters
+		resourceURL, _ = url.QueryUnescape(resourceURL)
+	}
+
+	if resourceURL == "" {
+		response.Error(w, fmt.Errorf("missing url parameter"), http.StatusBadRequest)
+		return
+	}
+
+	// Get referer from query parameter (support both direct and base64-encoded)
+	referer := r.URL.Query().Get("referer")
+	refererBase64 := r.URL.Query().Get("referer_b64")
+
+	// Use base64-encoded referer if provided, otherwise use direct referer
+	if refererBase64 != "" {
+		// Decode base64 referer (supports URL-safe Base64)
+		decodedBytes, err := decodeURLSafeBase64(refererBase64)
+		if err != nil {
+			log.Printf("Failed to decode base64 referer: %v", err)
+			// Fall back to unencoded referer if available
+		} else {
+			referer = string(decodedBytes)
+			// Decode URL-encoded characters
+			referer, _ = url.QueryUnescape(referer)
+		}
+	}
+
+	if referer == "" {
+		response.Error(w, fmt.Errorf("missing referer parameter"), http.StatusBadRequest)
+		return
+	}
+
+	// Validate URLs
+	if err := validateMediaURL(resourceURL); err != nil {
+		log.Printf("Invalid URL validation failed for %s: %v", resourceURL, err)
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+	if err := validateMediaURL(referer); err != nil {
+		log.Printf("Invalid referer validation failed for %s: %v", referer, err)
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	// Special handling for wechat2rss.bestlogs.dev
+	// This service requires specific headers for image proxying
+	isWechat2RSS := strings.Contains(referer, "wechat2rss.bestlogs.dev")
+	if isWechat2RSS {
+		log.Printf("[WebpageResource] wechat2rss resource detected: %s (referer: %s)", resourceURL, referer)
+	}
+
+	// Build proxy URL from user settings (优先用户设置，回退全局)
+	var proxyURL string
+	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+	if proxyEnabled == "true" {
+		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	}
+
+	// Get pooled HTTP client with proxy support
+	httpClient := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
+
+	// Create request to the resource URL
+	var req *http.Request
+	var err error
+
+	// For POST requests, read the body
+	if r.Method == http.MethodPost {
+		var body []byte
+		body, err = io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Failed to read request body: %v", err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+		req, err = http.NewRequest("POST", resourceURL, bytes.NewReader(body))
+		if err != nil {
+			log.Printf("Failed to create request: %v", err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+		// Forward content type
+		if contentType := r.Header.Get("Content-Type"); contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+	} else {
+		req, err = http.NewRequest("GET", resourceURL, nil)
+		if err != nil {
+			log.Printf("Failed to create request: %v", err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Set headers to mimic a browser
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", referer)
+	req.Header.Set("Accept", "*/*")
+	
+	// Forward authorization and cookie headers if present (for services that require auth)
+	// These might be needed for some RSS sources that require authentication
+	if r.Header.Get("Authorization") != "" {
+		req.Header.Set("Authorization", r.Header.Get("Authorization"))
+	}
+	if r.Header.Get("Cookie") != "" {
+		req.Header.Set("Cookie", r.Header.Get("Cookie"))
+	}
+	
+	// Special handling for wechat2rss - add additional headers it might expect
+	if isWechat2RSS {
+		// wechat2rss may expect these headers for image proxying
+		req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+		req.Header.Set("DNT", "1")
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+	}
+
+	// Execute the request with retry
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
+		reqCopy := req.Clone(r.Context())
+
+		resp, err = httpClient.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
+				backoff := calculateProxyBackoff(attempt)
+				log.Printf("[WebpageResource] Network error on attempt %d/%d for %s, retrying in %v: %v",
+					attempt+1, proxyMaxRetries, resourceURL, backoff, err)
+				time.Sleep(backoff)
+				continue
+			}
+			log.Printf("Failed to fetch resource %s: %v", resourceURL, err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Retry on server errors
+		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
+			resp.Body.Close()
+			backoff := calculateProxyBackoff(attempt)
+			log.Printf("[WebpageResource] Server error %d on attempt %d/%d for %s, retrying in %v",
+				resp.StatusCode, attempt+1, proxyMaxRetries, resourceURL, backoff)
+			time.Sleep(backoff)
+			continue
+		}
+
+		break
+	}
+
+	if resp == nil {
+		response.Error(w, fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check response status - allow 200, 201, 202, 203, 204, 206
+	if resp.StatusCode < 200 || resp.StatusCode > 206 {
+		log.Printf("Resource returned status %d for %s (method: %s)", resp.StatusCode, resourceURL, r.Method)
+		response.Error(w, fmt.Errorf("resource returned error"), resp.StatusCode)
+		return
+	}
+
+	// Get content type from response
+	contentType := resp.Header.Get("Content-Type")
+
+	// Also infer content type from file extension as fallback
+	inferredContentType := getContentTypeFromPath(resourceURL)
+
+	// CRITICAL FIX: Always use inferred content type for known file types
+	// Many servers return incorrect Content-Type headers (e.g., text/plain for .css or .js files)
+	// We override these with the correct type based on file extension
+	shouldInferType := false
+	ext := strings.ToLower(filepath.Ext(resourceURL))
+	switch ext {
+	case ".css", ".js", ".mjs", ".woff", ".woff2", ".ttf", ".eot", ".otf", ".json", ".xml":
+		// These types MUST have correct MIME types or browsers will reject them
+		shouldInferType = true
+	}
+
+	// Use inferred content type if the response's content type is missing, generic, or for known types
+	if contentType == "" || contentType == "application/octet-stream" || contentType == "text/plain" || shouldInferType {
+		contentType = inferredContentType
+		log.Printf("[Resource Proxy] Using inferred content type for %s: %s (original: %s)", resourceURL, contentType, resp.Header.Get("Content-Type"))
+	}
+
+	// Copy headers from the response, excluding problematic ones
+	for key, values := range resp.Header {
+		// Skip headers that might cause issues
+		if key == "Content-Security-Policy" ||
+			key == "X-Frame-Options" ||
+			key == "Set-Cookie" ||
+			key == "Access-Control-Allow-Origin" ||
+			key == "Content-Length" || // We'll recalculate this
+			key == "Content-Type" { // We'll set this ourselves
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	// Set CORS headers to allow loading from the same origin
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+
+	// Set the correct content type
+	w.Header().Set("Content-Type", contentType)
+
+	// If this is a CSS file, rewrite URLs in it
+	if strings.Contains(strings.ToLower(contentType), "text/css") {
+		// Read the CSS content
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Failed to read CSS content: %v", err)
+			response.Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Get token to propagate to resources
+		token := r.URL.Query().Get("token")
+
+		// Rewrite @font-face rules
+		cssContent := rewriteFontFaceRules(string(bodyBytes), referer, token)
+		// Rewrite all url() references
+		cssContent = rewriteCSSURLs(cssContent, referer, token)
+
+		// Update content length
+		bodyBytes = []byte(cssContent)
+		w.Header().Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+
+		// Write the modified CSS
+		_, err = w.Write(bodyBytes)
+		if err != nil {
+			log.Printf("Failed to write CSS content: %v", err)
+		}
+		return
+	}
+
+	// For non-CSS files, stream directly
+	// Stream the response directly to avoid loading large files into memory
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		log.Printf("Failed to stream resource: %v", err)
+	}
+}
+
+// proxyMediaDirectly proxies media directly without caching
+func proxyMediaDirectly(mediaURL, referer, proxyURL string, w http.ResponseWriter) error {
+	client := httputil.GetPooledHTTPClient(proxyURL, 30*time.Second)
+
+	req, err := http.NewRequest("GET", mediaURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers to bypass anti-hotlinking
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	// CRITICAL FIX: Use smart referer logic to handle cases where the original referer would be blocked
+	smartReferer := getSmartReferer(mediaURL, referer)
+	if smartReferer != "" {
+		req.Header.Set("Referer", smartReferer)
+	}
+
+	// Add additional headers
+	// Note: Don't set Accept-Encoding - let Go's http.Transport handle it automatically
+	req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 0; attempt < proxyMaxRetries; attempt++ {
+		reqCopy := req.Clone(req.Context())
+
+		resp, err = client.Do(reqCopy)
+		if err != nil {
+			lastErr = err
+			if httputil.IsNetworkError(err.Error()) && attempt < proxyMaxRetries-1 {
+				backoff := calculateProxyBackoff(attempt)
+				log.Printf("[MediaProxy] Network error on attempt %d/%d for %s, retrying in %v: %v",
+					attempt+1, proxyMaxRetries, mediaURL, backoff, err)
+				time.Sleep(backoff)
+				continue
+			}
+			return fmt.Errorf("failed to fetch media after %d attempts: %w", attempt+1, err)
+		}
+
+		// Retry on server errors
+		if resp.StatusCode >= 500 && attempt < proxyMaxRetries-1 {
+			resp.Body.Close()
+			backoff := calculateProxyBackoff(attempt)
+			log.Printf("[MediaProxy] Server error %d on attempt %d/%d for %s, retrying in %v",
+				resp.StatusCode, attempt+1, proxyMaxRetries, mediaURL, backoff)
+			time.Sleep(backoff)
+			continue
+		}
+
+		break
+	}
+
+	if resp == nil {
+		return fmt.Errorf("all %d attempts failed: %w", proxyMaxRetries, lastErr)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = getContentTypeFromPath(mediaURL)
+	}
+
+	// Set response headers
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+	w.Header().Set("X-Media-Source", "direct-proxy")
+
+	// Stream the response directly to avoid loading large files into memory
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to stream response: %w", err)
+	}
+
+	return nil
+}
+
+// calculateProxyBackoff calculates exponential backoff duration for proxy requests
+func calculateProxyBackoff(attempt int) time.Duration {
+	return httputil.CalculateBackoffSimple(attempt)
+}
+
+// HandleMediaCacheInfo returns information about the media cache
+// HandleMediaCacheInfo returns information about the media cache
+// @Summary      Get media cache info
+// @Description  Get media cache statistics (size in MB)
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "Cache info (cache_size_mb)"
+// @Failure      500  {object}  map[string]string  "Internal server error"
+// @Router       /media/cache/info [get]
+func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+
+	// Get media cache directory
+	cacheDir, err := fileutil.GetMediaCacheDir()
+	if err != nil {
+		log.Printf("Failed to get media cache directory: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize media cache
+	mediaCache, err := cache.NewMediaCache(cacheDir)
+	if err != nil {
+		log.Printf("Failed to initialize media cache: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Get cache size
+	cacheSize, err := mediaCache.GetCacheSize()
+	if err != nil {
+		log.Printf("Failed to get cache size: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to MB
+	cacheSizeMB := float64(cacheSize) / (1024 * 1024)
+
+	w.Header().Set("Content-Type", "application/json")
+	result := map[string]interface{}{
+		"cache_size_mb": cacheSizeMB,
+	}
+	response.JSON(w, result)
+}
+
+// getContentTypeFromPath determines content type from file extension
+func getContentTypeFromPath(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".mp4":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".ogg":
+		return "video/ogg"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".flac":
+		return "audio/flac"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".js":
+		return "application/javascript; charset=utf-8"
+	case ".mjs":
+		return "application/javascript; charset=utf-8"
+	case ".json":
+		return "application/json; charset=utf-8"
+	case ".woff":
+		return "font/woff"
+	case ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".eot":
+		return "application/vnd.ms-fontobject"
+	case ".otf":
+		return "font/otf"
+	case ".xml":
+		return "text/xml; charset=utf-8"
+	case ".html":
+		return "text/html; charset=utf-8"
+	case ".txt":
+		return "text/plain; charset=utf-8"
+	default:
+		return "application/octet-stream"
+	}
+}

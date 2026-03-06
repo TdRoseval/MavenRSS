@@ -6,7 +6,7 @@ import { useI18n } from 'vue-i18n';
 import type { SettingsData } from '@/types/settings';
 import type { ThemePreference } from '@/stores/app';
 import { generateInitialSettings, parseSettingsData } from './useSettings.generated';
-import { apiClient } from '@/utils/apiClient';
+import { apiClient } from '@/shared/lib/apiClient';
 import { saveLanguage } from '@/i18n';
 
 export function useSettings() {

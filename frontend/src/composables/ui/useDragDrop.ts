@@ -1,6 +1,6 @@
 import { ref, onUnmounted, type Ref } from 'vue';
 import type { Feed } from '@/types/models';
-import { authPost } from '@/utils/authFetch';
+import { authPost } from '@/shared/lib/authFetch';
 
 export interface DropPreview {
   targetFeedId: number | null;

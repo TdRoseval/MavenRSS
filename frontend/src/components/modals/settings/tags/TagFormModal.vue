@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useAppStore } from '@/stores/app';
 import type { Tag } from '@/types/models';
 import { PhCheck } from '@phosphor-icons/vue';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
+import { useFeedStore } from '@/features/feed/store';
 
 interface Props {
   editingTag: Tag | null;
@@ -19,7 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const store = useAppStore();
+const feedStore = useFeedStore();
 
 const newTagName = ref('');
 const newTagColor = ref('#3B82F6');
@@ -56,7 +56,7 @@ watch(
 // Computed feeds for the tag being edited
 const feedsForTag = computed(() => {
   if (!props.editingTag) return [];
-  return store.feeds.filter((f) => f.tags?.some((t) => t.id === props.editingTag!.id));
+  return feedStore.feeds.filter((f) => f.tags?.some((t) => t.id === props.editingTag!.id));
 });
 
 function getFavicon(url: string): string {

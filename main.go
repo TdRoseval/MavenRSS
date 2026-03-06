@@ -21,9 +21,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"MavenRSS/internal/ai"
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/feed"
-	handlers "MavenRSS/internal/handlers/core"
+	handlers "MavenRSS/internal/api/core"
 	"MavenRSS/internal/monitor"
 	"MavenRSS/internal/network"
 	"MavenRSS/internal/routes"
@@ -137,8 +137,8 @@ func main() {
 	debugLog("Database path: %s", dbPath)
 
 	// Initialize database
-	log.Println("Initializing Database...")
-	db, err := database.NewDB(dbPath)
+	log.Println("Initializing sqlite...")
+	db, err := sqlite.NewDB(dbPath)
 	if err != nil {
 		log.Printf("Error initializing database: %v", err)
 		log.Fatal(err)

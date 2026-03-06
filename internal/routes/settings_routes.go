@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"MavenRSS/internal/auth"
-	"MavenRSS/internal/handlers/core"
-	settings "MavenRSS/internal/handlers/settings"
-	stathandlers "MavenRSS/internal/handlers/statistics"
+	"MavenRSS/internal/api/core"
+	settings "MavenRSS/internal/api/settings"
+	stathandlers "MavenRSS/internal/api/statistics"
 	"MavenRSS/internal/middleware"
 )
 

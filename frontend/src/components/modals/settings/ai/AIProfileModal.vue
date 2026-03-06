@@ -17,13 +17,13 @@ import {
   StatusBoxGroup,
   SettingWithToggle,
 } from '@/components/settings';
-import BaseModal from '@/components/common/BaseModal.vue';
-import ModalFooter from '@/components/common/ModalFooter.vue';
+import BaseModal from '@/shared/ui/BaseModal.vue';
+import ModalFooter from '@/shared/ui/ModalFooter.vue';
 import type { AIProfileFormData, AIProfileTestResult } from '@/types/aiProfile';
 import type { Status } from '@/components/settings/base/StatusBox.vue';
 import { defaultAIProfileFormData } from '@/types/aiProfile';
 import { useAIProfiles } from '@/composables/ai/useAIProfiles';
-import { openInBrowser } from '@/utils/browser';
+import { openInBrowser } from '@/shared/lib/browser';
 
 const { t, locale } = useI18n();
 const { testProfile, testConfig, createProfile, updateProfile } = useAIProfiles();

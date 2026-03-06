@@ -5,7 +5,7 @@ import { PhNetwork, PhArrowClockwise } from '@phosphor-icons/vue';
 import { SettingGroup, StatusBoxGroup, TipBox } from '@/components/settings';
 import '@/components/settings/styles.css';
 import type { NetworkInfo } from '@/types/settings';
-import { authGet, authPost } from '@/utils/authFetch';
+import { authGet, authPost } from '@/shared/lib/authFetch';
 
 const { t } = useI18n();
 

@@ -2,12 +2,14 @@
  * Composable for filter field utilities
  */
 import { computed, type ComputedRef } from 'vue';
-import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import type { FieldOption, OperatorOption, LogicOption, FilterCondition } from '@/types/filter';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 export function useFilterFields() {
-  const store = useAppStore();
+  const articleStore = useArticleStore();
+const feedStore = useFeedStore();
   const { t, locale } = useI18n();
 
   /**
@@ -131,7 +133,7 @@ export function useFilterFields() {
    * Get available feed names
    */
   const feedNames: ComputedRef<string[]> = computed(() => {
-    return store.feeds.map((f) => f.title);
+    return feedStore.feeds.map((f) => f.title);
   });
 
   /**
@@ -139,7 +141,7 @@ export function useFilterFields() {
    */
   const feedCategories: ComputedRef<string[]> = computed(() => {
     const categories = new Set<string>();
-    store.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f) => {
       if (f.category) {
         categories.add(f.category);
       }
@@ -153,7 +155,7 @@ export function useFilterFields() {
    */
   const feedTypes: ComputedRef<string[]> = computed(() => {
     const typeSet = new Set<string>();
-    store.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f) => {
       // Determine feed type based on feed properties
       let typeCode: string;
       if (f.is_freshrss_source) {
@@ -181,7 +183,7 @@ export function useFilterFields() {
    */
   const feedTags: ComputedRef<string[]> = computed(() => {
     const tagSet = new Set<string>();
-    store.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f) => {
       f.tags?.forEach((t) => tagSet.add(t.name));
     });
     return Array.from(tagSet);

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onUnmounted, type Ref } from 'vue';
 import {
@@ -19,13 +18,16 @@ import {
   PhTag,
 } from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
-import { formatRelativeTime } from '@/utils/date';
+import { formatRelativeTime } from '@/shared/lib/date';
 import { SettingGroup, ButtonControl } from '@/components/settings';
 import BatchActionsDropdown from './BatchActionsDropdown.vue';
 import BatchTagSelectorModal from './BatchTagSelectorModal.vue';
-import { useFeedManagement } from '@/composables/feed/useFeedManagement';
+import { useFeedManagement } from '@/features/feed/composables/useFeedManagement';
+import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
-const store = useAppStore();
+const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 const { t, locale } = useI18n();
 const { addTagsToFeeds } = useFeedManagement();
 
@@ -90,8 +92,8 @@ const sortDirection = ref<SortDirection>('asc');
 
 // Filtered and sorted feeds
 const filteredFeeds = computed(() => {
-  if (!store.feeds) return [];
-  let feeds = [...store.feeds];
+  if (!feedStore.feeds) return [];
+  let feeds = [...feedStore.feeds];
 
   // Apply search filter
   if (searchQuery.value.trim()) {
@@ -146,13 +148,13 @@ const sortedFeeds = computed(() => {
 });
 
 // Feed count statistics
-const totalFeeds = computed(() => store.feeds?.length || 0);
+const totalFeeds = computed(() => feedStore.feeds?.length || 0);
 const selectedCount = computed(() => selectedFeeds.value.length);
 
 const isAllSelected = computed(() => {
-  if (!store.feeds || store.feeds.length === 0) return false;
+  if (!feedStore.feeds || feedStore.feeds.length === 0) return false;
   // Get non-FreshRSS feeds (RSSHub feeds can be selected)
-  const nonManagedFeeds = store.feeds.filter((f) => !f.is_freshrss_source);
+  const nonManagedFeeds = feedStore.feeds.filter((f) => !f.is_freshrss_source);
   if (nonManagedFeeds.length === 0) return false;
   // Check if all non-managed feeds are selected
   return nonManagedFeeds.every((f) => selectedFeeds.value.includes(f.id));
@@ -169,10 +171,10 @@ function toggleSort(field: SortField) {
 
 function toggleSelectAll(e: Event) {
   const target = e.target as HTMLInputElement;
-  if (!store.feeds) return;
+  if (!feedStore.feeds) return;
   if (target.checked) {
     // Select only non-FreshRSS feeds (RSSHub feeds can be selected)
-    selectedFeeds.value = store.feeds.filter((f) => !f.is_freshrss_source).map((f) => f.id);
+    selectedFeeds.value = feedStore.feeds.filter((f) => !f.is_freshrss_source).map((f) => f.id);
   } else {
     selectedFeeds.value = [];
   }
@@ -261,9 +263,9 @@ async function handleFeedClick(feed: Feed, event: Event) {
     return;
   }
   // Reset to 'all' filter first to ensure proper navigation
-  await store.setFilter('all');
+  await articleStore.setFilter('all');
   // Select the feed and emit event to close settings modal
-  store.setFeed(feed.id);
+  articleStore.setFeed(feed.id);
   emit('select-feed', feed.id);
 }
 

@@ -21,10 +21,10 @@ import (
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/auth"
 	"MavenRSS/internal/crypto"
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/feed"
-	auth_handlers "MavenRSS/internal/handlers/auth"
-	handlers "MavenRSS/internal/handlers/core"
+	auth_handlers "MavenRSS/internal/api/auth"
+	handlers "MavenRSS/internal/api/core"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/network"
 	"MavenRSS/internal/routes"
@@ -252,8 +252,8 @@ func main() {
 	}
 
 	// Initialize database
-	log.Println("Initializing Database...")
-	db, err := database.NewDB(dbPath)
+	log.Println("Initializing sqlite...")
+	db, err := sqlite.NewDB(dbPath)
 	if err != nil {
 		log.Printf("Error initializing database: %v", err)
 		log.Fatal(err)

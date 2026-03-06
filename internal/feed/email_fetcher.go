@@ -14,19 +14,19 @@ import (
 	"github.com/emersion/go-imap/client"
 	"github.com/mmcdole/gofeed"
 
-	"MavenRSS/internal/database"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/version"
 )
 
 // EmailFetcher handles fetching and parsing newsletter emails
 type EmailFetcher struct {
-	db     *database.DB
+	db     *sqlite.DB
 	parser *gofeed.Parser
 }
 
 // NewEmailFetcher creates a new email fetcher
-func NewEmailFetcher(db *database.DB) *EmailFetcher {
+func NewEmailFetcher(db *sqlite.DB) *EmailFetcher {
 	return &EmailFetcher{
 		db:     db,
 		parser: gofeed.NewParser(),
