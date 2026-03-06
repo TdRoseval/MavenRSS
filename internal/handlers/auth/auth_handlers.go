@@ -165,7 +165,16 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Delete the old session first
+	err = h.db.DeleteUserSession(session.ID)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to update session")
+		return
+	}
+	
+	// Create new session with new refresh token
 	session.RefreshToken = newRefreshToken
+	session.ExpiresAt = time.Now().Add(30 * 24 * time.Hour)
 	_, err = h.db.CreateUserSession(session)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "failed to update session")
