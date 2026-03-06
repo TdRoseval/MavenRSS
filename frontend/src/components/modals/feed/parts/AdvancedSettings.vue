@@ -7,6 +7,8 @@ interface Props {
   imageGalleryEnabled: boolean;
   isImageMode: boolean;
   hideFromTimeline: boolean;
+  translateArticles: boolean;
+  translationEnabled: boolean;
   articleViewMode: 'global' | 'webpage' | 'rendered' | 'external';
   autoExpandContent: 'global' | 'enabled' | 'disabled';
   proxyMode: ProxyMode;
@@ -24,6 +26,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   'update:isImageMode': [value: boolean];
   'update:hideFromTimeline': [value: boolean];
+  'update:translateArticles': [value: boolean];
   'update:articleViewMode': [value: 'global' | 'webpage' | 'rendered' | 'external'];
   'update:autoExpandContent': [value: 'global' | 'enabled' | 'disabled'];
   'update:proxyMode': [value: ProxyMode];
@@ -289,6 +292,26 @@ const { t } = useI18n();
           {{ t('modal.feed.refreshIntervalDesc') }}
         </p>
       </div>
+    </div>
+
+    <!-- Translation Settings (only shown if global translation is enabled) -->
+    <div v-if="props.translationEnabled" class="p-3 rounded-lg bg-bg-secondary border border-border">
+      <label class="flex items-center justify-between cursor-pointer">
+        <div>
+          <span class="font-semibold text-xs sm:text-sm text-text-primary">{{
+            t('modal.feed.translateArticles')
+          }}</span>
+          <p class="text-[10px] sm:text-xs text-text-secondary mt-0.5">
+            {{ t('modal.feed.translateArticlesDesc') }}
+          </p>
+        </div>
+        <input
+          :checked="props.translateArticles"
+          type="checkbox"
+          class="toggle"
+          @change="emit('update:translateArticles', ($event.target as HTMLInputElement).checked)"
+        />
+      </label>
     </div>
   </div>
 </template>

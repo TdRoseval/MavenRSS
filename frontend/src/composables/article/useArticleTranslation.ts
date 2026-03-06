@@ -89,6 +89,14 @@ export function useArticleTranslation() {
     if (!translationSettings.value.enabled) return;
     if (translatingArticles.value.has(article.id)) return;
 
+    // Check if this feed requires translation
+    // Get the feed from store to check translate_articles setting
+    const feed = store.feedMap.get(article.feed_id);
+    const feedTranslateArticles = feed?.translate_articles ?? false;
+
+    // If global translation is enabled but this feed doesn't require translation, skip
+    if (!feedTranslateArticles) return;
+
     translatingArticles.value.add(article.id);
 
     try {

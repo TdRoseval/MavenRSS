@@ -86,6 +86,8 @@ const {
   emailPassword,
   emailFolder,
   selectedTags,
+  translateArticles,
+  translationEnabled,
 } = useFeedForm(props.feed);
 
 const emit = defineEmits<{
@@ -116,6 +118,7 @@ async function submit() {
       is_image_mode: isImageMode.value,
       refresh_interval: getRefreshInterval(),
       tags: selectedTags.value,
+      translate_articles: translateArticles.value,
     };
 
     // Handle proxy settings
@@ -183,8 +186,14 @@ async function submit() {
       body.id = props.feed!.id;
     }
 
-    // Special handling for RSSHub URLs - use dedicated endpoint
-    if (body.url && typeof body.url === 'string' && body.url.startsWith('rsshub://')) {
+    // Special handling for RSSHub URLs - only for add mode
+    // For edit mode, use the standard update endpoint to preserve all settings
+    if (
+      props.mode === 'add' &&
+      body.url &&
+      typeof body.url === 'string' &&
+      body.url.startsWith('rsshub://')
+    ) {
       const route = body.url.replace('rsshub://', '');
 
       try {
@@ -196,6 +205,7 @@ async function submit() {
             route: route,
             category: category.value,
             title: title.value,
+            translate_articles: translateArticles.value,
           }),
         });
 
@@ -636,6 +646,9 @@ const submitButtonText = computed(() => {
         @update:proxy-password="proxyPassword = $event"
         @update:refresh-mode="refreshMode = $event"
         @update:refresh-interval="refreshInterval = $event"
+        :translate-articles="translateArticles"
+        :translation-enabled="translationEnabled"
+        @update:translate-articles="translateArticles = $event"
       />
     </div>
 

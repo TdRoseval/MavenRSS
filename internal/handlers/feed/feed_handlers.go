@@ -78,6 +78,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		ProxyEnabled     bool   `json:"proxy_enabled"`
 		RefreshInterval  int    `json:"refresh_interval"`
 		IsImageMode      bool   `json:"is_image_mode"`
+		TranslateArticles bool  `json:"translate_articles"`
 		// XPath fields
 		Type                string `json:"type"`
 		XPathItem           string `json:"xpath_item"`
@@ -186,6 +187,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		EmailUsername:       req.EmailUsername,
 		EmailPassword:       req.EmailPassword,
 		EmailFolder:         req.EmailFolder,
+		TranslateArticles:   req.TranslateArticles,
 		UserID:              userID,
 	}
 
@@ -285,6 +287,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		ProxyEnabled     bool   `json:"proxy_enabled"`
 		RefreshInterval  int    `json:"refresh_interval"`
 		IsImageMode      bool   `json:"is_image_mode"`
+		TranslateArticles bool  `json:"translate_articles"`
 		// XPath fields
 		Type                string `json:"type"`
 		XPathItem           string `json:"xpath_item"`
@@ -459,7 +462,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		finalProxyURL = ""
 	}
 	
-	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, finalProxyURL, proxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.EmailIMAPPort); err != nil {
+	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, finalProxyURL, proxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailIMAPPort, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.TranslateArticles); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}

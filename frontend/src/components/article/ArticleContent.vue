@@ -184,6 +184,13 @@ const lastTranslatedArticleId = ref<number | null>(null);
 const lastTranslatedContentHash = ref<string>(''); // Track translated content by hash
 const translationSkipped = ref(false);
 
+// Computed: whether translation is effectively enabled (global + feed setting)
+const effectiveTranslationEnabled = computed(() => {
+  if (!translationEnabled.value) return false;
+  const feed = store.feedMap.get(props.article?.feed_id);
+  return feed?.translate_articles ?? false;
+});
+
 // Load settings using composables
 async function loadSettings() {
   await loadSummarySettings();
@@ -344,6 +351,11 @@ const shouldWaitForFullContentBeforeSummary = computed(() => {
 async function translateTitle(article: Article) {
   if (!translationEnabled.value || !article?.title) return;
 
+  // Check if this feed requires translation
+  const feed = store.feedMap.get(article.feed_id);
+  const feedTranslateArticles = feed?.translate_articles ?? false;
+  if (!feedTranslateArticles) return;
+
   isTranslatingTitle.value = true;
   const translation = await translateText(article.title);
   translatedTitle.value = translation.text;
@@ -372,6 +384,14 @@ async function translateContentParagraphs(content: string) {
 
   if (!translationEnabled.value || !content) {
     console.log('[ArticleContent] Translation skipped: disabled or no content');
+    return;
+  }
+
+  // Check if this feed requires translation
+  const feed = store.feedMap.get(props.article?.feed_id);
+  const feedTranslateArticles = feed?.translate_articles ?? false;
+  if (!feedTranslateArticles) {
+    console.log('[ArticleContent] Translation skipped: feed does not require translation');
     return;
   }
 
@@ -910,7 +930,7 @@ onBeforeUnmount(() => {
         :article="article"
         :translated-title="translatedTitle"
         :is-translating-title="isTranslatingTitle"
-        :translation-enabled="translationEnabled"
+        :translation-enabled="effectiveTranslationEnabled"
         :translation-skipped="translationSkipped"
         :is-translating-content="isTranslatingContent"
         @force-translate="forceTranslateContent"

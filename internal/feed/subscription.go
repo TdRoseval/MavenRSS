@@ -48,12 +48,12 @@ func generateTitleFromRoute(route string) string {
 // This is a specialized handler for RSSHub routes, similar to script subscriptions.
 // Deprecated: Use AddRSSHubSubscriptionWithUserID instead
 func (f *Fetcher) AddRSSHubSubscription(route string, category string, customTitle string) (int64, error) {
-	return f.AddRSSHubSubscriptionWithUserID(route, category, customTitle, 0)
+	return f.AddRSSHubSubscriptionWithUserID(route, category, customTitle, false, 0)
 }
 
 // AddRSSHubSubscriptionWithUserID adds a new RSSHub feed subscription and returns the feed ID.
 // This is a specialized handler for RSSHub routes, similar to script subscriptions.
-func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string, customTitle string, userID int64) (int64, error) {
+func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string, customTitle string, translateArticles bool, userID int64) (int64, error) {
 	utils.DebugLog("AddRSSHubSubscriptionWithUserID: Adding RSSHub feed with route: %s, userID: %v", route, userID)
 
 	// Validate route
@@ -105,14 +105,15 @@ func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string,
 	useProxy := proxyEnabled == "true"
 
 	feed := &models.Feed{
-		Title:        title,
-		URL:          url,
-		Link:         client.BuildURL(route), // Store the actual RSSHub URL as link
-		Description:  fmt.Sprintf("RSSHub route: %s", route),
-		Category:     category,
-		ProxyEnabled: useProxy,
-		ProxyURL:     proxyURL,
-		UserID:       userID,
+		Title:            title,
+		URL:              url,
+		Link:             client.BuildURL(route), // Store the actual RSSHub URL as link
+		Description:      fmt.Sprintf("RSSHub route: %s", route),
+		Category:         category,
+		ProxyEnabled:     useProxy,
+		ProxyURL:         proxyURL,
+		UserID:           userID,
+		TranslateArticles: translateArticles,
 	}
 
 	if userID > 0 {

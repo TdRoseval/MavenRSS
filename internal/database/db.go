@@ -1,11 +1,15 @@
 package database
 
 import (
+	"crypto/md5"
 	"database/sql"
+	"database/sql/driver"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"modernc.org/sqlite"
 	_ "modernc.org/sqlite"
 )
 
@@ -16,8 +20,27 @@ type DB struct {
 	once  sync.Once
 }
 
+// md5Func is the MD5 function implementation for SQLite
+func md5Func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("MD5 requires exactly 1 argument")
+	}
+	input, ok := args[0].(string)
+	if !ok {
+		if args[0] == nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("MD5 argument must be a string")
+	}
+	hash := md5.Sum([]byte(input))
+	return fmt.Sprintf("%x", hash), nil
+}
+
 // NewDB creates a new database connection with optimized settings.
 func NewDB(dataSourceName string) (*DB, error) {
+	// Register MD5 function for SQLite (modernc.org/sqlite doesn't have built-in MD5)
+	sqlite.RegisterDeterministicScalarFunction("MD5", 1, md5Func)
+
 	// Add busy_timeout to prevent "database is locked" errors
 	// Also enable WAL mode for better concurrency
 	// Add performance optimizations: increase cache size, set synchronous=NORMAL

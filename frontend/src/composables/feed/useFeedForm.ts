@@ -68,6 +68,10 @@ export function useFeedForm(feed?: Feed) {
   const refreshMode = ref<RefreshMode>('global');
   const refreshInterval = ref(30);
 
+  // Translation settings
+  const translateArticles = ref(false);
+  const translationEnabled = ref(false);
+
   const isSubmitting = ref(false);
   const showAdvancedSettings = ref(false);
 
@@ -124,6 +128,7 @@ export function useFeedForm(feed?: Feed) {
     try {
       const data = await authFetchJson('/api/settings');
       imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
+      translationEnabled.value = data.translation_enabled === 'true';
     } catch (e) {
       console.error('Failed to load settings:', e);
     }
@@ -293,6 +298,9 @@ export function useFeedForm(feed?: Feed) {
       refreshInterval.value = interval;
     }
 
+    // Initialize translation settings
+    translateArticles.value = feed.translate_articles || false;
+
     // Initialize category selection
     if (category.value && existingCategories.value.includes(category.value)) {
       categorySelection.value = category.value;
@@ -337,6 +345,7 @@ export function useFeedForm(feed?: Feed) {
     proxyPassword.value = '';
     refreshMode.value = 'global';
     refreshInterval.value = 30;
+    translateArticles.value = false;
   }
 
   async function openScriptsFolder() {
@@ -428,6 +437,8 @@ export function useFeedForm(feed?: Feed) {
     proxyPassword,
     refreshMode,
     refreshInterval,
+    translateArticles,
+    translationEnabled,
     isSubmitting,
     showAdvancedSettings,
     availableScripts,

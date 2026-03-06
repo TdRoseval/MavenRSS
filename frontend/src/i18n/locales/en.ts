@@ -393,6 +393,8 @@ const en: TranslationMessages = {
       refreshMode: 'Refresh Mode',
       refreshModeDesc: 'How this feed should be refreshed',
       refreshSettings: 'Feed Refresh Settings',
+      translateArticles: 'Translate Articles',
+      translateArticlesDesc: 'When enabled, articles from this feed will be automatically translated (requires global translation setting to be enabled)',
       rssUrl: 'RSS URL',
       sourceUrl: 'Source URL',
       sourceUrlPlaceholder: 'https://example.com/blog',

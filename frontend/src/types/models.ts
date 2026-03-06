@@ -27,6 +27,10 @@ export interface Article {
   author?: string; // Article author
   summary?: string; // Cached AI-generated summary
   freshrss_item_id?: string; // FreshRSS/Google Reader item ID
+  // Feed reference for translation settings
+  feed?: {
+    translate_articles: boolean;
+  };
 }
 
 export interface Feed {
@@ -70,6 +74,8 @@ export interface Feed {
   // FreshRSS integration
   is_freshrss_source?: boolean; // Whether this feed is from FreshRSS sync
   freshrss_stream_id?: string; // FreshRSS stream ID (e.g., "feed/http://...")
+  // Translation settings
+  translate_articles?: boolean; // Whether to translate articles in this feed (requires global translation_enabled)
   // Statistics
   latest_article_time?: string; // Latest article publish time
   articles_per_month?: number; // Average articles per month (calculated from last 90 days)

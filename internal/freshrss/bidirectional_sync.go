@@ -542,10 +542,11 @@ func (s *BidirectionalSyncService) createFeedsFromSubscriptions(ctx context.Cont
 					existingFeed.AutoExpandContent,
 					existingFeed.EmailAddress,
 					existingFeed.EmailIMAPServer,
+					existingFeed.EmailIMAPPort,
 					existingFeed.EmailUsername,
 					existingFeed.EmailPassword,
 					existingFeed.EmailFolder,
-					existingFeed.EmailIMAPPort,
+					existingFeed.TranslateArticles,
 				)
 				if err != nil {
 					log.Printf("Warning: Failed to update feed %s: %v", feedURL, err)

@@ -32,9 +32,10 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
-		Route    string `json:"route"`
-		Category string `json:"category"`
-		Title    string `json:"title"`
+		Route            string `json:"route"`
+		Category         string `json:"category"`
+		Title            string `json:"title"`
+		TranslateArticles bool   `json:"translate_articles"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -49,7 +50,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add RSSHub subscription using specialized handler
-	feedID, err := h.Fetcher.AddRSSHubSubscriptionWithUserID(req.Route, req.Category, req.Title, userID)
+	feedID, err := h.Fetcher.AddRSSHubSubscriptionWithUserID(req.Route, req.Category, req.Title, req.TranslateArticles, userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return

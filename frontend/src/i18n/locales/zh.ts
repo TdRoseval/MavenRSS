@@ -387,6 +387,8 @@ const zh: TranslationMessages = {
       refreshMode: '刷新模式',
       refreshModeDesc: '此订阅的刷新方式',
       refreshSettings: '订阅源刷新设置',
+      translateArticles: '翻译文章',
+      translateArticlesDesc: '启用后，该订阅源的文章将自动翻译（需要全局翻译设置已开启）',
       rssUrl: 'RSS 链接',
       sourceUrl: '来源链接',
       sourceUrlPlaceholder: 'https://example.com/blog',

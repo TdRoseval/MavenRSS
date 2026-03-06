@@ -46,6 +46,8 @@ type Feed struct {
 	// FreshRSS integration
 	IsFreshRSSSource bool   `json:"is_freshrss_source"` // Whether this feed is from FreshRSS sync
 	FreshRSSStreamID string `json:"freshrss_stream_id"` // FreshRSS stream ID (e.g., "feed/http://...")
+	// Translation settings
+	TranslateArticles bool `json:"translate_articles"` // Whether to translate articles in this feed (requires global translation_enabled)
 	// Statistics
 	LatestArticleTime *time.Time `json:"latest_article_time,omitempty"` // Latest article publish time
 	ArticlesPerMonth  float64    `json:"articles_per_month,omitempty"`  // Average articles per month (last 90 days / 3)

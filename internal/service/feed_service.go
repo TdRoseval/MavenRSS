@@ -66,10 +66,11 @@ func (s *feedService) UpdateFeed(ctx context.Context, feed *models.Feed) error {
 		feed.AutoExpandContent,
 		feed.EmailAddress,
 		feed.EmailIMAPServer,
+		feed.EmailIMAPPort,
 		feed.EmailUsername,
 		feed.EmailPassword,
 		feed.EmailFolder,
-		feed.EmailIMAPPort,
+		feed.TranslateArticles,
 	)
 }
 
