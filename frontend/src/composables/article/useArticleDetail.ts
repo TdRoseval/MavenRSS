@@ -3,7 +3,7 @@ import { useAppStore } from '@/stores/app';
 import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/utils/browser';
 import type { Article, Feed } from '@/types/models';
-import { proxyImagesInHtml, shouldProxyMedia } from '@/utils/mediaProxy';
+import { proxyMediaInHtml, shouldProxyMedia } from '@/utils/mediaProxy';
 import { authFetch, authFetchJson, authPost } from '@/utils/authFetch';
 
 type ViewMode = 'original' | 'rendered' | 'external';
@@ -294,14 +294,16 @@ export function useArticleDetail() {
       const data = await authFetchJson(`/api/articles/content?id=${article.value.id}`);
       let content = data.content || '';
 
-      // Proxy images if media proxy is enabled (cache or fallback)
+      // Proxy images and iframes if media proxy is enabled (cache or fallback)
       const proxyEnabled = await shouldProxyMedia();
       // console.log('[useArticleDetail] proxyEnabled:', proxyEnabled, 'content length:', content?.length);
       if (proxyEnabled && content) {
         // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
         const feedUrl = data.feed_url || article.value.url;
-        // console.log('[useArticleDetail] Calling proxyImagesInHtml with feedUrl:', feedUrl);
-        content = proxyImagesInHtml(content, feedUrl);
+        // Pass feed ID for feed-specific proxy settings
+        const feedId = article.value.feed_id;
+        // console.log('[useArticleDetail] Calling proxyMediaInHtml with feedUrl:', feedUrl, 'feedId:', feedId);
+        content = proxyMediaInHtml(content, feedUrl, undefined, feedId);
       }
 
       articleContent.value = content;

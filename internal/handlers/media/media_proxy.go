@@ -214,6 +214,7 @@ func getSmartReferer(imageURL, originalReferer string) string {
 // @Param        url         query     string  true  "Media URL to proxy"
 // @Param        referer     query     string  false  "Referer URL for hotlink protection"
 // @Param        force_cache query     bool    false  "Force caching even if globally disabled"
+// @Param        feed_id     query     int     false  "Feed ID for feed-specific proxy settings"
 // @Success      200  {file}  file  "Media file"
 // @Failure      400  {object}  map[string]string  "Bad request (missing or invalid URL)"
 // @Failure      403  {object}  map[string]string  "Media proxy is disabled"
@@ -293,16 +294,63 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build proxy URL from user settings for media cache (优先用户设置，回退全局)
+	// Build proxy URL - check feed-specific settings first, then fall back to global
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
-	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
-		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
-		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
-		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	
+	// Check if feed_id is provided for feed-specific proxy settings
+	feedIDStr := r.URL.Query().Get("feed_id")
+	if feedIDStr != "" {
+		feedID, err := strconv.ParseInt(feedIDStr, 10, 64)
+		if err == nil && feedID > 0 {
+			// Get feed-specific proxy settings
+			feed, err := h.DB.GetFeedByID(feedID)
+			if err == nil && feed != nil {
+				// If feed has proxy enabled, use feed-specific proxy
+				if feed.ProxyEnabled && feed.ProxyURL != "" {
+					proxyURL = feed.ProxyURL
+					log.Printf("[MediaProxy] Using feed-specific proxy for feed %d: %s", feedID, proxyURL)
+				} else if feed.ProxyEnabled {
+					// Feed has proxy enabled but no custom URL, use global proxy
+					proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+					if proxyEnabled == "true" {
+						proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+						proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+						proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+						proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+						proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+						proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+						log.Printf("[MediaProxy] Feed %d has proxy enabled, using global proxy", feedID)
+					}
+				} else {
+					// Feed has proxy disabled, don't use any proxy
+					log.Printf("[MediaProxy] Feed %d has proxy disabled, skipping proxy", feedID)
+					proxyURL = ""
+				}
+			} else {
+				// Feed not found, fall back to global settings
+				log.Printf("[MediaProxy] Feed %d not found, falling back to global proxy settings", feedID)
+				proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+				if proxyEnabled == "true" {
+					proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+					proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+					proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+					proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+					proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+					proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+				}
+			}
+		}
+	} else {
+		// No feed_id provided, use global proxy settings
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
 	}
 
 	// Try cache first if enabled
@@ -438,6 +486,7 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 // @Produce      html
 // @Param        url      query     string  false  "Webpage URL to proxy (direct)"
 // @Param        url_b64  query     string  false  "Webpage URL to proxy (base64-encoded)"
+// @Param        feed_id  query     int     false  "Feed ID for feed-specific proxy settings"
 // @Success      200  {string}  string  "Webpage HTML content"
 // @Failure      400  {object}  map[string]string  "Bad request (missing or invalid URL)"
 // @Failure      500  {object}  map[string]string  "Internal server error"
@@ -481,16 +530,63 @@ func HandleWebpageProxy(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Build proxy URL from user settings for webpage proxy (优先用户设置，回退全局)
+	// Build proxy URL - check feed-specific settings first, then fall back to global
 	var proxyURL string
-	proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
-	if proxyEnabled == "true" {
-		proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
-		proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
-		proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
-		proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
-		proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
-		proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+	
+	// Check if feed_id is provided for feed-specific proxy settings
+	feedIDStr := r.URL.Query().Get("feed_id")
+	if feedIDStr != "" {
+		feedID, err := strconv.ParseInt(feedIDStr, 10, 64)
+		if err == nil && feedID > 0 {
+			// Get feed-specific proxy settings
+			feed, err := h.DB.GetFeedByID(feedID)
+			if err == nil && feed != nil {
+				// If feed has proxy enabled, use feed-specific proxy
+				if feed.ProxyEnabled && feed.ProxyURL != "" {
+					proxyURL = feed.ProxyURL
+					log.Printf("[WebpageProxy] Using feed-specific proxy for feed %d: %s", feedID, proxyURL)
+				} else if feed.ProxyEnabled {
+					// Feed has proxy enabled but no custom URL, use global proxy
+					proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+					if proxyEnabled == "true" {
+						proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+						proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+						proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+						proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+						proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+						proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+						log.Printf("[WebpageProxy] Feed %d has proxy enabled, using global proxy", feedID)
+					}
+				} else {
+					// Feed has proxy disabled, don't use any proxy
+					log.Printf("[WebpageProxy] Feed %d has proxy disabled, skipping proxy", feedID)
+					proxyURL = ""
+				}
+			} else {
+				// Feed not found, fall back to global settings
+				log.Printf("[WebpageProxy] Feed %d not found, falling back to global proxy settings", feedID)
+				proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+				if proxyEnabled == "true" {
+					proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+					proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+					proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+					proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+					proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+					proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+				}
+			}
+		}
+	} else {
+		// No feed_id provided, use global proxy settings
+		proxyEnabled, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
+		if proxyEnabled == "true" {
+			proxyType, _ := h.DB.GetSettingWithFallback(userID, "proxy_type")
+			proxyHost, _ := h.DB.GetSettingWithFallback(userID, "proxy_host")
+			proxyPort, _ := h.DB.GetSettingWithFallback(userID, "proxy_port")
+			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
+			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
+			proxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+		}
 	}
 
 	// Get pooled HTTP client with proxy support

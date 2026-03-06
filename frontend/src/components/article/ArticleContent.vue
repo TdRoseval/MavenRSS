@@ -21,7 +21,7 @@ import {
 } from '@/composables/article/useContentTranslation';
 import { useSettings } from '@/composables/core/useSettings';
 import { useAppStore } from '@/stores/app';
-import { proxyImagesInHtml, isMediaCacheEnabled, shouldProxyMedia } from '@/utils/mediaProxy';
+import { proxyMediaInHtml, isMediaCacheEnabled, shouldProxyMedia } from '@/utils/mediaProxy';
 import { authPost } from '@/utils/authFetch';
 import './ArticleContent.css';
 
@@ -258,12 +258,14 @@ async function fetchFullArticle(showErrors: boolean = true) {
     const data = await authPost<any>(`/api/articles/fetch-full?id=${props.article.id}`);
     let content = data.content || '';
 
-    // Proxy images if media proxy is enabled (cache or fallback)
+    // Proxy images and iframes if media proxy is enabled (cache or fallback)
     const proxyEnabled = await shouldProxyMedia();
     if (proxyEnabled && content) {
       // Use feed URL as referer for anti-hotlinking (more reliable than article URL)
       const feedUrl = data.feed_url || props.article.url;
-      content = proxyImagesInHtml(content, feedUrl);
+      // Pass feed ID for feed-specific proxy settings
+      const feedId = props.article.feed_id;
+      content = proxyMediaInHtml(content, feedUrl, undefined, feedId);
     }
 
     fullArticleContent.value = content;

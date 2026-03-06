@@ -54,9 +54,10 @@ export function decodeURLSafe(str: string): string {
  * @param url Original media URL
  * @param referer Optional referer URL for anti-hotlinking and resolving relative URLs
  * @param forceCache Force caching even if globally disabled (e.g., for image mode feeds)
+ * @param feedId Optional feed ID for feed-specific proxy settings
  * @returns Proxied URL
  */
-export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: boolean): string {
+export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: boolean, feedId?: number): string {
   if (!url) return '';
 
   if (url.startsWith('data:') || url.startsWith('blob:')) {
@@ -89,6 +90,10 @@ export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: b
 
   if (forceCache) {
     proxyUrl += `&force_cache=true`;
+  }
+
+  if (feedId) {
+    proxyUrl += `&feed_id=${feedId}`;
   }
 
   // No need to add token - authentication will be handled via cookies
@@ -162,14 +167,55 @@ export function clearMediaCacheEnabledCache(): void {
 }
 
 /**
+ * Process HTML content to proxy iframe URLs (for YouTube, Vimeo, etc.)
+ * @param html HTML content
+ * @param feedId Optional feed ID for feed-specific proxy settings
+ * @returns HTML with proxied iframe URLs
+ */
+export function proxyIframesInHtml(html: string, feedId?: number): string {
+  if (!html) return html;
+
+  // console.log('[MediaProxy] proxyIframesInHtml called');
+
+  // Regex to match iframe tags with src attributes
+  const iframeRegex = /<iframe([^>]+)src\s*=\s*(['"]?)([^"'\s>]+)\2([^>]*)>/gi;
+
+  return html.replace(iframeRegex, (match, beforeAttr, quote, src, afterAttr) => {
+    // Skip data URLs, blob URLs, and already proxied URLs
+    if (src.startsWith('data:') || src.startsWith('blob:') || src.includes('/api/')) {
+      return match;
+    }
+
+    // Decode HTML entities in the src
+    const decodedSrc = decodeHTMLEntities(src);
+
+    // Create proxied URL using the webpage proxy endpoint
+    const urlB64 = encodeURLSafe(decodedSrc);
+    let proxiedUrl = `/api/media/proxy-webpage?url_b64=${urlB64}`;
+    
+    // Add feed_id if provided
+    if (feedId) {
+      proxiedUrl += `&feed_id=${feedId}`;
+    }
+
+    // Replace the src attribute with the proxied URL
+    const newSrc = `src=${quote}${proxiedUrl}${quote}`;
+    const srcRegex = new RegExp(`src\\s*=\\s*${quote}${src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${quote}`, 'i');
+    
+    return match.replace(srcRegex, newSrc);
+  });
+}
+
+/**
  * Process HTML content to proxy image URLs
  * @param html HTML content
  * @param referer Optional referer URL
  * @param token Optional authentication token for media proxy
+ * @param feedId Optional feed ID for feed-specific proxy settings
  * @returns HTML with proxied image URLs
  * @note Unquoted src attributes are supported but must not contain spaces (per HTML spec)
  */
-export function proxyImagesInHtml(html: string, referer?: string, token?: string): string {
+export function proxyImagesInHtml(html: string, referer?: string, token?: string, feedId?: number): string {
   if (!html) return html;
 
   // console.log('[MediaProxy] proxyImagesInHtml called, referer:', referer);
@@ -179,9 +225,29 @@ export function proxyImagesInHtml(html: string, referer?: string, token?: string
   let processed = convertLazyImages(html);
 
   // Then proxy the src attributes
-  processed = proxyImgAttribute(processed, 'src', referer, token);
+  processed = proxyImgAttribute(processed, 'src', referer, token, feedId);
 
   // console.log('[MediaProxy] proxyImagesInHtml done');
+
+  return processed;
+}
+
+/**
+ * Process HTML content to proxy both images and iframes
+ * @param html HTML content
+ * @param referer Optional referer URL
+ * @param token Optional authentication token for media proxy
+ * @param feedId Optional feed ID for feed-specific proxy settings
+ * @returns HTML with proxied image and iframe URLs
+ */
+export function proxyMediaInHtml(html: string, referer?: string, token?: string, feedId?: number): string {
+  if (!html) return html;
+
+  // First proxy images
+  let processed = proxyImagesInHtml(html, referer, token, feedId);
+
+  // Then proxy iframes
+  processed = proxyIframesInHtml(processed, feedId);
 
   return processed;
 }
@@ -248,9 +314,10 @@ function convertLazyImages(html: string): string {
  * @param attrName Attribute name to proxy (e.g., 'src', 'data-original', 'data-src')
  * @param referer Optional referer URL
  * @param token Optional authentication token
+ * @param feedId Optional feed ID for feed-specific proxy settings
  * @returns HTML with proxied attribute
  */
-function proxyImgAttribute(html: string, attrName: string, referer?: string, token?: string): string {
+function proxyImgAttribute(html: string, attrName: string, referer?: string, token?: string, feedId?: number): string {
   // Enhanced regex to handle img attributes with better pattern matching
   // Handles double quotes, single quotes, and unquoted values
   // Note: Unquoted values cannot contain spaces per HTML specification
@@ -261,7 +328,7 @@ function proxyImgAttribute(html: string, attrName: string, referer?: string, tok
     // HTML attributes contain &amp; which should be decoded to & before URL encoding
     // For example: &amp; becomes &, then gets properly URL-encoded as %26
     const decodedSrc = decodeHTMLEntities(src);
-    const proxiedUrl = getProxiedMediaUrl(decodedSrc, referer);
+    const proxiedUrl = getProxiedMediaUrl(decodedSrc, referer, undefined, feedId);
 
     // If proxying failed or returned the same URL, keep original
     if (!proxiedUrl || proxiedUrl === decodedSrc) {
