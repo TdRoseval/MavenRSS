@@ -52,11 +52,29 @@ func NewMediaCacheWithProxy(cacheDir, proxyURL string) (*MediaCache, error) {
 	}, nil
 }
 
+// GetUserCacheDir returns the cache directory for a specific user
+// userID=0 returns the root cache directory
+// userID>0 returns a user-specific subdirectory (user_{id}/)
+func (mc *MediaCache) GetUserCacheDir(userID int64) string {
+	if userID == 0 {
+		return mc.cacheDir
+	}
+	return filepath.Join(mc.cacheDir, fmt.Sprintf("user_%d", userID))
+}
+
 // GetCachedPath returns the cached file path for a given URL (using extension from URL)
 func (mc *MediaCache) GetCachedPath(url string) string {
 	hash := hashURL(url)
 	ext := getExtensionFromURL(url)
 	return filepath.Join(mc.cacheDir, hash+ext)
+}
+
+// GetUserCachedPath returns the cached file path for a given URL in a user-specific directory
+func (mc *MediaCache) GetUserCachedPath(userID int64, url string) string {
+	dir := mc.GetUserCacheDir(userID)
+	hash := hashURL(url)
+	ext := getExtensionFromURL(url)
+	return filepath.Join(dir, hash+ext)
 }
 
 // SetProxy updates the proxy URL for the media cache
@@ -90,9 +108,42 @@ func (mc *MediaCache) findCachedFile(url string) (string, bool) {
 	return matches[0], true
 }
 
+// findUserCachedFile returns the path to a cached file for the given URL in a user-specific directory
+func (mc *MediaCache) findUserCachedFile(userID int64, url string) (string, bool) {
+	dir := mc.GetUserCacheDir(userID)
+	hash := hashURL(url)
+	pattern := filepath.Join(dir, hash+".*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		// Try also the case where there is no extension (rare, but possible)
+		noExtPath := filepath.Join(dir, hash)
+		if _, err := os.Stat(noExtPath); err == nil {
+			return noExtPath, true
+		}
+		return "", false
+	}
+	// If multiple matches found, log warning and clean up duplicates
+	if len(matches) > 1 {
+		fmt.Printf("Warning: Found %d cached files for URL hash %s, cleaning up duplicates\n", len(matches), hash)
+		// Keep the most recent file, remove others
+		for i := 1; i < len(matches); i++ {
+			if err := os.Remove(matches[i]); err != nil {
+				fmt.Printf("Failed to remove duplicate cache file %s: %v\n", matches[i], err)
+			}
+		}
+	}
+	return matches[0], true
+}
+
 // Exists checks if a media file is already cached (regardless of extension)
 func (mc *MediaCache) Exists(url string) bool {
 	_, found := mc.findCachedFile(url)
+	return found
+}
+
+// UserExists checks if a media file is already cached in a user-specific directory
+func (mc *MediaCache) UserExists(userID int64, url string) bool {
+	_, found := mc.findUserCachedFile(userID, url)
 	return found
 }
 
@@ -126,6 +177,54 @@ func (mc *MediaCache) GetWithContext(ctx context.Context, url, referer string) (
 		if betterExt != "" {
 			// Update cached path with correct extension
 			cachedPath = filepath.Join(mc.cacheDir, hashURL(url)+betterExt)
+		}
+	}
+
+	// Save to cache
+	if err := os.WriteFile(cachedPath, data, 0644); err != nil {
+		return nil, "", fmt.Errorf("failed to cache media: %w", err)
+	}
+
+	return data, contentType, nil
+}
+
+// GetUser retrieves cached media or downloads it to a user-specific directory if not cached
+func (mc *MediaCache) GetUser(userID int64, url, referer string) ([]byte, string, error) {
+	return mc.GetUserWithContext(context.Background(), userID, url, referer)
+}
+
+// GetUserWithContext retrieves cached media or downloads it to a user-specific directory with context support
+func (mc *MediaCache) GetUserWithContext(ctx context.Context, userID int64, url, referer string) ([]byte, string, error) {
+	userCacheDir := mc.GetUserCacheDir(userID)
+	
+	// Create user cache directory if it doesn't exist
+	if err := os.MkdirAll(userCacheDir, 0755); err != nil {
+		return nil, "", fmt.Errorf("failed to create user cache directory: %w", err)
+	}
+
+	// Check if already cached
+	cachedPath, found := mc.findUserCachedFile(userID, url)
+	if found {
+		data, err := os.ReadFile(cachedPath)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to read cached file: %w", err)
+		}
+		contentType := getContentTypeFromPath(cachedPath)
+		return data, contentType, nil
+	}
+
+	// Download and cache
+	data, contentType, err := mc.downloadWithContext(ctx, url, referer)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download media: %w", err)
+	}
+
+	// Determine better file extension from Content-Type if available
+	if contentType != "" {
+		betterExt := getExtensionFromContentType(contentType)
+		if betterExt != "" {
+			// Update cached path with correct extension
+			cachedPath = filepath.Join(userCacheDir, hashURL(url)+betterExt)
 		}
 	}
 
@@ -475,6 +574,140 @@ func (mc *MediaCache) CleanupBySize(maxSizeMB int) (int, error) {
 	})
 
 	// Remove oldest files until under limit
+	count := 0
+	for _, f := range files {
+		if currentSize <= maxSize {
+			break
+		}
+
+		if err := os.Remove(f.path); err == nil {
+			currentSize -= f.size
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// CleanupUserOldFiles removes cached files older than the specified age for a specific user
+func (mc *MediaCache) CleanupUserOldFiles(userID int64, maxAgeDays int) (int, error) {
+	userCacheDir := mc.GetUserCacheDir(userID)
+	var cutoffTime time.Time
+	count := 0
+
+	if maxAgeDays <= 0 {
+		cutoffTime = time.Now().Add(time.Hour)
+	} else {
+		cutoffTime = time.Now().AddDate(0, 0, -maxAgeDays)
+	}
+
+	entries, err := os.ReadDir(userCacheDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to read user cache directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		filePath := filepath.Join(userCacheDir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		if info.ModTime().Before(cutoffTime) {
+			if err := os.Remove(filePath); err == nil {
+				count++
+			}
+		}
+	}
+
+	return count, nil
+}
+
+// GetUserCacheSize returns the total size of cached files in bytes for a specific user
+func (mc *MediaCache) GetUserCacheSize(userID int64) (int64, error) {
+	userCacheDir := mc.GetUserCacheDir(userID)
+	var totalSize int64
+
+	entries, err := os.ReadDir(userCacheDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to read user cache directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		totalSize += info.Size()
+	}
+
+	return totalSize, nil
+}
+
+// CleanupUserBySize removes oldest files until cache is under the size limit for a specific user
+func (mc *MediaCache) CleanupUserBySize(userID int64, maxSizeMB int) (int, error) {
+	userCacheDir := mc.GetUserCacheDir(userID)
+	maxSize := int64(maxSizeMB) * 1024 * 1024
+	currentSize, err := mc.GetUserCacheSize(userID)
+	if err != nil {
+		return 0, err
+	}
+
+	if currentSize <= maxSize {
+		return 0, nil
+	}
+
+	type fileInfo struct {
+		path    string
+		modTime time.Time
+		size    int64
+	}
+
+	var files []fileInfo
+	entries, err := os.ReadDir(userCacheDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to read user cache directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		files = append(files, fileInfo{
+			path:    filepath.Join(userCacheDir, entry.Name()),
+			modTime: info.ModTime(),
+			size:    info.Size(),
+		})
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime.Before(files[j].modTime)
+	})
+
 	count := 0
 	for _, f := range files {
 		if currentSize <= maxSize {

@@ -220,7 +220,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 1: Old article contents (7+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(7)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(7, 0)
 		if err != nil {
 			log.Printf("Layer 1 error: %v", err)
 		} else {
@@ -232,7 +232,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 2: Medium article contents (3+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(3)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(3, 0)
 		if err != nil {
 			log.Printf("Layer 2 error: %v", err)
 		} else {
@@ -244,7 +244,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 3: Old article metadata (read, 30+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupOldReadArticles(30)
+		count, err := cm.fetcher.db.CleanupOldReadArticles(30, 0)
 		if err != nil {
 			log.Printf("Layer 3 error: %v", err)
 		} else {
@@ -256,7 +256,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 4: New article contents (1+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(1)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(1, 0)
 		if err != nil {
 			log.Printf("Layer 4 error: %v", err)
 		} else {
@@ -266,13 +266,14 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 		}
 	}
 
-	// Layer 5: Latest article contents (all)
+	// Layer 5: Only cleanup article contents by size instead of deleting all
+	// This is a safer approach that doesn't delete everything
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupAllArticleContents(0)
+		count, err := cm.fetcher.db.CleanupArticleContentsBySize(0)
 		if err != nil {
 			log.Printf("Layer 5 error: %v", err)
 		} else {
-			log.Printf("Layer 5: Removed %d latest article contents", count)
+			log.Printf("Layer 5: Removed %d article contents by size", count)
 			totalRemoved += count
 			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}
@@ -280,7 +281,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 6: Medium article metadata (unread, 60+ days old, not favorite/read-later)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupOldUnreadArticles(60)
+		count, err := cm.fetcher.db.CleanupOldUnreadArticles(60, 0)
 		if err != nil {
 			log.Printf("Layer 6 error: %v", err)
 		} else {
@@ -292,7 +293,17 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Final size check
 	finalSizeMB, _ := cm.fetcher.db.GetDatabaseSizeMB()
-	log.Printf("Final size: %.2f MB (target was %.2f MB)", finalSizeMB, targetSizeMB)
+	log.Printf("Final size before VACUUM: %.2f MB (target was %.2f MB)", finalSizeMB, targetSizeMB)
+
+	// Run VACUUM to reclaim space if we removed anything
+	if totalRemoved > 0 {
+		log.Println("Running VACUUM to reclaim disk space...")
+		_, _ = cm.fetcher.db.Exec("VACUUM")
+		
+		// Log final size after VACUUM
+		finalSizeAfterVACUUM, _ := cm.fetcher.db.GetDatabaseSizeMB()
+		log.Printf("Final size after VACUUM: %.2f MB", finalSizeAfterVACUUM)
+	}
 
 	return totalRemoved
 }

@@ -46,7 +46,8 @@ func (db *DB) SetCachedTranslation(sourceTextHash, sourceText, targetLang, trans
 }
 
 // CleanupTranslationCache removes cached translations older than maxAgeDays
-func (db *DB) CleanupTranslationCache(maxAgeDays int) (int64, error) {
+// If userID > 0, no-op since translation_cache is global (no user_id field)
+func (db *DB) CleanupTranslationCache(maxAgeDays int, userID int64) (int64, error) {
 	result, err := db.Exec(
 		`DELETE FROM translation_cache WHERE created_at < datetime('now', ?)`,
 		fmt.Sprintf("-%d days", maxAgeDays),

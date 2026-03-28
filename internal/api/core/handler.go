@@ -153,22 +153,23 @@ func (h *Handler) GetArticleContent(articleID int64) (string, bool, error) {
 		return "", false, nil
 	}
 
-	// Trigger immediate feed refresh using the new task manager
-	// This bypasses the queue and pool limits
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Fetch the feed immediately (article click triggered)
-	h.Fetcher.FetchFeedForArticle(ctx, *targetFeed)
-
-	// Parse the feed to get fresh content
-	parsedFeed, err := h.Fetcher.ParseFeedWithFeed(ctx, targetFeed, true) // High priority for content fetching
-	if err != nil {
-		return "", false, err
+	// First, check if we have a cached parsed feed in memory
+	var parsedFeed *gofeed.Feed
+	if cachedFeed, hasCached := h.ContentCache.GetFeed(targetFeed.ID); hasCached {
+		parsedFeed = cachedFeed
+	} else {
+		// Only parse the feed if we don't have a cached version - don't do full refresh!
+		var parseErr error
+		parsedFeed, parseErr = h.Fetcher.ParseFeedWithFeed(ctx, targetFeed, true) // High priority for content fetching
+		if parseErr != nil {
+			return "", false, parseErr
+		}
+		// Cache the feed for future use
+		h.ContentCache.SetFeed(targetFeed.ID, parsedFeed)
 	}
-
-	// Cache the feed for future use
-	h.ContentCache.SetFeed(targetFeed.ID, parsedFeed)
 
 	// Find the article in the feed by multiple criteria for better matching
 	matchingItem := h.findMatchingFeedItem(article, parsedFeed.Items)
@@ -177,6 +178,31 @@ func (h *Handler) GetArticleContent(articleID int64) (string, bool, error) {
 		cleanContent := textutil.CleanHTML(content)
 
 		// Cache the content in both memory and database
+		h.ContentCache.Set(articleID, cleanContent)
+		if err := h.DB.SetArticleContent(articleID, cleanContent); err != nil {
+			log.Printf("Error caching content to database: %v", err)
+		}
+
+		return cleanContent, false, nil
+	}
+
+	// If we still couldn't find the article, then do a full refresh as a last resort
+	log.Printf("Article not found in parsed feed, doing full refresh as last resort: %s", article.Title)
+	h.Fetcher.FetchFeedForArticle(ctx, *targetFeed)
+
+	// Parse again after refresh
+	parsedFeed, err = h.Fetcher.ParseFeedWithFeed(ctx, targetFeed, true)
+	if err != nil {
+		return "", false, err
+	}
+	h.ContentCache.SetFeed(targetFeed.ID, parsedFeed)
+
+	// Try again to find the article
+	matchingItem = h.findMatchingFeedItem(article, parsedFeed.Items)
+	if matchingItem != nil {
+		content := feed.ExtractContent(matchingItem)
+		cleanContent := textutil.CleanHTML(content)
+
 		h.ContentCache.Set(articleID, cleanContent)
 		if err := h.DB.SetArticleContent(articleID, cleanContent); err != nil {
 			log.Printf("Error caching content to database: %v", err)

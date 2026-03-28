@@ -10,7 +10,8 @@ import (
 // CleanupOldArticles removes articles based on age and status.
 // - Articles older than configured days: delete except favorited or read later
 // - Also checks database size against max_cache_size_mb setting
-func (db *DB) CleanupOldArticles() (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupOldArticles(userID int64) (int64, error) {
 	db.WaitForReady()
 
 	totalDeleted := int64(0)
@@ -27,12 +28,23 @@ func (db *DB) CleanupOldArticles() (int64, error) {
 	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
 
 	// Delete articles older than configured age that are not favorited or in read later
-	result, err := db.Exec(`
-		DELETE FROM articles
-		WHERE published_at < ?
-		AND is_favorite = 0
-		AND is_read_later = 0
-	`, cutoffDate)
+	var result sql.Result
+	if userID > 0 {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE published_at < ?
+			AND is_favorite = 0
+			AND is_read_later = 0
+			AND user_id = ?
+		`, cutoffDate, userID)
+	} else {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE published_at < ?
+			AND is_favorite = 0
+			AND is_read_later = 0
+		`, cutoffDate)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -41,7 +53,7 @@ func (db *DB) CleanupOldArticles() (int64, error) {
 	totalDeleted += count
 
 	// Step 2: Check database size and clean up if over limit
-	sizeDeleted, err := db.CleanupBySize()
+	sizeDeleted, err := db.CleanupBySize(userID)
 	if err != nil {
 		log.Printf("Error during size-based cleanup: %v", err)
 	} else {
@@ -49,8 +61,8 @@ func (db *DB) CleanupOldArticles() (int64, error) {
 	}
 
 	// Also cleanup related caches with the same age limit
-	_, _ = db.CleanupTranslationCache(maxAgeDays)
-	_, _ = db.CleanupOldArticleContents(maxAgeDays)
+	_, _ = db.CleanupTranslationCache(maxAgeDays, userID)
+	_, _ = db.CleanupOldArticleContents(maxAgeDays, userID)
 
 	// Run VACUUM to reclaim space
 	_, _ = db.Exec("VACUUM")
@@ -169,8 +181,8 @@ func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {
 	count, _ := result.RowsAffected()
 
 	// Also cleanup related caches (remove entries older than 7 days)
-	_, _ = db.CleanupTranslationCache(7)
-	_, _ = db.CleanupOldArticleContents(7)
+	_, _ = db.CleanupTranslationCache(7, userID)
+	_, _ = db.CleanupOldArticleContents(7, userID)
 
 	// Run VACUUM to reclaim space
 	_, _ = db.Exec("VACUUM")
@@ -246,18 +258,26 @@ func (db *DB) ShouldCleanupBeforeSave() (bool, error) {
 // Protects favorited and read later articles.
 // Uses priority order: oldest read articles first, then older unread articles.
 // Admin quota takes precedence over user setting.
-func (db *DB) CleanupBySize() (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupBySize(userID int64) (int64, error) {
 	db.WaitForReady()
 
 	var adminQuotaLimit int
 	var userSettingLimit int = 500 // Default
 
-	// Try to get admin quota for the first user
-	users, _ := db.ListUsers()
-	if len(users) > 0 {
-		quota, err := db.GetUserQuota(users[0].ID)
+	// Try to get admin quota for the specified user (or first user if 0)
+	if userID > 0 {
+		quota, err := db.GetUserQuota(userID)
 		if err == nil && quota.MaxStorageMB > 0 {
 			adminQuotaLimit = quota.MaxStorageMB
+		}
+	} else {
+		users, _ := db.ListUsers()
+		if len(users) > 0 {
+			quota, err := db.GetUserQuota(users[0].ID)
+			if err == nil && quota.MaxStorageMB > 0 {
+				adminQuotaLimit = quota.MaxStorageMB
+			}
 		}
 	}
 
@@ -294,17 +314,33 @@ func (db *DB) CleanupBySize() (int64, error) {
 
 	// Step 1: Delete oldest read articles (not favorited, not read later)
 	for currentSizeMB > targetSizeMB {
-		result, err := db.Exec(`
-			DELETE FROM articles
-			WHERE id IN (
-				SELECT id FROM articles
-				WHERE is_read = 1
-				AND is_favorite = 0
-				AND is_read_later = 0
-				ORDER BY published_at ASC
-				LIMIT 100
-			)
-		`)
+		var result sql.Result
+		if userID > 0 {
+			result, err = db.Exec(`
+				DELETE FROM articles
+				WHERE id IN (
+					SELECT id FROM articles
+					WHERE is_read = 1
+					AND is_favorite = 0
+					AND is_read_later = 0
+					AND user_id = ?
+					ORDER BY published_at ASC
+					LIMIT 100
+				)
+			`, userID)
+		} else {
+			result, err = db.Exec(`
+				DELETE FROM articles
+				WHERE id IN (
+					SELECT id FROM articles
+					WHERE is_read = 1
+					AND is_favorite = 0
+					AND is_read_later = 0
+					ORDER BY published_at ASC
+					LIMIT 100
+				)
+			`)
+		}
 		if err != nil {
 			break
 		}
@@ -321,16 +357,31 @@ func (db *DB) CleanupBySize() (int64, error) {
 
 	// Step 2: If still over limit, delete oldest unread articles (not favorited, not read later)
 	for currentSizeMB > targetSizeMB {
-		result, err := db.Exec(`
-			DELETE FROM articles
-			WHERE id IN (
-				SELECT id FROM articles
-				WHERE is_favorite = 0
-				AND is_read_later = 0
-				ORDER BY published_at ASC
-				LIMIT 100
-			)
-		`)
+		var result sql.Result
+		if userID > 0 {
+			result, err = db.Exec(`
+				DELETE FROM articles
+				WHERE id IN (
+					SELECT id FROM articles
+					WHERE is_favorite = 0
+					AND is_read_later = 0
+					AND user_id = ?
+					ORDER BY published_at ASC
+					LIMIT 100
+				)
+			`, userID)
+		} else {
+			result, err = db.Exec(`
+				DELETE FROM articles
+				WHERE id IN (
+					SELECT id FROM articles
+					WHERE is_favorite = 0
+					AND is_read_later = 0
+					ORDER BY published_at ASC
+					LIMIT 100
+				)
+			`)
+		}
 		if err != nil {
 			break
 		}
@@ -354,12 +405,24 @@ func (db *DB) CleanupBySize() (int64, error) {
 
 // CleanupArticleContentsByAge removes article content cache entries older than maxAgeDays
 // This only deletes content, not article metadata
-func (db *DB) CleanupArticleContentsByAge(maxAgeDays int) (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupArticleContentsByAge(maxAgeDays int, userID int64) (int64, error) {
 	db.WaitForReady()
-	result, err := db.Exec(
-		`DELETE FROM article_contents WHERE fetched_at < datetime('now', '-' || ? || ' days')`,
-		maxAgeDays,
-	)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(
+			`DELETE FROM article_contents 
+			 WHERE fetched_at < datetime('now', '-' || ? || ' days')
+			 AND article_id IN (SELECT id FROM articles WHERE user_id = ?)`,
+			maxAgeDays, userID,
+		)
+	} else {
+		result, err = db.Exec(
+			`DELETE FROM article_contents WHERE fetched_at < datetime('now', '-' || ? || ' days')`,
+			maxAgeDays,
+		)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -368,7 +431,8 @@ func (db *DB) CleanupArticleContentsByAge(maxAgeDays int) (int64, error) {
 
 // CleanupArticleContentsBySize removes oldest article contents to reduce database size
 // This only deletes content, not article metadata
-func (db *DB) CleanupArticleContentsBySize() (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupArticleContentsBySize(userID int64) (int64, error) {
 	db.WaitForReady()
 
 	// Get max cache size from settings (default 500 MB)
@@ -396,14 +460,29 @@ func (db *DB) CleanupArticleContentsBySize() (int64, error) {
 
 	// Delete oldest contents in batches
 	for currentSizeMB > targetSizeMB {
-		result, err := db.Exec(`
-			DELETE FROM article_contents
-			WHERE article_id IN (
-				SELECT article_id FROM article_contents
-				ORDER BY fetched_at ASC
-				LIMIT 100
-			)
-		`)
+		var result sql.Result
+		var err error
+		if userID > 0 {
+			result, err = db.Exec(`
+				DELETE FROM article_contents
+				WHERE article_id IN (
+					SELECT ac.article_id FROM article_contents ac
+					INNER JOIN articles a ON ac.article_id = a.id
+					WHERE a.user_id = ?
+					ORDER BY ac.fetched_at ASC
+					LIMIT 100
+				)
+			`, userID)
+		} else {
+			result, err = db.Exec(`
+				DELETE FROM article_contents
+				WHERE article_id IN (
+					SELECT article_id FROM article_contents
+					ORDER BY fetched_at ASC
+					LIMIT 100
+				)
+			`)
+		}
 		if err != nil {
 			break
 		}
@@ -517,17 +596,31 @@ func (db *DB) CleanupOldArticlesLayered() (int64, error) {
 
 // CleanupOldReadArticles removes read articles older than specified days
 // Protects favorited and read later articles
-func (db *DB) CleanupOldReadArticles(maxAgeDays int) (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupOldReadArticles(maxAgeDays int, userID int64) (int64, error) {
 	db.WaitForReady()
 
 	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
-	result, err := db.Exec(`
-		DELETE FROM articles
-		WHERE published_at < ?
-		AND is_read = 1
-		AND is_favorite = 0
-		AND is_read_later = 0
-	`, cutoffDate)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE published_at < ?
+			AND is_read = 1
+			AND is_favorite = 0
+			AND is_read_later = 0
+			AND user_id = ?
+		`, cutoffDate, userID)
+	} else {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE published_at < ?
+			AND is_read = 1
+			AND is_favorite = 0
+			AND is_read_later = 0
+		`, cutoffDate)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -538,17 +631,31 @@ func (db *DB) CleanupOldReadArticles(maxAgeDays int) (int64, error) {
 
 // CleanupOldUnreadArticles removes unread articles older than specified days
 // Protects favorited and read later articles
-func (db *DB) CleanupOldUnreadArticles(maxAgeDays int) (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupOldUnreadArticles(maxAgeDays int, userID int64) (int64, error) {
 	db.WaitForReady()
 
 	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
-	result, err := db.Exec(`
-		DELETE FROM articles
-		WHERE published_at < ?
-		AND is_read = 0
-		AND is_favorite = 0
-		AND is_read_later = 0
-	`, cutoffDate)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE published_at < ?
+			AND is_read = 0
+			AND is_favorite = 0
+			AND is_read_later = 0
+			AND user_id = ?
+		`, cutoffDate, userID)
+	} else {
+		result, err = db.Exec(`
+			DELETE FROM articles
+			WHERE published_at < ?
+			AND is_read = 0
+			AND is_favorite = 0
+			AND is_read_later = 0
+		`, cutoffDate)
+	}
 	if err != nil {
 		return 0, err
 	}

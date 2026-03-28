@@ -177,7 +177,7 @@ func TestCleanupOldAndUnimportantAndDBSize(t *testing.T) {
 	}
 
 	// Cleanup old articles
-	deleted, err := db.CleanupOldArticles()
+	deleted, err := db.CleanupOldArticles(0)
 	if err != nil {
 		t.Fatalf("CleanupOldArticles error: %v", err)
 	}
