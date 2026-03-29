@@ -138,7 +138,7 @@ func TestArticleContentCache(t *testing.T) {
 		// This test verifies the cleanup function works
 		// Note: In an in-memory database, we can't test actual time-based cleanup
 		// but we can verify the function executes without error
-		affected, err := db.CleanupOldArticleContents(30)
+		affected, err := db.CleanupOldArticleContents(30, 0)
 		if err != nil {
 			t.Errorf("CleanupOldArticleContents failed: %v", err)
 		}

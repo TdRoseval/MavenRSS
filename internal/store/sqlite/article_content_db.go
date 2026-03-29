@@ -50,12 +50,23 @@ func (db *DB) DeleteArticleContent(articleID int64) error {
 }
 
 // CleanupOldArticleContents removes article content cache entries older than maxAgeDays
-func (db *DB) CleanupOldArticleContents(maxAgeDays int) (int64, error) {
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupOldArticleContents(maxAgeDays int, userID int64) (int64, error) {
 	db.WaitForReady()
-	result, err := db.Exec(
-		`DELETE FROM article_contents WHERE fetched_at < datetime('now', '-' || ? || ' days')`,
-		maxAgeDays,
-	)
+	var result sql.Result
+	var err error
+	if userID > 0 {
+		result, err = db.Exec(`
+			DELETE FROM article_contents 
+			WHERE fetched_at < datetime('now', '-' || ? || ' days')
+			AND article_id IN (SELECT id FROM articles WHERE user_id = ?)
+		`, maxAgeDays, userID)
+	} else {
+		result, err = db.Exec(
+			`DELETE FROM article_contents WHERE fetched_at < datetime('now', '-' || ? || ' days')`,
+			maxAgeDays,
+		)
+	}
 	if err != nil {
 		return 0, err
 	}

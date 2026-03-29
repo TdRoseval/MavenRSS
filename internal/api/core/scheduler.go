@@ -38,7 +38,7 @@ func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
 		mediaCacheEnabled, _ := h.DB.GetSetting("media_cache_enabled")
 		if mediaCacheEnabled == "true" {
 			log.Println("Running initial media cache cleanup...")
-			h.cleanupMediaCache()
+			h.cleanupMediaCache(0)
 		}
 	}()
 
@@ -241,7 +241,7 @@ func (h *Handler) triggerGlobalRefresh(ctx context.Context, intelligentMode bool
 	// Run media cache cleanup if enabled
 	mediaCacheEnabled, _ := h.DB.GetSetting("media_cache_enabled")
 	if mediaCacheEnabled == "true" {
-		h.cleanupMediaCache()
+		h.cleanupMediaCache(0)
 	}
 }
 
@@ -311,7 +311,7 @@ func (h *Handler) scheduleIndividualFeeds(ctx context.Context, intelligentMode b
 }
 
 // cleanupMediaCache performs media cache cleanup based on settings
-func (h *Handler) cleanupMediaCache() {
+func (h *Handler) cleanupMediaCache(userID int64) {
 	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
 		log.Printf("Failed to get media cache directory: %v", err)
@@ -325,8 +325,8 @@ func (h *Handler) cleanupMediaCache() {
 	}
 
 	// Get settings
-	maxAgeDaysStr, _ := h.DB.GetSetting("media_cache_max_age_days")
-	maxSizeMBStr, _ := h.DB.GetSetting("media_cache_max_size_mb")
+	maxAgeDaysStr, _ := h.DB.GetSettingWithFallback(userID, "media_cache_max_age_days")
+	maxSizeMBStr, _ := h.DB.GetSettingWithFallback(userID, "media_cache_max_size_mb")
 
 	maxAgeDays, err := strconv.Atoi(maxAgeDaysStr)
 	if err != nil || maxAgeDays <= 0 {
@@ -338,20 +338,38 @@ func (h *Handler) cleanupMediaCache() {
 		maxSizeMB = 100 // Default
 	}
 
-	// Cleanup by age
-	ageCount, err := mediaCache.CleanupOldFiles(maxAgeDays)
-	if err != nil {
-		log.Printf("Failed to cleanup old media files: %v", err)
-	} else if ageCount > 0 {
-		log.Printf("Media cache cleanup: removed %d old files", ageCount)
-	}
+	if userID == 0 {
+		// Cleanup by age (global)
+		ageCount, err := mediaCache.CleanupOldFiles(maxAgeDays)
+		if err != nil {
+			log.Printf("Failed to cleanup old media files: %v", err)
+		} else if ageCount > 0 {
+			log.Printf("Media cache cleanup: removed %d old files", ageCount)
+		}
 
-	// Cleanup by size
-	sizeCount, err := mediaCache.CleanupBySize(maxSizeMB)
-	if err != nil {
-		log.Printf("Failed to cleanup media files by size: %v", err)
-	} else if sizeCount > 0 {
-		log.Printf("Media cache cleanup: removed %d files to stay under size limit", sizeCount)
+		// Cleanup by size (global)
+		sizeCount, err := mediaCache.CleanupBySize(maxSizeMB)
+		if err != nil {
+			log.Printf("Failed to cleanup media files by size: %v", err)
+		} else if sizeCount > 0 {
+			log.Printf("Media cache cleanup: removed %d files to stay under size limit", sizeCount)
+		}
+	} else {
+		// Cleanup by age (user-specific)
+		ageCount, err := mediaCache.CleanupUserOldFiles(userID, maxAgeDays)
+		if err != nil {
+			log.Printf("User %d: Failed to cleanup old media files: %v", userID, err)
+		} else if ageCount > 0 {
+			log.Printf("User %d: Media cache cleanup: removed %d old files", userID, ageCount)
+		}
+
+		// Cleanup by size (user-specific)
+		sizeCount, err := mediaCache.CleanupUserBySize(userID, maxSizeMB)
+		if err != nil {
+			log.Printf("User %d: Failed to cleanup media files by size: %v", userID, err)
+		} else if sizeCount > 0 {
+			log.Printf("User %d: Media cache cleanup: removed %d files to stay under size limit", userID, sizeCount)
+		}
 	}
 }
 
@@ -550,6 +568,12 @@ func (h *Handler) triggerUserRefresh(ctx context.Context, userID int64, intellig
 		} else {
 		// In fixed mode, refresh all feeds for this user
 		h.Fetcher.FetchAllForUser(ctx, userID)
+	}
+
+	// Run media cache cleanup if enabled
+	mediaCacheEnabled, _ := h.DB.GetSettingWithFallback(userID, "media_cache_enabled")
+	if mediaCacheEnabled == "true" {
+		h.cleanupMediaCache(userID)
 	}
 }
 

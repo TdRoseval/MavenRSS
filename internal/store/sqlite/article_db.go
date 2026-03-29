@@ -210,7 +210,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		if shouldCleanup {
 			log.Printf("Database approaching size limit, running progressive cleanup...")
 			go func() {
-				deleted, err := db.CleanupBySize()
+				deleted, err := db.CleanupBySize(0)
 				if err != nil {
 					log.Printf("Progressive cleanup error: %v", err)
 				} else if deleted > 0 {
