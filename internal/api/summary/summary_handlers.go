@@ -105,12 +105,12 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if req.Content == "" {
 		article, err := h.DB.GetArticleByID(req.ArticleID)
 		if err == nil && article.Summary != "" && article.Summary != "<no content>" {
-			// Article has a cached summary, convert it to HTML and return
+			// Article has a cached summary, convert it to HTML and return immediately
 			htmlSummary := textutil.ConvertMarkdownToHTML(article.Summary)
 			response.JSON(w, map[string]interface{}{
 				"summary":        article.Summary,
 				"html":           htmlSummary,
-				"sentence_count": 0, // We don't store this in DB
+				"sentence_count": 0,
 				"is_too_short":   false,
 				"cached":         true,
 			})

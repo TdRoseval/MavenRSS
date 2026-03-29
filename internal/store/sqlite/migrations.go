@@ -162,6 +162,18 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN etag TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN last_modified TEXT DEFAULT ''`)
 
+	// Migration: Add article_translated_contents table for storing translated article content
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS article_translated_contents (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL UNIQUE,
+		content TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_article_translated_contents_article_id ON article_translated_contents(article_id)`)
+
 	return nil
 }
 

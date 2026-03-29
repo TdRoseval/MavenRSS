@@ -60,6 +60,19 @@ export function useArticleSummary() {
       return null;
     }
 
+    // If not forcing, check if article already has a cached summary
+    if (!force && article.summary && article.summary.trim() !== '') {
+      // Directly use the cached summary from article object
+      const htmlSummary = article.summary;
+      return {
+        summary: article.summary,
+        html: htmlSummary,
+        sentence_count: 0,
+        is_too_short: false,
+        cached: true,
+      };
+    }
+
     // If forcing regeneration, clear cache first
     if (force) {
       summaryCache.value.delete(article.id);

@@ -187,6 +187,8 @@ const translationSkipped = ref(false);
 const forceTranslated = ref(false); // 是否是强制翻译的
 const isForceTranslating = ref(false); // 是否正在进行强制翻译
 const translationRequestId = ref(0); // 翻译请求ID，用于识别过时的翻译结果
+const translatedContentCache = ref<Map<number, { content: string; targetLang: string }>>(new Map());
+const isLoadingTranslatedContent = ref(false);
 
 // Computed: whether translation is effectively enabled (global + feed setting)
 const effectiveTranslationEnabled = computed(() => {
@@ -199,6 +201,59 @@ const effectiveTranslationEnabled = computed(() => {
 async function loadSettings() {
   await loadSummarySettings();
   await loadTranslationSettings();
+}
+
+// Save translated content to database
+async function saveTranslatedContent(articleId: number, content: string, targetLang: string, provider: string = 'unknown'): Promise<void> {
+  try {
+    await authPost('/api/articles/translated-content', {
+      article_id: articleId,
+      content: content,
+      target_lang: targetLang,
+      provider: provider,
+    });
+  } catch (error) {
+    console.error('Error saving translated content:', error);
+  }
+}
+
+// Load translated content from database
+async function loadTranslatedContent(articleId: number, targetLang: string): Promise<string | null> {
+  // Check in-memory cache first
+  const cached = translatedContentCache.value.get(articleId);
+  if (cached && cached.targetLang === targetLang) {
+    return cached.content;
+  }
+
+  try {
+    const res = await authFetch(`/api/articles/translated-content?id=${articleId}&target_lang=${targetLang}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.cached && data.content) {
+        // Cache in memory
+        translatedContentCache.value.set(articleId, {
+          content: data.content,
+          targetLang: targetLang,
+        });
+        return data.content;
+      }
+    }
+  } catch (error) {
+    console.error('Error loading translated content:', error);
+  }
+  return null;
+}
+
+// Apply translated content directly to DOM
+function applyTranslatedContent(htmlContent: string): void {
+  const proseContainer = document.querySelector('.prose-content');
+  if (!proseContainer) return;
+  
+  proseContainer.innerHTML = htmlContent;
+  
+  // Re-apply rendering enhancements
+  enhanceRendering('.prose-content');
+  reattachImageInteractions();
 }
 
 // Translate text using the API
@@ -647,6 +702,17 @@ async function translateContentParagraphs(content: string) {
   // This includes unwrapping images from links, attaching image handlers, and link handlers
   await reattachImageInteractions();
 
+  // Save the translated HTML content to database for future use
+  const proseContainer = document.querySelector('.prose-content');
+  if (proseContainer && props.article) {
+    await saveTranslatedContent(
+      props.article.id,
+      proseContainer.innerHTML,
+      targetLanguage.value,
+      translationSettings.value.provider || 'unknown'
+    );
+  }
+
   isTranslatingContent.value = false;
 }
 
@@ -738,30 +804,44 @@ watch(
       fullArticleContent.value = ''; // Reset full article content when switching articles
       forceTranslated.value = false; // Reset force translated flag
       isForceTranslating.value = false; // Reset force translating flag
+      isLoadingTranslatedContent.value = false;
 
       if (props.article) {
         // Check if article has a cached summary first
         if (props.article.summary && props.article.summary.trim() !== '') {
-          // Load the cached summary by calling API to get HTML
-          // Don't use on-the-fly summarization, let backend convert cached markdown to HTML
+          // Use the cached summary directly without API call
           const result = await generateSummaryComposable(props.article, '', false);
-
-          // Set summary result
           if (result) {
             summaryResult.value = result;
           }
         } else if (shouldAutoGenerateSummary()) {
           // Only auto-generate if no cached summary exists
-          // But wait for full content if both conditions are met:
-          // 1. Summary uses AI auto trigger OR local algorithm
-          // 2. AND auto-show all content is enabled
           if (!shouldWaitForFullContentBeforeSummary.value) {
             setTimeout(() => generateSummary(props.article), 100);
           }
         }
 
-        // Translate title
-        if (translationEnabled.value) {
+        // Try to load cached translated content first
+        if (translationEnabled.value && targetLanguage.value) {
+          isLoadingTranslatedContent.value = true;
+          const cachedContent = await loadTranslatedContent(props.article.id, targetLanguage.value);
+          
+          if (cachedContent) {
+            // Apply cached content directly after DOM is ready
+            await nextTick();
+            // Wait for original content to be rendered first
+            setTimeout(async () => {
+              applyTranslatedContent(cachedContent);
+              lastTranslatedArticleId.value = props.article?.id || null;
+              lastTranslatedContentHash.value = simpleHash(displayContent.value || '');
+            }, 100);
+          } else {
+            // No cached content, translate title and content as usual
+            translateTitle(props.article);
+          }
+          isLoadingTranslatedContent.value = false;
+        } else if (translationEnabled.value) {
+          // Translate title only
           translateTitle(props.article);
         }
       }
@@ -1201,7 +1281,18 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
   
   // Re-attach event listeners
   await reattachImageInteractions();
-  
+
+  // Save the translated HTML content to database for future use
+  const proseContainer = document.querySelector('.prose-content');
+  if (proseContainer && props.article) {
+    await saveTranslatedContent(
+      props.article.id,
+      proseContainer.innerHTML,
+      targetLanguage.value,
+      translationSettings.value.provider || 'unknown'
+    );
+  }
+
   isTranslatingContent.value = false;
 }
 

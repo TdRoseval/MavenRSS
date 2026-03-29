@@ -123,6 +123,17 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
 	);
 
+	-- Article translated content table to store translated article content
+	CREATE TABLE IF NOT EXISTS article_translated_contents (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL UNIQUE,
+		content TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+	);
+
 	-- Chat sessions table to store AI chat conversations per article
 	CREATE TABLE IF NOT EXISTS chat_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
