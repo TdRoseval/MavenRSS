@@ -23,6 +23,7 @@ type Defaults struct {
 	AIChatProfileId string              `json:"ai_chat_profile_id"`
 	AICustomHeaders string              `json:"ai_custom_headers"`
 	AIEndpoint string                   `json:"ai_endpoint"`
+	AIEnhancedMode bool                 `json:"ai_enhanced_mode"`
 	AIModel string                      `json:"ai_model"`
 	AISearchEnabled bool                `json:"ai_search_enabled"`
 	AISearchProfileId string            `json:"ai_search_profile_id"`
@@ -152,6 +153,8 @@ func GetString(key string) string {
 		return defaults.AICustomHeaders
 	case "ai_endpoint":
 		return defaults.AIEndpoint
+	case "ai_enhanced_mode":
+		return strconv.FormatBool(defaults.AIEnhancedMode)
 	case "ai_model":
 		return defaults.AIModel
 	case "ai_search_enabled":

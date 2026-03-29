@@ -39,20 +39,21 @@ type PostProcessTask struct {
 }
 
 type Fetcher struct {
-	db                *sqlite.DB
-	fp                FeedParser
-	highPriorityFp    FeedParser // High priority parser for content fetching
-	scriptExecutor    *ScriptExecutor
-	emailFetcher      *EmailFetcher
-	progress          Progress
-	mu                sync.Mutex
-	refreshCalculator *IntelligentRefreshCalculator
-	taskManager       *TaskManager
-	cleanupManager    *CleanupManager
-	postProcessChan   chan *PostProcessTask
-	postProcessWg     sync.WaitGroup
-	articleSink       chan []*models.Article // Global sink for article writes (Eco mode)
-	writerWg          sync.WaitGroup         // WaitGroup for article writer loop
+	db                   *sqlite.DB
+	fp                   FeedParser
+	highPriorityFp       FeedParser // High priority parser for content fetching
+	scriptExecutor       *ScriptExecutor
+	emailFetcher         *EmailFetcher
+	progress             Progress
+	mu                   sync.Mutex
+	refreshCalculator    *IntelligentRefreshCalculator
+	taskManager          *TaskManager
+	cleanupManager       *CleanupManager
+	postProcessChan      chan *PostProcessTask
+	postProcessWg        sync.WaitGroup
+	articleSink          chan []*models.Article // Global sink for article writes (Eco mode)
+	writerWg             sync.WaitGroup         // WaitGroup for article writer loop
+	aiEnhancedManager    *AIEnhancedManager    // AI enhanced mode task manager
 }
 
 func NewFetcher(db *sqlite.DB) *Fetcher {
@@ -94,6 +95,9 @@ func NewFetcher(db *sqlite.DB) *Fetcher {
 	// Initialize cleanup manager
 	fetcher.cleanupManager = NewCleanupManager(fetcher)
 	fetcher.cleanupManager.Start()
+
+	// Initialize AI enhanced mode manager
+	fetcher.aiEnhancedManager = NewAIEnhancedManager(db)
 
 	// Start article writer loop
 	fetcher.startArticleWriter()
@@ -256,6 +260,38 @@ func (f *Fetcher) processPostTask(task *PostProcessTask) {
 			}
 		}
 	}
+
+	// Check if AI enhanced mode should process these articles
+	if ShouldProcess(f.db, task.UserID) && f.aiEnhancedManager != nil {
+		// Get feed to check translate_articles option
+		feed, err := f.db.GetFeedByIDForUser(task.UserID, task.FeedID)
+		if err != nil {
+			log.Printf("Error getting feed for AI enhanced mode: %v", err)
+			return
+		}
+
+		// For each article, add AI enhanced task
+		for _, awc := range task.ArticlesWithContent {
+			if awc.Article != nil && awc.Article.ID > 0 {
+				// Check if article already has a summary
+				hasSummary := false
+				if awc.Article.Summary != "" && awc.Article.Summary != "<no content>" {
+					hasSummary = true
+				}
+
+				// Add AI enhanced task
+				aiTask := &AIEnhancedTask{
+					ArticleID:         awc.Article.ID,
+					UserID:            task.UserID,
+					FeedID:            task.FeedID,
+					NeedsSummary:      !hasSummary,
+					NeedsTranslation:  true,
+					TranslateArticles: feed != nil && feed.TranslateArticles,
+				}
+				f.aiEnhancedManager.AddTask(aiTask)
+			}
+		}
+	}
 }
 
 // GetIntelligentRefreshCalculator returns the refresh calculator
@@ -299,6 +335,9 @@ func (f *Fetcher) Stop() {
 	}
 	if f.cleanupManager != nil {
 		f.cleanupManager.Stop()
+	}
+	if f.aiEnhancedManager != nil {
+		f.aiEnhancedManager.Stop()
 	}
 	log.Println("Fetcher stopped")
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhRobot,
@@ -7,6 +7,7 @@ import {
   PhTrash,
   PhBroom,
   PhMagnifyingGlass,
+  PhRocket,
 } from '@phosphor-icons/vue';
 import {
   TipBox,
@@ -40,6 +41,19 @@ function updateSetting(key: keyof SettingsData, value: any) {
 }
 
 const isDeleting = ref(false);
+
+// Check if AI enhanced mode can be enabled
+const isAIEnhancedModeAvailable = computed(() => {
+  const settings = props.settings;
+  return (
+    settings.ai_api_key?.trim() !== '' &&
+    settings.summary_enabled === true &&
+    settings.summary_provider === 'ai' &&
+    settings.translation_enabled === true &&
+    settings.ai_search_enabled === true &&
+    settings.ai_chat_enabled === true
+  );
+});
 
 async function clearAllChatSessions() {
   const confirmed = await window.showConfirm({
@@ -124,6 +138,17 @@ async function clearAllChatSessions() {
         </button>
       </SubSettingItem>
     </NestedSettingsContainer>
+
+    <!-- AI Enhanced Mode -->
+    <TipBox v-if="!isAIEnhancedModeAvailable" type="warning" :title="t('setting.ai.aiEnhancedModeDisabled')" />
+    <SettingWithToggle
+      :icon="PhRocket"
+      :title="t('setting.ai.aiEnhancedMode')"
+      :description="t('setting.ai.aiEnhancedModeDesc')"
+      :model-value="isAIEnhancedModeAvailable ? props.settings.ai_enhanced_mode : false"
+      :disabled="!isAIEnhancedModeAvailable"
+      @update:model-value="updateSetting('ai_enhanced_mode', $event)"
+    />
   </SettingGroup>
 </template>
 

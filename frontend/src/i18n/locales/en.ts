@@ -621,6 +621,9 @@ const en: TranslationMessages = {
       testAIConfig: 'Test Configuration',
       testing: 'Testing...',
       tokens: 'tokens',
+      aiEnhancedMode: 'AI Enhanced Mode',
+      aiEnhancedModeDesc: 'Automatically generate AI summaries and translations for new articles in the background. Requires all AI features to be enabled.',
+      aiEnhancedModeDisabled: 'Enable all AI features (summary, translation, search, chat) to use this mode',
     },
     content: {
       addHeader: 'Add Header',

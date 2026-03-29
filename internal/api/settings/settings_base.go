@@ -22,6 +22,7 @@ var AllSettings = []SettingDef{
 	{Key: "ai_chat_profile_id", Encrypted: false},
 	{Key: "ai_custom_headers", Encrypted: false},
 	{Key: "ai_endpoint", Encrypted: false},
+	{Key: "ai_enhanced_mode", Encrypted: false},
 	{Key: "ai_model", Encrypted: false},
 	{Key: "ai_search_enabled", Encrypted: false},
 	{Key: "ai_search_profile_id", Encrypted: false},

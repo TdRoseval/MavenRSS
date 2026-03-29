@@ -745,6 +745,13 @@
       "category": "ai",
       "encrypted": false,
       "frontend_key": "aiSearchProfileId"
+    },
+    "ai_enhanced_mode": {
+      "type": "bool",
+      "default": false,
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiEnhancedMode"
     }
   }
 }

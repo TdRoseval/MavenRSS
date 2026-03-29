@@ -611,6 +611,9 @@ const zh: TranslationMessages = {
       testAIConfig: '测试配置',
       testing: '测试中...',
       tokens: 'Token',
+      aiEnhancedMode: 'AI 增强模式',
+      aiEnhancedModeDesc: '在后台自动为新文章生成 AI 摘要和翻译。需要启用所有 AI 功能。',
+      aiEnhancedModeDisabled: '请先启用所有 AI 功能（摘要、翻译、搜索、聊天）以使用此模式',
     },
     content: {
       addHeader: '添加请求头',
