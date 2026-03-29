@@ -91,3 +91,4 @@ __pycache__/
 # Air (Go hot reload)
 tmp/
 .air.toml
+.trae/*

@@ -288,7 +288,7 @@ func TestCleanupOldArticles(t *testing.T) {
 	}
 
 	// Run cleanup (default is 30 days)
-	count, err := db.CleanupOldArticles()
+	count, err := db.CleanupOldArticles(0)
 	if err != nil {
 		t.Fatalf("Failed to cleanup articles: %v", err)
 	}

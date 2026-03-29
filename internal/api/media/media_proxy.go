@@ -368,7 +368,7 @@ func HandleMediaProxy(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 				// Continue to fallback if enabled
 			} else {
 				// Get media (from cache or download)
-				data, contentType, err := mediaCache.Get(mediaURL, referer)
+				data, contentType, err := mediaCache.GetUser(userID, mediaURL, referer)
 				if err == nil {
 					// Success! Serve from cache
 					w.Header().Set("Content-Type", contentType)
@@ -412,6 +412,8 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get media cache directory
 	cacheDir, err := fileutil.GetMediaCacheDir()
 	if err != nil {
@@ -439,9 +441,9 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 		maxAgeDays = 0
 		maxSizeMB = 0 // Will skip size-based cleanup
 	} else {
-		// Automatic cleanup: use settings
-		maxAgeDaysStr, _ := h.DB.GetSetting("media_cache_max_age_days")
-		maxSizeMBStr, _ := h.DB.GetSetting("media_cache_max_size_mb")
+		// Automatic cleanup: use user settings with fallback
+		maxAgeDaysStr, _ := h.DB.GetSettingWithFallback(userID, "media_cache_max_age_days")
+		maxSizeMBStr, _ := h.DB.GetSettingWithFallback(userID, "media_cache_max_size_mb")
 
 		maxAgeDays, err = strconv.Atoi(maxAgeDaysStr)
 		if err != nil || maxAgeDays < 0 {
@@ -455,7 +457,7 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 	}
 
 	// Cleanup by age
-	ageCount, err := mediaCache.CleanupOldFiles(maxAgeDays)
+	ageCount, err := mediaCache.CleanupUserOldFiles(userID, maxAgeDays)
 	if err != nil {
 		log.Printf("Failed to cleanup old media files: %v", err)
 	}
@@ -463,7 +465,7 @@ func HandleMediaCacheCleanup(h *core.Handler, w http.ResponseWriter, r *http.Req
 	// Cleanup by size (only for automatic cleanup)
 	sizeCount := 0
 	if !cleanAll {
-		sizeCount, err = mediaCache.CleanupBySize(maxSizeMB)
+		sizeCount, err = mediaCache.CleanupUserBySize(userID, maxSizeMB)
 		if err != nil {
 			log.Printf("Failed to cleanup media files by size: %v", err)
 		}
