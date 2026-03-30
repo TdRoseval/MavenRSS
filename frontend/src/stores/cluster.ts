@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { Cluster } from '@/types/models';
 import { apiClient } from '@/shared/lib/apiClient';
 
@@ -7,13 +7,17 @@ export const useClusterStore = defineStore('cluster', () => {
   const clusters = ref<Cluster[]>([]);
   const currentClusterId = ref<number | null>(null);
   const isLoading = ref<boolean>(false);
-  const page = ref<number>(1);
   const hasMore = ref<boolean>(true);
   const filterCounts = ref<Record<string, number>>({
     unread: 0,
     favorites: 0,
     read_later: 0,
   });
+
+  /** Set of cluster IDs already displayed — used for stateless exclusion pagination */
+  const displayedIds = computed<number[]>(() => clusters.value.map((c) => c.id));
+  const isInitialLoading = computed<boolean>(() => isLoading.value && clusters.value.length === 0);
+  const isLoadingMore = computed<boolean>(() => isLoading.value && clusters.value.length > 0);
 
   function updateClusterState(id: number, patch: Partial<Cluster>): void {
     const index = clusters.value.findIndex((cluster) => cluster.id === id);
@@ -27,34 +31,35 @@ export const useClusterStore = defineStore('cluster', () => {
     };
   }
 
+  /**
+   * Fetches clusters using the AI-enhanced feed endpoint with exclude_ids pagination.
+   * @param append If true, appends to existing list; if false, resets the list.
+   */
   async function fetchClusters(append: boolean = false): Promise<void> {
     if (isLoading.value) return;
 
     if (!append) {
-      page.value = 1;
       clusters.value = [];
       hasMore.value = true;
     }
 
     isLoading.value = true;
-    const limit = 50;
 
     try {
-      const offset = (page.value - 1) * limit;
-      const params: Record<string, any> = {
-        page: page.value,
-        limit: limit,
-        offset,
-      };
+      const excludeIds = append ? displayedIds.value : [];
+      const data: Cluster[] =
+        (await apiClient.post<Cluster[]>('/clusters/feed', {
+          exclude_ids: excludeIds,
+        })) || [];
 
-      const data: Cluster[] = (await apiClient.get<Cluster[]>('/clusters', params)) || [];
-
-      if (data.length < limit) {
+      if (data.length < 30) {
         hasMore.value = false;
       }
 
       if (append) {
-        clusters.value = [...clusters.value, ...data];
+        const existingIds = new Set(clusters.value.map((cluster) => cluster.id));
+        const nextClusters = data.filter((cluster) => !existingIds.has(cluster.id));
+        clusters.value = [...clusters.value, ...nextClusters];
       } else {
         clusters.value = data;
       }
@@ -67,7 +72,6 @@ export const useClusterStore = defineStore('cluster', () => {
 
   async function loadMore(): Promise<void> {
     if (hasMore.value && !isLoading.value) {
-      page.value++;
       await fetchClusters(true);
     }
   }
@@ -138,13 +142,24 @@ export const useClusterStore = defineStore('cluster', () => {
     }));
   }
 
+  /** Fire-and-forget click feedback for Level 1 interest vector update */
+  function reportClusterClick(clusterId: number): void {
+    apiClient
+      .post('/clusters/click', { cluster_id: clusterId })
+      .catch((e: unknown) => {
+        console.error('Failed to report cluster click:', e);
+      });
+  }
+
   return {
     clusters,
     currentClusterId,
     isLoading,
-    page,
+    isInitialLoading,
+    isLoadingMore,
     hasMore,
     filterCounts,
+    displayedIds,
     fetchClusters,
     loadMore,
     fetchClusterDetail,
@@ -153,5 +168,6 @@ export const useClusterStore = defineStore('cluster', () => {
     toggleClusterFavorite,
     toggleClusterReadLater,
     markAllAsRead,
+    reportClusterClick,
   };
 });

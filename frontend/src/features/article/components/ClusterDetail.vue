@@ -14,6 +14,10 @@ import { useClusterStore } from '@/stores/cluster';
 import { formatDate as formatDateUtil } from '@/shared/lib/date';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { useReadingTimeTracker } from '../composables/useReadingTimeTracker';
+
+// Activate reading time tracker for AI Enhanced Mode (Level 2 deep-read feedback)
+useReadingTimeTracker();
 
 interface Props {
   isMobile?: boolean;

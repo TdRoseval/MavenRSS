@@ -53,6 +53,11 @@ export interface Cluster {
   articles?: Article[];
 }
 
+export interface UserAIStats {
+  ai_read_count: number;
+  ai_total_read_time: number;
+}
+
 export interface Feed {
   id: number;
   url: string;

@@ -20,6 +20,9 @@ func initSchema(db *sql.DB) error {
 		status TEXT NOT NULL DEFAULT 'pending',
 		inherited_from INTEGER,
 		has_inherited BOOLEAN DEFAULT 0,
+		interest_vector BLOB DEFAULT NULL,
+		ai_read_count INTEGER DEFAULT 0,
+		ai_total_read_time INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(inherited_from) REFERENCES users(id)
@@ -345,6 +348,14 @@ func initVecSchema(db *sql.DB) error {
 	)`)
 	if err != nil {
 		return fmt.Errorf("create cluster_embeddings vec0 table: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS user_interest_embeddings USING vec0(
+		user_id INTEGER PRIMARY KEY,
+		interest_embedding float[1024]
+	)`)
+	if err != nil {
+		return fmt.Errorf("create user_interest_embeddings vec0 table: %w", err)
 	}
 
 	return nil

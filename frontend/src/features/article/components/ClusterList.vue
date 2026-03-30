@@ -102,6 +102,10 @@ function selectCluster(cluster: Cluster): void {
   }
 
   clusterStore.currentClusterId = cluster.id;
+
+  // Fire-and-forget Level 1 click feedback for interest vector update
+  clusterStore.reportClusterClick(cluster.id);
+
   if (!cluster.is_read) {
     clusterStore.markClusterRead(cluster.id, true).catch((e) => {
       console.error('Error marking as read:', e);
@@ -247,7 +251,7 @@ function handleHoverMarkAsRead(clusterId: number): void {
 
     <!-- Loading State for full refresh -->
     <div
-      v-if="clusterStore.isLoading && clusterStore.page === 1"
+      v-if="clusterStore.isInitialLoading"
       class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary"
     >
       <div
@@ -282,7 +286,7 @@ function handleHoverMarkAsRead(clusterId: number): void {
 
         <!-- Loading More Indicator -->
         <div
-          v-if="clusterStore.isLoading && clusterStore.page > 1"
+          v-if="clusterStore.isLoadingMore"
           class="py-4 flex justify-center items-center text-text-secondary w-full"
         >
           <div

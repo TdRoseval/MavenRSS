@@ -227,6 +227,17 @@ func runMigrations(db *sql.DB) error {
 		summary_embedding float[1024]
 	)`)
 
+	// Migration: Add AI interest tracking columns to users table
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN interest_vector BLOB DEFAULT NULL`)
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_read_count INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_total_read_time INTEGER DEFAULT 0`)
+
+	// Migration: Add user_interest_embeddings vec0 virtual table
+	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS user_interest_embeddings USING vec0(
+		user_id INTEGER PRIMARY KEY,
+		interest_embedding float[1024]
+	)`)
+
 	return nil
 }
 

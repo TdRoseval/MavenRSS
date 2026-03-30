@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/interest"
 )
 
 // HandleClusters handles GET /api/clusters — list clusters with filtering and pagination.
@@ -134,9 +135,16 @@ func HandleMarkAllClustersRead(h *core.Handler, w http.ResponseWriter, r *http.R
 }
 
 // HandleClusterFavorite handles PUT /api/clusters/favorite — toggle favorite.
+// Also applies Level 3 interest vector update (α=0.20) when favoriting.
 func HandleClusterFavorite(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -148,9 +156,37 @@ func HandleClusterFavorite(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Get current favorite state before toggle
+	clusterObj, _ := h.DB.GetClusterByID(req.ID)
+	wasFavorite := clusterObj != nil && clusterObj.IsFavorite
+
 	if err := h.DB.ToggleClusterFavorite(req.ID); err != nil {
 		http.Error(w, "Failed to update", http.StatusInternalServerError)
 		return
+	}
+
+	// Level 3: If the cluster was NOT a favorite and is now becoming one,
+	// update interest vector with summary embedding at α=0.20
+	if !wasFavorite {
+		go func() {
+			summaryBlob, err := h.DB.GetClusterEmbedding(req.ID, "summary_embedding")
+			if err != nil || len(summaryBlob) == 0 {
+				return
+			}
+			featureVec, err := interest.DeserializeVector(summaryBlob)
+			if err != nil || len(featureVec) == 0 {
+				return
+			}
+			vecBlob, _ := h.DB.GetUserInterestVector(userID)
+			var oldVec []float32
+			if len(vecBlob) > 0 {
+				oldVec, _ = interest.DeserializeVector(vecBlob)
+			}
+			newVec := interest.UpdateVector(oldVec, featureVec, interest.AlphaBookmark)
+			if newBlob, err := interest.SerializeVector(newVec); err == nil {
+				_ = h.DB.UpdateUserInterestVector(userID, newBlob)
+			}
+		}()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
