@@ -4,7 +4,9 @@ import (
 	"log"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/store/sqlite"
@@ -216,6 +218,18 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	if err != nil {
 		log.Printf("Error generating AI summary for article %d: %v", task.ArticleID, err)
 		return
+	}
+
+	if result.IsTooShort && utf8.RuneCountInString(strings.TrimSpace(result.Summary)) < 10 {
+		article, articleErr := m.db.GetArticleByIDForUser(task.UserID, task.ArticleID)
+		if articleErr != nil {
+			log.Printf("Failed to load article title for short summary fallback, article %d: %v", task.ArticleID, articleErr)
+		} else if article != nil {
+			title := strings.TrimSpace(article.Title)
+			if title != "" {
+				result.Summary = title
+			}
+		}
 	}
 
 	// Track AI usage
