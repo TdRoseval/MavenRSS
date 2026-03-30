@@ -42,8 +42,6 @@ export function useImageViewer(
 
   // Check if we can navigate to previous image/article
   const canNavigatePrevious = computed(() => {
-    const allImages = getAllImages();
-    const articles = getArticles();
     // Can navigate if not at first image of first article
     if (currentImageIndex.value > 0) return true;
     if (currentArticleIndex.value > 0) return true;

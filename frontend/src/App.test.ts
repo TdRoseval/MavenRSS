@@ -20,11 +20,6 @@ describe('App', () => {
       messages: { en },
     });
 
-    // Mock store methods
-    const mockFetchFeeds = vi.fn();
-    const mockFetchArticles = vi.fn();
-    const mockInitTheme = vi.fn();
-
     const wrapper = mount(App, {
       global: {
         plugins: [pinia, i18n],

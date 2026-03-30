@@ -2,8 +2,6 @@ import { ref, computed } from 'vue';
 import type { AIProfile, AIProfileTestResult, AIProfileFormData } from '@/types/aiProfile';
 import { defaultAIProfileFormData } from '@/types/aiProfile';
 import {
-  authFetch,
-  authFetchJson,
   authGet,
   authPost,
   authPut,

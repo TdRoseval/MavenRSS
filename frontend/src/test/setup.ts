@@ -18,8 +18,8 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 // Mock fetch only in test environment
-const originalFetch = global.fetch;
-global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+const originalFetch = globalThis.fetch;
+(globalThis as any).fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   // Convert input to string for URL matching
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
@@ -106,7 +106,7 @@ Object.defineProperty(window, 'showConfirm', {
 });
 
 // Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
+(globalThis as any).ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}

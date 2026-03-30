@@ -1,4 +1,3 @@
-import { computed } from 'vue';
 import { PhRobot } from '@phosphor-icons/vue';
 
 // AI provider detection patterns - based on model name patterns

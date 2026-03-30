@@ -2,21 +2,16 @@ package summary
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 	"time"
-	"unsafe"
 
-	"MavenRSS/internal/store/sqlite"
-	"MavenRSS/internal/feed"
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/feed"
 	"MavenRSS/internal/models"
-
-	"github.com/mmcdole/gofeed"
+	"MavenRSS/internal/store/sqlite"
 )
 
 func TestHandleSummarizeArticle_MethodNotAllowed(t *testing.T) {
@@ -77,18 +72,12 @@ func TestHandleSummarizeArticle_Success(t *testing.T) {
 		t.Fatalf("failed to query article id: %v", err)
 	}
 
-	// Create a fetcher and replace its parser with a mock that returns the article content
+	// Use provided content to avoid network fetching/parsing in tests.
 	f := feed.NewFetcher(db)
-	// fp is unexported; inject via reflection+unsafe for testing
-	mock := &mockParser{items: []*gofeed.Item{{Link: art.URL, Content: "This is a test content. It has multiple sentences. Useful for summarization."}}}
-	rv := reflect.ValueOf(f).Elem()
-	fpField := rv.FieldByName("fp")
-	ptr := reflect.NewAt(fpField.Type(), unsafe.Pointer(fpField.UnsafeAddr())).Elem()
-	ptr.Set(reflect.ValueOf(mock))
-
 	h := core.NewHandler(db, f, nil, nil)
 
-	payload := []byte(`{"article_id": ` + fmt.Sprintf("%d", articleID) + `, "length": "short"}`)
+	content := "This is a test content. It has multiple sentences. Useful for summarization."
+	payload := []byte(`{"article_id": ` + fmt.Sprintf("%d", articleID) + `, "length": "short", "content": "` + content + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/summary/article", bytes.NewReader(payload))
 	rr := httptest.NewRecorder()
 
@@ -102,15 +91,5 @@ func TestHandleSummarizeArticle_Success(t *testing.T) {
 	}
 }
 
-// mockParser implements feed.FeedParser
-type mockParser struct {
-	items []*gofeed.Item
-}
-
-func (m *mockParser) ParseURL(url string) (*gofeed.Feed, error) {
-	return &gofeed.Feed{Items: m.items}, nil
-}
-
-func (m *mockParser) ParseURLWithContext(url string, ctx context.Context) (*gofeed.Feed, error) {
-	return &gofeed.Feed{Items: m.items}, nil
-}
+// Note: We intentionally avoid mocking feed parsing here by providing `content`
+// in the request payload, which bypasses article content fetching.

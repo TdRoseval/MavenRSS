@@ -2,11 +2,14 @@ package feed_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
+	"MavenRSS/internal/auth"
 	fh "MavenRSS/internal/api/feed"
+	"MavenRSS/internal/middleware"
 	"MavenRSS/internal/models"
 )
 
@@ -28,6 +31,9 @@ func TestHandleUpdateFeed_ValidAndInvalid(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
+	claims := &auth.Claims{UserID: 1, Username: "admin", Role: "admin"}
+	req = req.WithContext(context.WithValue(req.Context(), middleware.UserContextKey, claims))
+
 	fh.HandleUpdateFeed(h, w, req)
 	if w.Result().StatusCode != 200 {
 		t.Fatalf("expected 200 OK for valid update, got %d", w.Result().StatusCode)
@@ -35,6 +41,7 @@ func TestHandleUpdateFeed_ValidAndInvalid(t *testing.T) {
 
 	// invalid payload
 	badReq := httptest.NewRequest("POST", "/api/feeds/update", bytes.NewReader([]byte("notjson")))
+	badReq = badReq.WithContext(context.WithValue(badReq.Context(), middleware.UserContextKey, claims))
 	w2 := httptest.NewRecorder()
 	fh.HandleUpdateFeed(h, w2, badReq)
 	if w2.Result().StatusCode != 400 {

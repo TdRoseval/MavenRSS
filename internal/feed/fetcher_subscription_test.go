@@ -3,10 +3,19 @@ package feed
 import (
 	"MavenRSS/internal/store/sqlite"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	"github.com/mmcdole/gofeed"
 )
+
+func serveTestFeed(t *testing.T, feedXML string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		_, _ = w.Write([]byte(feedXML))
+	}))
+}
 
 func TestAddSubscription(t *testing.T) {
 	db, err := sqlite.NewDB(":memory:")
@@ -17,16 +26,19 @@ func TestAddSubscription(t *testing.T) {
 		t.Fatalf("Failed to init db: %v", err)
 	}
 
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Feed",
-		Description: "Test Description",
-		Items:       []*gofeed.Item{},
-	}
-
 	fetcher := NewFetcher(db)
-	fetcher.fp = &MockParser{Feed: mockFeed}
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	srv := serveTestFeed(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <description>Test Description</description>
+    <link>http://example.com/</link>
+  </channel>
+</rss>`)
+	defer srv.Close()
+
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}
@@ -55,21 +67,23 @@ func TestFetchFeed(t *testing.T) {
 
 	fetcher := NewFetcher(db)
 
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Feed",
-		Description: "Test Description",
-		Items: []*gofeed.Item{
-			{
-				Title:       "Test Article",
-				Link:        "http://test.com/article",
-				Description: "Article Description",
-				Content:     "Article Content",
-			},
-		},
-	}
-	fetcher.fp = &MockParser{Feed: mockFeed}
+	srv := serveTestFeed(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <description>Test Description</description>
+    <link>http://example.com/</link>
+    <item>
+      <title>Test Article</title>
+      <link>http://example.com/article</link>
+      <description>Article Description</description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">Article Content</content:encoded>
+    </item>
+  </channel>
+</rss>`)
+	defer srv.Close()
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}
@@ -102,21 +116,23 @@ func TestFetchFeedWithMissingTitle(t *testing.T) {
 
 	fetcher := NewFetcher(db)
 
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Feed",
-		Description: "Test Description",
-		Items: []*gofeed.Item{
-			{
-				Title:       "",
-				Link:        "http://test.com/article",
-				Description: "",
-				Content:     "This is a short content.",
-			},
-		},
-	}
-	fetcher.fp = &MockParser{Feed: mockFeed}
+	srv := serveTestFeed(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <description>Test Description</description>
+    <link>http://example.com/</link>
+    <item>
+      <title></title>
+      <link>http://example.com/article</link>
+      <description></description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">This is a short content.</content:encoded>
+    </item>
+  </channel>
+</rss>`)
+	defer srv.Close()
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}
@@ -151,21 +167,23 @@ func TestFetchFeedWithMissingTitleLongContent(t *testing.T) {
 	fetcher := NewFetcher(db)
 
 	longContent := "This is a very long article content that should be truncated to generate a title from the beginning of the content when the title is missing from the RSS feed item."
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Feed",
-		Description: "Test Description",
-		Items: []*gofeed.Item{
-			{
-				Title:       "",
-				Link:        "http://test.com/article",
-				Description: "",
-				Content:     longContent,
-			},
-		},
-	}
-	fetcher.fp = &MockParser{Feed: mockFeed}
+	srv := serveTestFeed(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <description>Test Description</description>
+    <link>http://example.com/</link>
+    <item>
+      <title></title>
+      <link>http://example.com/article</link>
+      <description></description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">` + longContent + `</content:encoded>
+    </item>
+  </channel>
+</rss>`)
+	defer srv.Close()
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}

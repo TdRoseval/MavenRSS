@@ -187,6 +187,9 @@ export function proxyIframesInHtml(html: string, feedId?: number, token?: string
   const iframeRegex = /<iframe([^>]+)src\s*=\s*(['"]?)([^"'\s>]+)\2([^>]*)>/gi;
 
   return html.replace(iframeRegex, (match, beforeAttr, quote, src, afterAttr) => {
+    // Keep capture groups for alignment; currently only `quote`/`src` are used.
+    void beforeAttr;
+    void afterAttr;
     // Skip data URLs, blob URLs, and already proxied URLs
     if (src.startsWith('data:') || src.startsWith('blob:') || src.includes('/api/')) {
       return match;
@@ -221,6 +224,7 @@ export function proxyIframesInHtml(html: string, feedId?: number, token?: string
     // Remove 'web-share' from allow attribute if present to avoid browser warnings
     if (newMatch.includes('allow=')) {
       newMatch = newMatch.replace(/allow=(['"])(.*?)\1/i, (m, q, content) => {
+        void m; // unused capture
         const newContent = content
           .replace(/\bweb-share\b/g, '')
           .trim()

@@ -1,14 +1,18 @@
 package opml
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"MavenRSS/internal/auth"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/feed"
 	corepkg "MavenRSS/internal/api/core"
+	"MavenRSS/internal/middleware"
+	"MavenRSS/internal/models"
 )
 
 func TestHandleOPMLImport_RawBody(t *testing.T) {
@@ -126,8 +130,11 @@ func TestHandleOPMLExport(t *testing.T) {
 		return db
 	}()
 
-	// insert a feed via SQL to keep test simple (provide non-null description and last_updated)
-	_, _ = db.Exec("INSERT INTO feeds (title, url, description, last_updated) VALUES (?, ?, ?, datetime('now'))", "F1", "http://f1", "")
+	// Insert a feed for user 1
+	_, err := db.AddFeed(&models.Feed{UserID: 1, Title: "F1", URL: "http://f1"})
+	if err != nil {
+		t.Fatalf("AddFeed failed: %v", err)
+	}
 	// Sanity-check DB: try GetFeeds before calling handler
 	if feeds, err := db.GetFeeds(); err != nil {
 		t.Fatalf("GetFeeds before handler failed: %v", err)
@@ -138,6 +145,8 @@ func TestHandleOPMLExport(t *testing.T) {
 	h := &corepkg.Handler{DB: db}
 
 	req := httptest.NewRequest(http.MethodGet, "/opml/export", nil)
+	claims := &auth.Claims{UserID: 1, Username: "admin", Role: "admin"}
+	req = req.WithContext(context.WithValue(req.Context(), middleware.UserContextKey, claims))
 	rr := httptest.NewRecorder()
 
 	HandleOPMLExport(h, rr, req)

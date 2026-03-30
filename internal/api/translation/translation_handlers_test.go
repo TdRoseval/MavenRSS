@@ -9,6 +9,7 @@ import (
 
 	"MavenRSS/internal/store/sqlite"
 	corepkg "MavenRSS/internal/api/core"
+	"MavenRSS/internal/models"
 	transpkg "MavenRSS/internal/translation"
 )
 
@@ -55,12 +56,20 @@ func TestHandleTranslateText_Success(t *testing.T) {
 func TestHandleTranslateArticle_SuccessAndDBUpdate(t *testing.T) {
 	db := setupDB(t)
 
-	// insert an article
-	res, err := db.Exec("INSERT INTO articles (feed_id, title, url, published_at) VALUES (1, 't', 'u', datetime('now'))")
+	feedID, err := db.AddFeed(&models.Feed{UserID: 1, Title: "F", URL: "http://example.com/feed"})
 	if err != nil {
-		t.Fatalf("insert article failed: %v", err)
+		t.Fatalf("AddFeed failed: %v", err)
 	}
-	id, _ := res.LastInsertId()
+
+	// insert an article (ensure user_id + valid feed_id)
+	article := &models.Article{UserID: 1, FeedID: feedID, Title: "t", URL: "u"}
+	if err := db.SaveArticle(article); err != nil {
+		t.Fatalf("SaveArticle failed: %v", err)
+	}
+	var id int64
+	if err := db.QueryRow("SELECT id FROM articles WHERE url = ?", "u").Scan(&id); err != nil {
+		t.Fatalf("query id failed: %v", err)
+	}
 
 	h := &corepkg.Handler{DB: db, Translator: transpkg.NewMockTranslator()}
 
@@ -101,12 +110,14 @@ func TestHandleTranslateArticle_SuccessAndDBUpdate(t *testing.T) {
 func TestHandleClearTranslations(t *testing.T) {
 	db := setupDB(t)
 
-	// insert an article with translated title
-	res, err := db.Exec("INSERT INTO articles (feed_id, title, url, translated_title, published_at) VALUES (1, 't', 'u', 'x', datetime('now'))")
+	feedID, err := db.AddFeed(&models.Feed{UserID: 1, Title: "F", URL: "http://example.com/feed"})
 	if err != nil {
-		t.Fatalf("insert article failed: %v", err)
+		t.Fatalf("AddFeed failed: %v", err)
 	}
-	_, _ = res.LastInsertId()
+	article := &models.Article{UserID: 1, FeedID: feedID, Title: "t", URL: "u", TranslatedTitle: "x"}
+	if err := db.SaveArticle(article); err != nil {
+		t.Fatalf("SaveArticle failed: %v", err)
+	}
 
 	h := &corepkg.Handler{DB: db, Translator: transpkg.NewMockTranslator()}
 

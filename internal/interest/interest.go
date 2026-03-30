@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	_ "github.com/mattn/go-sqlite3" // Ensure sqlite3 symbols are linked for sqlite-vec cgo.
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
 

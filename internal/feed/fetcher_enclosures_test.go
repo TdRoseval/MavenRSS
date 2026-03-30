@@ -3,11 +3,20 @@ package feed
 import (
 	"MavenRSS/internal/store/sqlite"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/mmcdole/gofeed"
 )
+
+func serveTestFeedWithEnclosures(t *testing.T, feedXML string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		_, _ = w.Write([]byte(feedXML))
+	}))
+}
 
 func TestFetchFeedWithAudioEnclosure(t *testing.T) {
 	db, err := sqlite.NewDB(":memory:")
@@ -20,28 +29,24 @@ func TestFetchFeedWithAudioEnclosure(t *testing.T) {
 
 	fetcher := NewFetcher(db)
 
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Podcast",
-		Description: "Test Podcast Description",
-		Items: []*gofeed.Item{
-			{
-				Title:       "Podcast Episode 1",
-				Link:        "http://test.com/episode1",
-				Description: "Episode Description",
-				Content:     "Episode Content",
-				Enclosures: []*gofeed.Enclosure{
-					{
-						URL:    "https://test.com/audio/episode1.mp3",
-						Type:   "audio/mpeg",
-						Length: "12345678",
-					},
-				},
-			},
-		},
-	}
-	fetcher.fp = &MockParser{Feed: mockFeed}
+	srv := serveTestFeedWithEnclosures(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Podcast</title>
+    <description>Test Podcast Description</description>
+    <link>http://example.com/</link>
+    <item>
+      <title>Podcast Episode 1</title>
+      <link>http://example.com/episode1</link>
+      <description>Episode Description</description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">Episode Content</content:encoded>
+      <enclosure url="https://test.com/audio/episode1.mp3" type="audio/mpeg" length="12345678" />
+    </item>
+  </channel>
+</rss>`)
+	defer srv.Close()
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}
@@ -78,43 +83,33 @@ func TestFetchFeedWithImageEnclosure(t *testing.T) {
 
 	fetcher := NewFetcher(db)
 
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Feed",
-		Description: "Test Description",
-		Items: []*gofeed.Item{
-			{
-				Title:           "Article with PNG",
-				Link:            "http://test.com/article1",
-				Description:     "Article Description",
-				Content:         "Article Content",
-				PublishedParsed: &[]time.Time{time.Now().Add(time.Hour)}[0],
-				Enclosures: []*gofeed.Enclosure{
-					{
-						URL:    "https://test.com/images/image1.png",
-						Type:   "image/png",
-						Length: "12345",
-					},
-				},
-			},
-			{
-				Title:           "Article with JPEG",
-				Link:            "http://test.com/article2",
-				Description:     "Article Description",
-				Content:         "Article Content",
-				PublishedParsed: &[]time.Time{time.Now()}[0],
-				Enclosures: []*gofeed.Enclosure{
-					{
-						URL:    "https://test.com/images/image2.jpg",
-						Type:   "image/jpeg",
-						Length: "23456",
-					},
-				},
-			},
-		},
-	}
-	fetcher.fp = &MockParser{Feed: mockFeed}
+	srv := serveTestFeedWithEnclosures(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <description>Test Description</description>
+    <link>http://example.com/</link>
+    <item>
+      <title>Article with PNG</title>
+      <link>http://example.com/article1</link>
+      <description>Article Description</description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">Article Content</content:encoded>
+      <pubDate>` + time.Now().Add(time.Hour).Format(time.RFC1123Z) + `</pubDate>
+      <enclosure url="https://test.com/images/image1.png" type="image/png" length="12345" />
+    </item>
+    <item>
+      <title>Article with JPEG</title>
+      <link>http://example.com/article2</link>
+      <description>Article Description</description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">Article Content</content:encoded>
+      <pubDate>` + time.Now().Format(time.RFC1123Z) + `</pubDate>
+      <enclosure url="https://test.com/images/image2.jpg" type="image/jpeg" length="23456" />
+    </item>
+  </channel>
+</rss>`)
+	defer srv.Close()
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}
@@ -151,33 +146,25 @@ func TestFetchFeedWithMultipleEnclosures(t *testing.T) {
 
 	fetcher := NewFetcher(db)
 
-	mockFeed := &gofeed.Feed{
-		Title:       "Test Podcast",
-		Description: "Test Podcast Description",
-		Items: []*gofeed.Item{
-			{
-				Title:       "Podcast Episode with Cover",
-				Link:        "http://test.com/episode1",
-				Description: "Episode Description",
-				Content:     "Episode Content",
-				Enclosures: []*gofeed.Enclosure{
-					{
-						URL:    "https://test.com/images/cover.jpg",
-						Type:   "image/jpeg",
-						Length: "12345",
-					},
-					{
-						URL:    "https://test.com/audio/episode1.mp3",
-						Type:   "audio/mpeg",
-						Length: "98765432",
-					},
-				},
-			},
-		},
-	}
-	fetcher.fp = &MockParser{Feed: mockFeed}
+	srv := serveTestFeedWithEnclosures(t, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Podcast</title>
+    <description>Test Podcast Description</description>
+    <link>http://example.com/</link>
+    <item>
+      <title>Podcast Episode with Cover</title>
+      <link>http://example.com/episode1</link>
+      <description>Episode Description</description>
+      <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">Episode Content</content:encoded>
+      <enclosure url="https://test.com/images/cover.jpg" type="image/jpeg" length="12345" />
+      <enclosure url="https://test.com/audio/episode1.mp3" type="audio/mpeg" length="98765432" />
+    </item>
+  </channel>
+</rss>`)
+	defer srv.Close()
 
-	_, err = fetcher.AddSubscription("http://test.com/rss", "Test Category", "")
+	_, err = fetcher.AddSubscription(srv.URL, "Test Category", "")
 	if err != nil {
 		t.Fatalf("AddSubscription failed: %v", err)
 	}

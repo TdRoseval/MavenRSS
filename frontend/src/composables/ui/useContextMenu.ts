@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { ContextMenuItem, ContextMenuState } from '@/types/context-menu';
+import type { ContextMenuState } from '@/types/context-menu';
 
 export function useContextMenu() {
   const contextMenu = ref<ContextMenuState>({

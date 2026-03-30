@@ -5,7 +5,6 @@
 import { ref, type Ref, computed, isRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SettingsData } from '@/types/settings';
-import { settingsDefaults } from '@/config/defaults';
 import { authPost } from '@/shared/lib/authFetch';
 import { saveLanguage } from '@/i18n';
 import { useArticleStore } from '@/features/article/store';

@@ -3,6 +3,7 @@ import { openInBrowser } from '@/shared/lib/browser';
 import { authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
+import type { Article } from '@/types/models';
 
 export interface KeyboardShortcuts {
   nextArticle: string;
@@ -84,7 +85,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     if (!articles || articles.length === 0) return;
 
     const currentIndex = articleStore.currentArticleId
-      ? articles.findIndex((a) => a.id === articleStore.currentArticleId)
+      ? articles.findIndex((a: Article) => a.id === articleStore.currentArticleId)
       : -1;
 
     let newIndex: number;
@@ -123,7 +124,9 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function toggleCurrentArticleRead(): void {
-    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
+    const article = articleStore.articles.find(
+      (a: Article) => a.id === articleStore.currentArticleId
+    );
     if (!article) return;
 
     const newState = !article.is_read;
@@ -137,7 +140,9 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function toggleCurrentArticleFavorite(): void {
-    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
+    const article = articleStore.articles.find(
+      (a: Article) => a.id === articleStore.currentArticleId
+    );
     if (!article) return;
 
     const newState = !article.is_favorite;
@@ -149,7 +154,9 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function toggleCurrentArticleReadLater(): void {
-    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
+    const article = articleStore.articles.find(
+      (a: Article) => a.id === articleStore.currentArticleId
+    );
     if (!article) return;
 
     const newState = !article.is_read_later;
@@ -167,7 +174,9 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function openCurrentArticleInBrowser(): void {
-    const article = articleStore.articles.find((a) => a.id === articleStore.currentArticleId);
+    const article = articleStore.articles.find(
+      (a: Article) => a.id === articleStore.currentArticleId
+    );
     if (article && article.url) {
       openInBrowser(article.url);
     }

@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"MavenRSS/internal/auth"
 	"MavenRSS/internal/store/sqlite"
 	ff "MavenRSS/internal/feed"
 	"MavenRSS/internal/api/article"
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/middleware"
 	"MavenRSS/internal/models"
 )
 
@@ -28,6 +30,16 @@ func setupHandler(t *testing.T) *core.Handler {
 	}
 	f := ff.NewFetcher(db)
 	return core.NewHandler(db, f, nil, nil)
+}
+
+func withTestUser(r *http.Request) *http.Request {
+	claims := &auth.Claims{
+		UserID:   1,
+		Username: "admin",
+		Role:     "admin",
+	}
+	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
+	return r.WithContext(ctx)
 }
 
 func TestHandleArticles_ListAndImageGallery(t *testing.T) {
@@ -48,7 +60,7 @@ func TestHandleArticles_ListAndImageGallery(t *testing.T) {
 	}
 
 	// Call HandleArticles
-	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
+	req := withTestUser(httptest.NewRequest(http.MethodGet, "/api/articles", nil))
 	w := httptest.NewRecorder()
 	article.HandleArticles(h, w, req)
 	if w.Result().StatusCode != http.StatusOK {
@@ -71,7 +83,7 @@ func TestHandleArticles_ListAndImageGallery(t *testing.T) {
 		t.Fatalf("SaveArticles img: %v", err)
 	}
 
-	req2 := httptest.NewRequest(http.MethodGet, "/api/articles/image_gallery", nil)
+	req2 := withTestUser(httptest.NewRequest(http.MethodGet, "/api/articles/image_gallery", nil))
 	w2 := httptest.NewRecorder()
 	article.HandleImageGalleryArticles(h, w2, req2)
 	if w2.Result().StatusCode != http.StatusOK {
@@ -102,7 +114,7 @@ func TestArticleActions_MarkRead_Favorite_Hide_ReadLater(t *testing.T) {
 	id := arts[0].ID
 
 	// Mark unread -> read
-	req := httptest.NewRequest(http.MethodPost, "/api/articles/mark-read-sync?id="+fmt.Sprint(id)+"&read=true", nil)
+	req := withTestUser(httptest.NewRequest(http.MethodPost, "/api/articles/mark-read-sync?id="+fmt.Sprint(id)+"&read=true", nil))
 	w := httptest.NewRecorder()
 	article.HandleMarkReadWithImmediateSync(h, w, req)
 	if w.Result().StatusCode != http.StatusOK {
@@ -110,7 +122,7 @@ func TestArticleActions_MarkRead_Favorite_Hide_ReadLater(t *testing.T) {
 	}
 
 	// Toggle favorite
-	req2 := httptest.NewRequest(http.MethodPost, "/api/articles/toggle-favorite-sync?id="+fmt.Sprint(id), nil)
+	req2 := withTestUser(httptest.NewRequest(http.MethodPost, "/api/articles/toggle-favorite-sync?id="+fmt.Sprint(id), nil))
 	w2 := httptest.NewRecorder()
 	article.HandleToggleFavoriteWithImmediateSync(h, w2, req2)
 	if w2.Result().StatusCode != http.StatusOK {
@@ -118,7 +130,7 @@ func TestArticleActions_MarkRead_Favorite_Hide_ReadLater(t *testing.T) {
 	}
 
 	// Toggle hide (invalid method GET -> 405)
-	req3 := httptest.NewRequest(http.MethodGet, "/api/articles/toggle_hide?id="+fmt.Sprint(id), nil)
+	req3 := withTestUser(httptest.NewRequest(http.MethodGet, "/api/articles/toggle_hide?id="+fmt.Sprint(id), nil))
 	w3 := httptest.NewRecorder()
 	article.HandleToggleHideArticle(h, w3, req3)
 	if w3.Result().StatusCode != http.StatusMethodNotAllowed {
@@ -126,7 +138,7 @@ func TestArticleActions_MarkRead_Favorite_Hide_ReadLater(t *testing.T) {
 	}
 
 	// Proper POST hide
-	req4 := httptest.NewRequest(http.MethodPost, "/api/articles/toggle_hide?id="+fmt.Sprint(id), nil)
+	req4 := withTestUser(httptest.NewRequest(http.MethodPost, "/api/articles/toggle_hide?id="+fmt.Sprint(id), nil))
 	w4 := httptest.NewRecorder()
 	article.HandleToggleHideArticle(h, w4, req4)
 	if w4.Result().StatusCode != http.StatusOK {
@@ -134,7 +146,7 @@ func TestArticleActions_MarkRead_Favorite_Hide_ReadLater(t *testing.T) {
 	}
 
 	// Toggle read later (POST)
-	req5 := httptest.NewRequest(http.MethodPost, "/api/articles/toggle_read_later?id="+fmt.Sprint(id), nil)
+	req5 := withTestUser(httptest.NewRequest(http.MethodPost, "/api/articles/toggle_read_later?id="+fmt.Sprint(id), nil))
 	w5 := httptest.NewRecorder()
 	article.HandleToggleReadLater(h, w5, req5)
 	if w5.Result().StatusCode != http.StatusOK {

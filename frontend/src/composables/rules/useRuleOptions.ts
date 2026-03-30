@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
-import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
+import type { Feed, Tag } from '@/types/models';
 
 export interface Condition {
   id: number;
@@ -17,6 +17,7 @@ export interface FieldOption {
   labelKey: string;
   multiSelect: boolean;
   booleanField?: boolean;
+  numberField?: boolean;
 }
 
 export interface ActionOption {
@@ -25,7 +26,6 @@ export interface ActionOption {
 }
 
 export function useRuleOptions() {
-  const articleStore = useArticleStore();
   const feedStore = useFeedStore();
 
   // Field options for conditions
@@ -152,13 +152,13 @@ export function useRuleOptions() {
 
   // Feed names for multi-select
   const feedNames: ComputedRef<string[]> = computed(() => {
-    return feedStore.feeds.map((f) => f.title);
+    return feedStore.feeds.map((f: Feed) => f.title);
   });
 
   // Feed categories for multi-select
   const feedCategories: ComputedRef<string[]> = computed(() => {
     const categories = new Set<string>();
-    feedStore.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f: Feed) => {
       if (f.category) {
         categories.add(f.category);
       }
@@ -170,7 +170,7 @@ export function useRuleOptions() {
   // Type codes: "regular", "freshrss", "rsshub", "script", "xpath", "email"
   const feedTypes: ComputedRef<string[]> = computed(() => {
     const typeSet = new Set<string>();
-    feedStore.feeds.forEach((f) => {
+    feedStore.feeds.forEach((f: Feed) => {
       // Determine feed type based on feed properties
       let typeCode: string;
       if (f.is_freshrss_source) {
@@ -196,8 +196,8 @@ export function useRuleOptions() {
   // Feed tags for multi-select
   const feedTags: ComputedRef<string[]> = computed(() => {
     const tagSet = new Set<string>();
-    feedStore.feeds.forEach((f) => {
-      f.tags?.forEach((t) => tagSet.add(t.name));
+    feedStore.feeds.forEach((f: Feed) => {
+      f.tags?.forEach((t: Tag) => tagSet.add(t.name));
     });
     return Array.from(tagSet);
   });

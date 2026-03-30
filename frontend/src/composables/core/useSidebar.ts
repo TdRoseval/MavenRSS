@@ -2,7 +2,7 @@ import { computed, ref, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { openInBrowser } from '@/shared/lib/browser';
 import type { Feed } from '@/types/models';
-import { authFetch, authPost, authFetchJson } from '@/shared/lib/authFetch';
+import { authFetch, authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
 
@@ -125,8 +125,8 @@ export function useSidebar() {
     });
 
     // Calculate uncategorized count
-    const uncategorizedFeeds = feedStore.feeds.filter((f) => !f.category);
-    counts['uncategorized'] = uncategorizedFeeds.reduce((sum, feed) => {
+    const uncategorizedFeeds = feedStore.feeds.filter((f: Feed) => !f.category);
+    counts['uncategorized'] = uncategorizedFeeds.reduce((sum: number, feed: Feed) => {
       return sum + (countsSource[feed.id] || 0);
     }, 0);
 
@@ -404,10 +404,10 @@ export function useSidebar() {
       });
       if (newName && newName !== categoryName) {
         const feedsToUpdate = feedStore.feeds.filter(
-          (f) => f.category === categoryName || f.category.startsWith(categoryName + '/')
+          (f: Feed) => f.category === categoryName || f.category.startsWith(categoryName + '/')
         );
 
-        const promises = feedsToUpdate.map((feed) => {
+        const promises = feedsToUpdate.map((feed: Feed) => {
           let newCategory = feed.category;
           if (feed.category === categoryName) {
             newCategory = newName;

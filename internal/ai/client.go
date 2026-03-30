@@ -241,7 +241,8 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		userFriendlyErr = "AI service unavailable: Unknown error occurred."
 	}
 
-	return ResponseResult{}, fmt.Errorf(userFriendlyErr)
+	// fmt.Errorf requires a constant format string; the string is the message.
+	return ResponseResult{}, fmt.Errorf("%s", userFriendlyErr)
 }
 
 // tryFormat attempts to make a request using a specific format handler
