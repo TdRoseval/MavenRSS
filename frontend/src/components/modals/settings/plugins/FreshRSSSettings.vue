@@ -8,12 +8,10 @@ import { authGet, authPost } from '@/shared/lib/authFetch';
 import { maskSensitiveValue } from '@/shared/lib/settingsEncryption';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
-import { useAppStore } from '@/stores/app';
 
 const { t } = useI18n();
 const articleStore = useArticleStore();
 const feedStore = useFeedStore();
-const appStore = useAppStore();
 
 interface Props {
   settings: SettingsData;

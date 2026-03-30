@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
-import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
 import { TipBox } from '@/components/settings';
 import AIProfileList from './AIProfileList.vue';
 import AIUsageSettings from './AIUsageSettings.vue';
@@ -14,17 +12,11 @@ interface Props {
   settings: SettingsData;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
 const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
-
-// Create a computed ref that returns the settings object
-const settingsRef = computed(() => props.settings);
-
-// Note: Auto-save has been removed. Settings are now saved manually via the Save button in SettingsModal.
-// useSettingsAutoSave(settingsRef);
 
 // Handler for settings updates from child components
 function handleUpdateSettings(updatedSettings: SettingsData) {

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
 import ArticleDisplaySettings from './ArticleDisplaySettings.vue';
 import TypographySettings from './TypographySettings.vue';
@@ -11,17 +10,11 @@ interface Props {
   settings: SettingsData;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
 const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
-
-// Create a computed ref that returns the settings object
-const settingsRef = computed(() => props.settings);
-
-// Note: Auto-save has been removed. Settings are now saved manually via the Save button in SettingsModal.
-// useSettingsAutoSave(settingsRef);
 
 // Handler for settings updates from child components
 function handleUpdateSettings(updatedSettings: SettingsData) {

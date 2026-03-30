@@ -1,15 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import {
-  PhMagnifyingGlass,
-  PhX,
-  PhSparkle,
-  PhSpinner,
-  PhFunnel,
-  PhClock,
-  PhStar,
-} from '@phosphor-icons/vue';
+import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner, PhClock, PhStar } from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 import { authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';

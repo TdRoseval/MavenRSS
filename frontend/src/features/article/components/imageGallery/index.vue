@@ -15,10 +15,8 @@ import ImageGalleryHeader from './components/ImageGalleryHeader.vue';
 import ImageGalleryGrid from './components/ImageGalleryGrid.vue';
 import ImageViewerModal from './components/ImageViewerModal.vue';
 import { useArticleStore } from '@/features/article/store';
-import { useFeedStore } from '@/features/feed/store';
 
 const articleStore = useArticleStore();
-const feedStore = useFeedStore();
 const { t } = useI18n();
 
 interface Props {
@@ -33,9 +31,6 @@ const emit = defineEmits<{
 
 // Constants
 const SCROLL_THRESHOLD_PX = 500; // Start loading more items when user is 500px from bottom
-
-// Global state for the store (for composables to access)
-(window as any).store = store;
 
 // Use composables
 const galleryData = useImageGalleryData();

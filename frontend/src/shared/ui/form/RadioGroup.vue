@@ -8,10 +8,12 @@ interface Option {
   icon?: Component;
 }
 
-defineProps<{
+interface Props {
   modelValue: string;
   options: Option[];
-}>();
+}
+
+defineProps<Props>();
 
 defineEmits<{
   (e: 'update:modelValue', value: string): void;

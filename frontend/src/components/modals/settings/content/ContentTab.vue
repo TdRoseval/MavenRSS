@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
-import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
 import { useSettingsValidation } from '@/composables/core/useSettingsValidation';
 import { useI18n } from 'vue-i18n';
 import { PhWarning } from '@phosphor-icons/vue';
@@ -22,9 +21,6 @@ const emit = defineEmits<{
 // Create a computed ref that returns the settings object
 // This ensures reactivity while allowing modifications
 const settingsRef = computed(() => props.settings);
-
-// Note: Auto-save has been removed. Settings are now saved manually via the Save button in SettingsModal.
-// useSettingsAutoSave(settingsRef);
 
 // Use validation composable
 const { isValid, isTranslationValid, isSummaryValid } = useSettingsValidation(settingsRef);

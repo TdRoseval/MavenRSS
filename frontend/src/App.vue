@@ -117,7 +117,6 @@ const {
 // Use app updates composable
 const {
   updateInfo,
-  checkForUpdates,
   downloadAndInstallUpdate,
   downloadingUpdate,
   installingUpdate,
@@ -261,9 +260,6 @@ onBeforeUnmount(() => {
 });
 
 async function loadInitialSettings() {
-  let updateInterval = 10;
-  let lastGlobalRefresh = '';
-
   try {
     const data = await apiClient.get<any>('/settings');
 
@@ -284,10 +280,6 @@ async function loadInitialSettings() {
       saveLanguage(data.language);
     }
 
-    if (data.last_global_refresh) {
-      lastGlobalRefresh = data.last_global_refresh;
-    }
-
     if (data.shortcuts) {
       try {
         const parsed = JSON.parse(data.shortcuts);
@@ -296,32 +288,9 @@ async function loadInitialSettings() {
         console.error('Error parsing shortcuts:', e);
       }
     }
-
-    let latestLastGlobalRefresh = lastGlobalRefresh;
-    try {
-      const settingsData = await apiClient.get<any>('/settings');
-      if (settingsData.last_global_refresh) {
-        latestLastGlobalRefresh = settingsData.last_global_refresh;
-      }
-    } catch (e) {
-      console.error('Error fetching latest last_global_refresh:', e);
-    }
-
-    const shouldRefresh = shouldTriggerRefresh(latestLastGlobalRefresh, updateInterval);
-    if (shouldRefresh) {
-      feedStore.refreshFeeds();
-    }
   } catch (e) {
     console.error('Error loading initial settings:', e);
   }
-}
-
-// Check if we should trigger refresh based on last update time and interval
-// Note: This is now mainly for display purposes - actual auto-refresh is controlled by backend
-function shouldTriggerRefresh(lastUpdate: string, intervalMinutes: number): boolean {
-  // Always return false - auto-refresh is now controlled by backend only
-  // This function is kept for potential future use
-  return false;
 }
 
 function toggleSidebar(): void {

@@ -62,6 +62,7 @@ export default [
         btoa: 'readonly',
         atob: 'readonly',
         TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
         TouchEvent: 'readonly',
         FormData: 'readonly',
         RequestInit: 'readonly',
@@ -82,6 +83,7 @@ export default [
     },
     rules: {
       'vue/multi-word-component-names': 'off',
+      'no-unused-vars': 'off',
     },
   },
   {
@@ -129,6 +131,7 @@ export default [
         btoa: 'readonly',
         atob: 'readonly',
         TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
         TouchEvent: 'readonly',
         FormData: 'readonly',
         RequestInit: 'readonly',

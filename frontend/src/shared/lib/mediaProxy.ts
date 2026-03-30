@@ -2,8 +2,6 @@
  * Media proxy utilities for handling anti-hotlinking and caching
  */
 
-import { useAuthStore } from '@/stores/auth';
-
 let mediaCacheEnabledCache: boolean | null = null;
 let mediaCachePromise: Promise<boolean> | null = null;
 let mediaProxyFallbackCache: boolean | null = null;
@@ -19,7 +17,9 @@ export function encodeURLSafe(str: string): string {
   if (!str) return '';
   try {
     str = decodeURIComponent(str);
-  } catch {}
+  } catch {
+    // Do nothing
+  }
   const bytes = new TextEncoder().encode(str);
   const binaryString = String.fromCharCode(...bytes);
   const encoded = btoa(binaryString);

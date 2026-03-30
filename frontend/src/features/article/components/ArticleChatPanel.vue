@@ -272,14 +272,13 @@ async function sendMessage() {
     let buffer = '';
     let fullContent = '';
     let eventName: string | null = null;
-    let chunkCount = 0;
 
     // console.log('Starting to read SSE stream...');
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        // console.log('Stream done, total chunks:', chunkCount);
+        // console.log('Stream done');
         break;
       }
 
@@ -326,7 +325,6 @@ async function sendMessage() {
             await nextTick();
             scrollToBottom();
           } else if (data.content) {
-            chunkCount++;
             fullContent += data.content;
             messages.value[assistantMessageIndex] = {
               ...messages.value[assistantMessageIndex],

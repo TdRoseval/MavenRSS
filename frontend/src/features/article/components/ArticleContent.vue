@@ -16,12 +16,10 @@ import { useArticleRendering } from '@/features/article/composables/useArticleRe
 import {
   extractTextWithPlaceholders,
   restorePreservedElements,
-  hasOnlyPreservedContent,
-  getTranslatableText,
 } from '@/features/article/composables/useContentTranslation';
 import { useSettings } from '@/composables/core/useSettings';
-import { proxyMediaInHtml, isMediaCacheEnabled, shouldProxyMedia } from '@/shared/lib/mediaProxy';
-import { authPost } from '@/shared/lib/authFetch';
+import { proxyMediaInHtml, shouldProxyMedia } from '@/shared/lib/mediaProxy';
+import { authPost, authFetch } from '@/shared/lib/authFetch';
 import './ArticleContent.css';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
@@ -186,7 +184,6 @@ const lastTranslatedContentHash = ref<string>(''); // Track translated content b
 const translationSkipped = ref(false);
 const forceTranslated = ref(false); // 是否是强制翻译的
 const isForceTranslating = ref(false); // 是否正在进行强制翻译
-const translationRequestId = ref(0); // 翻译请求ID，用于识别过时的翻译结果
 const translatedContentCache = ref<Map<number, { content: string; targetLang: string }>>(new Map());
 const isLoadingTranslatedContent = ref(false);
 
@@ -623,9 +620,7 @@ async function translateContentParagraphs(content: string) {
     }
 
     // Skip elements that only contain preserved content - 放宽条件
-    const onlyPreserved = hasOnlyPreservedContent(htmlEl);
-    const translatableText = getTranslatableText(htmlEl);
-    // console.log(`[AutoTranslation] Processing element ${htmlEl.tagName}, onlyPreserved=${onlyPreserved}, translatableText="${translatableText}", length=${translatableText.length}`);
+    // console.log(`[AutoTranslation] Processing element ${htmlEl.tagName}`);
 
     // Extract text with placeholders for inline elements (formulas, code, images) and hyperlinks
     const {
@@ -713,7 +708,6 @@ async function translateContentParagraphs(content: string) {
   await reattachImageInteractions();
 
   // Save the translated HTML content to database for future use
-  const proseContainer = document.querySelector('.prose-content');
   if (proseContainer && props.article) {
     await saveTranslatedContent(
       props.article.id,
@@ -1224,9 +1218,7 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
     }
 
     // Skip elements that only contain preserved content - 放宽条件
-    const onlyPreserved = hasOnlyPreservedContent(htmlEl);
-    const translatableText = getTranslatableText(htmlEl);
-    // console.log(`[Translation] Processing element ${htmlEl.tagName}, onlyPreserved=${onlyPreserved}, translatableText="${translatableText}", length=${translatableText.length}`);
+    // console.log(`[Translation] Processing element ${htmlEl.tagName}`);
 
     // Extract text with placeholders
     const {
@@ -1298,7 +1290,6 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
   await reattachImageInteractions();
 
   // Save the translated HTML content to database for future use
-  const proseContainer = document.querySelector('.prose-content');
   if (proseContainer && props.article) {
     await saveTranslatedContent(
       props.article.id,

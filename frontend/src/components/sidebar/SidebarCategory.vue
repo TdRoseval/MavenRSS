@@ -34,7 +34,7 @@ interface Props {
   children?: Record<string, TreeNode>;
   level?: number;
   categoryPath?: string;
-  // eslint-disable-next-line no-unused-vars
+
   isCategoryOpen?: (path: string) => boolean;
   compactMode?: boolean;
 }

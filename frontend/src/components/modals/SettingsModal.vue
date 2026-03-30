@@ -36,10 +36,8 @@ import { useSettings } from '@/composables/core/useSettings';
 import { useFeedManagement } from '@/features/feed/composables/useFeedManagement';
 import { useModalClose, LARGE_MODAL_Z_INDEX } from '@/composables/ui/useModalClose';
 import { useSettingsManualSave } from '@/composables/core/useSettingsManualSave';
-import { useFeedStore } from '@/features/feed/store';
 import { useAppStore } from '@/stores/app';
 
-const feedStore = useFeedStore();
 const appStore = useAppStore();
 const { t } = useI18n();
 
