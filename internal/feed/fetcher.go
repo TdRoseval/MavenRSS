@@ -287,6 +287,8 @@ func (f *Fetcher) processPostTask(task *PostProcessTask) {
 					NeedsSummary:      !hasSummary,
 					NeedsTranslation:  true,
 					TranslateArticles: feed != nil && feed.TranslateArticles,
+					NeedsEmbedding:    true,
+					NeedsDedup:        true,
 				}
 				f.aiEnhancedManager.AddTask(aiTask)
 			}

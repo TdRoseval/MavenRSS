@@ -66,7 +66,7 @@ interface NavItem {
   icon: any;
   label: string;
   activeIcon?: any;
-  filterType: 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery';
+  filterType: 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | 'clusters';
 }
 
 const navItems: NavItem[] = [
@@ -105,7 +105,7 @@ const navItems: NavItem[] = [
     id: 'clusters',
     icon: PhSparkle,
     activeIcon: PhSparkle,
-    label: 'AI Fusion',
+    label: t('article.cluster.sourceLabel'),
     filterType: 'clusters',
   },
 ];

@@ -16,16 +16,30 @@ func HandleClusters(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := core.GetUserIDFromRequest(r)
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	filter := r.URL.Query().Get("filter")
 	if filter == "" {
 		filter = "all"
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page <= 0 {
+		page = 1
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 {
 		limit = 50
 	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+	if _, exists := r.URL.Query()["offset"]; !exists {
+		offset = (page - 1) * limit
+	}
 
 	clusters, err := h.DB.GetClustersForUser(userID, filter, limit, offset)
 	if err != nil {
@@ -84,6 +98,33 @@ func HandleClusterRead(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.DB.MarkClusterRead(req.ID, req.Read); err != nil {
+		http.Error(w, "Failed to update", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+// HandleMarkAllClustersRead handles POST /api/clusters/mark-all-read — mark all clusters as read.
+func HandleMarkAllClustersRead(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	filter := r.URL.Query().Get("filter")
+	if filter == "" {
+		filter = "all"
+	}
+
+	if err := h.DB.MarkAllClustersReadForUser(userID, filter); err != nil {
 		http.Error(w, "Failed to update", http.StatusInternalServerError)
 		return
 	}

@@ -35,6 +35,7 @@ func (db *DB) CleanupOldArticles(userID int64) (int64, error) {
 			WHERE published_at < ?
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 			AND user_id = ?
 		`, cutoffDate, userID)
 	} else {
@@ -43,6 +44,7 @@ func (db *DB) CleanupOldArticles(userID int64) (int64, error) {
 			WHERE published_at < ?
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 		`, cutoffDate)
 	}
 	if err != nil {
@@ -51,6 +53,13 @@ func (db *DB) CleanupOldArticles(userID int64) (int64, error) {
 
 	count, _ := result.RowsAffected()
 	totalDeleted += count
+
+	clusterDeleted, err := db.CleanupExpiredClusters(userID, maxAgeDays)
+	if err != nil {
+		log.Printf("Error during cluster cleanup: %v", err)
+	} else {
+		totalDeleted += clusterDeleted
+	}
 
 	// Step 2: Check database size and clean up if over limit
 	sizeDeleted, err := db.CleanupBySize(userID)
@@ -79,10 +88,19 @@ func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 	if userID > 0 {
 		result, err = db.Exec(`
 			DELETE FROM article_contents
-			WHERE article_id IN (SELECT id FROM articles WHERE user_id = ?)
+			WHERE article_id IN (
+				SELECT id FROM articles
+				WHERE user_id = ? AND cluster_id IS NULL
+			)
 		`, userID)
 	} else {
-		result, err = db.Exec(`DELETE FROM article_contents`)
+		result, err = db.Exec(`
+			DELETE FROM article_contents
+			WHERE article_id IN (
+				SELECT id FROM articles
+				WHERE cluster_id IS NULL
+			)
+		`)
 	}
 	if err != nil {
 		return 0, err
@@ -95,17 +113,89 @@ func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 // If userID is 0, removes all (legacy behavior)
 func (db *DB) DeleteAllArticles(userID int64) (int64, error) {
 	db.WaitForReady()
-	var result sql.Result
-	var err error
+
+	clusterQuery := `SELECT id FROM clusters`
+	clusterArgs := []interface{}{}
 	if userID > 0 {
-		result, err = db.Exec(`DELETE FROM articles WHERE user_id = ?`, userID)
-	} else {
-		result, err = db.Exec(`DELETE FROM articles`)
+		clusterQuery += ` WHERE user_id = ?`
+		clusterArgs = append(clusterArgs, userID)
 	}
+
+	rows, err := db.Query(clusterQuery, clusterArgs...)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	defer rows.Close()
+
+	var clusterIDs []int64
+	for rows.Next() {
+		var clusterID int64
+		if err := rows.Scan(&clusterID); err != nil {
+			return 0, err
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+
+	deletedArticles := int64(0)
+	for _, clusterID := range clusterIDs {
+		var clusterArticleCount int64
+		if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE cluster_id = ?`, clusterID).Scan(&clusterArticleCount); err != nil {
+			return deletedArticles, err
+		}
+		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
+			return deletedArticles, err
+		}
+		deletedArticles += clusterArticleCount
+	}
+
+	var unclusteredIDsQuery string
+	var unclusteredArgs []interface{}
+	if userID > 0 {
+		unclusteredIDsQuery = `SELECT id FROM articles WHERE user_id = ? AND cluster_id IS NULL`
+		unclusteredArgs = append(unclusteredArgs, userID)
+	} else {
+		unclusteredIDsQuery = `SELECT id FROM articles WHERE cluster_id IS NULL`
+	}
+
+	unclusteredRows, err := db.Query(unclusteredIDsQuery, unclusteredArgs...)
+	if err != nil {
+		return deletedArticles, err
+	}
+	defer unclusteredRows.Close()
+
+	var unclusteredIDs []int64
+	for unclusteredRows.Next() {
+		var articleID int64
+		if err := unclusteredRows.Scan(&articleID); err != nil {
+			return deletedArticles, err
+		}
+		unclusteredIDs = append(unclusteredIDs, articleID)
+	}
+
+	if len(unclusteredIDs) == 0 {
+		return deletedArticles, nil
+	}
+
+	for _, articleID := range unclusteredIDs {
+		if _, err := db.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
+			return deletedArticles, err
+		}
+	}
+
+	var result sql.Result
+	if userID > 0 {
+		result, err = db.Exec(`DELETE FROM articles WHERE user_id = ? AND cluster_id IS NULL`, userID)
+	} else {
+		result, err = db.Exec(`DELETE FROM articles WHERE cluster_id IS NULL`)
+	}
+	if err != nil {
+		return deletedArticles, err
+	}
+
+	count, _ := result.RowsAffected()
+	deletedArticles += count
+
+	return deletedArticles, nil
 }
 
 // DeleteArticlesForFeed removes all articles for a specific feed
@@ -121,14 +211,14 @@ func (db *DB) DeleteArticlesForFeed(feedID int64, userID int64) (int64, error) {
 		_, err = db.Exec(`
 			DELETE FROM article_contents
 			WHERE article_id IN (
-				SELECT id FROM articles WHERE feed_id = ? AND user_id = ?
+				SELECT id FROM articles WHERE feed_id = ? AND user_id = ? AND cluster_id IS NULL
 			)
 		`, feedID, userID)
 	} else {
 		_, err = db.Exec(`
 			DELETE FROM article_contents
 			WHERE article_id IN (
-				SELECT id FROM articles WHERE feed_id = ?
+				SELECT id FROM articles WHERE feed_id = ? AND cluster_id IS NULL
 			)
 		`, feedID)
 	}
@@ -137,11 +227,31 @@ func (db *DB) DeleteArticlesForFeed(feedID int64, userID int64) (int64, error) {
 		return 0, err
 	}
 	
+	// Delete standalone embeddings for the feed's articles
+	if userID > 0 {
+		_, err = db.Exec(`
+			DELETE FROM article_embeddings
+			WHERE article_id IN (
+				SELECT id FROM articles WHERE feed_id = ? AND user_id = ? AND cluster_id IS NULL
+			)
+		`, feedID, userID)
+	} else {
+		_, err = db.Exec(`
+			DELETE FROM article_embeddings
+			WHERE article_id IN (
+				SELECT id FROM articles WHERE feed_id = ? AND cluster_id IS NULL
+			)
+		`, feedID)
+	}
+	if err != nil {
+		return 0, err
+	}
+
 	// Then delete the articles themselves
 	if userID > 0 {
-		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ? AND user_id = ?`, feedID, userID)
+		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ? AND user_id = ? AND cluster_id IS NULL`, feedID, userID)
 	} else {
-		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ?`, feedID)
+		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ? AND cluster_id IS NULL`, feedID)
 	}
 	
 	if err != nil {
@@ -165,6 +275,7 @@ func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {
 			AND is_read = 0
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 		`, userID)
 	} else {
 		result, err = db.Exec(`
@@ -172,6 +283,7 @@ func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {
 			WHERE is_read = 0
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 		`)
 	}
 	if err != nil {
@@ -323,6 +435,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 					WHERE is_read = 1
 					AND is_favorite = 0
 					AND is_read_later = 0
+					AND cluster_id IS NULL
 					AND user_id = ?
 					ORDER BY published_at ASC
 					LIMIT 100
@@ -336,6 +449,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 					WHERE is_read = 1
 					AND is_favorite = 0
 					AND is_read_later = 0
+					AND cluster_id IS NULL
 					ORDER BY published_at ASC
 					LIMIT 100
 				)
@@ -365,6 +479,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 					SELECT id FROM articles
 					WHERE is_favorite = 0
 					AND is_read_later = 0
+					AND cluster_id IS NULL
 					AND user_id = ?
 					ORDER BY published_at ASC
 					LIMIT 100
@@ -377,6 +492,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 					SELECT id FROM articles
 					WHERE is_favorite = 0
 					AND is_read_later = 0
+					AND cluster_id IS NULL
 					ORDER BY published_at ASC
 					LIMIT 100
 				)
@@ -414,12 +530,21 @@ func (db *DB) CleanupArticleContentsByAge(maxAgeDays int, userID int64) (int64, 
 		result, err = db.Exec(
 			`DELETE FROM article_contents 
 			 WHERE fetched_at < datetime('now', '-' || ? || ' days')
-			 AND article_id IN (SELECT id FROM articles WHERE user_id = ?)`,
+			 AND article_id IN (
+			 	SELECT id FROM articles
+			 	WHERE user_id = ?
+			 	AND cluster_id IS NULL
+			 )`,
 			maxAgeDays, userID,
 		)
 	} else {
 		result, err = db.Exec(
-			`DELETE FROM article_contents WHERE fetched_at < datetime('now', '-' || ? || ' days')`,
+			`DELETE FROM article_contents
+			 WHERE fetched_at < datetime('now', '-' || ? || ' days')
+			 AND article_id IN (
+			 	SELECT id FROM articles
+			 	WHERE cluster_id IS NULL
+			 )`,
 			maxAgeDays,
 		)
 	}
@@ -469,6 +594,7 @@ func (db *DB) CleanupArticleContentsBySize(userID int64) (int64, error) {
 					SELECT ac.article_id FROM article_contents ac
 					INNER JOIN articles a ON ac.article_id = a.id
 					WHERE a.user_id = ?
+					AND a.cluster_id IS NULL
 					ORDER BY ac.fetched_at ASC
 					LIMIT 100
 				)
@@ -477,7 +603,9 @@ func (db *DB) CleanupArticleContentsBySize(userID int64) (int64, error) {
 			result, err = db.Exec(`
 				DELETE FROM article_contents
 				WHERE article_id IN (
-					SELECT article_id FROM article_contents
+					SELECT ac.article_id FROM article_contents ac
+					INNER JOIN articles a ON ac.article_id = a.id
+					WHERE a.cluster_id IS NULL
 					ORDER BY fetched_at ASC
 					LIMIT 100
 				)
@@ -526,6 +654,7 @@ func (db *DB) CleanupOldArticlesLayered() (int64, error) {
 		AND is_read = 1
 		AND is_favorite = 0
 		AND is_read_later = 0
+		AND cluster_id IS NULL
 	`, cutoffDate)
 	if err == nil {
 		count, _ := result.RowsAffected()
@@ -543,6 +672,7 @@ func (db *DB) CleanupOldArticlesLayered() (int64, error) {
 		AND is_read = 1
 		AND is_favorite = 0
 		AND is_read_later = 0
+		AND cluster_id IS NULL
 	`, cutoffDate)
 	if err == nil {
 		count, _ := result.RowsAffected()
@@ -560,6 +690,7 @@ func (db *DB) CleanupOldArticlesLayered() (int64, error) {
 		AND is_read = 0
 		AND is_favorite = 0
 		AND is_read_later = 0
+		AND cluster_id IS NULL
 	`, cutoffDate)
 	if err == nil {
 		count, _ := result.RowsAffected()
@@ -577,6 +708,7 @@ func (db *DB) CleanupOldArticlesLayered() (int64, error) {
 		AND is_read = 0
 		AND is_favorite = 0
 		AND is_read_later = 0
+		AND cluster_id IS NULL
 	`, cutoffDate)
 	if err == nil {
 		count, _ := result.RowsAffected()
@@ -610,6 +742,7 @@ func (db *DB) CleanupOldReadArticles(maxAgeDays int, userID int64) (int64, error
 			AND is_read = 1
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 			AND user_id = ?
 		`, cutoffDate, userID)
 	} else {
@@ -619,6 +752,7 @@ func (db *DB) CleanupOldReadArticles(maxAgeDays int, userID int64) (int64, error
 			AND is_read = 1
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 		`, cutoffDate)
 	}
 	if err != nil {
@@ -645,6 +779,7 @@ func (db *DB) CleanupOldUnreadArticles(maxAgeDays int, userID int64) (int64, err
 			AND is_read = 0
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 			AND user_id = ?
 		`, cutoffDate, userID)
 	} else {
@@ -654,6 +789,7 @@ func (db *DB) CleanupOldUnreadArticles(maxAgeDays int, userID int64) (int64, err
 			AND is_read = 0
 			AND is_favorite = 0
 			AND is_read_later = 0
+			AND cluster_id IS NULL
 		`, cutoffDate)
 	}
 	if err != nil {

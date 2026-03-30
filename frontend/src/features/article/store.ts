@@ -5,7 +5,14 @@ import type { FilterCondition } from '@/types/filter';
 import { apiClient } from '@/shared/lib/apiClient';
 import { useFeedStore } from '@/features/feed/store';
 
-export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | 'clusters' | '';
+export type Filter =
+  | 'all'
+  | 'unread'
+  | 'favorites'
+  | 'readLater'
+  | 'imageGallery'
+  | 'clusters'
+  | '';
 
 export interface TempSelection {
   feedId: number | null;
@@ -96,7 +103,8 @@ export const useArticleStore = defineStore('article', () => {
       return feedCategory === category || feedCategory.startsWith(category + '/');
     });
 
-    const allImageMode = categoryFeeds.length > 0 && categoryFeeds.every((f: Feed) => f.is_image_mode);
+    const allImageMode =
+      categoryFeeds.length > 0 && categoryFeeds.every((f: Feed) => f.is_image_mode);
 
     // If all feeds in this category are image mode, switch to image gallery filter
     if (allImageMode) {

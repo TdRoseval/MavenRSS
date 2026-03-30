@@ -45,9 +45,7 @@ function closeClusterOnMobile() {
       <div
         :class="[
           'absolute inset-0 z-10 transition-opacity duration-200',
-          mobileView === 'list'
-            ? 'opacity-100 visible'
-            : 'opacity-0 invisible pointer-events-none',
+          mobileView === 'list' ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none',
         ]"
       >
         <ClusterList
@@ -70,10 +68,7 @@ function closeClusterOnMobile() {
 
     <!-- Desktop View -->
     <template v-else>
-      <ClusterList
-        :is-sidebar-open="isSidebarOpen"
-        @toggle-sidebar="emit('toggleSidebar')"
-      />
+      <ClusterList :is-sidebar-open="isSidebarOpen" @toggle-sidebar="emit('toggleSidebar')" />
       <div class="resizer hidden md:block"></div>
       <ClusterDetail />
     </template>

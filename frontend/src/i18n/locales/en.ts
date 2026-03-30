@@ -78,6 +78,25 @@ const en: TranslationMessages = {
       switchSession: 'Switch chat session',
       thinking: 'Thinking',
     },
+    cluster: {
+      articleCount: '{count} articles',
+      authorLabel: 'Authors',
+      emptyDescription: 'AI-fused clusters automatically appear here after processing.',
+      emptyTitle: 'No clusters found',
+      listTitle: 'AI Fusion Clusters',
+      loadingDetail: 'Loading fusion details...',
+      loadingMore: 'Loading more...',
+      markAllReadConfirm: 'Mark all clusters in the current list as read?',
+      markAllReadTitle: 'Mark all as read',
+      markedAllAsRead: 'All clusters marked as read',
+      mergedFrom: 'Merged from {count} articles',
+      selectPrompt: 'Select a cluster to view the AI fused article',
+      sourceArticlesTitle: 'Source Articles',
+      sourceLabel: 'AI Fusion',
+      statusLabel: 'Status',
+      summaryTitle: 'Summary',
+      unknownFeed: 'Unknown feed',
+    },
     content: {
       fetchingArticleContent: 'Fetching article content from RSS feed...',
       loadingContent: 'Loading content',
@@ -595,7 +614,8 @@ const en: TranslationMessages = {
       selectProfileForChat: 'Select which AI profile to use for AI chat',
       selectProfileForSearch: 'Select which AI profile to use for AI search',
       selectFusionProfile: 'Fusion Profile',
-      selectFusionProfileDesc: 'Select which AI profile to use for clustering and fusing articles (recommend models that support long context)',
+      selectFusionProfileDesc:
+        'Select which AI profile to use for clustering and fusing articles (recommend models that support long context)',
       model: 'Model',
       aiTestFailed: 'AI configuration test failed',
       aiUsage: 'AI Usage',
@@ -629,6 +649,8 @@ const en: TranslationMessages = {
         'Automatically generate AI summaries and translations for new articles in the background. Requires all AI features to be enabled.',
       aiEnhancedModeDisabled:
         'Enable all AI features (summary, translation, search, chat) to use this mode',
+      aiEnhancedModeRequiresFusionProfile:
+        'Select a valid fusion profile before enabling AI Enhanced Mode',
     },
     content: {
       addHeader: 'Add Header',

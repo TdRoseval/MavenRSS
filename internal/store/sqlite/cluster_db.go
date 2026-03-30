@@ -40,6 +40,7 @@ func (db *DB) GetClusterByID(clusterID int64) (*models.Cluster, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.populateClusterMeta(&c)
 	return &c, nil
 }
 
@@ -326,6 +327,26 @@ func (db *DB) MarkClusterRead(clusterID int64, read bool) error {
 	return err
 }
 
+// MarkAllClustersReadForUser marks all visible clusters as read for a user.
+func (db *DB) MarkAllClustersReadForUser(userID int64, filter string) error {
+	db.WaitForReady()
+
+	query := `UPDATE clusters SET is_read = 1, updated_at = ? WHERE user_id = ? AND is_hidden = 0`
+	args := []interface{}{time.Now(), userID}
+
+	switch filter {
+	case "unread":
+		query += " AND is_read = 0"
+	case "favorites":
+		query += " AND is_favorite = 1"
+	case "readLater":
+		query += " AND is_read_later = 1"
+	}
+
+	_, err := db.Exec(query, args...)
+	return err
+}
+
 // ToggleClusterFavorite toggles the favorite status of a cluster.
 func (db *DB) ToggleClusterFavorite(clusterID int64) error {
 	db.WaitForReady()
@@ -336,7 +357,13 @@ func (db *DB) ToggleClusterFavorite(clusterID int64) error {
 // ToggleClusterReadLater toggles the read-later status of a cluster.
 func (db *DB) ToggleClusterReadLater(clusterID int64) error {
 	db.WaitForReady()
-	_, err := db.Exec(`UPDATE clusters SET is_read_later = 1 - is_read_later, updated_at = ? WHERE id = ?`, time.Now(), clusterID)
+	_, err := db.Exec(`
+		UPDATE clusters
+		SET is_read_later = 1 - is_read_later,
+			is_read = CASE WHEN is_read_later = 0 THEN 0 ELSE is_read END,
+			updated_at = ?
+		WHERE id = ?
+	`, time.Now(), clusterID)
 	return err
 }
 
@@ -358,14 +385,40 @@ func (db *DB) DeleteClusterAndArticles(clusterID int64) error {
 
 // CleanupExpiredClusters removes expired clusters respecting favorites.
 func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error) {
+	return db.cleanupExpiredClusters(userID, maxAgeDays, nil)
+}
+
+// CleanupExpiredReadClusters removes expired read clusters respecting favorites.
+func (db *DB) CleanupExpiredReadClusters(userID int64, maxAgeDays int) (int64, error) {
+	isRead := true
+	return db.cleanupExpiredClusters(userID, maxAgeDays, &isRead)
+}
+
+// CleanupExpiredUnreadClusters removes expired unread clusters respecting favorites.
+func (db *DB) CleanupExpiredUnreadClusters(userID int64, maxAgeDays int) (int64, error) {
+	isRead := false
+	return db.cleanupExpiredClusters(userID, maxAgeDays, &isRead)
+}
+
+func (db *DB) cleanupExpiredClusters(userID int64, maxAgeDays int, isRead *bool) (int64, error) {
 	db.WaitForReady()
 	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
 
-	// Get expired, non-favorite clusters
-	rows, err := db.Query(`
+	query := `
 		SELECT id FROM clusters
-		WHERE user_id = ? AND is_favorite = 0 AND is_read_later = 0 AND updated_at < ?
-	`, userID, cutoff)
+		WHERE is_favorite = 0 AND is_read_later = 0 AND updated_at < ?
+	`
+	args := []interface{}{cutoff}
+	if userID > 0 {
+		query += ` AND user_id = ?`
+		args = append(args, userID)
+	}
+	if isRead != nil {
+		query += ` AND is_read = ?`
+		args = append(args, *isRead)
+	}
+
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -392,16 +445,6 @@ func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error
 		}
 		deleted++
 	}
-
-	// Build placeholder for filtering protected articles
-	placeholders := make([]string, len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	_ = placeholders
-	_ = args
 
 	return deleted, nil
 }

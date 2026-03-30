@@ -23,7 +23,7 @@ import { authDelete } from '@/shared/lib/authFetch';
 import { useAIProfiles } from '@/composables/ai/useAIProfiles';
 
 const { t } = useI18n();
-const { hasProfiles, fetchProfiles } = useAIProfiles();
+const { profiles, hasProfiles, fetchProfiles } = useAIProfiles();
 
 interface Props {
   settings: SettingsData;
@@ -50,19 +50,32 @@ onMounted(() => {
   }
 });
 
-// Check if AI enhanced mode can be enabled
-const isAIEnhancedModeAvailable = computed(() => {
+const hasEmbeddingModels = computed(() => {
   const settings = props.settings;
-  
-  let hasEmbeddings = false;
+
   try {
     const models = JSON.parse(settings.ai_embedding_models || '[]');
-    hasEmbeddings = Array.isArray(models) && models.length > 0;
-  } catch(e) { /* ignore */ }
+    return Array.isArray(models) && models.length > 0;
+  } catch (e) {
+    return false;
+  }
+});
+
+const hasValidFusionProfile = computed(() => {
+  const profileID = String(props.settings.ai_fusion_profile_id || '').trim();
+  if (profileID === '') {
+    return false;
+  }
+
+  return profiles.value.some((profile) => String(profile.id) === profileID);
+});
+
+const canConfigureAIEnhancedMode = computed(() => {
+  const settings = props.settings;
 
   return (
     hasProfiles.value &&
-    hasEmbeddings &&
+    hasEmbeddingModels.value &&
     settings.summary_enabled === true &&
     settings.summary_provider === 'ai' &&
     settings.translation_enabled === true &&
@@ -70,6 +83,10 @@ const isAIEnhancedModeAvailable = computed(() => {
     settings.ai_chat_enabled === true
   );
 });
+
+const isAIEnhancedModeAvailable = computed(
+  () => canConfigureAIEnhancedMode.value && hasValidFusionProfile.value
+);
 
 async function clearAllChatSessions() {
   const confirmed = await window.showConfirm({
@@ -157,20 +174,16 @@ async function clearAllChatSessions() {
 
     <!-- AI Enhanced Mode -->
     <TipBox
-      v-if="!isAIEnhancedModeAvailable"
+      v-if="!canConfigureAIEnhancedMode"
       type="warning"
       :title="t('setting.ai.aiEnhancedModeDisabled')"
     />
-    <SettingWithToggle
-      :icon="PhRocket"
-      :title="t('setting.ai.aiEnhancedMode')"
-      :description="t('setting.ai.aiEnhancedModeDesc')"
-      :model-value="isAIEnhancedModeAvailable ? props.settings.ai_enhanced_mode : false"
-      :disabled="!isAIEnhancedModeAvailable"
-      @update:model-value="updateSetting('ai_enhanced_mode', $event)"
+    <TipBox
+      v-else-if="!hasValidFusionProfile"
+      type="warning"
+      :title="t('setting.ai.aiEnhancedModeRequiresFusionProfile')"
     />
-
-    <NestedSettingsContainer v-if="isAIEnhancedModeAvailable && props.settings.ai_enhanced_mode">
+    <NestedSettingsContainer v-if="canConfigureAIEnhancedMode">
       <SubSettingItem
         :icon="PhRobot"
         :title="t('setting.ai.selectFusionProfile')"
@@ -182,6 +195,14 @@ async function clearAllChatSessions() {
         />
       </SubSettingItem>
     </NestedSettingsContainer>
+    <SettingWithToggle
+      :icon="PhRocket"
+      :title="t('setting.ai.aiEnhancedMode')"
+      :description="t('setting.ai.aiEnhancedModeDesc')"
+      :model-value="isAIEnhancedModeAvailable ? props.settings.ai_enhanced_mode : false"
+      :disabled="!isAIEnhancedModeAvailable"
+      @update:model-value="updateSetting('ai_enhanced_mode', $event)"
+    />
   </SettingGroup>
 </template>
 

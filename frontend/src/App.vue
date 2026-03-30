@@ -389,7 +389,7 @@ function onLogin(): void {
         <template v-if="isImageGalleryMode">
           <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
         </template>
-        
+
         <!-- Show ClusterView when in clusters mode -->
         <template v-else-if="articleStore.currentFilter === 'clusters'">
           <ClusterView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />

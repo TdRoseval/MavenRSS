@@ -24,9 +24,9 @@ type FusionResult struct {
 
 // FusionConfig holds configuration for the fusion process.
 type FusionConfig struct {
-	Summarizer       *summary.AISummarizer // LLM client for fusion
-	EmbConfigsJSON   string                // Embedding model configs JSON
-	GlobalProxyURL   string                // Global proxy URL for embedding API
+	Summarizer     *summary.AISummarizer // LLM client for fusion
+	EmbConfigsJSON string                // Embedding model configs JSON
+	GlobalProxyURL string                // Global proxy URL for embedding API
 }
 
 // RunFusion processes all pending_merge clusters for a user.
@@ -55,21 +55,40 @@ func RunFusion(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionConf
 
 		if len(articles) <= 1 {
 			if len(articles) == 1 {
-				copySingleArticle(db, cluster.ID, articles[0])
+				if err := copySingleArticle(db, cluster.ID, articles[0]); err != nil {
+					log.Printf("Single-article fusion fallback failed for cluster %d: %v", cluster.ID, err)
+					continue
+				}
+				log.Printf("Cluster %d contains a single article, copied source article and advanced to pending_embed", cluster.ID)
+			} else {
+				log.Printf("Cluster %d has no articles, advancing directly to pending_embed", cluster.ID)
 			}
-			_ = db.UpdateClusterStatus(cluster.ID, "pending_embed")
+			if err := db.UpdateClusterStatus(cluster.ID, "pending_embed"); err != nil {
+				log.Printf("Failed to update cluster %d status to pending_embed: %v", cluster.ID, err)
+				continue
+			}
 			continue
 		}
 
-		// Multi-article fusion via LLM
 		result, err := callLLMFusion(articles, db, cfg.Summarizer)
 		if err != nil {
-			log.Printf("LLM fusion failed for cluster %d: %v, using fallback", cluster.ID, err)
-			copySingleArticle(db, cluster.ID, articles[0])
+			log.Printf("LLM fusion failed for cluster %d: %v", cluster.ID, err)
+			if fallbackErr := copySingleArticle(db, cluster.ID, articles[0]); fallbackErr != nil {
+				log.Printf("Fallback write failed for cluster %d: %v", cluster.ID, fallbackErr)
+				continue
+			}
+			log.Printf("Cluster %d fallback completed with first article, advancing to pending_embed", cluster.ID)
 		} else {
-			_ = db.UpdateClusterMergedContent(cluster.ID, result.MergedTitle, result.MergedSummary, result.MergedContent)
+			if err := db.UpdateClusterMergedContent(cluster.ID, result.MergedTitle, result.MergedSummary, result.MergedContent); err != nil {
+				log.Printf("Failed to store fusion result for cluster %d: %v", cluster.ID, err)
+				continue
+			}
+			log.Printf("Cluster %d fusion completed, advancing to pending_embed", cluster.ID)
 		}
-		_ = db.UpdateClusterStatus(cluster.ID, "pending_embed")
+		if err := db.UpdateClusterStatus(cluster.ID, "pending_embed"); err != nil {
+			log.Printf("Failed to update cluster %d status to pending_embed: %v", cluster.ID, err)
+			continue
+		}
 	}
 	return nil
 }
@@ -89,17 +108,18 @@ func RunEmbedding(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionC
 		}
 
 		if cluster.MergedTitle == "" && cluster.MergedSummary == "" {
-			_ = db.UpdateClusterStatus(cluster.ID, "complete")
+			log.Printf("Cluster %d has empty merged title and summary, skipping cluster embedding", cluster.ID)
+			if err := db.UpdateClusterStatus(cluster.ID, "complete"); err != nil {
+				log.Printf("Failed to update cluster %d status to complete: %v", cluster.ID, err)
+			}
 			continue
 		}
 
-		// Generate title embedding
 		titleEmb, err := genEmbedding(ctx, cluster.MergedTitle, cfg)
 		if err != nil {
 			log.Printf("Title embedding failed for cluster %d: %v", cluster.ID, err)
 		}
 
-		// Generate summary embedding
 		summaryEmb, err := genEmbedding(ctx, cluster.MergedSummary, cfg)
 		if err != nil {
 			log.Printf("Summary embedding failed for cluster %d: %v", cluster.ID, err)
@@ -110,12 +130,16 @@ func RunEmbedding(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionC
 				log.Printf("Failed to store cluster %d embeddings: %v", cluster.ID, err)
 			}
 		}
-		_ = db.UpdateClusterStatus(cluster.ID, "complete")
+		if err := db.UpdateClusterStatus(cluster.ID, "complete"); err != nil {
+			log.Printf("Failed to update cluster %d status to complete: %v", cluster.ID, err)
+			continue
+		}
+		log.Printf("Cluster %d embedding stage completed", cluster.ID)
 	}
 	return nil
 }
 
-func copySingleArticle(db *sqlite.DB, clusterID int64, a models.Article) {
+func copySingleArticle(db *sqlite.DB, clusterID int64, a models.Article) error {
 	content, _, _ := db.GetArticleContent(a.ID)
 	title := a.Title
 	smry := a.Summary
@@ -125,7 +149,7 @@ func copySingleArticle(db *sqlite.DB, clusterID int64, a models.Article) {
 	if content == "" {
 		content = smry
 	}
-	_ = db.UpdateClusterMergedContent(clusterID, title, smry, content)
+	return db.UpdateClusterMergedContent(clusterID, title, smry, content)
 }
 
 func callLLMFusion(articles []models.Article, db *sqlite.DB, s *summary.AISummarizer) (*FusionResult, error) {

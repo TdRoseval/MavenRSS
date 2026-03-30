@@ -571,7 +571,7 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 		
 		// Update profile ID references in settings if we have a map
 		if profileIDMap != nil && len(profileIDMap) > 0 {
-			profileSettingKeys := []string{"ai_chat_profile_id", "ai_search_profile_id", "ai_summary_profile_id", "ai_translation_profile_id"}
+			profileSettingKeys := []string{"ai_chat_profile_id", "ai_fusion_profile_id", "ai_search_profile_id", "ai_summary_profile_id", "ai_translation_profile_id"}
 			for _, key := range profileSettingKeys {
 				var oldIDStr string
 				err = tx.QueryRow(`SELECT value FROM user_settings WHERE user_id = ? AND key = ?`, user.ID, key).Scan(&oldIDStr)

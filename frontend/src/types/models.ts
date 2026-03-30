@@ -53,7 +53,6 @@ export interface Cluster {
   articles?: Article[];
 }
 
-
 export interface Feed {
   id: number;
   url: string;

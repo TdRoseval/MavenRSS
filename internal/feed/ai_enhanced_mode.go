@@ -1,11 +1,14 @@
 package feed
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
@@ -13,8 +16,7 @@ import (
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
 	"MavenRSS/internal/translation"
-	"context"
-	"time"
+	"MavenRSS/internal/utils/httputil"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
@@ -27,14 +29,23 @@ type AIEnhancedTask struct {
 	NeedsSummary      bool
 	NeedsTranslation  bool
 	TranslateArticles bool
+	NeedsEmbedding    bool
+	NeedsDedup        bool
+	NeedsClusterRun   bool
 }
 
 // AIEnhancedManager manages the AI enhanced mode task queue and workers
 type AIEnhancedManager struct {
-	db          *sqlite.DB
-	taskChan    chan *AIEnhancedTask
-	workerWg    sync.WaitGroup
-	workerCount int
+	db                     *sqlite.DB
+	taskChan               chan *AIEnhancedTask
+	workerWg               sync.WaitGroup
+	workerCount            int
+	clusterMu              sync.Mutex
+	clusterPipelineRunning map[int64]bool
+	clusterPipelineQueued  map[int64]bool
+	resolveFusionConfig    func(userID int64) (*dedup.FusionConfig, error)
+	runFusion              func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
+	runEmbedding           func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
 }
 
 // NewAIEnhancedManager creates a new AI enhanced mode manager
@@ -51,10 +62,15 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 	taskChan := make(chan *AIEnhancedTask, 100)
 
 	manager := &AIEnhancedManager{
-		db:          db,
-		taskChan:    taskChan,
-		workerCount: numWorkers,
+		db:                     db,
+		taskChan:               taskChan,
+		workerCount:            numWorkers,
+		clusterPipelineRunning: make(map[int64]bool),
+		clusterPipelineQueued:  make(map[int64]bool),
 	}
+	manager.resolveFusionConfig = manager.buildFusionConfig
+	manager.runFusion = dedup.RunFusion
+	manager.runEmbedding = dedup.RunEmbedding
 
 	log.Printf("Starting %d AI enhanced mode workers", numWorkers)
 	manager.startWorkers()
@@ -86,99 +102,193 @@ func (m *AIEnhancedManager) worker(workerID int) {
 func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 	log.Printf("AI enhanced worker %d processing article %d for user %d", workerID, task.ArticleID, task.UserID)
 
-	// Get article content
-	content, hasContent, err := m.db.GetArticleContent(task.ArticleID)
-	if err != nil {
-		log.Printf("Error getting article content for AI enhanced task: %v", err)
-		return
-	}
-	if !hasContent || content == "" {
-		log.Printf("No content available for article %d, skipping AI processing", task.ArticleID)
-		return
+	needsContent := task.NeedsSummary || (task.NeedsTranslation && task.TranslateArticles) || task.NeedsEmbedding
+	content := ""
+	if needsContent {
+		var hasContent bool
+		var err error
+		content, hasContent, err = m.db.GetArticleContent(task.ArticleID)
+		if err != nil {
+			log.Printf("Error getting article content for AI enhanced task: %v", err)
+			return
+		}
+		if !hasContent || content == "" {
+			log.Printf("No content available for article %d, skipping AI processing", task.ArticleID)
+			if task.NeedsClusterRun && !task.NeedsSummary && !task.NeedsEmbedding && !task.NeedsDedup {
+				m.scheduleClusterPipeline(task.UserID)
+			}
+			return
+		}
 	}
 
-	// Generate AI summary if needed
 	if task.NeedsSummary {
 		m.generateAISummary(task, content)
 	}
 
-	// Generate AI translation if needed
 	if task.NeedsTranslation && task.TranslateArticles {
 		m.generateAITranslation(task, content)
 	}
 
-	// ALWAYS trigger async embedding generation as part of AI enhanced mode
-	m.generateEmbeddingsAsync(task.ArticleID, task.UserID, content)
+	if task.NeedsEmbedding || task.NeedsDedup || task.NeedsClusterRun {
+		m.advanceArticlePipelineAsync(task, content)
+	}
 }
 
-// generateEmbeddingsAsync generates vector embeddings for article title and summary (or content) asynchronously
-func (m *AIEnhancedManager) generateEmbeddingsAsync(articleID, userID int64, content string) {
+func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, content string) {
 	go func() {
-		// Give DB a moment to settle summary/translations
 		time.Sleep(2 * time.Second)
 
-		article, err := m.db.GetArticleByID(articleID)
+		article, err := m.db.GetArticleByID(task.ArticleID)
 		if err != nil || article == nil {
-			log.Printf("Failed to fetch article %d for embeddings: %v", articleID, err)
+			log.Printf("Failed to fetch article %d for AI enhanced pipeline: %v", task.ArticleID, err)
 			return
 		}
 
-		summaryText := article.Summary
-		if summaryText == "" {
-			// Fallback to content if summary is not available or article was too short
-			summaryText = content
-		}
+		if task.NeedsEmbedding {
+			summaryText := article.Summary
+			if summaryText == "" {
+				summaryText = content
+			}
 
-		configsJSON, err := m.db.GetSettingWithFallback(userID, "ai_embedding_models")
-		if err != nil || configsJSON == "" || configsJSON == "[]" {
-			log.Printf("No embedding models configured for user %d, skipping embedding", userID)
-			return
-		}
+			configsJSON, err := m.db.GetSettingWithFallback(task.UserID, "ai_embedding_models")
+			if err != nil || configsJSON == "" || configsJSON == "[]" {
+				log.Printf("No embedding models configured for user %d, skipping embedding", task.UserID)
+			} else {
+				globalProxyURL, _ := buildGlobalProxyURL(m.db, task.UserID)
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
 
-		// Resolve global proxy URL for models with use_global_proxy=true
-		globalProxyURL, _ := m.db.GetSettingWithFallback(userID, "proxy_url")
+				var titleEmbBlob, summaryEmbBlob []byte
 
-		// Prepare context for API calls
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-
-		var titleEmbBlob, summaryEmbBlob []byte
-
-		if article.Title != "" {
-			if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
-				if len(titleEmb) > 0 {
-					titleEmbBlob, _ = sqlite_vec.SerializeFloat32(titleEmb)
+				if article.Title != "" {
+					if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
+						if len(titleEmb) > 0 {
+							titleEmbBlob, _ = sqlite_vec.SerializeFloat32(titleEmb)
+						}
+					} else {
+						log.Printf("Failed to generate title embedding for article %d: %v", task.ArticleID, err)
+					}
 				}
-			} else {
-				log.Printf("Failed to generate title embedding for article %d: %v", articleID, err)
-			}
-		}
 
-		if summaryText != "" {
-			if sumEmb, err := ai.GenerateEmbeddings(ctx, summaryText, configsJSON, globalProxyURL); err == nil {
-				if len(sumEmb) > 0 {
-					summaryEmbBlob, _ = sqlite_vec.SerializeFloat32(sumEmb)
+				if summaryText != "" {
+					if sumEmb, err := ai.GenerateEmbeddings(ctx, summaryText, configsJSON, globalProxyURL); err == nil {
+						if len(sumEmb) > 0 {
+							summaryEmbBlob, _ = sqlite_vec.SerializeFloat32(sumEmb)
+						}
+					} else {
+						log.Printf("Failed to generate summary embedding for article %d: %v", task.ArticleID, err)
+					}
 				}
-			} else {
-				log.Printf("Failed to generate summary embedding for article %d: %v", articleID, err)
+
+				if len(titleEmbBlob) > 0 || len(summaryEmbBlob) > 0 {
+					if err := m.db.UpdateArticleEmbeddings(task.ArticleID, titleEmbBlob, summaryEmbBlob); err != nil {
+						log.Printf("Failed to update article %d embeddings: %v", task.ArticleID, err)
+					} else {
+						log.Printf("Successfully saved embeddings for article %d", task.ArticleID)
+					}
+				}
 			}
 		}
 
-		if len(titleEmbBlob) > 0 || len(summaryEmbBlob) > 0 {
-			if err := m.db.UpdateArticleEmbeddings(articleID, titleEmbBlob, summaryEmbBlob); err != nil {
-				log.Printf("Failed to update article %d embeddings: %v", articleID, err)
+		clusterScheduled := false
+		if task.NeedsDedup {
+			if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
+				log.Printf("Dedup pipeline failed for article %d: %v", task.ArticleID, err)
 			} else {
-				log.Printf("Successfully saved embeddings for article %d", articleID)
+				log.Printf("Dedup pipeline completed for article %d", task.ArticleID)
+				m.scheduleClusterPipeline(task.UserID)
+				clusterScheduled = true
 			}
 		}
 
-		// Step 4: Run dedup pipeline (SimHash + vector search + cluster assignment)
-		if err := dedup.ProcessArticle(m.db, articleID, userID); err != nil {
-			log.Printf("Dedup pipeline failed for article %d: %v", articleID, err)
-		} else {
-			log.Printf("Dedup pipeline completed for article %d", articleID)
+		if task.NeedsClusterRun && !clusterScheduled {
+			m.scheduleClusterPipeline(task.UserID)
 		}
 	}()
+}
+
+func (m *AIEnhancedManager) scheduleClusterPipeline(userID int64) {
+	m.clusterMu.Lock()
+	if m.clusterPipelineRunning[userID] {
+		m.clusterPipelineQueued[userID] = true
+		m.clusterMu.Unlock()
+		return
+	}
+	m.clusterPipelineRunning[userID] = true
+	m.clusterMu.Unlock()
+
+	go m.runClusterPipeline(userID)
+}
+
+func (m *AIEnhancedManager) runClusterPipeline(userID int64) {
+	for {
+		if err := m.runClusterPipelineOnce(userID); err != nil {
+			log.Printf("Cluster pipeline failed for user %d: %v", userID, err)
+		}
+
+		m.clusterMu.Lock()
+		if m.clusterPipelineQueued[userID] {
+			m.clusterPipelineQueued[userID] = false
+			m.clusterMu.Unlock()
+			continue
+		}
+		delete(m.clusterPipelineRunning, userID)
+		delete(m.clusterPipelineQueued, userID)
+		m.clusterMu.Unlock()
+		return
+	}
+}
+
+func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
+	cfg, err := m.resolveFusionConfig(userID)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	if err := m.runFusion(ctx, m.db, userID, cfg); err != nil {
+		return fmt.Errorf("run fusion: %w", err)
+	}
+	if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
+		return fmt.Errorf("run embedding: %w", err)
+	}
+
+	return nil
+}
+
+func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig, error) {
+	config, err := getUserFeatureAIConfig(m.db, userID, ai.FeatureFusion)
+	if err != nil {
+		return nil, fmt.Errorf("resolve fusion ai config: %w", err)
+	}
+	if !hasConfiguredAPIKey(config) {
+		return nil, fmt.Errorf("missing user-level fusion ai config")
+	}
+
+	embeddingConfigsJSON, err := m.db.GetSettingWithFallback(userID, "ai_embedding_models")
+	if err != nil {
+		return nil, fmt.Errorf("load embedding models: %w", err)
+	}
+
+	globalProxyURL, err := buildGlobalProxyURL(m.db, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load proxy settings: %w", err)
+	}
+	useGlobalProxy := ai.NewProfileProvider(m.db).UseGlobalProxyForFeatureForUser(userID, ai.FeatureFusion)
+
+	aiSummarizer := summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, useGlobalProxy)
+	if config.CustomHeaders != "" {
+		aiSummarizer.SetCustomHeaders(config.CustomHeaders)
+	}
+	aiSummarizer.SetLanguage("zh")
+
+	return &dedup.FusionConfig{
+		Summarizer:     aiSummarizer,
+		EmbConfigsJSON: embeddingConfigsJSON,
+		GlobalProxyURL: globalProxyURL,
+	}, nil
 }
 
 // generateAISummary generates and saves AI summary for an article
@@ -368,7 +478,12 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 	go func() {
 		log.Printf("Starting batch AI processing for user %d...", userID)
 
-		articles, err := m.db.GetArticlesForAIBatchProcessing(userID)
+		targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
+		if targetLang == "" {
+			targetLang = "zh"
+		}
+
+		articles, err := m.db.GetArticlesForAIBatchProcessing(userID, targetLang)
 		if err != nil {
 			log.Printf("Error fetching articles for AI batch processing (user %d): %v", userID, err)
 			return
@@ -381,31 +496,32 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 
 		log.Printf("Found %d articles for AI batch processing (user %d)", len(articles), userID)
 
-		// Build a feed cache to avoid repeated DB lookups
-		feedCache := make(map[int64]bool) // feedID -> translateArticles
-		for _, article := range articles {
-			if _, exists := feedCache[article.FeedID]; !exists {
-				feed, err := m.db.GetFeedByIDForUser(userID, article.FeedID)
-				if err != nil || feed == nil {
-					feedCache[article.FeedID] = false
-				} else {
-					feedCache[article.FeedID] = feed.TranslateArticles
-				}
-			}
-		}
-
 		queued := 0
+		clusterRunNeeded := false
 		for _, article := range articles {
-			hasSummary := article.Summary != "" && article.Summary != "<no content>"
-			translateArticles := feedCache[article.FeedID]
+			needsSummary := !article.HasSummary
+			needsTranslation := article.TranslateArticles && !article.HasTranslation
+			needsEmbedding := !article.HasArticleEmbedding
+			needsDedup := !article.HasCluster
+			needsClusterRun := article.HasCluster && !article.ClusterComplete
+
+			if !needsSummary && !needsTranslation && !needsEmbedding && !needsDedup {
+				if needsClusterRun {
+					clusterRunNeeded = true
+				}
+				continue
+			}
 
 			task := &AIEnhancedTask{
-				ArticleID:         article.ID,
+				ArticleID:         article.Article.ID,
 				UserID:            userID,
-				FeedID:            article.FeedID,
-				NeedsSummary:      !hasSummary,
-				NeedsTranslation:  true,
-				TranslateArticles: translateArticles,
+				FeedID:            article.Article.FeedID,
+				NeedsSummary:      needsSummary,
+				NeedsTranslation:  needsTranslation,
+				TranslateArticles: article.TranslateArticles,
+				NeedsEmbedding:    needsEmbedding,
+				NeedsDedup:        needsDedup,
+				NeedsClusterRun:   needsClusterRun,
 			}
 
 			select {
@@ -415,6 +531,10 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 				log.Printf("AI enhanced task queue full during batch processing, queued %d/%d articles", queued, len(articles))
 				return
 			}
+		}
+
+		if clusterRunNeeded {
+			m.scheduleClusterPipeline(userID)
 		}
 
 		log.Printf("Batch AI processing: queued %d tasks for user %d", queued, userID)
@@ -473,6 +593,11 @@ func ShouldProcess(db *sqlite.DB, userID int64) bool {
 		return false
 	}
 
+	fusionConfig, err := getUserFeatureAIConfig(db, userID, ai.FeatureFusion)
+	if err != nil || !hasConfiguredAPIKey(fusionConfig) {
+		return false
+	}
+
 	// Check if summary is enabled and using AI
 	summaryEnabled, _ := db.GetSettingWithFallback(userID, "summary_enabled")
 	summaryProvider, _ := db.GetSettingWithFallback(userID, "summary_provider")
@@ -506,4 +631,34 @@ func min(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+func buildGlobalProxyURL(db *sqlite.DB, userID int64) (string, error) {
+	proxyEnabled, err := db.GetSettingWithFallback(userID, "proxy_enabled")
+	if err != nil || proxyEnabled != "true" {
+		return "", err
+	}
+
+	proxyType, err := db.GetSettingWithFallback(userID, "proxy_type")
+	if err != nil {
+		return "", err
+	}
+	proxyHost, err := db.GetSettingWithFallback(userID, "proxy_host")
+	if err != nil {
+		return "", err
+	}
+	proxyPort, err := db.GetSettingWithFallback(userID, "proxy_port")
+	if err != nil {
+		return "", err
+	}
+	proxyUsername, err := db.GetEncryptedSettingWithFallback(userID, "proxy_username")
+	if err != nil {
+		return "", err
+	}
+	proxyPassword, err := db.GetEncryptedSettingWithFallback(userID, "proxy_password")
+	if err != nil {
+		return "", err
+	}
+
+	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword), nil
 }

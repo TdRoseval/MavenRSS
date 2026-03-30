@@ -20,4 +20,5 @@ func registerClusterRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	registerProtectedRoute(mux, "/api/clusters/read", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleClusterRead(h, w, r) })
 	registerProtectedRoute(mux, "/api/clusters/favorite", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleClusterFavorite(h, w, r) })
 	registerProtectedRoute(mux, "/api/clusters/read-later", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleClusterReadLater(h, w, r) })
+	registerProtectedRoute(mux, "/api/clusters/mark-all-read", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleMarkAllClustersRead(h, w, r) })
 }

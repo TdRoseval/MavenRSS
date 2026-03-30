@@ -2,16 +2,11 @@
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
-import {
-  PhCheckCircle,
-  PhTrash
-} from '@phosphor-icons/vue';
+import { PhCheckCircle } from '@phosphor-icons/vue';
 import ClusterItem from './ClusterItem.vue';
 import { useSettings } from '@/composables/core/useSettings';
-import { authFetch } from '@/shared/lib/authFetch';
 import type { Cluster } from '@/types/models';
 import { useClusterStore } from '@/stores/cluster';
-import { apiClient } from '@/shared/lib/apiClient';
 
 const clusterStore = useClusterStore();
 const authStore = useAuthStore();
@@ -36,24 +31,22 @@ const emit = defineEmits<{
   selectCluster: [clusterId: number];
 }>();
 
-// Layout mode computed
 const layoutMode = computed(() => settings.value.layout_mode || 'normal');
 const isCardMode = computed(() => layoutMode.value === 'card');
+const itemHeight = computed(() => (layoutMode.value === 'compact' ? 104 : 128));
 
-// Virtual scroll state
 const scrollTop = ref(0);
 const containerHeight = ref(0);
-const ITEM_HEIGHT = 96; // Estimated height per item
 const BUFFER_SIZE = 10;
 
 const visibleRange = computed(() => {
   const clusters = clusterStore.clusters;
   if (!clusters.length) return { start: 0, end: 0 };
 
-  const start = Math.max(0, Math.floor(scrollTop.value / ITEM_HEIGHT) - BUFFER_SIZE);
+  const start = Math.max(0, Math.floor(scrollTop.value / itemHeight.value) - BUFFER_SIZE);
   const end = Math.min(
     clusters.length,
-    Math.ceil((scrollTop.value + containerHeight.value) / ITEM_HEIGHT) + BUFFER_SIZE
+    Math.ceil((scrollTop.value + containerHeight.value) / itemHeight.value) + BUFFER_SIZE
   );
 
   return { start, end };
@@ -66,20 +59,23 @@ const visibleClusters = computed(() => {
 });
 
 const listPaddingTop = computed(() => {
-  return visibleRange.value.start * ITEM_HEIGHT;
+  return visibleRange.value.start * itemHeight.value;
 });
 
 const listPaddingBottom = computed(() => {
-  return (clusterStore.clusters.length - visibleRange.value.end) * ITEM_HEIGHT;
+  return (clusterStore.clusters.length - visibleRange.value.end) * itemHeight.value;
 });
 
-onMounted(() => {
+onMounted(async () => {
   if (authStore.isAuthenticated) {
-    clusterStore.fetchClusters();
+    await clusterStore.fetchClusters();
+    await nextTick();
+    if (listRef.value) {
+      containerHeight.value = listRef.value.clientHeight;
+    }
   }
 });
 
-// Watch for array length changes (list content changes)
 watch(
   () => clusterStore.clusters.length,
   async () => {
@@ -107,12 +103,10 @@ function selectCluster(cluster: Cluster): void {
 
   clusterStore.currentClusterId = cluster.id;
   if (!cluster.is_read) {
-    cluster.is_read = true;
-    apiClient
-      .post('/clusters/read', { id: cluster.id, read: true })
-      .catch((e) => {
-        console.error('Error marking as read:', e);
-      });
+    clusterStore.markClusterRead(cluster.id, true).catch((e) => {
+      console.error('Error marking as read:', e);
+      window.showToast(t('common.errors.savingSettings'), 'error');
+    });
   }
 
   if (props.isMobile) {
@@ -142,20 +136,85 @@ function handleScroll(e: Event): void {
 }
 
 function handleContextmenu(e: MouseEvent, cluster: Cluster) {
-   // Minimal context menu stub
-   e.preventDefault();
+  e.preventDefault();
+  e.stopPropagation();
+
+  window.dispatchEvent(
+    new CustomEvent('open-context-menu', {
+      detail: {
+        x: e.clientX,
+        y: e.clientY,
+        items: [
+          {
+            label: cluster.is_read
+              ? t('article.action.markAsUnread')
+              : t('article.action.markAsRead'),
+            action: 'toggleRead',
+            icon: cluster.is_read ? 'ph-envelope' : 'ph-envelope-open',
+          },
+          {
+            label: cluster.is_favorite
+              ? t('article.action.removeFromFavorite')
+              : t('article.action.addToFavorite'),
+            action: 'toggleFavorite',
+            icon: 'ph-star',
+            iconWeight: cluster.is_favorite ? 'fill' : 'regular',
+            iconColor: cluster.is_favorite ? 'text-yellow-500' : '',
+          },
+          {
+            label: cluster.is_read_later
+              ? t('article.action.removeFromReadLater')
+              : t('article.action.addToReadLater'),
+            action: 'toggleReadLater',
+            icon: 'ph-clock-countdown',
+            iconWeight: cluster.is_read_later ? 'fill' : 'regular',
+            iconColor: cluster.is_read_later ? 'text-blue-500' : '',
+          },
+        ],
+        callback: async (action: string, targetCluster: Cluster) => {
+          try {
+            if (action === 'toggleRead') {
+              await clusterStore.markClusterRead(targetCluster.id, !targetCluster.is_read);
+            } else if (action === 'toggleFavorite') {
+              await clusterStore.toggleClusterFavorite(targetCluster);
+            } else if (action === 'toggleReadLater') {
+              await clusterStore.toggleClusterReadLater(targetCluster);
+            }
+          } catch (error) {
+            console.error('Error handling cluster action:', error);
+            window.showToast(t('common.errors.savingSettings'), 'error');
+          }
+        },
+        data: cluster,
+      },
+    })
+  );
 }
 
 async function markAllAsRead(): Promise<void> {
-  // Not implemented for clusters yet - stub
-  window.showToast(t('common.toast.clearedReadLater'), 'info');
+  const confirmed = await window.showConfirm({
+    title: t('article.cluster.markAllReadTitle'),
+    message: t('article.cluster.markAllReadConfirm'),
+    confirmText: t('common.confirm'),
+    cancelText: t('common.cancel'),
+    isDanger: false,
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await clusterStore.markAllAsRead();
+    window.showToast(t('article.cluster.markedAllAsRead'), 'success');
+  } catch (error) {
+    console.error('Error marking all clusters as read:', error);
+    window.showToast(t('common.errors.savingSettings'), 'error');
+  }
 }
 
 function handleHoverMarkAsRead(clusterId: number): void {
-  const cluster = clusterStore.clusters.find((c) => c.id === clusterId);
-  if (cluster) {
-    cluster.is_read = true;
-  }
+  clusterStore.updateClusterState(clusterId, { is_read: true });
 }
 </script>
 
@@ -170,14 +229,14 @@ function handleHoverMarkAsRead(clusterId: number): void {
       <div class="flex items-center justify-between">
         <h3
           class="m-0 text-base sm:text-lg font-semibold truncate flex-1"
-          title="AI Fusion Clusters"
+          :title="t('article.cluster.listTitle')"
         >
-          AI Fusion Clusters
+          {{ t('article.cluster.listTitle') }}
         </h3>
         <div class="flex items-center gap-1 sm:gap-2">
           <button
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
-            title="Mark all clusters as read"
+            :title="t('article.cluster.markAllReadTitle')"
             @click="markAllAsRead"
           >
             <PhCheckCircle :size="18" class="sm:w-5 sm:h-5" />
@@ -191,7 +250,9 @@ function handleHoverMarkAsRead(clusterId: number): void {
       v-if="clusterStore.isLoading && clusterStore.page === 1"
       class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary"
     >
-      <div class="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4" />
+      <div
+        class="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"
+      />
       <div>{{ t('article.content.loadingContent') }}</div>
     </div>
 
@@ -224,20 +285,27 @@ function handleHoverMarkAsRead(clusterId: number): void {
           v-if="clusterStore.isLoading && clusterStore.page > 1"
           class="py-4 flex justify-center items-center text-text-secondary w-full"
         >
-          <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mr-2" />
-          <span class="text-sm">Loading more...</span>
+          <div
+            class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mr-2"
+          />
+          <span class="text-sm">{{ t('article.cluster.loadingMore') }}</span>
         </div>
       </div>
     </div>
-    
+
     <!-- Empty State -->
-    <div v-else class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary text-center">
+    <div
+      v-else
+      class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary text-center"
+    >
       <div class="w-16 h-16 bg-bg-tertiary rounded-full flex items-center justify-center mb-4">
         <span class="text-2xl">⚡️</span>
       </div>
-      <h3 class="text-lg font-medium text-text-primary mb-2">No Clusters Found</h3>
+      <h3 class="text-lg font-medium text-text-primary mb-2">
+        {{ t('article.cluster.emptyTitle') }}
+      </h3>
       <p class="text-sm max-w-[250px]">
-        Articles will automatically be grouped and merged here as they are processed by the AI integration engine.
+        {{ t('article.cluster.emptyDescription') }}
       </p>
     </div>
   </section>

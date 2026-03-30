@@ -12,7 +12,7 @@ import { useArticleStore } from '@/features/article/store';
 import { useAppStore } from '@/stores/app';
 
 export function useSettingsManualSave(settings: Ref<SettingsData> | (() => SettingsData)) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const articleStore = useArticleStore();
   const appStore = useAppStore();
   const isSaving = ref(false);
@@ -96,6 +96,14 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
   async function saveSettings(): Promise<boolean> {
     if (!hasChanges.value) {
       return true; // No changes to save
+    }
+
+    if (
+      settingsRef.value.ai_enhanced_mode &&
+      String(settingsRef.value.ai_fusion_profile_id ?? '').trim() === ''
+    ) {
+      window.showToast?.(t('setting.ai.aiEnhancedModeRequiresFusionProfile'), 'error');
+      return false;
     }
 
     isSaving.value = true;

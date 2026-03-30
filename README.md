@@ -4,11 +4,11 @@
    <strong>English</strong> | <a href="README_zh.md">简体中文</a>
 </p>
 
-[![Version](https://img.shields.io/badge/version-1.3.20-blue.svg)](https://github.com/WCY-dt/MavenRSS/releases)
-[![License](https://img.shields.io/badge/license-GPLv3-green.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev/)
-[![Wails](https://img.shields.io/badge/Wails-v3%20alpha-red)](https://wails.io/)
-[![Vue.js](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js)](https://vuejs.org/)
+[!\[Version\](https://img.shields.io/badge/version-1.3.20-blue.svg null)](https://github.com/WCY-dt/MavenRSS/releases)
+[!\[License\](https://img.shields.io/badge/license-GPLv3-green.svg null)](LICENSE)
+[!\[Go\](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go null)](https://go.dev/)
+[!\[Wails\](https://img.shields.io/badge/Wails-v3%20alpha-red null)](https://wails.io/)
+[!\[Vue.js\](https://img.shields.io/badge/Vue.js-3.5+-4FC08D?logo=vue.js null)](https://vuejs.org/)
 
 ## ✨ Features
 
@@ -21,48 +21,57 @@
 - 🏭 **Custom Scripts & Automation**: Built-in filters and scripting system supporting highly customizable automation workflows
 - 📱 **Mobile-Friendly**: Responsive design optimized for mobile devices with faster load times and smoother user experience
 
-## 🧠 AI-Enhanced Engine
+## 🧠 AI-Enhanced Mode
 
-MavenRSS features a powerful AI processing pipeline that automatically deduplicates, clusters, and fuses related articles together, providing you with a cleaner and more insightful reading experience.
+MavenRSS includes an opt-in AI post-processing pipeline for article ingestion. When the required user-level AI configuration is complete, newly fetched articles with cached content are queued for conditional AI summarization, optional AI translation, article embedding generation, per-user clustering, automatic cluster fusion, and cluster embedding. Enabling this mode also triggers a backfill job for all favorited articles plus unfavorited articles from the last 2 days.
 
 ### Key AI Features
 
-- **Global Article Deduplication**: Employs an advanced two-stage deduplication process using **SimHash** (for literal similarity) and **Vector Embeddings** (for semantic similarity via `sqlite-vec`).
-- **AI Cluster Fusion**: Automatically groups related articles from different feeds into "Clusters" and uses LLMs to synthesize a comprehensive "Super Article" containing multiple perspectives.
-- **Auto-Translation & Summarization**: Automatically translates and summarizes incoming articles to enrich data before context embedding.
-- **Privacy-First Processing**: Embeddings and clustering operate completely locally using SQLite vector search without relying on external vector databases.
+- **Per-User Deduplication & Clustering**: Runs a two-stage pipeline on each user's articles: **SimHash** on summary text for literal similarity, then **sqlite-vec** nearest-neighbor search on stored embeddings for semantic matching. Current thresholds are Hamming distance `<= 3` and cosine distance `<= 0.15` (roughly cosine similarity `>= 0.85`).
+- **Conditional AI Summary & Translation**: Generates an AI summary only when an article does not already have one, and translates the full article body only when the source feed enables `translate_articles`. In AI Enhanced Mode, summaries are forced to Chinese, while translation defaults to the configured target language or `zh`.
+- **External Embeddings, Local Retrieval**: Generates article title and summary embeddings through the configured OpenAI-compatible `/embeddings` endpoint, stores and queries them locally in SQLite `vec0` tables for clustering and semantic lookup, and later writes cluster-level title/summary embeddings after fusion completes.
+- **Automatic Fusion State Machine**: Both matched and standalone articles end up in a cluster marked as `pending_merge`, then the automatic pipeline advances that cluster through `pending_merge -> pending_embed -> complete`. Multi-article clusters use LLM fusion, while single-article or failed fusion falls back to copying source content before cluster embedding.
+- **Strict Activation Preconditions**: AI Enhanced Mode is resolved from user-level AI profiles/settings and is enabled only when summary, translation, search, chat, and fusion all have valid AI configs, AI summary is the active summarizer, translation/search/chat are enabled, and at least one embedding model is configured. Global AI keys alone do not activate this mode.
 
 ### Architecture
 
 ```mermaid
 flowchart TD
-    A["New Article"] --> B["AI Summary"]
-    B --> C["AI Translation"]
-    C --> D["Embedding Generation"]
-    D --> E["Step 1: SimHash \n (Hamming ≤ 3)"]
-    E -->|Match| F["Join Cluster"]
-    E -->|No match| G["Step 2: Vector ANN \n (Cosine ≥ 0.85)"]
-    G -->|Match| F
-    G -->|No match| H["Create Standalone Cluster"]
-    F --> I["pending_merge"]
-    I --> J["Step 4: LLM Fusion"]
-    J --> K["Step 5: Re-embed"]
-    K --> L["complete"]
-    H --> L
+    A["New Article"] --> B["Cache Article Content"]
+    B --> C["Apply Rules"]
+    C --> D{"AI Enhanced Mode \n prerequisites satisfied?"}
+    D -->|No| E["Skip AI pipeline"]
+    D -->|Yes| F{"Article already \n has summary?"}
+    F -->|No| G["Generate AI Summary"]
+    F -->|Yes| H["Keep Existing Summary"]
+    G --> I{"Feed enables \n translate_articles?"}
+    H --> I
+    I -->|Yes| J["Translate Article Body"]
+    I -->|No| K["Skip Translation"]
+    J --> L["Generate Article Embeddings"]
+    K --> L
+    L --> M["Step 1: SimHash \n summary text, Hamming ≤ 3"]
+    M -->|Match| N["Join Existing Cluster"]
+    M -->|No match| O["Step 2: sqlite-vec ANN \n cosine distance ≤ 0.15"]
+    O -->|Match| N
+    O -->|No match| P["Create New Cluster"]
+    N --> Q["Mark Cluster as pending_merge"]
+    P --> Q
+    Q --> R["Run Fusion / Fallback Copy"]
+    R --> S["Mark Cluster as pending_embed"]
+    S --> T["Generate Cluster Embeddings"]
+    T --> U["Mark Cluster as complete"]
 ```
-
 
 ## 🚀 Quick Start
 
 ### Deployment Options
 
-MavenRSS offers three deployment options: 
+MavenRSS offers three deployment options:
 
 #### Option 1: Desktop Application (Recommended for Personal Use)
 
 Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page of the upstream repository.
-
-
 
 #### Option 2: Web Server (Recommended for Teams/Shared Use)
 
@@ -94,8 +103,6 @@ The following environment variables are available for configuration:
 - `MRRSS_TEMPLATE_USERNAME`: Template user username
 - `MRRSS_TEMPLATE_EMAIL`: Template user email
 - `MRRSS_TEMPLATE_PASSWORD`: Template user password
-
-
 
 #### Option 3: Build from Source (Desktop)
 
@@ -129,28 +136,21 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 ### Installation
 
 1. **Clone the repository**
-
    ```bash
    git clone https://github.com/TdRoseval/MavenRSS.git
    cd MavenRSS
    ```
-
 2. **Install frontend dependencies**
-
    ```bash
    cd frontend
    npm install
    cd ..
    ```
-
 3. **Install Wails v3 CLI**
-
    ```bash
    go install github.com/wailsapp/wails/v3/cmd/wails3@latest
    ```
-
 4. **Build the application**
-
    ```bash
    # Using Task (recommended)
    task build
@@ -161,11 +161,8 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
    # Or directly with wails3
    wails3 build
    ```
-
    The executable will be created in the `build/bin` directory.
-
 5. **Run the application**
-
    - Windows: `build/bin/MavenRSS.exe`
    - macOS: `build/bin/MavenRSS.app`
    - Linux: `build/bin/MavenRSS`
@@ -188,11 +185,11 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
   - **Windows:** `%APPDATA%\MavenRSS\` (e.g., `C:\Users\YourName\AppData\Roaming\MavenRSS\`)
   - **macOS:** `~/Library/Application Support/MavenRSS/`
   - **Linux:** `~/.local/share/MavenRSS/`
-
 - **Portable Mode** (when `portable.txt` exists):
   - All data stored in `data/` folder
 
 **Web Server:**
+
 - All data stored in the Docker volume or configured data directory
 
 This ensures your data persists across application updates and reinstalls.
@@ -267,7 +264,7 @@ make test
 
 This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
----
+***
 
 <div align="center">
   <p>Made by AI</p>

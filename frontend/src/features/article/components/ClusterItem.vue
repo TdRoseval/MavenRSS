@@ -6,7 +6,7 @@ import type { Cluster } from '@/types/models';
 import { formatDate as formatDateUtil } from '@/shared/lib/date';
 import { useAuthStore } from '@/stores/auth';
 import { useSettings } from '@/composables/core/useSettings';
-import { authFetch } from '@/shared/lib/authFetch';
+import { apiClient } from '@/shared/lib/apiClient';
 
 interface Props {
   cluster: Cluster;
@@ -29,6 +29,8 @@ const authStore = useAuthStore();
 const compactMode = computed(() => {
   return settings.value.layout_mode === 'compact';
 });
+const feedTitlesText = computed(() => props.cluster.feed_titles?.filter(Boolean).join(' · ') || '');
+const authorsText = computed(() => props.cluster.authors?.filter(Boolean).join(' · ') || '');
 
 const formatDateWithI18n = (dateStr: string): string => {
   return formatDateUtil(dateStr, locale.value, t);
@@ -58,13 +60,7 @@ async function markAsRead() {
   if (!authStore.isAuthenticated || props.cluster.is_read) return;
 
   try {
-    await authFetch(`/api/clusters/read`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ id: props.cluster.id, read: true }),
-    });
+    await apiClient.put('/clusters/read', { id: props.cluster.id, read: true });
     emit('hoverMarkAsRead', props.cluster.id);
   } catch (e) {
     console.error('Error marking as read on hover:', e);
@@ -90,7 +86,10 @@ async function markAsRead() {
     @mouseleave="handleMouseLeave"
   >
     <!-- Simple AI or cluster icon instead of thumbnail for now -->
-    <div class="article-thumbnail-placeholder flex items-center justify-center bg-blue-50 dark:bg-blue-900/20 text-blue-500" :class="{ 'compact-thumbnail': compactMode }">
+    <div
+      class="article-thumbnail-placeholder flex items-center justify-center bg-blue-50 dark:bg-blue-900/20 text-blue-500"
+      :class="{ 'compact-thumbnail': compactMode }"
+    >
       <PhSparkle :size="compactMode ? 20 : 28" weight="fill" />
     </div>
 
@@ -106,16 +105,24 @@ async function markAsRead() {
         >
           {{ cluster.merged_title }}
         </h4>
-        
+
         <PhEyeSlash
           v-if="cluster.is_hidden"
           :size="18"
           class="text-text-secondary flex-shrink-0 sm:w-5 sm:h-5"
         />
-        
+
         <!-- Compact mode icons on the right -->
-        <div v-if="compactMode" class="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-1 self-center">
-          <PhClockCountdown v-if="cluster.is_read_later" :size="16" class="text-blue-500" weight="fill" />
+        <div
+          v-if="compactMode"
+          class="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-1 self-center"
+        >
+          <PhClockCountdown
+            v-if="cluster.is_read_later"
+            :size="16"
+            class="text-blue-500"
+            weight="fill"
+          />
           <PhStar v-if="cluster.is_favorite" :size="16" class="text-yellow-500" weight="fill" />
         </div>
       </div>
@@ -126,9 +133,11 @@ async function markAsRead() {
         :class="{ 'mt-0 sm:mt-1': !compactMode, 'mt-0': compactMode }"
       >
         <span class="flex items-center gap-1.5 truncate flex-1 min-w-0 mr-2">
-          <span class="font-medium text-blue-500">AI Fusion</span>
-          <span class="text-[11px] sm:text-[11px] text-text-secondary opacity-75 truncate max-w-[120px]">
-             {{ cluster.article_count }} articles
+          <span class="font-medium text-blue-500">{{ t('article.cluster.sourceLabel') }}</span>
+          <span
+            class="text-[11px] sm:text-[11px] text-text-secondary opacity-75 truncate max-w-[120px]"
+          >
+            {{ t('article.cluster.articleCount', { count: cluster.article_count }) }}
           </span>
         </span>
         <div class="flex items-center gap-1 sm:gap-2 shrink-0 min-h-[14px] sm:min-h-[18px]">
@@ -148,6 +157,18 @@ async function markAsRead() {
           </template>
           <span class="whitespace-nowrap">{{ formatDateWithI18n(cluster.created_at) }}</span>
         </div>
+      </div>
+      <div
+        v-if="feedTitlesText"
+        class="mt-1 text-[11px] sm:text-xs text-text-secondary line-clamp-1 break-all"
+      >
+        {{ feedTitlesText }}
+      </div>
+      <div
+        v-if="authorsText"
+        class="mt-1 text-[11px] sm:text-xs text-text-secondary/80 line-clamp-1 break-all"
+      >
+        {{ authorsText }}
       </div>
     </div>
   </div>

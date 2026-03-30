@@ -115,44 +115,15 @@ func joinCluster(db *sqlite.DB, articleID, clusterID int64) error {
 }
 
 func createStandaloneCluster(db *sqlite.DB, articleID, userID int64) error {
-	// Single-article cluster starts as "complete" (no fusion needed)
-	clusterID, err := db.CreateCluster(userID, "complete")
+	clusterID, err := db.CreateCluster(userID, "pending_merge")
 	if err != nil {
 		return err
 	}
 	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
 		return err
 	}
-
-	// Copy article content directly to cluster
-	article, err := db.GetArticleByID(articleID)
-	if err != nil || article == nil {
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
 		return err
 	}
-	content, _, _ := db.GetArticleContent(articleID)
-	title := article.Title
-	summary := article.Summary
-	if summary == "" {
-		summary = title
-	}
-	if content == "" {
-		content = summary
-	}
-
-	if err := db.UpdateClusterMergedContent(clusterID, title, summary, content); err != nil {
-		return err
-	}
-
-	// Copy article embeddings to cluster embeddings
-	var titleEmb, summaryEmb []byte
-	_ = db.QueryRow(
-		`SELECT title_embedding, summary_embedding FROM article_embeddings WHERE article_id = ?`,
-		articleID,
-	).Scan(&titleEmb, &summaryEmb)
-
-	if len(titleEmb) > 0 || len(summaryEmb) > 0 {
-		_ = db.UpdateClusterEmbeddings(clusterID, titleEmb, summaryEmb)
-	}
-
 	return nil
 }

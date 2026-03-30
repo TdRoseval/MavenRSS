@@ -99,6 +99,63 @@ func TestGetConfigForFeatureForUserFallsBackToUserLegacyOnly(t *testing.T) {
 	}
 }
 
+func TestGetConfigForFeatureForUserSupportsFusionProfile(t *testing.T) {
+	db := newProfileProviderTestDB(t)
+	provider := NewProfileProvider(db)
+
+	fusionProfileID, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:         1,
+		Name:           "fusion",
+		APIKey:         "fusion-key",
+		Endpoint:       "https://fusion.example.com",
+		Model:          "fusion-model",
+		CustomHeaders:  `{"X-Fusion":"1"}`,
+		UseGlobalProxy: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateAIProfile fusion error: %v", err)
+	}
+
+	if err := db.SetSettingForUser(1, "ai_fusion_profile_id", "999999"); err != nil {
+		t.Fatalf("SetSettingForUser invalid fusion profile error: %v", err)
+	}
+
+	cfg, err := provider.GetConfigForFeatureForUser(1, FeatureFusion)
+	if err != nil {
+		t.Fatalf("GetConfigForFeatureForUser fusion fallback error: %v", err)
+	}
+	if cfg == nil || cfg.APIKey != "fusion-key" || cfg.Endpoint != "https://fusion.example.com" || cfg.Model != "fusion-model" || cfg.CustomHeaders != `{"X-Fusion":"1"}` {
+		t.Fatalf("GetConfigForFeatureForUser() invalid fusion selected = %#v, want fallback user profile", cfg)
+	}
+
+	if err := db.SetSettingForUser(1, "ai_fusion_profile_id", "0"); err != nil {
+		t.Fatalf("SetSettingForUser zero fusion profile error: %v", err)
+	}
+
+	cfg, err = provider.GetConfigForFeatureForUser(1, FeatureFusion)
+	if err != nil {
+		t.Fatalf("GetConfigForFeatureForUser fusion zero error: %v", err)
+	}
+	if cfg == nil || cfg.APIKey != "fusion-key" || cfg.Endpoint != "https://fusion.example.com" || cfg.Model != "fusion-model" || cfg.CustomHeaders != `{"X-Fusion":"1"}` {
+		t.Fatalf("GetConfigForFeatureForUser() zero fusion selected = %#v, want fallback user profile", cfg)
+	}
+
+	if err := db.SetDefaultAIProfileForUser(1, fusionProfileID); err != nil {
+		t.Fatalf("SetDefaultAIProfileForUser fusion error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, "ai_fusion_profile_id", "9999999"); err != nil {
+		t.Fatalf("SetSettingForUser invalid fusion profile error: %v", err)
+	}
+
+	cfg, err = provider.GetConfigForFeatureForUser(1, FeatureFusion)
+	if err != nil {
+		t.Fatalf("GetConfigForFeatureForUser fusion default error: %v", err)
+	}
+	if cfg == nil || cfg.APIKey != "fusion-key" || cfg.Endpoint != "https://fusion.example.com" || cfg.Model != "fusion-model" || cfg.CustomHeaders != `{"X-Fusion":"1"}` {
+		t.Fatalf("GetConfigForFeatureForUser() fusion default = %#v, want selected fusion profile config", cfg)
+	}
+}
+
 func newProfileProviderTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 
