@@ -23,15 +23,14 @@
 
 ## 🧠 AI-Enhanced Mode
 
-MavenRSS includes an opt-in AI post-processing pipeline for article ingestion. When the required user-level AI configuration is complete, newly fetched articles with cached content are queued for conditional AI summarization, optional AI translation, article embedding generation, per-user clustering, automatic cluster fusion, and cluster embedding. Enabling this mode also triggers a backfill job for all favorited articles plus unfavorited articles from the last 2 days.
+AI-Enhanced Mode turns MavenRSS from a feed reader into an AI-powered reading assistant. After articles are fetched, the system can automatically build embeddings, merge related stories into clusters, and continuously improve recommendations based on your interests. The result is a reading experience that helps you scan faster, discover repeated topics less often, and surface more relevant stories over time.
 
 ### Key AI Features
 
-- **Per-User Deduplication & Clustering**: Runs a two-stage pipeline on each user's articles: **SimHash** on summary text for literal similarity, then **sqlite-vec** nearest-neighbor search on stored embeddings for semantic matching. Current thresholds are Hamming distance `<= 3` and cosine distance `<= 0.15` (roughly cosine similarity `>= 0.85`).
-- **Conditional AI Summary & Translation**: Generates an AI summary only when an article does not already have one, and translates the full article body only when the source feed enables `translate_articles`. In AI Enhanced Mode, summaries are forced to Chinese, while translation defaults to the configured target language or `zh`.
-- **External Embeddings, Local Retrieval**: Generates article title and summary embeddings through the configured OpenAI-compatible `/embeddings` endpoint, stores and queries them locally in SQLite `vec0` tables for clustering and semantic lookup, and later writes cluster-level title/summary embeddings after fusion completes.
-- **Automatic Fusion State Machine**: Both matched and standalone articles end up in a cluster marked as `pending_merge`, then the automatic pipeline advances that cluster through `pending_merge -> pending_embed -> complete`. Multi-article clusters use LLM fusion, while single-article or failed fusion falls back to copying source content before cluster embedding.
-- **Strict Activation Preconditions**: AI Enhanced Mode is resolved from user-level AI profiles/settings and is enabled only when summary, translation, search, chat, and fusion all have valid AI configs, AI summary is the active summarizer, translation/search/chat are enabled, and at least one embedding model is configured. Global AI keys alone do not activate this mode.
+- **Deduplication & Topic Clustering**: With **SimHash**, **Embedding**, and **sqlite-vec**, related articles can be grouped into the same **Cluster**, reducing repetitive reading and making ongoing topics easier to follow.
+- **Interest-Aware Recall & Reranking**: The system can learn from clicks, deep reads, and favorites to build a per-user interest vector, then recall and rerank recent clusters so recommendations become increasingly aligned with your interests.
+- **Support Vector Retrieval**: Embeddings are generated through OpenAI-compatible APIs and searched locally in SQLite vector tables, combining cloud AI flexibility with local semantic retrieval.
+- **Automatic AI Workflow**: Once enabled, new content can move through summary, translation, embedding, clustering, fusion, and reranking as one continuous pipeline, while older relevant content can also be backfilled automatically.
 
 ### Architecture
 
@@ -61,6 +60,11 @@ flowchart TD
     R --> S["Mark Cluster as pending_embed"]
     S --> T["Generate Cluster Embeddings"]
     T --> U["Mark Cluster as complete"]
+    U --> V["Collect User Feedback \n clicks / deep reads / favorites"]
+    V --> W["Update Per-User Interest Vector"]
+    W --> X["Recall Recent Complete Clusters \n by Vector Similarity"]
+    X --> Y["Rerank with Time Decay"]
+    Y --> Z["Personalized Cluster Feed"]
 ```
 
 ## 🚀 Quick Start
