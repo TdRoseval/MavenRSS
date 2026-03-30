@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"fmt"
 )
 
 // initSchema initializes the database schema by creating all tables and indexes.
@@ -281,5 +282,19 @@ func initSchema(db *sql.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+// initVecSchema creates the sqlite-vec virtual tables for embedding storage.
+// This is called separately because vec0 virtual tables use different syntax.
+func initVecSchema(db *sql.DB) error {
+	_, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
+		article_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
+	if err != nil {
+		return fmt.Errorf("create article_embeddings vec0 table: %w", err)
+	}
 	return nil
 }

@@ -116,3 +116,13 @@ type AIProfile struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
+
+// EmbeddingModelConfig represents a single embedding model configuration
+type EmbeddingModelConfig struct {
+	ModelName      string `json:"modelname"`
+	BaseURL        string `json:"baseurl"`
+	APIKey         string `json:"apikey"`
+	RPM            int    `json:"rpm"`              // Rate Per Minute, 0 means no limit
+	TPM            int    `json:"tpm"`              // Tokens Per Minute, 0 means no limit
+	UseGlobalProxy bool   `json:"use_global_proxy"` // Whether to use global proxy
+}

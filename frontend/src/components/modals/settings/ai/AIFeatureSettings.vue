@@ -53,8 +53,16 @@ onMounted(() => {
 // Check if AI enhanced mode can be enabled
 const isAIEnhancedModeAvailable = computed(() => {
   const settings = props.settings;
+  
+  let hasEmbeddings = false;
+  try {
+    const models = JSON.parse(settings.ai_embedding_models || '[]');
+    hasEmbeddings = Array.isArray(models) && models.length > 0;
+  } catch(e) { /* ignore */ }
+
   return (
     hasProfiles.value &&
+    hasEmbeddings &&
     settings.summary_enabled === true &&
     settings.summary_provider === 'ai' &&
     settings.translation_enabled === true &&

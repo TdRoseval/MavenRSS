@@ -21,6 +21,11 @@ func (db *DB) Init() error {
 			return
 		}
 
+		// Initialize vec0 virtual tables for vector embeddings (sqlite-vec)
+		if err = initVecSchema(db.DB); err != nil {
+			return
+		}
+
 		// Initialize FreshRSS sync queue table
 		if err = InitFreshRSSSyncTable(db.DB); err != nil {
 			return

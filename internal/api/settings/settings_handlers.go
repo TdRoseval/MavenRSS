@@ -234,6 +234,26 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Check if AI Enhanced Mode is being toggled ON
+		if newEnhanced, okEnhanced := req["ai_enhanced_mode"]; okEnhanced && newEnhanced == "true" && ok {
+			var oldEnhanced string
+			oldEnhanced, _ = h.DB.GetSettingForUser(userID, "ai_enhanced_mode")
+			if oldEnhanced == "" {
+				oldEnhanced, _ = h.DB.GetSetting("ai_enhanced_mode")
+			}
+			if oldEnhanced != "true" {
+				// AI Enhanced Mode just toggled ON - trigger batch processing after save
+				defer func() {
+					if h.Fetcher != nil {
+						if manager := h.Fetcher.GetAIEnhancedManager(); manager != nil {
+							log.Printf("[HandleSettings] AI Enhanced Mode activated for user %d, starting batch processing", userID)
+							manager.BatchProcessExistingArticles(userID)
+						}
+					}
+				}()
+			}
+		}
+
 		// Check if proxy settings are changing
 		var oldProxyType, oldProxyHost, oldProxyPort, oldProxyUsername, oldProxyPassword string
 		if ok {

@@ -3,6 +3,7 @@
   "ai_chat_enabled": false,
   "ai_chat_profile_id": "",
   "ai_custom_headers": "",
+  "ai_embedding_models": "[]",
   "ai_endpoint": "https://api.openai.com/v1/chat/completions",
   "ai_enhanced_mode": false,
   "ai_model": "gpt-4o-mini",

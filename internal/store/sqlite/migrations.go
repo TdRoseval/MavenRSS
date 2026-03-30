@@ -174,6 +174,13 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_article_translated_contents_article_id ON article_translated_contents(article_id)`)
 
+	// Migration: Add article_embeddings vec0 virtual table for vector search
+	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
+		article_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
+
 	return nil
 }
 

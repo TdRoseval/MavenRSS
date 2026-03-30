@@ -4,6 +4,7 @@ import type { SettingsData } from '@/types/settings';
 import { TipBox } from '@/components/settings';
 import AIProfileList from './AIProfileList.vue';
 import AIUsageSettings from './AIUsageSettings.vue';
+import AIEmbeddingSettings from './AIEmbeddingSettings.vue';
 import AIFeatureSettings from './AIFeatureSettings.vue';
 
 const { t } = useI18n();
@@ -29,6 +30,7 @@ function handleUpdateSettings(updatedSettings: SettingsData) {
     <TipBox type="info" :title="t('setting.ai.isDanger')" />
     <AIProfileList />
     <AIUsageSettings :settings="settings" @update:settings="handleUpdateSettings" />
+    <AIEmbeddingSettings :settings="settings" @update:settings="handleUpdateSettings" />
     <AIFeatureSettings :settings="settings" @update:settings="handleUpdateSettings" />
   </div>
 </template>

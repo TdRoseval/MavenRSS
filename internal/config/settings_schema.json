@@ -752,6 +752,13 @@
       "category": "ai",
       "encrypted": false,
       "frontend_key": "aiEnhancedMode"
+    },
+    "ai_embedding_models": {
+      "type": "string",
+      "default": "[]",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiEmbeddingModels"
     }
   }
 }

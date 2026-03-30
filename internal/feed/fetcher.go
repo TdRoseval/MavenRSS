@@ -347,6 +347,11 @@ func (f *Fetcher) GetCleanupManager() *CleanupManager {
 	return f.cleanupManager
 }
 
+// GetAIEnhancedManager returns the AI enhanced mode manager
+func (f *Fetcher) GetAIEnhancedManager() *AIEnhancedManager {
+	return f.aiEnhancedManager
+}
+
 // transformRSSHubURL converts rsshub:// route to full URL
 func (f *Fetcher) transformRSSHubURL(url string, userID int64) (string, error) {
 	if !rsshub.IsRSSHubURL(url) {

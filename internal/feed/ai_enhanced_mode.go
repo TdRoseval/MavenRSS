@@ -10,6 +10,10 @@ import (
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
 	"MavenRSS/internal/translation"
+	"context"
+	"time"
+
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
 
 // AIEnhancedTask represents a task for AI enhanced mode processing
@@ -99,6 +103,72 @@ func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 	if task.NeedsTranslation && task.TranslateArticles {
 		m.generateAITranslation(task, content)
 	}
+
+	// ALWAYS trigger async embedding generation as part of AI enhanced mode
+	m.generateEmbeddingsAsync(task.ArticleID, task.UserID, content)
+}
+
+// generateEmbeddingsAsync generates vector embeddings for article title and summary (or content) asynchronously
+func (m *AIEnhancedManager) generateEmbeddingsAsync(articleID, userID int64, content string) {
+	go func() {
+		// Give DB a moment to settle summary/translations
+		time.Sleep(2 * time.Second)
+
+		article, err := m.db.GetArticleByID(articleID)
+		if err != nil || article == nil {
+			log.Printf("Failed to fetch article %d for embeddings: %v", articleID, err)
+			return
+		}
+
+		summaryText := article.Summary
+		if summaryText == "" {
+			// Fallback to content if summary is not available or article was too short
+			summaryText = content
+		}
+
+		configsJSON, err := m.db.GetSettingWithFallback(userID, "ai_embedding_models")
+		if err != nil || configsJSON == "" || configsJSON == "[]" {
+			log.Printf("No embedding models configured for user %d, skipping embedding", userID)
+			return
+		}
+
+		// Resolve global proxy URL for models with use_global_proxy=true
+		globalProxyURL, _ := m.db.GetSettingWithFallback(userID, "proxy_url")
+
+		// Prepare context for API calls
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		var titleEmbBlob, summaryEmbBlob []byte
+
+		if article.Title != "" {
+			if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
+				if len(titleEmb) > 0 {
+					titleEmbBlob, _ = sqlite_vec.SerializeFloat32(titleEmb)
+				}
+			} else {
+				log.Printf("Failed to generate title embedding for article %d: %v", articleID, err)
+			}
+		}
+
+		if summaryText != "" {
+			if sumEmb, err := ai.GenerateEmbeddings(ctx, summaryText, configsJSON, globalProxyURL); err == nil {
+				if len(sumEmb) > 0 {
+					summaryEmbBlob, _ = sqlite_vec.SerializeFloat32(sumEmb)
+				}
+			} else {
+				log.Printf("Failed to generate summary embedding for article %d: %v", articleID, err)
+			}
+		}
+
+		if len(titleEmbBlob) > 0 || len(summaryEmbBlob) > 0 {
+			if err := m.db.UpdateArticleEmbeddings(articleID, titleEmbBlob, summaryEmbBlob); err != nil {
+				log.Printf("Failed to update article %d embeddings: %v", articleID, err)
+			} else {
+				log.Printf("Successfully saved embeddings for article %d", articleID)
+			}
+		}
+	}()
 }
 
 // generateAISummary generates and saves AI summary for an article
@@ -269,6 +339,66 @@ func (m *AIEnhancedManager) addAIUsage(userID int64, tokens int64) {
 	}
 }
 
+// BatchProcessExistingArticles scans existing articles for a user and queues them for AI processing.
+// This is triggered when AI Enhanced Mode is first activated.
+// It processes: all favorited articles + unfavorited articles from the last 2 days.
+func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
+	go func() {
+		log.Printf("Starting batch AI processing for user %d...", userID)
+
+		articles, err := m.db.GetArticlesForAIBatchProcessing(userID)
+		if err != nil {
+			log.Printf("Error fetching articles for AI batch processing (user %d): %v", userID, err)
+			return
+		}
+
+		if len(articles) == 0 {
+			log.Printf("No articles to batch process for user %d", userID)
+			return
+		}
+
+		log.Printf("Found %d articles for AI batch processing (user %d)", len(articles), userID)
+
+		// Build a feed cache to avoid repeated DB lookups
+		feedCache := make(map[int64]bool) // feedID -> translateArticles
+		for _, article := range articles {
+			if _, exists := feedCache[article.FeedID]; !exists {
+				feed, err := m.db.GetFeedByIDForUser(userID, article.FeedID)
+				if err != nil || feed == nil {
+					feedCache[article.FeedID] = false
+				} else {
+					feedCache[article.FeedID] = feed.TranslateArticles
+				}
+			}
+		}
+
+		queued := 0
+		for _, article := range articles {
+			hasSummary := article.Summary != "" && article.Summary != "<no content>"
+			translateArticles := feedCache[article.FeedID]
+
+			task := &AIEnhancedTask{
+				ArticleID:         article.ID,
+				UserID:            userID,
+				FeedID:            article.FeedID,
+				NeedsSummary:      !hasSummary,
+				NeedsTranslation:  true,
+				TranslateArticles: translateArticles,
+			}
+
+			select {
+			case m.taskChan <- task:
+				queued++
+			default:
+				log.Printf("AI enhanced task queue full during batch processing, queued %d/%d articles", queued, len(articles))
+				return
+			}
+		}
+
+		log.Printf("Batch AI processing: queued %d tasks for user %d", queued, userID)
+	}()
+}
+
 // AddTask adds a task to the AI enhanced mode queue
 func (m *AIEnhancedManager) AddTask(task *AIEnhancedTask) {
 	select {
@@ -292,6 +422,12 @@ func ShouldProcess(db *sqlite.DB, userID int64) bool {
 	// Check if AI enhanced mode is enabled
 	enhancedModeStr, _ := db.GetSettingWithFallback(userID, "ai_enhanced_mode")
 	if enhancedModeStr != "true" {
+		return false
+	}
+
+	// Check if embedding models configured (NEW prereq)
+	embeddingsConfig, _ := db.GetSettingWithFallback(userID, "ai_embedding_models")
+	if embeddingsConfig == "" || embeddingsConfig == "[]" {
 		return false
 	}
 
