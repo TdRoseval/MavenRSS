@@ -21,6 +21,37 @@
 - 🏭 **Custom Scripts & Automation**: Built-in filters and scripting system supporting highly customizable automation workflows
 - 📱 **Mobile-Friendly**: Responsive design optimized for mobile devices with faster load times and smoother user experience
 
+## 🧠 AI-Enhanced Engine
+
+MavenRSS features a powerful AI processing pipeline that automatically deduplicates, clusters, and fuses related articles together, providing you with a cleaner and more insightful reading experience.
+
+### Key AI Features
+
+- **Global Article Deduplication**: Employs an advanced two-stage deduplication process using **SimHash** (for literal similarity) and **Vector Embeddings** (for semantic similarity via `sqlite-vec`).
+- **AI Cluster Fusion**: Automatically groups related articles from different feeds into "Clusters" and uses LLMs to synthesize a comprehensive "Super Article" containing multiple perspectives.
+- **Auto-Translation & Summarization**: Automatically translates and summarizes incoming articles to enrich data before context embedding.
+- **Privacy-First Processing**: Embeddings and clustering operate completely locally using SQLite vector search without relying on external vector databases.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    A["New Article"] --> B["AI Summary"]
+    B --> C["AI Translation"]
+    C --> D["Embedding Generation"]
+    D --> E["Step 1: SimHash \n (Hamming ≤ 3)"]
+    E -->|Match| F["Join Cluster"]
+    E -->|No match| G["Step 2: Vector ANN \n (Cosine ≥ 0.85)"]
+    G -->|Match| F
+    G -->|No match| H["Create Standalone Cluster"]
+    F --> I["pending_merge"]
+    I --> J["Step 4: LLM Fusion"]
+    J --> K["Step 5: Re-embed"]
+    K --> L["complete"]
+    H --> L
+```
+
+
 ## 🚀 Quick Start
 
 ### Deployment Options

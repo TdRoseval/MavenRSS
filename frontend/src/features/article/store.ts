@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import type { Article, UnreadCounts } from '@/types/models';
+import { ref } from 'vue';
+import type { Article, UnreadCounts, Feed } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 import { apiClient } from '@/shared/lib/apiClient';
 import { useFeedStore } from '@/features/feed/store';
 
-export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | '';
+export type Filter = 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery' | 'clusters' | '';
 
 export interface TempSelection {
   feedId: number | null;
@@ -65,7 +65,7 @@ export const useArticleStore = defineStore('article', () => {
   function setFeed(feedId: number): void {
     const feedStore = useFeedStore();
     // Check if this feed is an image mode feed
-    const feed = feedStore.feeds.find((f) => f.id === feedId);
+    const feed = feedStore.feeds.find((f: Feed) => f.id === feedId);
     if (feed?.is_image_mode) {
       // For image mode feeds, switch filter to image gallery
       currentFilter.value = 'imageGallery';
@@ -85,7 +85,7 @@ export const useArticleStore = defineStore('article', () => {
   function setCategory(category: string): void {
     const feedStore = useFeedStore();
     // Check if this category contains only image mode feeds
-    const categoryFeeds = feedStore.feeds.filter((f) => {
+    const categoryFeeds = feedStore.feeds.filter((f: Feed) => {
       // Handle uncategorized category (empty string)
       if (category === '') {
         return !f.category || f.category === '';
@@ -96,7 +96,7 @@ export const useArticleStore = defineStore('article', () => {
       return feedCategory === category || feedCategory.startsWith(category + '/');
     });
 
-    const allImageMode = categoryFeeds.length > 0 && categoryFeeds.every((f) => f.is_image_mode);
+    const allImageMode = categoryFeeds.length > 0 && categoryFeeds.every((f: Feed) => f.is_image_mode);
 
     // If all feeds in this category are image mode, switch to image gallery filter
     if (allImageMode) {

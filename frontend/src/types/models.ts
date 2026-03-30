@@ -27,11 +27,32 @@ export interface Article {
   author?: string; // Article author
   summary?: string; // Cached AI-generated summary
   freshrss_item_id?: string; // FreshRSS/Google Reader item ID
+  cluster_id?: number; // ID of the cluster this article belongs to
   // Feed reference for translation settings
   feed?: {
     translate_articles: boolean;
   };
 }
+
+export interface Cluster {
+  id: number;
+  user_id: number;
+  status: string; // 'pending_merge' | 'pending_embed' | 'complete'
+  merged_title: string;
+  merged_summary: string;
+  merged_content: string;
+  article_count: number;
+  created_at: string;
+  updated_at: string;
+  is_read: boolean;
+  is_favorite: boolean;
+  is_read_later: boolean;
+  is_hidden: boolean;
+  feed_titles?: string[];
+  authors?: string[];
+  articles?: Article[];
+}
+
 
 export interface Feed {
   id: number;

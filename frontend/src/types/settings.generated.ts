@@ -12,6 +12,7 @@ export interface SettingsData {
   ai_embedding_models: string;
   ai_endpoint: string;
   ai_enhanced_mode: boolean;
+  ai_fusion_profile_id: string;
   ai_model: string;
   ai_search_enabled: boolean;
   ai_search_profile_id: string;

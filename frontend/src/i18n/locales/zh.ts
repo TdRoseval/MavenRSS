@@ -585,6 +585,8 @@ const zh: TranslationMessages = {
       selectProfileForSummary: '选择用于生成摘要的 AI 配置',
       selectProfileForChat: '选择用于 AI 聊天的配置',
       selectProfileForSearch: '选择用于 AI 搜索的配置',
+      selectFusionProfile: '融合配置',
+      selectFusionProfileDesc: '选择用于聚合文章的 AI 配置（建议选用支持长文本或性能较强的模型）',
       model: '模型',
       aiTestFailed: 'AI 配置测试失败',
       aiUsage: 'AI 使用量',

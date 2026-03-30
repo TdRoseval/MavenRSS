@@ -80,6 +80,8 @@ type Article struct {
 	Summary               string    `json:"summary"`          // Cached AI-generated summary
 	UniqueID              string    `json:"unique_id"`        // Unique identifier for deduplication (title+feed_id+published_date)
 	FreshRSSItemID        string    `json:"freshrss_item_id"` // FreshRSS/Google Reader item ID for API operations
+	ClusterID             int64     `json:"cluster_id,omitempty"` // ID of the cluster this article belongs to
+	SimHash64             int64     `json:"-"`                // 64-bit SimHash fingerprint (internal, not serialized)
 }
 
 // SavedFilter represents a user-saved article filter
@@ -126,3 +128,25 @@ type EmbeddingModelConfig struct {
 	TPM            int    `json:"tpm"`              // Tokens Per Minute, 0 means no limit
 	UseGlobalProxy bool   `json:"use_global_proxy"` // Whether to use global proxy
 }
+
+// Cluster represents a group of semantically similar articles merged by AI
+type Cluster struct {
+	ID            int64     `json:"id"`
+	UserID        int64     `json:"user_id"`
+	Status        string    `json:"status"` // "pending_merge", "pending_embed", "complete"
+	MergedTitle   string    `json:"merged_title"`
+	MergedSummary string    `json:"merged_summary"`
+	MergedContent string    `json:"merged_content"`
+	ArticleCount  int       `json:"article_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	IsRead        bool      `json:"is_read"`
+	IsFavorite    bool      `json:"is_favorite"`
+	IsReadLater   bool      `json:"is_read_later"`
+	IsHidden      bool      `json:"is_hidden"`
+	// Populated by query joins
+	FeedTitles []string  `json:"feed_titles,omitempty"`
+	Authors    []string  `json:"authors,omitempty"`
+	Articles   []Article `json:"articles,omitempty"`
+}
+

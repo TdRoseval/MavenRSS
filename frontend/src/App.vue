@@ -7,6 +7,7 @@ import Sidebar from './components/sidebar/Sidebar.vue';
 import ArticleList from '@/features/article/components/ArticleList.vue';
 import ArticleDetail from '@/features/article/components/ArticleDetail.vue';
 import ImageGalleryView from '@/features/article/components/imageGallery/index.vue';
+import ClusterView from '@/features/article/components/ClusterView.vue';
 import Toast from '@/shared/ui/Toast.vue';
 import LoginPage from './components/auth/LoginPage.vue';
 import AdminUserManagement from './components/auth/AdminUserManagement.vue';
@@ -388,8 +389,13 @@ function onLogin(): void {
         <template v-if="isImageGalleryMode">
           <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
         </template>
+        
+        <!-- Show ClusterView when in clusters mode -->
+        <template v-else-if="articleStore.currentFilter === 'clusters'">
+          <ClusterView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
+        </template>
 
-        <!-- Show ArticleList and ArticleDetail when not in image gallery mode -->
+        <!-- Show ArticleList and ArticleDetail when not in image gallery mode or clusters mode -->
         <template v-else>
           <ArticleList
             ref="articleListRef"

@@ -1,0 +1,407 @@
+package sqlite
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+	"time"
+
+	"MavenRSS/internal/models"
+)
+
+// CreateCluster creates a new article cluster and returns its ID.
+func (db *DB) CreateCluster(userID int64, status string) (int64, error) {
+	db.WaitForReady()
+	result, err := db.Exec(
+		`INSERT INTO clusters (user_id, status) VALUES (?, ?)`,
+		userID, status,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("create cluster: %w", err)
+	}
+	return result.LastInsertId()
+}
+
+// GetClusterByID retrieves a cluster by its ID.
+func (db *DB) GetClusterByID(clusterID int64) (*models.Cluster, error) {
+	db.WaitForReady()
+	var c models.Cluster
+	err := db.QueryRow(`
+		SELECT id, user_id, status, merged_title, merged_summary, merged_content,
+			article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+		FROM clusters WHERE id = ?
+	`, clusterID).Scan(
+		&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary, &c.MergedContent,
+		&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// UpdateClusterStatus updates the status of a cluster.
+func (db *DB) UpdateClusterStatus(clusterID int64, status string) error {
+	db.WaitForReady()
+	_, err := db.Exec(
+		`UPDATE clusters SET status = ?, updated_at = ? WHERE id = ?`,
+		status, time.Now(), clusterID,
+	)
+	return err
+}
+
+// UpdateClusterMergedContent writes the AI-fused content to a cluster.
+func (db *DB) UpdateClusterMergedContent(clusterID int64, title, summary, content string) error {
+	db.WaitForReady()
+	_, err := db.Exec(
+		`UPDATE clusters SET merged_title = ?, merged_summary = ?, merged_content = ?, updated_at = ? WHERE id = ?`,
+		title, summary, content, time.Now(), clusterID,
+	)
+	return err
+}
+
+// UpdateClusterArticleCount updates the article_count for a cluster.
+func (db *DB) UpdateClusterArticleCount(clusterID int64) error {
+	db.WaitForReady()
+	_, err := db.Exec(
+		`UPDATE clusters SET article_count = (SELECT COUNT(*) FROM articles WHERE cluster_id = ?), updated_at = ? WHERE id = ?`,
+		clusterID, time.Now(), clusterID,
+	)
+	return err
+}
+
+// GetClustersByStatus retrieves clusters by status for a user.
+func (db *DB) GetClustersByStatus(userID int64, status string) ([]models.Cluster, error) {
+	db.WaitForReady()
+	rows, err := db.Query(`
+		SELECT id, user_id, status, merged_title, merged_summary,
+			article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+		FROM clusters WHERE user_id = ? AND status = ?
+	`, userID, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clusters []models.Cluster
+	for rows.Next() {
+		var c models.Cluster
+		if err := rows.Scan(
+			&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary,
+			&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
+		); err != nil {
+			log.Printf("Error scanning cluster: %v", err)
+			continue
+		}
+		clusters = append(clusters, c)
+	}
+	return clusters, nil
+}
+
+// GetArticlesByClusterID retrieves all articles belonging to a cluster.
+func (db *DB) GetArticlesByClusterID(clusterID int64) ([]models.Article, error) {
+	db.WaitForReady()
+	rows, err := db.Query(`
+		SELECT a.id, a.feed_id, a.title, a.url, a.published_at, a.summary, f.title, a.author
+		FROM articles a
+		LEFT JOIN feeds f ON a.feed_id = f.id
+		WHERE a.cluster_id = ?
+		ORDER BY a.published_at DESC
+	`, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []models.Article
+	for rows.Next() {
+		var a models.Article
+		var publishedAt sql.NullTime
+		var summary, feedTitle, author sql.NullString
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &publishedAt, &summary, &feedTitle, &author); err != nil {
+			log.Printf("Error scanning cluster article: %v", err)
+			continue
+		}
+		if publishedAt.Valid {
+			a.PublishedAt = publishedAt.Time
+		}
+		a.Summary = summary.String
+		a.FeedTitle = feedTitle.String
+		a.Author = author.String
+		a.ClusterID = clusterID
+		articles = append(articles, a)
+	}
+	return articles, nil
+}
+
+// UpdateArticleClusterID assigns an article to a cluster.
+func (db *DB) UpdateArticleClusterID(articleID, clusterID int64) error {
+	db.WaitForReady()
+	_, err := db.Exec(`UPDATE articles SET cluster_id = ? WHERE id = ?`, clusterID, articleID)
+	return err
+}
+
+// UpdateArticleSimHash stores SimHash data for an article.
+func (db *DB) UpdateArticleSimHash(articleID int64, hash64 int64, b1, b2, b3, b4 int16) error {
+	db.WaitForReady()
+	_, err := db.Exec(
+		`UPDATE articles SET simhash_64 = ?, simhash_b1 = ?, simhash_b2 = ?, simhash_b3 = ?, simhash_b4 = ? WHERE id = ?`,
+		hash64, b1, b2, b3, b4, articleID,
+	)
+	return err
+}
+
+// FindSimHashCandidates finds articles with matching SimHash bands (pigeonhole principle).
+func (db *DB) FindSimHashCandidates(userID int64, b1, b2, b3, b4 int16) ([]struct {
+	ArticleID int64
+	SimHash64 int64
+	ClusterID int64
+}, error) {
+	db.WaitForReady()
+	rows, err := db.Query(`
+		SELECT id, simhash_64, cluster_id FROM articles
+		WHERE user_id = ? AND cluster_id IS NOT NULL
+		AND (simhash_b1 = ? OR simhash_b2 = ? OR simhash_b3 = ? OR simhash_b4 = ?)
+	`, userID, b1, b2, b3, b4)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []struct {
+		ArticleID int64
+		SimHash64 int64
+		ClusterID int64
+	}
+	for rows.Next() {
+		var c struct {
+			ArticleID int64
+			SimHash64 int64
+			ClusterID int64
+		}
+		if err := rows.Scan(&c.ArticleID, &c.SimHash64, &c.ClusterID); err != nil {
+			continue
+		}
+		candidates = append(candidates, c)
+	}
+	return candidates, nil
+}
+
+// FindSemanticCandidates uses sqlite-vec ANN search to find semantically similar articles.
+func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK int) ([]struct {
+	ArticleID int64
+	ClusterID int64
+	Distance  float64
+}, error) {
+	db.WaitForReady()
+	if topK <= 0 {
+		topK = 10
+	}
+	rows, err := db.Query(`
+		SELECT ae.article_id, a.cluster_id, ae.distance
+		FROM article_embeddings ae
+		JOIN articles a ON ae.article_id = a.id
+		WHERE a.user_id = ? AND a.cluster_id IS NOT NULL
+		AND ae.summary_embedding MATCH ? AND k = ?
+		ORDER BY ae.distance
+	`, userID, summaryEmbBlob, topK)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []struct {
+		ArticleID int64
+		ClusterID int64
+		Distance  float64
+	}
+	for rows.Next() {
+		var r struct {
+			ArticleID int64
+			ClusterID int64
+			Distance  float64
+		}
+		if err := rows.Scan(&r.ArticleID, &r.ClusterID, &r.Distance); err != nil {
+			continue
+		}
+		results = append(results, r)
+	}
+	return results, nil
+}
+
+// UpdateClusterEmbeddings stores embeddings for a cluster.
+func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
+	db.WaitForReady()
+	// Delete existing first (vec0 doesn't support UPSERT)
+	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
+	_, err := db.Exec(
+		`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+		clusterID, titleEmb, summaryEmb,
+	)
+	return err
+}
+
+// GetClustersForUser retrieves clusters for a user with filtering and pagination.
+func (db *DB) GetClustersForUser(userID int64, filter string, limit, offset int) ([]models.Cluster, error) {
+	db.WaitForReady()
+
+	baseQuery := `SELECT id, user_id, status, merged_title, merged_summary,
+		article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+		FROM clusters WHERE user_id = ? AND is_hidden = 0`
+	args := []interface{}{userID}
+
+	switch filter {
+	case "unread":
+		baseQuery += " AND is_read = 0"
+	case "favorites":
+		baseQuery += " AND is_favorite = 1"
+	case "readLater":
+		baseQuery += " AND is_read_later = 1"
+	}
+
+	baseQuery += " ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := db.Query(baseQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clusters []models.Cluster
+	for rows.Next() {
+		var c models.Cluster
+		if err := rows.Scan(
+			&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary,
+			&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
+		); err != nil {
+			log.Printf("Error scanning cluster: %v", err)
+			continue
+		}
+		// Populate feed titles and authors from associated articles
+		db.populateClusterMeta(&c)
+		clusters = append(clusters, c)
+	}
+	return clusters, nil
+}
+
+// populateClusterMeta populates FeedTitles and Authors for a cluster.
+func (db *DB) populateClusterMeta(c *models.Cluster) {
+	rows, err := db.Query(`
+		SELECT DISTINCT f.title, a.author
+		FROM articles a
+		LEFT JOIN feeds f ON a.feed_id = f.id
+		WHERE a.cluster_id = ?
+	`, c.ID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	feedSet := make(map[string]bool)
+	authorSet := make(map[string]bool)
+	for rows.Next() {
+		var feedTitle, author sql.NullString
+		if err := rows.Scan(&feedTitle, &author); err != nil {
+			continue
+		}
+		if feedTitle.Valid && feedTitle.String != "" && !feedSet[feedTitle.String] {
+			feedSet[feedTitle.String] = true
+			c.FeedTitles = append(c.FeedTitles, feedTitle.String)
+		}
+		if author.Valid && author.String != "" && !authorSet[author.String] {
+			authorSet[author.String] = true
+			c.Authors = append(c.Authors, author.String)
+		}
+	}
+}
+
+// MarkClusterRead marks a cluster as read/unread.
+func (db *DB) MarkClusterRead(clusterID int64, read bool) error {
+	db.WaitForReady()
+	_, err := db.Exec(`UPDATE clusters SET is_read = ?, updated_at = ? WHERE id = ?`, read, time.Now(), clusterID)
+	return err
+}
+
+// ToggleClusterFavorite toggles the favorite status of a cluster.
+func (db *DB) ToggleClusterFavorite(clusterID int64) error {
+	db.WaitForReady()
+	_, err := db.Exec(`UPDATE clusters SET is_favorite = 1 - is_favorite, updated_at = ? WHERE id = ?`, time.Now(), clusterID)
+	return err
+}
+
+// ToggleClusterReadLater toggles the read-later status of a cluster.
+func (db *DB) ToggleClusterReadLater(clusterID int64) error {
+	db.WaitForReady()
+	_, err := db.Exec(`UPDATE clusters SET is_read_later = 1 - is_read_later, updated_at = ? WHERE id = ?`, time.Now(), clusterID)
+	return err
+}
+
+// DeleteClusterAndArticles deletes a cluster and its associated articles.
+func (db *DB) DeleteClusterAndArticles(clusterID int64) error {
+	db.WaitForReady()
+	// Delete associated article contents first
+	_, _ = db.Exec(`DELETE FROM article_contents WHERE article_id IN (SELECT id FROM articles WHERE cluster_id = ?)`, clusterID)
+	// Delete associated embeddings
+	_, _ = db.Exec(`DELETE FROM article_embeddings WHERE article_id IN (SELECT id FROM articles WHERE cluster_id = ?)`, clusterID)
+	// Delete articles
+	_, _ = db.Exec(`DELETE FROM articles WHERE cluster_id = ?`, clusterID)
+	// Delete cluster embeddings
+	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
+	// Delete cluster
+	_, err := db.Exec(`DELETE FROM clusters WHERE id = ?`, clusterID)
+	return err
+}
+
+// CleanupExpiredClusters removes expired clusters respecting favorites.
+func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error) {
+	db.WaitForReady()
+	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
+
+	// Get expired, non-favorite clusters
+	rows, err := db.Query(`
+		SELECT id FROM clusters
+		WHERE user_id = ? AND is_favorite = 0 AND is_read_later = 0 AND updated_at < ?
+	`, userID, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// Delete each cluster and its articles
+	deleted := int64(0)
+	for _, id := range ids {
+		if err := db.DeleteClusterAndArticles(id); err != nil {
+			log.Printf("Error deleting cluster %d: %v", id, err)
+			continue
+		}
+		deleted++
+	}
+
+	// Build placeholder for filtering protected articles
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	_ = placeholders
+	_ = args
+
+	return deleted, nil
+}

@@ -594,6 +594,8 @@ const en: TranslationMessages = {
       selectProfileForSummary: 'Select which AI profile to use for summary generation',
       selectProfileForChat: 'Select which AI profile to use for AI chat',
       selectProfileForSearch: 'Select which AI profile to use for AI search',
+      selectFusionProfile: 'Fusion Profile',
+      selectFusionProfileDesc: 'Select which AI profile to use for clustering and fusing articles (recommend models that support long context)',
       model: 'Model',
       aiTestFailed: 'AI configuration test failed',
       aiUsage: 'AI Usage',

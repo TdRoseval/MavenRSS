@@ -169,6 +169,19 @@ async function clearAllChatSessions() {
       :disabled="!isAIEnhancedModeAvailable"
       @update:model-value="updateSetting('ai_enhanced_mode', $event)"
     />
+
+    <NestedSettingsContainer v-if="isAIEnhancedModeAvailable && props.settings.ai_enhanced_mode">
+      <SubSettingItem
+        :icon="PhRobot"
+        :title="t('setting.ai.selectFusionProfile')"
+        :description="t('setting.ai.selectFusionProfileDesc')"
+      >
+        <AIProfileSelector
+          :model-value="props.settings.ai_fusion_profile_id"
+          @update:model-value="updateSetting('ai_fusion_profile_id', $event)"
+        />
+      </SubSettingItem>
+    </NestedSettingsContainer>
   </SettingGroup>
 </template>
 

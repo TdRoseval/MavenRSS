@@ -12,6 +12,7 @@ import {
   PhSidebar,
   PhUsers,
   PhSignOut,
+  PhSparkle,
 } from '@phosphor-icons/vue';
 import { useAuthStore } from '@/stores/auth';
 import { computed } from 'vue';
@@ -99,6 +100,13 @@ const navItems: NavItem[] = [
     icon: PhImages,
     label: t('sidebar.activity.imageGallery'),
     filterType: 'imageGallery',
+  },
+  {
+    id: 'clusters',
+    icon: PhSparkle,
+    activeIcon: PhSparkle,
+    label: 'AI Fusion',
+    filterType: 'clusters',
   },
 ];
 

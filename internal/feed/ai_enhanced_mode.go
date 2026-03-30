@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
+	"MavenRSS/internal/dedup"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
 	"MavenRSS/internal/translation"
@@ -169,6 +170,13 @@ func (m *AIEnhancedManager) generateEmbeddingsAsync(articleID, userID int64, con
 			} else {
 				log.Printf("Successfully saved embeddings for article %d", articleID)
 			}
+		}
+
+		// Step 4: Run dedup pipeline (SimHash + vector search + cluster assignment)
+		if err := dedup.ProcessArticle(m.db, articleID, userID); err != nil {
+			log.Printf("Dedup pipeline failed for article %d: %v", articleID, err)
+		} else {
+			log.Printf("Dedup pipeline completed for article %d", articleID)
 		}
 	}()
 }

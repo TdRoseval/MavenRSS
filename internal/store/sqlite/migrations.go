@@ -181,6 +181,52 @@ func runMigrations(db *sql.DB) error {
 		summary_embedding float[1024]
 	)`)
 
+	// Migration: Add clusters table for AI-powered article deduplication and fusion
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS clusters (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending_merge',
+		merged_title TEXT DEFAULT '',
+		merged_summary TEXT DEFAULT '',
+		merged_content TEXT DEFAULT '',
+		article_count INTEGER DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		is_read BOOLEAN DEFAULT 0,
+		is_favorite BOOLEAN DEFAULT 0,
+		is_read_later BOOLEAN DEFAULT 0,
+		is_hidden BOOLEAN DEFAULT 0,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	)`)
+
+	// Migration: Add cluster_id and SimHash columns to articles for deduplication
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN cluster_id INTEGER DEFAULT NULL`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_64 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b1 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b2 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b3 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b4 INTEGER DEFAULT 0`)
+
+	// Migration: Add cluster-related indexes
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_cluster_id ON articles(cluster_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b1 ON articles(user_id, simhash_b1)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b2 ON articles(user_id, simhash_b2)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b3 ON articles(user_id, simhash_b3)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b4 ON articles(user_id, simhash_b4)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_id ON clusters(user_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_status ON clusters(status)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_updated_at ON clusters(updated_at DESC)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_status ON clusters(user_id, status)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_favorite ON clusters(user_id, is_favorite)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_read ON clusters(user_id, is_read)`)
+
+	// Migration: Add cluster_embeddings vec0 virtual table
+	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS cluster_embeddings USING vec0(
+		cluster_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
+
 	return nil
 }
 

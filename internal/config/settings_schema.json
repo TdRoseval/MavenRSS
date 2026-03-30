@@ -759,6 +759,13 @@
       "category": "ai",
       "encrypted": false,
       "frontend_key": "aiEmbeddingModels"
+    },
+    "ai_fusion_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiFusionProfileId"
     }
   }
 }
