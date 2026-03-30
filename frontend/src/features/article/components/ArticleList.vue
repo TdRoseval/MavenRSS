@@ -106,7 +106,8 @@ const filteredArticles = computed(() => {
     return articleStore.aiSearchResults;
   }
 
-  let articles = activeFilters.value.length > 0 ? filteredArticlesFromServer.value : articleStore.articles;
+  let articles =
+    activeFilters.value.length > 0 ? filteredArticlesFromServer.value : articleStore.articles;
 
   // Only apply filter if showOnlyUnread is enabled
   // Using a simpler filter that avoids Set.has() calls when possible
@@ -969,7 +970,10 @@ function cardModalRetryLoadContent(): void {
     <div ref="listRef" class="flex-1 overflow-y-scroll article-list-scroll" @scroll="handleScroll">
       <div
         v-if="
-          filteredArticles.length === 0 && !articleStore.isLoading && !isFilterLoading && !isAISearchActive
+          filteredArticles.length === 0 &&
+          !articleStore.isLoading &&
+          !isFilterLoading &&
+          !isAISearchActive
         "
         class="p-4 sm:p-5 text-center text-text-secondary text-sm sm:text-base"
       >

@@ -140,7 +140,11 @@ async function clearAllChatSessions() {
     </NestedSettingsContainer>
 
     <!-- AI Enhanced Mode -->
-    <TipBox v-if="!isAIEnhancedModeAvailable" type="warning" :title="t('setting.ai.aiEnhancedModeDisabled')" />
+    <TipBox
+      v-if="!isAIEnhancedModeAvailable"
+      type="warning"
+      :title="t('setting.ai.aiEnhancedModeDisabled')"
+    />
     <SettingWithToggle
       :icon="PhRocket"
       :title="t('setting.ai.aiEnhancedMode')"

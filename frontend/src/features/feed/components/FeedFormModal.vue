@@ -634,6 +634,8 @@ const submitButtonText = computed(() => {
         :proxy-password="proxyPassword"
         :refresh-mode="refreshMode"
         :refresh-interval="refreshInterval"
+        :translate-articles="translateArticles"
+        :translation-enabled="translationEnabled"
         @update:is-image-mode="isImageMode = $event"
         @update:hide-from-timeline="hideFromTimeline = $event"
         @update:article-view-mode="articleViewMode = $event"
@@ -646,8 +648,6 @@ const submitButtonText = computed(() => {
         @update:proxy-password="proxyPassword = $event"
         @update:refresh-mode="refreshMode = $event"
         @update:refresh-interval="refreshInterval = $event"
-        :translate-articles="translateArticles"
-        :translation-enabled="translationEnabled"
         @update:translate-articles="translateArticles = $event"
       />
     </div>

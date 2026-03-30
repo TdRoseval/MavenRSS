@@ -16,7 +16,13 @@ This document describes how to build and package MavenRSS using the Wails v3 bui
 #### Windows
 
 ```powershell
-choco install mingw nsis -y
+choco install zig nsis -y
+```
+
+For native Windows AMD64 builds, `mingw` is also supported:
+
+```powershell
+choco install mingw -y
 ```
 
 #### Linux (Ubuntu/Debian)
@@ -68,6 +74,16 @@ task darwin:build   # on macOS
 
 Build output: `build/bin/`
 
+If you are building on Windows, prepare the CGO compiler first:
+
+```powershell
+.\scripts\setup-windows-cgo.ps1 -Arch amd64
+task windows:build ARCH=amd64
+
+.\scripts\setup-windows-cgo.ps1 -Arch arm64
+task windows:build ARCH=arm64
+```
+
 ### Packaging
 
 Create installers and packages:
@@ -103,6 +119,8 @@ task windows:build CGO_ENABLED=1
 # From any OS, build for Linux
 task linux:build CGO_ENABLED=1
 ```
+
+The Docker image includes Zig and Linux multiarch development packages so CGO SQLite + `sqlite-vec` builds can target Linux AMD64 and ARM64 from non-Linux hosts.
 
 **Note**: macOS builds should be done on native macOS runners due to signing requirements.
 
@@ -250,6 +268,8 @@ Builds for all platforms:
 - Linux (AMD64, ARM64)
 - macOS (Universal)
 
+The release and pre-release workflows run SQLite startup self-check tests on Linux and Windows before packaging artifacts.
+
 ### Test Build Workflow
 
 Triggered on push/PR to main:
@@ -268,6 +288,14 @@ export CGO_ENABLED=1
 task build
 ```
 
+### Windows ARM64 build fails to find a compiler
+
+```powershell
+choco install zig -y
+.\scripts\setup-windows-cgo.ps1 -Arch arm64
+task windows:build ARCH=arm64
+```
+
 ### Missing dependencies (Linux)
 
 **Solution**: Install all required libraries:
@@ -275,6 +303,36 @@ task build
 ```bash
 sudo apt-get update
 sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-config
+```
+
+### SQLite self-check fails after build
+
+If startup logs contain `Error running sqlite startup self-check` or `query sqlite vec version`, rebuild after confirming the vendored dependency and CGO setup are intact:
+
+```bash
+go mod tidy
+task build
+./scripts/verify-server-runtime.sh build/bin/MavenRSS-server
+```
+
+On Windows:
+
+```powershell
+.\scripts\setup-windows-cgo.ps1 -Arch amd64
+task windows:build ARCH=amd64
+.\scripts\verify-server-runtime.ps1 -BinaryPath build/bin/MavenRSS-server.exe
+```
+
+The repository must include `third_party/sqlite-vec-go-bindings`, because `go.mod` resolves `sqlite-vec` through that local path.
+
+### Linux runtime dependencies are missing
+
+If the built binary exits immediately with shared library errors or never writes `SQLite self-check passed` to `data/logs/debug.log`, install the runtime packages and rerun the smoke check:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 libsoup-3.0-0
+./scripts/verify-server-runtime.sh build/bin/MavenRSS-server
 ```
 
 ### Task not found

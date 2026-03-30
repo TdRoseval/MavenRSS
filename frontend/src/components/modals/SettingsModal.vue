@@ -150,8 +150,8 @@ function handleCancel() {
                 isSaving ? 'opacity-50 cursor-not-allowed' : '',
               ]"
               :disabled="!hasChanges || isSaving"
-              @click="handleSave"
               :title="t('setting.save')"
+              @click="handleSave"
             >
               <PhCheck :size="18" :weight="'bold'" />
               <span class="ml-1">{{ t('setting.save') }}</span>
@@ -163,8 +163,8 @@ function handleCancel() {
                 isSaving ? 'opacity-50 cursor-not-allowed' : '',
               ]"
               :disabled="!hasChanges || isSaving"
-              @click="handleCancel"
               :title="t('setting.cancel')"
+              @click="handleCancel"
             >
               <PhX :size="18" :weight="'bold'" />
               <span class="ml-1">{{ t('setting.cancel') }}</span>

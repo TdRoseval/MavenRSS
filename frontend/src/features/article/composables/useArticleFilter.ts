@@ -55,7 +55,10 @@ export function useArticleFilter() {
       const articles = data.articles || [];
 
       if (append) {
-        articleStore.setFilteredArticlesFromServer([...articleStore.filteredArticlesFromServer, ...articles]);
+        articleStore.setFilteredArticlesFromServer([
+          ...articleStore.filteredArticlesFromServer,
+          ...articles,
+        ]);
       } else {
         articleStore.setFilteredArticlesFromServer(articles);
         filterPage.value = 1;

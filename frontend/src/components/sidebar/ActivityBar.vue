@@ -226,7 +226,9 @@ defineExpose({
           >
             <component
               :is="
-                articleStore.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon
+                articleStore.currentFilter === item.filterType
+                  ? item.activeIcon || item.icon
+                  : item.icon
               "
               :size="24"
               :weight="articleStore.currentFilter === item.filterType ? 'fill' : 'regular'"

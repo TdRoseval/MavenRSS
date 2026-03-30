@@ -36,7 +36,7 @@ export interface KeyboardShortcutCallbacks {
 
 export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
 
   const shortcutsEnabled = ref(true);
   const shortcuts = ref<KeyboardShortcuts>({

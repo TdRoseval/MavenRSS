@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	dbpkg "MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
+	dbpkg "MavenRSS/internal/store/sqlite"
 )
 
 func setupDBWithFeed(t *testing.T) *dbpkg.DB {
@@ -84,20 +84,24 @@ func TestMarkReadAndReadLaterAndFavorites(t *testing.T) {
 	}
 
 	// Should be marked read and not read later
-	var isRead, isReadLater int
-	_ = db.QueryRow("SELECT is_read, is_read_later FROM articles WHERE id = ?", id).Scan(&isRead, &isReadLater)
-	if isRead != 1 || isReadLater != 0 {
-		t.Fatalf("unexpected read/readlater state: %d/%d", isRead, isReadLater)
+	var isRead, isReadLater bool
+	if err := db.QueryRow("SELECT is_read, is_read_later FROM articles WHERE id = ?", id).Scan(&isRead, &isReadLater); err != nil {
+		t.Fatalf("query read/readlater state: %v", err)
+	}
+	if !isRead || isReadLater {
+		t.Fatalf("unexpected read/readlater state: %t/%t", isRead, isReadLater)
 	}
 
 	// Toggle favorite
 	if err := db.ToggleFavorite(id); err != nil {
 		t.Fatalf("ToggleFavorite error: %v", err)
 	}
-	var isFav int
-	_ = db.QueryRow("SELECT is_favorite FROM articles WHERE id = ?", id).Scan(&isFav)
-	if isFav != 1 {
-		t.Fatalf("expected favorite set, got %d", isFav)
+	var isFav bool
+	if err := db.QueryRow("SELECT is_favorite FROM articles WHERE id = ?", id).Scan(&isFav); err != nil {
+		t.Fatalf("query favorite state: %v", err)
+	}
+	if !isFav {
+		t.Fatalf("expected favorite set, got %t", isFav)
 	}
 
 	// Toggle read later (will unset since currently 0 -> toggled to 0? ensure it works)

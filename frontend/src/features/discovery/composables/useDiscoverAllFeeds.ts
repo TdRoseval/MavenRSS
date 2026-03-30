@@ -44,7 +44,7 @@ export interface ProgressState {
 
 export function useDiscoverAllFeeds() {
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
   const { t } = useI18n();
 
   const isDiscovering = ref(false);

@@ -20,7 +20,7 @@ interface TreeData {
 
 export function useSidebar() {
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
   const { t } = useI18n();
 
   // Load saved category state from localStorage

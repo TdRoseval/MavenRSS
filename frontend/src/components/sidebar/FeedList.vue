@@ -736,7 +736,8 @@ function handleFilterDragEnd() {
           <!-- Saved Filters Section - positioned at bottom, only show when viewing All Articles -->
           <div
             v-if="
-              articleStore.currentFilter === 'all' && (hasActiveFilters || safeSavedFilters.length > 0)
+              articleStore.currentFilter === 'all' &&
+              (hasActiveFilters || safeSavedFilters.length > 0)
             "
             class="flex-shrink-0 max-h-[50%] flex flex-col border-t border-border"
           >

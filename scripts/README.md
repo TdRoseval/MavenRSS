@@ -43,12 +43,33 @@ Performs pre-release checks including:
 .\scripts\pre-release.ps1
 ```
 
+### verify-server-runtime.sh / verify-server-runtime.ps1
+
+Performs a minimal runtime smoke check for the server binary:
+
+- Starts the built server binary in an isolated working directory
+- Waits for `/api/version` to respond successfully
+- Verifies `data/rss.db` and `data/logs/debug.log` are created
+- Confirms the SQLite startup self-check succeeded
+- Prints runtime diagnostics when startup fails
+
+**Usage:**
+
+```bash
+# Linux/macOS
+./scripts/verify-server-runtime.sh build/bin/MavenRSS-server
+
+# Windows
+.\scripts\verify-server-runtime.ps1 -BinaryPath build/bin/MavenRSS-server.exe
+```
+
 ## Integration with CI/CD
 
 These scripts are used in GitHub Actions workflows:
 
-- `check.sh/ps1` is called during the test workflow
-- `pre-release.sh/ps1` can be used in release workflows
+- `verify-server-runtime.sh/ps1` is used by CI, pre-release, and release workflows
+- `check.sh/ps1` can be used for local quality checks
+- `pre-release.sh/ps1` can be used for local release validation
 
 ## Adding New Scripts
 

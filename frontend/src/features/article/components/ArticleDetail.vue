@@ -73,7 +73,7 @@ const webpageProxyUrl = computed(() => {
   if (!article.value) return '';
   const urlB64 = encodeURLSafe(article.value.url);
   let proxyUrl = `/api/webpage/proxy?url_b64=${urlB64}`;
-  
+
   try {
     const authStore = useAuthStore();
     if (authStore.accessToken) {
@@ -82,7 +82,7 @@ const webpageProxyUrl = computed(() => {
   } catch (e) {
     console.warn('Failed to get auth token for webpage proxy:', e);
   }
-  
+
   return proxyUrl;
 });
 
@@ -90,7 +90,7 @@ async function forceTranslateArticle() {
   if (!articleContentRef.value || !articleContentRef.value.forceTranslateAll) {
     return;
   }
-  
+
   isForceTranslating.value = true;
   try {
     await articleContentRef.value.forceTranslateAll();
@@ -221,8 +221,8 @@ onBeforeUnmount(() => {
                 ? 'justify-between'
                 : hasPreviousArticle
                   ? 'justify-start'
-                  : 'justify-end'
-            ]
+                  : 'justify-end',
+            ],
       ]"
     >
       <button
@@ -230,12 +230,16 @@ onBeforeUnmount(() => {
         :title="t('article.navigation.previousArticle') || 'Previous article'"
         :class="[
           'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-          isMobile ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50'
+          isMobile
+            ? 'text-text-secondary hover:bg-bg-tertiary'
+            : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50',
         ]"
         @click="goToPreviousArticle"
       >
         <PhCaretLeft :size="16" />
-        <span v-if="!isMobile" class="text-xs">{{ t('article.navigation.previousArticle') || 'Previous' }}</span>
+        <span v-if="!isMobile" class="text-xs">{{
+          t('article.navigation.previousArticle') || 'Previous'
+        }}</span>
       </button>
 
       <button
@@ -243,11 +247,15 @@ onBeforeUnmount(() => {
         :title="t('article.navigation.nextArticle') || 'Next article'"
         :class="[
           'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-          isMobile ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50'
+          isMobile
+            ? 'text-text-secondary hover:bg-bg-tertiary'
+            : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50',
         ]"
         @click="goToNextArticle"
       >
-        <span v-if="!isMobile" class="text-xs">{{ t('article.navigation.nextArticle') || 'Next' }}</span>
+        <span v-if="!isMobile" class="text-xs">{{
+          t('article.navigation.nextArticle') || 'Next'
+        }}</span>
         <PhCaretRight :size="16" />
       </button>
     </div>

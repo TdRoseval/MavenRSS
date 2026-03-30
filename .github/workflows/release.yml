@@ -285,17 +285,10 @@ jobs:
           pkg-config --modversion webkit2gtk-4.1 || exit 1
           echo "webkit2gtk-4.1 installed successfully for Wails v3 ARM64"
 
-      - name: Install Windows dependencies (AMD64)
-        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'windows' && matrix.arch == 'amd64'
+      - name: Install Windows dependencies
+        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'windows'
         run: |
-          choco install mingw nsis -y
-        shell: pwsh
-
-      - name: Install Windows dependencies (ARM64)
-        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'windows' && matrix.arch == 'arm64'
-        run: |
-          choco install mingw nsis -y
-          # MinGW is required for CGO
+          choco install zig nsis -y
         shell: pwsh
 
       - name: Install Wails CLI
@@ -307,6 +300,55 @@ jobs:
         if: steps.check_artifacts.outputs.skip_build == 'false'
         working-directory: ./frontend
         run: npm ci
+
+      - name: Configure Windows CGO toolchain
+        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'windows'
+        shell: pwsh
+        run: .\scripts\setup-windows-cgo.ps1 -Arch ${{ matrix.arch }}
+
+      - name: Verify SQLite CGO stack (Linux/Windows)
+        if: steps.check_artifacts.outputs.skip_build == 'false' && (matrix.platform == 'linux' || matrix.platform == 'windows')
+        shell: bash
+        env:
+          CGO_ENABLED: 1
+        run: |
+          go test -v ./internal/store/sqlite -run 'TestStartupCheck|TestMemoryDatabaseCompatibility|TestLegacyPragmaCompatibility'
+
+      - name: Build server binary (Linux)
+        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'linux'
+        env:
+          CGO_ENABLED: 1
+          ARCH: ${{ matrix.arch }}
+        run: |
+          task linux:build:server ARCH=${{ matrix.arch }}
+          test -f build/bin/MavenRSS-server
+          file build/bin/MavenRSS-server
+
+      - name: Build server binary (Windows)
+        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: 1
+          ARCH: ${{ matrix.arch }}
+        run: |
+          task windows:build:server ARCH=${{ matrix.arch }}
+
+          if (-not (Test-Path "build/bin/MavenRSS-server.exe")) {
+            Write-Error "Server binary not created"
+            exit 1
+          }
+
+      - name: Verify minimal runtime (Linux)
+        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'linux'
+        run: |
+          chmod +x ./scripts/verify-server-runtime.sh
+          ./scripts/verify-server-runtime.sh build/bin/MavenRSS-server 18123 "${{ runner.temp }}/mavenrss-runtime"
+
+      - name: Verify minimal runtime (Windows)
+        if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          .\scripts\verify-server-runtime.ps1 -BinaryPath "build/bin/MavenRSS-server.exe" -Port 18123 -WorkDir "${{ runner.temp }}/mavenrss-runtime"
 
       - name: Build application (Linux)
         if: steps.check_artifacts.outputs.skip_build == 'false' && matrix.platform == 'linux'
@@ -605,3 +647,11 @@ jobs:
             build/bin/MavenRSS-${{ needs.create-release.outputs.version }}-*
           token: ${{ secrets.GITHUB_TOKEN }}
           fail_on_unmatched_files: false
+
+      - name: Upload runtime diagnostics
+        if: failure() && steps.check_artifacts.outputs.skip_build == 'false' && (matrix.platform == 'linux' || matrix.platform == 'windows')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-runtime-diagnostics-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/mavenrss-runtime
+          if-no-files-found: ignore

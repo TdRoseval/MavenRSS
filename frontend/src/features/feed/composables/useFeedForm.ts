@@ -13,7 +13,7 @@ export type RefreshMode = 'global' | 'fixed' | 'intelligent' | 'custom' | 'never
 export function useFeedForm(feed?: Feed) {
   const { t } = useI18n();
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
 
   // Check if image gallery feature is enabled
   const imageGalleryEnabled = ref(false);

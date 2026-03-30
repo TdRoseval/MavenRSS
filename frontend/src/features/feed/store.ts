@@ -7,7 +7,7 @@ import { useArticleStore } from '@/features/article/store';
 
 export const useFeedStore = defineStore('feed', () => {
   const { settings: settingsRef } = useSettings();
-  
+
   // State
   const feeds = ref<Feed[]>([]);
   const tags = ref<Tag[]>([]);
@@ -34,7 +34,7 @@ export const useFeedStore = defineStore('feed', () => {
 
       // Fetch tags after fetching feeds
       await fetchTags();
-      
+
       // Update article store counts
       const articleStore = useArticleStore();
       await articleStore.fetchUnreadCounts();
@@ -85,7 +85,7 @@ export const useFeedStore = defineStore('feed', () => {
 
         // Still refresh feeds and articles to get any updates from FreshRSS sync
         await fetchFeeds();
-        
+
         const articleStore = useArticleStore();
         articleStore.fetchArticles();
         articleStore.fetchUnreadCounts();
@@ -165,7 +165,7 @@ export const useFeedStore = defineStore('feed', () => {
         if (!data.is_running) {
           stopPollProgress();
           await fetchFeeds();
-          
+
           const articleStore = useArticleStore();
           articleStore.fetchArticles();
           articleStore.fetchUnreadCounts();
@@ -177,7 +177,7 @@ export const useFeedStore = defineStore('feed', () => {
           // Let's assume the component handling this will check for updates or we can add it later.
           // Actually, let's invoke it via useAppStore if we can.
           import('@/stores/app').then(({ useAppStore }) => {
-             useAppStore().checkForAppUpdates();
+            useAppStore().checkForAppUpdates();
           });
         }
       } catch (e) {
@@ -254,7 +254,7 @@ export const useFeedStore = defineStore('feed', () => {
         ) {
           // Refresh all data
           await fetchFeeds();
-          
+
           const articleStore = useArticleStore();
           await articleStore.fetchArticles();
           await articleStore.fetchUnreadCounts();

@@ -188,7 +188,9 @@ export function useArticleDetail() {
             const mode = showContent.value ? 'rendered' : 'original';
             articleStore.articleViewModePreferences.set(newId, mode);
             try {
-              const preferences = Object.fromEntries(articleStore.articleViewModePreferences.entries());
+              const preferences = Object.fromEntries(
+                articleStore.articleViewModePreferences.entries()
+              );
               localStorage.setItem('articleViewModePreferences', JSON.stringify(preferences));
             } catch (e) {
               console.error('Failed to save article view mode to localStorage:', e);
@@ -297,7 +299,7 @@ export function useArticleDetail() {
 
     try {
       const data = await authFetchJson(`/api/articles/content?id=${targetId}`);
-      
+
       // Ensure we're still on the same article
       if (!article.value || article.value.id !== targetId) return;
 
@@ -305,7 +307,7 @@ export function useArticleDetail() {
 
       // Proxy images and iframes if media proxy is enabled (cache or fallback)
       const proxyEnabled = await shouldProxyMedia();
-      
+
       // Check again after second await
       if (!article.value || article.value.id !== targetId) return;
 
@@ -940,7 +942,9 @@ export function useArticleDetail() {
     // If there's already a current article selected (e.g., after switching back from image gallery),
     // apply the saved preference and fetch content if needed
     if (articleStore.currentArticleId) {
-      const storedPreference = articleStore.articleViewModePreferences.get(articleStore.currentArticleId);
+      const storedPreference = articleStore.articleViewModePreferences.get(
+        articleStore.currentArticleId
+      );
       if (storedPreference) {
         showContent.value = storedPreference === 'rendered';
       }

@@ -24,7 +24,7 @@ export function useArticleActions(
   onReadStatusChange?: () => void
 ) {
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
 
   // Get effective view mode for an article based on feed settings and global settings
   function getEffectiveViewMode(article: Article): ViewMode {

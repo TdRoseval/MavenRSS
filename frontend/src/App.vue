@@ -23,7 +23,6 @@ import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
 import { useAppStore } from '@/stores/app';
 
-
 const AddFeedModal = defineAsyncComponent(
   () => import('@/features/feed/components/AddFeedModal.vue')
 );
@@ -38,15 +37,9 @@ const UpdateAvailableDialog = defineAsyncComponent(
   () => import('./components/modals/update/UpdateAvailableDialog.vue')
 );
 const ContextMenu = defineAsyncComponent(() => import('@/shared/ui/ContextMenu.vue'));
-const ConfirmDialog = defineAsyncComponent(
-  () => import('@/shared/ui/ConfirmDialog.vue')
-);
-const InputDialog = defineAsyncComponent(
-  () => import('@/shared/ui/InputDialog.vue')
-);
-const MultiSelectDialog = defineAsyncComponent(
-  () => import('@/shared/ui/MultiSelectDialog.vue')
-);
+const ConfirmDialog = defineAsyncComponent(() => import('@/shared/ui/ConfirmDialog.vue'));
+const InputDialog = defineAsyncComponent(() => import('@/shared/ui/InputDialog.vue'));
+const MultiSelectDialog = defineAsyncComponent(() => import('@/shared/ui/MultiSelectDialog.vue'));
 
 const articleStore = useArticleStore();
 const feedStore = useFeedStore();
@@ -261,7 +254,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('layout-mode-changed', handleLayoutModeChanged);
   window.removeEventListener('open-context-menu', handleOpenContextMenu);
   window.removeEventListener('show-user-management', handleShowUserManagement);
-  
+
   // Clean up store timers
   feedStore.stopPollProgress();
   feedStore.stopFreshRSSStatusPolling();

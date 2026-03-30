@@ -9,7 +9,7 @@ import { useFeedStore } from '@/features/feed/store';
 
 export function useFilterFields() {
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
   const { t, locale } = useI18n();
 
   /**

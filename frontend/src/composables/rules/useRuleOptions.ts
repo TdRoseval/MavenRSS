@@ -26,7 +26,7 @@ export interface ActionOption {
 
 export function useRuleOptions() {
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
 
   // Field options for conditions
   const fieldOptions: FieldOption[] = [

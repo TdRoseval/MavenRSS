@@ -396,7 +396,8 @@ const en: TranslationMessages = {
       refreshModeDesc: 'How this feed should be refreshed',
       refreshSettings: 'Feed Refresh Settings',
       translateArticles: 'Translate Articles',
-      translateArticlesDesc: 'When enabled, articles from this feed will be automatically translated (requires global translation setting to be enabled)',
+      translateArticlesDesc:
+        'When enabled, articles from this feed will be automatically translated (requires global translation setting to be enabled)',
       rssUrl: 'RSS URL',
       sourceUrl: 'Source URL',
       sourceUrlPlaceholder: 'https://example.com/blog',
@@ -622,8 +623,10 @@ const en: TranslationMessages = {
       testing: 'Testing...',
       tokens: 'tokens',
       aiEnhancedMode: 'AI Enhanced Mode',
-      aiEnhancedModeDesc: 'Automatically generate AI summaries and translations for new articles in the background. Requires all AI features to be enabled.',
-      aiEnhancedModeDisabled: 'Enable all AI features (summary, translation, search, chat) to use this mode',
+      aiEnhancedModeDesc:
+        'Automatically generate AI summaries and translations for new articles in the background. Requires all AI features to be enabled.',
+      aiEnhancedModeDisabled:
+        'Enable all AI features (summary, translation, search, chat) to use this mode',
     },
     content: {
       addHeader: 'Add Header',

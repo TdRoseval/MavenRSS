@@ -14,7 +14,7 @@ import { useAppStore } from '@/stores/app';
 export function useSettingsManualSave(settings: Ref<SettingsData> | (() => SettingsData)) {
   const { locale } = useI18n();
   const articleStore = useArticleStore();
-const appStore = useAppStore();
+  const appStore = useAppStore();
   const isSaving = ref(false);
   const hasChanges = ref(false);
 
@@ -79,7 +79,10 @@ const appStore = useAppStore();
         const originalValue = originalSettings[key];
 
         if (currentValue !== originalValue) {
-          payload[key] = typeof currentValue === 'boolean' ? currentValue.toString() : String(currentValue ?? '');
+          payload[key] =
+            typeof currentValue === 'boolean'
+              ? currentValue.toString()
+              : String(currentValue ?? '');
         }
       }
     }
@@ -118,12 +121,11 @@ const appStore = useAppStore();
 
       // Handle translation settings change
       const translationChanged =
-        originalSettings && (
-          originalSettings.translation_enabled !== settingsRef.value.translation_enabled ||
+        originalSettings &&
+        (originalSettings.translation_enabled !== settingsRef.value.translation_enabled ||
           originalSettings.translation_provider !== settingsRef.value.translation_provider ||
           (settingsRef.value.translation_enabled &&
-            originalSettings.target_language !== settingsRef.value.target_language)
-        );
+            originalSettings.target_language !== settingsRef.value.target_language));
 
       if (translationChanged) {
         await authPost('/api/articles/clear-translations');
@@ -185,12 +187,11 @@ const appStore = useAppStore();
 
       // Check if summary settings changed
       if (
-        originalSettings && (
-          originalSettings.summary_enabled !== settingsRef.value.summary_enabled ||
+        originalSettings &&
+        (originalSettings.summary_enabled !== settingsRef.value.summary_enabled ||
           originalSettings.summary_provider !== settingsRef.value.summary_provider ||
           originalSettings.summary_trigger_mode !== settingsRef.value.summary_trigger_mode ||
-          originalSettings.summary_length !== settingsRef.value.summary_length
-        )
+          originalSettings.summary_length !== settingsRef.value.summary_length)
       ) {
         window.dispatchEvent(
           new CustomEvent('summary-settings-changed', {

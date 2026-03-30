@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner, PhFunnel, PhClock, PhStar } from '@phosphor-icons/vue';
+import {
+  PhMagnifyingGlass,
+  PhX,
+  PhSparkle,
+  PhSpinner,
+  PhFunnel,
+  PhClock,
+  PhStar,
+} from '@phosphor-icons/vue';
 import type { Article } from '@/types/models';
 import { authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';
@@ -170,7 +178,9 @@ function handleKeyDown(event: KeyboardEvent) {
       <button
         class="sort-toggle-button flex items-center gap-1 px-2 py-2 text-sm transition-colors flex-shrink-0"
         :class="[
-          canToggleSort ? 'text-text-secondary hover:bg-bg-tertiary' : 'text-text-tertiary cursor-not-allowed',
+          canToggleSort
+            ? 'text-text-secondary hover:bg-bg-tertiary'
+            : 'text-text-tertiary cursor-not-allowed',
         ]"
         :disabled="!canToggleSort"
         :title="sortBy === 'relevance' ? t('aiSearch.sortByTime') : t('aiSearch.sortByRelevance')"
