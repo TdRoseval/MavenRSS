@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhRobot,
@@ -20,8 +20,10 @@ import AIProfileSelector from './AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 import { authDelete } from '@/shared/lib/authFetch';
+import { useAIProfiles } from '@/composables/ai/useAIProfiles';
 
 const { t } = useI18n();
+const { hasProfiles, fetchProfiles } = useAIProfiles();
 
 interface Props {
   settings: SettingsData;
@@ -42,11 +44,17 @@ function updateSetting(key: keyof SettingsData, value: any) {
 
 const isDeleting = ref(false);
 
+onMounted(() => {
+  if (!hasProfiles.value) {
+    fetchProfiles();
+  }
+});
+
 // Check if AI enhanced mode can be enabled
 const isAIEnhancedModeAvailable = computed(() => {
   const settings = props.settings;
   return (
-    settings.ai_api_key?.trim() !== '' &&
+    hasProfiles.value &&
     settings.summary_enabled === true &&
     settings.summary_provider === 'ai' &&
     settings.translation_enabled === true &&

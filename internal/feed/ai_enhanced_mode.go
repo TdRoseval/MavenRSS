@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"sync"
 
+	"MavenRSS/internal/ai"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
 	"MavenRSS/internal/translation"
-	"MavenRSS/internal/ai"
 )
 
 // AIEnhancedTask represents a task for AI enhanced mode processing
@@ -109,12 +109,17 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 		return
 	}
 
-	// Get AI config
-	apiKey, _ := m.db.GetEncryptedSettingWithFallback(task.UserID, "ai_api_key")
-	endpoint, _ := m.db.GetSettingWithFallback(task.UserID, "ai_endpoint")
-	model, _ := m.db.GetSettingWithFallback(task.UserID, "ai_model")
-	systemPrompt, _ := m.db.GetSettingWithFallback(task.UserID, "ai_summary_prompt")
-	customHeaders, _ := m.db.GetSettingWithFallback(task.UserID, "ai_custom_headers")
+	config, err := getUserFeatureAIConfig(m.db, task.UserID, ai.FeatureSummary)
+	if err != nil {
+		log.Printf("Error resolving AI summary config for user %d: %v", task.UserID, err)
+		return
+	}
+	if !hasConfiguredAPIKey(config) {
+		log.Printf("No user-level AI summary config available for user %d, skipping summary", task.UserID)
+		return
+	}
+
+	systemPrompt, _ := m.db.GetSettingForUser(task.UserID, "ai_summary_prompt")
 	summaryLengthStr, _ := m.db.GetSettingWithFallback(task.UserID, "summary_length")
 
 	// Set summary length
@@ -127,12 +132,12 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	}
 
 	// Create AI summarizer with Chinese language
-	aiSummarizer := summary.NewAISummarizerWithDB(apiKey, endpoint, model, m.db, true)
+	aiSummarizer := summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, true)
 	if systemPrompt != "" {
 		aiSummarizer.SetSystemPrompt(systemPrompt)
 	}
-	if customHeaders != "" {
-		aiSummarizer.SetCustomHeaders(customHeaders)
+	if config.CustomHeaders != "" {
+		aiSummarizer.SetCustomHeaders(config.CustomHeaders)
 	}
 	aiSummarizer.SetLanguage("zh") // Force Chinese for AI enhanced mode
 
@@ -165,24 +170,29 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 		return
 	}
 
-	// Get translation settings
-	apiKey, _ := m.db.GetEncryptedSettingWithFallback(task.UserID, "ai_api_key")
-	endpoint, _ := m.db.GetSettingWithFallback(task.UserID, "ai_endpoint")
-	model, _ := m.db.GetSettingWithFallback(task.UserID, "ai_model")
-	systemPrompt, _ := m.db.GetSettingWithFallback(task.UserID, "ai_translation_prompt")
-	customHeaders, _ := m.db.GetSettingWithFallback(task.UserID, "ai_custom_headers")
+	config, err := getUserFeatureAIConfig(m.db, task.UserID, ai.FeatureTranslation)
+	if err != nil {
+		log.Printf("Error resolving AI translation config for user %d: %v", task.UserID, err)
+		return
+	}
+	if !hasConfiguredAPIKey(config) {
+		log.Printf("No user-level AI translation config available for user %d, skipping translation", task.UserID)
+		return
+	}
+
+	systemPrompt, _ := m.db.GetSettingForUser(task.UserID, "ai_translation_prompt")
 	targetLang, _ := m.db.GetSettingWithFallback(task.UserID, "target_language")
 	if targetLang == "" {
 		targetLang = "zh"
 	}
 
 	// Create AI translator
-	aiTranslator := translation.NewAITranslatorWithDB(apiKey, endpoint, model, m.db, true)
+	aiTranslator := translation.NewAITranslatorWithDB(config.APIKey, config.Endpoint, config.Model, m.db, true)
 	if systemPrompt != "" {
 		aiTranslator.SetSystemPrompt(systemPrompt)
 	}
-	if customHeaders != "" {
-		aiTranslator.SetCustomHeaders(customHeaders)
+	if config.CustomHeaders != "" {
+		aiTranslator.SetCustomHeaders(config.CustomHeaders)
 	}
 
 	// Generate translation
@@ -236,6 +246,17 @@ func (m *AIEnhancedManager) isAILimitReached(userID int64) bool {
 	return usage >= effectiveLimit
 }
 
+func getUserFeatureAIConfig(db *sqlite.DB, userID int64, feature ai.FeatureType) (*ai.ClientConfig, error) {
+	if userID <= 0 {
+		return nil, nil
+	}
+	return ai.NewProfileProvider(db).GetConfigForFeatureForUser(userID, feature)
+}
+
+func hasConfiguredAPIKey(config *ai.ClientConfig) bool {
+	return config != nil && config.APIKey != ""
+}
+
 // addAIUsage adds tokens to the AI usage counter for a specific user
 func (m *AIEnhancedManager) addAIUsage(userID int64, tokens int64) {
 	usageStr, _ := m.db.GetSettingWithFallback(userID, "ai_usage_tokens")
@@ -274,9 +295,23 @@ func ShouldProcess(db *sqlite.DB, userID int64) bool {
 		return false
 	}
 
-	// Check if AI is configured
-	apiKey, _ := db.GetEncryptedSettingWithFallback(userID, "ai_api_key")
-	if apiKey == "" {
+	summaryConfig, err := getUserFeatureAIConfig(db, userID, ai.FeatureSummary)
+	if err != nil || !hasConfiguredAPIKey(summaryConfig) {
+		return false
+	}
+
+	translationConfig, err := getUserFeatureAIConfig(db, userID, ai.FeatureTranslation)
+	if err != nil || !hasConfiguredAPIKey(translationConfig) {
+		return false
+	}
+
+	searchConfig, err := getUserFeatureAIConfig(db, userID, ai.FeatureSearch)
+	if err != nil || !hasConfiguredAPIKey(searchConfig) {
+		return false
+	}
+
+	chatConfig, err := getUserFeatureAIConfig(db, userID, ai.FeatureChat)
+	if err != nil || !hasConfiguredAPIKey(chatConfig) {
 		return false
 	}
 

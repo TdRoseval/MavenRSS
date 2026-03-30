@@ -2335,6 +2335,7 @@ func calculateProxyBackoff(attempt int) time.Duration {
 // @Failure      500  {object}  map[string]string  "Internal server error"
 // @Router       /media/cache/info [get]
 func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	userID, _ := core.GetUserIDFromRequest(r)
 
 	// Get media cache directory
 	cacheDir, err := fileutil.GetMediaCacheDir()
@@ -2352,8 +2353,8 @@ func HandleMediaCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get cache size
-	cacheSize, err := mediaCache.GetCacheSize()
+	// Get cache size for the specific user
+	cacheSize, err := mediaCache.GetUserCacheSize(userID)
 	if err != nil {
 		log.Printf("Failed to get cache size: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)

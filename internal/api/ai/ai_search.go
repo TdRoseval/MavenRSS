@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"MavenRSS/internal/ai"
-	"MavenRSS/internal/config"
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
 	"MavenRSS/internal/utils/httputil"
@@ -18,12 +17,12 @@ import (
 
 // AISearchRequest represents the request for AI-powered search
 type AISearchRequest struct {
-	Query          string  `json:"query"`
-	Filter         string  `json:"filter,omitempty"`
-	FeedID         *int64  `json:"feed_id,omitempty"`
-	Category       string  `json:"category,omitempty"`
-	ShowOnlyUnread bool    `json:"show_only_unread,omitempty"`
-	SortBy         string  `json:"sort_by,omitempty"`
+	Query          string `json:"query"`
+	Filter         string `json:"filter,omitempty"`
+	FeedID         *int64 `json:"feed_id,omitempty"`
+	Category       string `json:"category,omitempty"`
+	ShowOnlyUnread bool   `json:"show_only_unread,omitempty"`
+	SortBy         string `json:"sort_by,omitempty"`
 }
 
 // AISearchResponse represents the response from AI search
@@ -183,31 +182,31 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 
 	// Build full query with LEFT JOIN to article_contents for content search
 	whereClause := strings.Join(requiredConditions, " OR ")
-	
+
 	// Add filter conditions
 	var additionalConditions []string
-	
+
 	// Only filter hidden articles if showHidden is false (respect user setting)
 	if !showHidden {
 		additionalConditions = append(additionalConditions, "a.is_hidden = 0")
 	}
-	
+
 	// Filter by user to ensure data isolation
 	if userID > 0 {
 		additionalConditions = append(additionalConditions, fmt.Sprintf("a.user_id = %d", userID))
 		// Also filter feeds by user to ensure category filtering is scoped to user's feeds
 		additionalConditions = append(additionalConditions, fmt.Sprintf("f.user_id = %d", userID))
 	}
-	
+
 	if feedID != nil {
 		additionalConditions = append(additionalConditions, fmt.Sprintf("a.feed_id = %d", *feedID))
 	}
-	
+
 	if category != "" {
 		// Handle nested categories
 		additionalConditions = append(additionalConditions, fmt.Sprintf("(f.category = '%s' OR f.category LIKE '%s/%%')", strings.ReplaceAll(category, "'", "''"), strings.ReplaceAll(category, "'", "''")))
 	}
-	
+
 	// Add filter-specific conditions
 	switch filter {
 	case "unread":
@@ -219,12 +218,12 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 	case "imageGallery":
 		additionalConditions = append(additionalConditions, "a.image_url != ''")
 	}
-	
+
 	// Add showOnlyUnread condition (only if filter is not already set to "unread")
 	if showOnlyUnread && filter != "unread" {
 		additionalConditions = append(additionalConditions, "a.is_read = 0")
 	}
-	
+
 	fullWhereClause := strings.Join(additionalConditions, " AND ")
 	fullWhereClause = fmt.Sprintf("%s AND (%s)", fullWhereClause, whereClause)
 
@@ -297,42 +296,39 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[AI Search] User query: %s", req.Query)
 
-	// Get AI settings - try ProfileProvider first
-	var apiKey, endpoint, model string
-	var useGlobalProxy bool = true
-	if h.AIProfileProvider != nil {
-		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureSearch)
-		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "") {
-			apiKey = cfg.APIKey
-			endpoint = cfg.Endpoint
-			model = cfg.Model
-			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureSearch)
-			log.Printf("[AI Search] Using AI profile for search (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
-		}
+	searchEnabled, _ := h.DB.GetSettingWithFallback(userID, "ai_search_enabled")
+	if searchEnabled != "true" {
+		response.JSON(w, AISearchResponse{
+			Success: false,
+			Error:   "AI search is disabled for the current user",
+		})
+		return
 	}
 
-	// Fallback to global settings if no profile configured
-	if endpoint == "" {
-		apiKey, _ = h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
-		endpoint, _ = h.DB.GetSettingWithFallback(userID, "ai_endpoint")
-		model, _ = h.DB.GetSettingWithFallback(userID, "ai_model")
-
-		// Use defaults if not set
-		defaults := config.Get()
-		if endpoint == "" {
-			endpoint = defaults.AIEndpoint
+	// Resolve user-scoped AI settings
+	var cfg *ai.ClientConfig
+	var useGlobalProxy bool = true
+	if h.AIProfileProvider != nil {
+		var err error
+		cfg, err = h.AIProfileProvider.GetConfigForFeatureForUser(userID, ai.FeatureSearch)
+		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "" || cfg.Model != "") {
+			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeatureForUser(userID, ai.FeatureSearch)
+			log.Printf("[AI Search] Using user AI config for search (endpoint: %s, model: %s, useGlobalProxy: %v)", cfg.Endpoint, cfg.Model, useGlobalProxy)
 		}
-		if model == "" {
-			model = defaults.AIModel
-		}
-		log.Printf("[AI Search] Using AI settings for search (endpoint: %s, model: %s)", endpoint, model)
+	}
+	if cfg == nil {
+		response.JSON(w, AISearchResponse{
+			Success: false,
+			Error:   "AI search is not configured for the current user",
+		})
+		return
 	}
 
 	// Validate AI configuration
-	if endpoint == "" || model == "" {
+	if cfg.Endpoint == "" || cfg.Model == "" {
 		response.JSON(w, AISearchResponse{
 			Success: false,
-			Error:   "AI is not configured. Please configure AI settings first.",
+			Error:   "AI search is not fully configured for the current user.",
 		})
 		return
 	}
@@ -348,10 +344,11 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientConfig := ai.ClientConfig{
-		APIKey:   apiKey,
-		Endpoint: endpoint,
-		Model:    model,
-		Timeout:  30 * time.Second,
+		APIKey:        cfg.APIKey,
+		Endpoint:      cfg.Endpoint,
+		Model:         cfg.Model,
+		CustomHeaders: cfg.CustomHeaders,
+		Timeout:       30 * time.Second,
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
 

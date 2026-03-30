@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -133,6 +134,8 @@ func HandleGetSession(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get session_id from query parameter
 	sessionIDStr := r.URL.Query().Get("session_id")
 	if sessionIDStr == "" {
@@ -146,7 +149,7 @@ func HandleGetSession(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := h.DB.GetChatSession(sessionID)
+	session, err := h.DB.GetChatSessionForUser(userID, sessionID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -178,6 +181,8 @@ func HandleUpdateSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get session_id from query parameter
 	sessionIDStr := r.URL.Query().Get("session_id")
 	if sessionIDStr == "" {
@@ -202,14 +207,18 @@ func HandleUpdateSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = h.DB.UpdateChatSessionTitle(sessionID, req.Title)
+	err = h.DB.UpdateChatSessionTitleForUser(userID, sessionID, req.Title)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			response.Error(w, fmt.Errorf("session not found"), http.StatusNotFound)
+			return
+		}
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	// Get the updated session
-	session, err := h.DB.GetChatSession(sessionID)
+	session, err := h.DB.GetChatSessionForUser(userID, sessionID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -235,6 +244,8 @@ func HandleDeleteSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get session_id from query parameter
 	sessionIDStr := r.URL.Query().Get("session_id")
 	if sessionIDStr == "" {
@@ -248,8 +259,12 @@ func HandleDeleteSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = h.DB.DeleteChatSession(sessionID)
+	err = h.DB.DeleteChatSessionForUser(userID, sessionID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			response.Error(w, fmt.Errorf("session not found"), http.StatusNotFound)
+			return
+		}
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -275,6 +290,8 @@ func HandleListMessages(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get session_id from query parameter
 	sessionIDStr := r.URL.Query().Get("session_id")
 	if sessionIDStr == "" {
@@ -288,7 +305,7 @@ func HandleListMessages(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	messages, err := h.DB.GetChatMessages(sessionID)
+	messages, err := h.DB.GetChatMessagesForUser(userID, sessionID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -341,6 +358,8 @@ func HandleDeleteMessage(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+
 	// Get message_id from query parameter
 	messageIDStr := r.URL.Query().Get("message_id")
 	if messageIDStr == "" {
@@ -354,8 +373,12 @@ func HandleDeleteMessage(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = h.DB.DeleteChatMessage(messageID)
+	err = h.DB.DeleteChatMessageForUser(userID, messageID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			response.Error(w, fmt.Errorf("message not found"), http.StatusNotFound)
+			return
+		}
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -378,7 +401,9 @@ func HandleDeleteAllSessions(h *core.Handler, w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	count, err := h.DB.DeleteAllChatSessions()
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	count, err := h.DB.DeleteAllChatSessionsForUser(userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
