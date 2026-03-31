@@ -107,7 +107,7 @@ func (db *DB) GetAIProfileForUser(userID, id int64) (*models.AIProfile, error) {
 func (db *DB) GetAllAIProfiles() ([]models.AIProfile, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
-		FROM ai_profiles ORDER BY is_default DESC, name ASC
+		FROM ai_profiles ORDER BY is_default DESC, id ASC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query ai profiles: %w", err)
@@ -145,7 +145,7 @@ func (db *DB) GetAllAIProfiles() ([]models.AIProfile, error) {
 func (db *DB) GetAllAIProfilesForUser(userID int64) ([]models.AIProfile, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
-		FROM ai_profiles WHERE user_id = ? ORDER BY is_default DESC, name ASC
+		FROM ai_profiles WHERE user_id = ? ORDER BY is_default DESC, id ASC
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query ai profiles: %w", err)
@@ -183,7 +183,7 @@ func (db *DB) GetAllAIProfilesForUser(userID int64) ([]models.AIProfile, error) 
 func (db *DB) GetAllAIProfilesWithoutKeys() ([]models.AIProfile, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, name, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
-		FROM ai_profiles ORDER BY is_default DESC, name ASC
+		FROM ai_profiles ORDER BY is_default DESC, id ASC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query ai profiles: %w", err)
@@ -212,7 +212,7 @@ func (db *DB) GetAllAIProfilesWithoutKeys() ([]models.AIProfile, error) {
 func (db *DB) GetAllAIProfilesWithoutKeysForUser(userID int64) ([]models.AIProfile, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, name, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
-		FROM ai_profiles WHERE user_id = ? ORDER BY is_default DESC, name ASC
+		FROM ai_profiles WHERE user_id = ? ORDER BY is_default DESC, id ASC
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query ai profiles: %w", err)

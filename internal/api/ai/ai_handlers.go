@@ -1,16 +1,21 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"MavenRSS/internal/ai"
-	"MavenRSS/internal/config"
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/config"
+	"MavenRSS/internal/models"
 	"MavenRSS/internal/utils/httputil"
 )
 
@@ -120,6 +125,88 @@ func HandleTestAIConfig(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	response.JSON(w, result)
 }
 
+func HandleTestEmbeddingModelConfig(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	var req models.EmbeddingModelConfig
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	result := TestResult{
+		TestTime: time.Now().Format(time.RFC3339),
+	}
+
+	req.BaseURL = strings.TrimSpace(req.BaseURL)
+	req.ModelName = strings.TrimSpace(req.ModelName)
+
+	result.ConfigValid = true
+	validationErrors := []string{}
+
+	if req.BaseURL == "" {
+		validationErrors = append(validationErrors, "base URL is required")
+		result.ConfigValid = false
+	}
+
+	if req.ModelName == "" {
+		validationErrors = append(validationErrors, "model name is required")
+		result.ConfigValid = false
+	}
+
+	if !result.ConfigValid {
+		result.ErrorMessage = "Configuration incomplete: " + strings.Join(validationErrors, ", ")
+		response.JSON(w, result)
+		return
+	}
+
+	parsedURL, err := url.Parse(req.BaseURL)
+	if err != nil {
+		result.ConfigValid = false
+		result.ErrorMessage = "Invalid endpoint URL: " + err.Error()
+		response.JSON(w, result)
+		return
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		result.ConfigValid = false
+		result.ErrorMessage = "API endpoint must use HTTP or HTTPS"
+		response.JSON(w, result)
+		return
+	}
+
+	startTime := time.Now()
+
+	httpClient, err := createAIHTTPClientWithProxy(h, userID, req.UseGlobalProxy, 30*time.Second)
+	if err != nil {
+		result.ConnectionSuccess = false
+		result.ModelAvailable = false
+		result.ErrorMessage = fmt.Sprintf("Failed to create HTTP client: %v", err)
+		result.ResponseTimeMs = time.Since(startTime).Milliseconds()
+		response.JSON(w, result)
+		return
+	}
+
+	err = requestTestEmbedding(context.Background(), httpClient, req)
+	if err != nil {
+		result.ConnectionSuccess = false
+		result.ModelAvailable = false
+		result.ErrorMessage = fmt.Sprintf("Connection failed: %v", err)
+	} else {
+		result.ConnectionSuccess = true
+		result.ModelAvailable = true
+	}
+
+	result.ResponseTimeMs = time.Since(startTime).Milliseconds()
+
+	response.JSON(w, result)
+}
+
 func HandleGetAITestInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		response.Error(w, nil, http.StatusMethodNotAllowed)
@@ -157,4 +244,70 @@ func createAIHTTPClientWithProxy(h *core.Handler, userID int64, useProxy bool, t
 
 func buildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword string) string {
 	return httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
+}
+
+type embeddingTestRequest struct {
+	Model string `json:"model"`
+	Input string `json:"input"`
+}
+
+type embeddingTestResponse struct {
+	Data []struct {
+		Embedding []float32 `json:"embedding"`
+	} `json:"data"`
+}
+
+func requestTestEmbedding(ctx context.Context, httpClient *http.Client, config models.EmbeddingModelConfig) error {
+	requestBody, err := json.Marshal(embeddingTestRequest{
+		Model: config.ModelName,
+		Input: "Hello world",
+	})
+	if err != nil {
+		return err
+	}
+
+	endpoint := config.BaseURL
+	if !strings.HasSuffix(endpoint, "/embeddings") {
+		if strings.HasSuffix(endpoint, "/") {
+			endpoint += "embeddings"
+		} else {
+			endpoint += "/embeddings"
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if config.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+config.APIKey)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result embeddingTestResponse
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return fmt.Errorf("invalid response: %w", err)
+	}
+
+	if len(result.Data) == 0 || len(result.Data[0].Embedding) == 0 {
+		return fmt.Errorf("empty embedding data returned")
+	}
+
+	return nil
 }

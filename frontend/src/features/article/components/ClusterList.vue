@@ -51,7 +51,9 @@ const displayedClusters = computed<Cluster[]>(() => {
     return source;
   }
 
-  return source.filter((cluster) => !cluster.is_read || temporarilyKeptClusterIds.value.has(cluster.id));
+  return source.filter(
+    (cluster) => !cluster.is_read || temporarilyKeptClusterIds.value.has(cluster.id)
+  );
 });
 
 const scrollTop = ref(0);

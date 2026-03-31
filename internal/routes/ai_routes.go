@@ -43,6 +43,7 @@ func registerAIRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	// AI testing and search
 	registerProtectedRoute(mux, "/api/ai/test", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestAIConfig(h, w, r) })
 	registerProtectedRoute(mux, "/api/ai/test/info", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleGetAITestInfo(h, w, r) })
+	registerProtectedRoute(mux, "/api/ai/embeddings/test-config", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleTestEmbeddingModelConfig(h, w, r) })
 	registerProtectedRoute(mux, "/api/ai/search", authMiddleware, func(w http.ResponseWriter, r *http.Request) { aihandlers.HandleAISearch(h, w, r) })
 
 	// AI Profiles
