@@ -89,13 +89,12 @@ function closeArticleOnMobile(): void {
   mobileView.value = 'list';
 }
 
-// Check if we're in image gallery mode
 const isImageGalleryMode = computed(() => articleStore.currentFilter === 'imageGallery');
-
-// Check if we're in card mode
+const shouldUseClusterView = computed(
+  () => articleStore.currentFilter === 'dailyRecommendations' || articleStore.shouldUseClusterList()
+);
 const isCardMode = ref(false);
 
-// Use composables
 const {
   confirmDialog,
   inputDialog,
@@ -115,7 +114,6 @@ const {
   setCompactMode,
 } = useResizablePanels();
 
-// Use app updates composable
 const {
   updateInfo,
   downloadAndInstallUpdate,
@@ -124,14 +122,11 @@ const {
   downloadProgress,
 } = useAppUpdates();
 
-// Update dialog state
 const showUpdateDialog = ref(false);
 
-// Initialize window state management
 const windowState = useWindowState();
 windowState.init();
 
-// Initialize keyboard shortcuts
 const { shortcuts } = useKeyboardShortcuts({
   onOpenSettings: () => {
     showSettings.value = true;
@@ -145,7 +140,6 @@ const { shortcuts } = useKeyboardShortcuts({
   },
 });
 
-// Event handler functions
 function handleShowAddFeed(): void {
   showAddFeed.value = true;
 }
@@ -188,20 +182,11 @@ function handleShowUserManagement(): void {
 }
 
 onMounted(() => {
-  // Load authentication state from storage
   authStore.loadFromStorage();
-
-  // Install global notification handlers
   installGlobalHandlers();
-
-  // Initialize theme system immediately (lightweight)
   appStore.initTheme();
-
-  // Initialize mobile detection
   isMobile.value = checkIsMobile();
   window.addEventListener('resize', handleResize);
-
-  // Add event listeners inside onMounted
   window.addEventListener('show-add-feed', handleShowAddFeed);
   window.addEventListener('show-edit-feed', handleShowEditFeed);
   window.addEventListener('show-settings', handleShowSettings);
@@ -210,13 +195,9 @@ onMounted(() => {
   window.addEventListener('open-context-menu', handleOpenContextMenu);
   window.addEventListener('show-user-management', handleShowUserManagement);
 
-  // If user is authenticated, load settings and data
   if (authStore.isAuthenticated) {
     loadInitialSettings();
 
-    // Update check on startup has been disabled
-
-    // Load feeds and articles in background
     setTimeout(() => {
       feedStore.fetchFeeds();
       articleStore.fetchArticles();
@@ -245,7 +226,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  // Clean up all event listeners
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('show-add-feed', handleShowAddFeed);
   window.removeEventListener('show-edit-feed', handleShowEditFeed);
@@ -254,8 +234,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('layout-mode-changed', handleLayoutModeChanged);
   window.removeEventListener('open-context-menu', handleOpenContextMenu);
   window.removeEventListener('show-user-management', handleShowUserManagement);
-
-  // Clean up store timers
   feedStore.stopPollProgress();
   feedStore.stopFreshRSSStatusPolling();
 });
@@ -269,6 +247,7 @@ async function loadInitialSettings() {
     isCardMode.value = layoutMode === 'card';
     setCompactMode(isCompactModeLayout);
     setArticleListWidth(isCompactModeLayout ? 500 : 350);
+    articleStore.setAIEnhancedMode(data.ai_enhanced_mode === 'true');
 
     window.dispatchEvent(new CustomEvent('settings-loaded'));
 
@@ -300,18 +279,15 @@ function toggleSidebar(): void {
 
 function onFeedAdded(): void {
   feedStore.fetchFeeds();
-  // Start polling for progress as the backend is now fetching articles for the new feed
   feedStore.pollProgress();
 }
 
 function onFeedUpdated(): void {
   feedStore.fetchFeeds();
-  // Refresh articles to immediately apply hide_from_timeline changes
   articleStore.fetchArticles();
 }
 
 function onLogin(): void {
-  // After login, load settings and data
   loadInitialSettings();
   feedStore.fetchFeeds();
   articleStore.fetchArticles();
@@ -327,12 +303,9 @@ function onLogin(): void {
       '--article-list-width': articleListWidth + 'px',
     }"
   >
-    <!-- Show Login Page if not authenticated -->
     <LoginPage v-if="!authStore.isAuthenticated" @login="onLogin" />
 
-    <!-- Show Main Application if authenticated -->
     <template v-else>
-      <!-- Mobile: Slide-out Sidebar -->
       <Transition name="sidebar-slide">
         <Sidebar
           v-if="isMobile ? isSidebarOpen : true"
@@ -343,7 +316,6 @@ function onLogin(): void {
         />
       </Transition>
 
-      <!-- Mobile overlay -->
       <Transition name="overlay-fade">
         <div
           v-if="isMobile && isSidebarOpen"
@@ -352,52 +324,51 @@ function onLogin(): void {
         ></div>
       </Transition>
 
-      <!-- Mobile main content area -->
       <div v-if="isMobile" class="flex-1 flex flex-col h-full overflow-hidden relative">
-        <!-- Mobile: Article List View (always rendered, but hidden when in detail view) -->
         <div
-          :class="[
-            'absolute inset-0 z-10 transition-opacity duration-200',
-            mobileView === 'list'
-              ? 'opacity-100 visible'
-              : 'opacity-0 invisible pointer-events-none',
-          ]"
+          v-if="shouldUseClusterView"
+          class="absolute inset-0 z-10 transition-opacity duration-200 opacity-100 visible"
         >
-          <ArticleList
-            ref="articleListRef"
-            :is-mobile="isMobile"
-            :is-sidebar-open="isSidebarOpen"
-            @toggle-sidebar="toggleSidebar"
-            @select-article="openArticleOnMobile"
-          />
+          <ClusterView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
         </div>
+        <template v-else>
+          <div
+            :class="[
+              'absolute inset-0 z-10 transition-opacity duration-200',
+              mobileView === 'list'
+                ? 'opacity-100 visible'
+                : 'opacity-0 invisible pointer-events-none',
+            ]"
+          >
+            <ArticleList
+              ref="articleListRef"
+              :is-mobile="isMobile"
+              :is-sidebar-open="isSidebarOpen"
+              @toggle-sidebar="toggleSidebar"
+              @select-article="openArticleOnMobile"
+            />
+          </div>
 
-        <!-- Mobile: Article Detail View (always rendered, but hidden when in list view) -->
-        <div
-          :class="[
-            'absolute inset-0 z-20 transition-transform duration-300',
-            mobileView === 'detail' ? 'translate-x-0' : 'translate-x-full',
-          ]"
-        >
-          <ArticleDetail :is-mobile="isMobile" @close="closeArticleOnMobile" />
-        </div>
+          <div
+            :class="[
+              'absolute inset-0 z-20 transition-transform duration-300',
+              mobileView === 'detail' ? 'translate-x-0' : 'translate-x-full',
+            ]"
+          >
+            <ArticleDetail :is-mobile="isMobile" @close="closeArticleOnMobile" />
+          </div>
+        </template>
       </div>
 
-      <!-- Desktop: Original layout -->
       <template v-else>
-        <!-- Show ImageGalleryView when in image gallery mode -->
         <template v-if="isImageGalleryMode">
           <ImageGalleryView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
         </template>
 
-        <!-- Show ClusterView when in clusters mode -->
-        <template
-          v-else-if="['clusters', 'dailyRecommendations'].includes(articleStore.currentFilter)"
-        >
+        <template v-else-if="shouldUseClusterView">
           <ClusterView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
         </template>
 
-        <!-- Show ArticleList and ArticleDetail when not in image gallery mode or clusters mode -->
         <template v-else>
           <ArticleList
             ref="articleListRef"
@@ -405,7 +376,6 @@ function onLogin(): void {
             @toggle-sidebar="toggleSidebar"
           />
 
-          <!-- Hide resizer and ArticleDetail when in card mode -->
           <template v-if="!isCardMode">
             <div class="resizer hidden md:block" @mousedown="startResizeArticleList"></div>
 
@@ -448,7 +418,6 @@ function onLogin(): void {
         @action="handleContextMenuAction"
       />
 
-      <!-- User Management Modal for Admin -->
       <div
         v-if="showUserManagement && isAdmin"
         class="user-management-overlay"
@@ -463,7 +432,6 @@ function onLogin(): void {
         </div>
       </div>
 
-      <!-- Global Notification System -->
       <ConfirmDialog
         v-if="confirmDialog"
         :title="confirmDialog.title"
@@ -532,7 +500,7 @@ function onLogin(): void {
 }
 
 .toast-container > * {
-  top: 42px; /* Account for MacOS top padding */
+  top: 42px;
 }
 
 .toast-container > * {
@@ -544,7 +512,7 @@ function onLogin(): void {
     gap: 10px;
   }
   .app-container.macos-padding .toast-container {
-    top: 52px; /* Account for MacOS top padding on larger screens */
+    top: 52px;
   }
 }
 .resizer {
@@ -562,7 +530,6 @@ function onLogin(): void {
   background-color: var(--color-accent, #3b82f6);
 }
 
-/* Mobile sidebar slide transition */
 .sidebar-slide-enter-active,
 .sidebar-slide-leave-active {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -573,7 +540,6 @@ function onLogin(): void {
   transform: translateX(-100%);
 }
 
-/* Mobile overlay fade transition */
 .overlay-fade-enter-active,
 .overlay-fade-leave-active {
   transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -584,12 +550,10 @@ function onLogin(): void {
   opacity: 0;
 }
 
-/* Mobile mode adjustments */
 .mobile-mode .resizer {
   display: none;
 }
 
-/* User Management Modal Styles */
 .user-management-overlay {
   position: fixed;
   top: 0;
@@ -645,6 +609,4 @@ function onLogin(): void {
 .close-btn:hover {
   color: #333;
 }
-
-/* Global styles if needed */
 </style>

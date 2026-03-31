@@ -136,6 +136,7 @@ onMounted(async () => {
     try {
       await fetchSettings();
       await fetchSavedFilters();
+      articleStore.setAIEnhancedMode(settings.value.ai_enhanced_mode === 'true');
     } catch (e) {
       console.error('Error loading settings in FeedList:', e);
     }
@@ -150,9 +151,13 @@ function handleLayoutModeChange() {
   if (!authStore.isAuthenticated) {
     return;
   }
-  fetchSettings().catch((e) => {
-    console.error('Error re-fetching settings after layout mode change:', e);
-  });
+  fetchSettings()
+    .then(() => {
+      articleStore.setAIEnhancedMode(settings.value.ai_enhanced_mode === 'true');
+    })
+    .catch((e) => {
+      console.error('Error re-fetching settings after layout mode change:', e);
+    });
 }
 
 onUnmounted(() => {
@@ -363,6 +368,7 @@ const drawerType = computed(() => {
     case 'favorites':
     case 'readLater':
     case 'imageGallery':
+    case 'dailyRecommendations':
       return 'feeds';
     default:
       return 'feeds';

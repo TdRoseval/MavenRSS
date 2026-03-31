@@ -39,6 +39,7 @@ export const useArticleStore = defineStore('article', () => {
   const activeFilters = ref<FilterCondition[]>([]);
   const filteredArticlesFromServer = ref<Article[]>([]);
   const isFilterLoading = ref(false);
+  const aiEnhancedMode = ref(false);
 
   const articleViewModePreferences = ref<Map<number, 'original' | 'rendered'>>(new Map());
 
@@ -54,18 +55,45 @@ export const useArticleStore = defineStore('article', () => {
     images_unread: {},
   });
 
+  function shouldUseClusterList(filter: Filter = currentFilter.value): boolean {
+    return aiEnhancedMode.value && filter !== 'imageGallery' && filter !== 'dailyRecommendations';
+  }
+
+  function resetArticleCollection(): void {
+    articles.value = [];
+    hasMore.value = false;
+    isLoading.value = false;
+    page.value = 1;
+  }
+
+  function setAIEnhancedMode(enabled: boolean): void {
+    aiEnhancedMode.value = enabled;
+    if (shouldUseClusterList()) {
+      resetArticleCollection();
+      return;
+    }
+
+    if (articles.value.length === 0 && currentFilter.value !== 'dailyRecommendations') {
+      fetchArticles();
+    }
+  }
+
   async function setFilter(filter: Filter): Promise<void> {
     currentFilter.value = filter;
     currentFeedId.value = null;
     currentCategory.value = null;
     tempSelection.value = { feedId: null, category: null };
     await fetchFilterCounts();
-    if (filter === 'clusters' || filter === 'dailyRecommendations') {
-      articles.value = [];
-      hasMore.value = false;
-      isLoading.value = false;
+
+    if (
+      filter === 'dailyRecommendations' ||
+      shouldUseClusterList(filter) ||
+      filter === 'clusters'
+    ) {
+      resetArticleCollection();
       return;
     }
+
     fetchArticles();
   }
 
@@ -77,12 +105,19 @@ export const useArticleStore = defineStore('article', () => {
       currentFeedId.value = feedId;
       currentCategory.value = null;
       tempSelection.value = { feedId, category: null };
-    } else {
-      currentFeedId.value = feedId;
-      currentCategory.value = null;
-      tempSelection.value = { feedId, category: null };
-      fetchArticles();
+      return;
     }
+
+    currentFeedId.value = feedId;
+    currentCategory.value = null;
+    tempSelection.value = { feedId, category: null };
+
+    if (shouldUseClusterList()) {
+      resetArticleCollection();
+      return;
+    }
+
+    fetchArticles();
   }
 
   function setCategory(category: string): void {
@@ -104,19 +139,28 @@ export const useArticleStore = defineStore('article', () => {
       currentFeedId.value = null;
       currentCategory.value = category;
       tempSelection.value = { feedId: null, category };
-    } else {
-      currentFeedId.value = null;
-      currentCategory.value = category;
-      tempSelection.value = { feedId: null, category };
-      fetchArticles();
+      return;
     }
+
+    currentFeedId.value = null;
+    currentCategory.value = category;
+    tempSelection.value = { feedId: null, category };
+
+    if (shouldUseClusterList()) {
+      resetArticleCollection();
+      return;
+    }
+
+    fetchArticles();
   }
 
   async function fetchArticles(append: boolean = false): Promise<void> {
-    if (currentFilter.value === 'clusters' || currentFilter.value === 'dailyRecommendations') {
-      articles.value = [];
-      hasMore.value = false;
-      isLoading.value = false;
+    if (
+      currentFilter.value === 'dailyRecommendations' ||
+      currentFilter.value === 'clusters' ||
+      shouldUseClusterList()
+    ) {
+      resetArticleCollection();
       return;
     }
 
@@ -275,9 +319,12 @@ export const useArticleStore = defineStore('article', () => {
     activeFilters,
     filteredArticlesFromServer,
     isFilterLoading,
+    aiEnhancedMode,
     articleViewModePreferences,
     aiSearchResults,
     filterCounts,
+    shouldUseClusterList,
+    setAIEnhancedMode,
     setFilter,
     setFeed,
     setCategory,

@@ -3,6 +3,12 @@ import { ref, computed } from 'vue';
 import { apiClient } from '@/shared/lib/apiClient';
 import type { Cluster, DailyRecommendationItem, DailyRecommendationResponse } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
+import { useArticleStore } from '@/features/article/store';
+
+interface ClusterListResponse {
+  clusters: Cluster[];
+  total?: number;
+}
 
 export const useClusterStore = defineStore('cluster', () => {
   const clusters = ref<Cluster[]>([]);
@@ -29,9 +35,18 @@ export const useClusterStore = defineStore('cluster', () => {
       null
   );
 
+  function normalizeClusterListResponse(response: Cluster[] | ClusterListResponse): Cluster[] {
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    return response.clusters || [];
+  }
+
   async function fetchClusters(page = 1) {
     if (isLoading.value) return;
 
+    const articleStore = useArticleStore();
     const isFirstPage = page === 1;
 
     if (isFirstPage) {
@@ -48,8 +63,18 @@ export const useClusterStore = defineStore('cluster', () => {
     try {
       const params: Record<string, any> = {
         page,
-        page_size: pageSize,
+        limit: pageSize,
       };
+
+      if (articleStore.currentFilter && articleStore.currentFilter !== 'all') {
+        params.filter = articleStore.currentFilter;
+      }
+      if (articleStore.currentFeedId) {
+        params.feed_id = articleStore.currentFeedId;
+      }
+      if (articleStore.currentCategory !== null) {
+        params.category = articleStore.currentCategory;
+      }
 
       if (activeFilters.value.length > 0) {
         const filterParams = new URLSearchParams();
@@ -62,11 +87,8 @@ export const useClusterStore = defineStore('cluster', () => {
         params.filters = filterParams.toString();
       }
 
-      const response = await apiClient.get<{ clusters: Cluster[]; total: number }>(
-        '/clusters',
-        params
-      );
-      const clusterData = response.clusters || [];
+      const response = await apiClient.get<Cluster[] | ClusterListResponse>('/clusters', params);
+      const clusterData = normalizeClusterListResponse(response);
 
       if (isFirstPage) {
         clusters.value = clusterData;
@@ -85,8 +107,8 @@ export const useClusterStore = defineStore('cluster', () => {
       hasMore.value = clusterData.length === pageSize;
       currentPage.value = page;
 
-      if (isFirstPage && clusters.value.length > 0) {
-        currentClusterId.value = clusters.value[0].id;
+      if (isFirstPage) {
+        currentClusterId.value = clusters.value[0]?.id ?? null;
       }
     } catch (error) {
       console.error('Failed to fetch clusters:', error);
@@ -107,7 +129,7 @@ export const useClusterStore = defineStore('cluster', () => {
   }
 
   async function fetchClusterArticles(clusterId: number) {
-    return apiClient.get(`/clusters/${clusterId}/articles`);
+    return apiClient.get('/clusters/detail', { id: clusterId });
   }
 
   async function fetchDailyRecommendationDates(): Promise<string[]> {
@@ -178,20 +200,22 @@ export const useClusterStore = defineStore('cluster', () => {
   }
 
   async function markClusterRead(clusterId: number, isRead: boolean) {
-    await apiClient.put(`/clusters/${clusterId}/read`, { is_read: isRead });
+    await apiClient.put('/clusters/read', { id: clusterId, read: isRead });
     updateClusterState(clusterId, { is_read: isRead });
   }
 
   async function toggleClusterFavorite(cluster: Cluster) {
-    const newState = !cluster.is_favorite;
-    await apiClient.put(`/clusters/${cluster.id}/favorite`, { is_favorite: newState });
-    updateClusterState(cluster.id, { is_favorite: newState });
+    await apiClient.put('/clusters/favorite', { id: cluster.id });
+    updateClusterState(cluster.id, { is_favorite: !cluster.is_favorite });
   }
 
   async function toggleClusterReadLater(cluster: Cluster) {
-    const newState = !cluster.is_read_later;
-    await apiClient.put(`/clusters/${cluster.id}/read-later`, { is_read_later: newState });
-    updateClusterState(cluster.id, { is_read_later: newState });
+    const nextReadLater = !cluster.is_read_later;
+    await apiClient.put('/clusters/read-later', { id: cluster.id });
+    updateClusterState(cluster.id, {
+      is_read_later: nextReadLater,
+      is_read: nextReadLater ? cluster.is_read : false,
+    });
   }
 
   async function reportClusterClick(clusterId: number) {
@@ -217,6 +241,8 @@ export const useClusterStore = defineStore('cluster', () => {
   }
 
   async function markAllAsRead() {
+    const articleStore = useArticleStore();
+
     if (dailyRecommendations.value.length > 0) {
       const unreadRecommendationClusters = dailyRecommendations.value
         .map((item) => item.cluster)
@@ -228,18 +254,34 @@ export const useClusterStore = defineStore('cluster', () => {
       return;
     }
 
-    const unreadClusters = clusters.value.filter((cluster) => !cluster.is_read);
-    await Promise.all(unreadClusters.map((cluster) => markClusterRead(cluster.id, true)));
+    const params: Record<string, any> = {};
+    if (articleStore.currentFilter && articleStore.currentFilter !== 'all') {
+      params.filter = articleStore.currentFilter;
+    }
+    if (articleStore.currentFeedId) {
+      params.feed_id = articleStore.currentFeedId;
+    }
+    if (articleStore.currentCategory !== null) {
+      params.category = articleStore.currentCategory;
+    }
+
+    await apiClient.post('/clusters/mark-all-read', {}, params);
+
+    clusters.value.forEach((cluster) => {
+      cluster.is_read = true;
+    });
+    dailyRecommendations.value.forEach((item) => {
+      item.cluster.is_read = true;
+    });
   }
 
   async function refreshCurrentCluster() {
     if (!currentClusterId.value) return;
 
     try {
-      const response = await apiClient.get<{ cluster: Cluster }>(
-        `/clusters/${currentClusterId.value}`
-      );
-      const updatedCluster = response.cluster;
+      const updatedCluster = await apiClient.get<Cluster>('/clusters/detail', {
+        id: currentClusterId.value,
+      });
       const index = clusters.value.findIndex((cluster) => cluster.id === currentClusterId.value);
       if (index !== -1) {
         clusters.value[index] = updatedCluster;

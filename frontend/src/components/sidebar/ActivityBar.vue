@@ -71,7 +71,6 @@ interface NavItem {
     | 'favorites'
     | 'readLater'
     | 'imageGallery'
-    | 'clusters'
     | 'dailyRecommendations';
 }
 
@@ -114,13 +113,6 @@ const navItems = computed<NavItem[]>(() => [
     label: t('sidebar.activity.dailyRecommendations'),
     filterType: 'dailyRecommendations',
   },
-  {
-    id: 'clusters',
-    icon: PhSparkle,
-    activeIcon: PhSparkle,
-    label: t('article.cluster.sourceLabel'),
-    filterType: 'clusters',
-  },
 ]);
 
 const imageGalleryEnabled = ref(false);
@@ -131,6 +123,7 @@ async function loadFeatureSettings() {
     const data = await authFetchJson<any>('/api/settings');
     imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
     aiRecommendationEnabled.value = data.ai_recommendation_enabled === 'true';
+    articleStore.setAIEnhancedMode(data.ai_enhanced_mode === 'true');
   } catch (e) {
     console.error('Failed to load settings:', e);
   }

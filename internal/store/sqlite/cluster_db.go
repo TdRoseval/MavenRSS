@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"MavenRSS/internal/models"
@@ -240,7 +241,6 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 // UpdateClusterEmbeddings stores embeddings for a cluster.
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
-	// Delete existing first (vec0 doesn't support UPSERT)
 	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
 	_, err := db.Exec(
 		`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
@@ -250,25 +250,42 @@ func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []by
 }
 
 // GetClustersForUser retrieves clusters for a user with filtering and pagination.
-func (db *DB) GetClustersForUser(userID int64, filter string, limit, offset int) ([]models.Cluster, error) {
+func (db *DB) GetClustersForUser(userID int64, filter string, feedID int64, category string, limit, offset int) ([]models.Cluster, error) {
 	db.WaitForReady()
 
-	baseQuery := `SELECT id, user_id, status, merged_title, merged_summary,
+	baseQuery := `SELECT DISTINCT c.id, c.user_id, c.status, c.merged_title, c.merged_summary,
 recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
-article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
-FROM clusters WHERE user_id = ? AND is_hidden = 0`
-	args := []interface{}{userID}
+article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read_later, c.is_hidden
+FROM clusters c`
+	args := []interface{}{}
+	conditions := []string{"c.user_id = ?", "c.is_hidden = 0"}
+	args = append(args, userID)
+
+	if feedID > 0 || category != "" {
+		baseQuery += `
+JOIN articles a ON a.cluster_id = c.id
+JOIN feeds f ON f.id = a.feed_id`
+		if feedID > 0 {
+			conditions = append(conditions, "a.feed_id = ?")
+			args = append(args, feedID)
+		}
+		if category != "" {
+			conditions = append(conditions, `(COALESCE(f.category, '') = ? OR COALESCE(f.category, '') LIKE ?)`)
+			args = append(args, category, category+"/%")
+		}
+	}
 
 	switch filter {
 	case "unread":
-		baseQuery += " AND is_read = 0"
+		conditions = append(conditions, "c.is_read = 0")
 	case "favorites":
-		baseQuery += " AND is_favorite = 1"
+		conditions = append(conditions, "c.is_favorite = 1")
 	case "readLater":
-		baseQuery += " AND is_read_later = 1"
+		conditions = append(conditions, "c.is_read_later = 1")
 	}
 
-	baseQuery += " ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+	baseQuery += " WHERE " + strings.Join(conditions, " AND ")
+	baseQuery += " ORDER BY c.updated_at DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := db.Query(baseQuery, args...)
@@ -288,7 +305,6 @@ FROM clusters WHERE user_id = ? AND is_hidden = 0`
 			log.Printf("Error scanning cluster: %v", err)
 			continue
 		}
-		// Populate feed titles and authors from associated articles
 		db.populateClusterMeta(&c)
 		clusters = append(clusters, c)
 	}
@@ -334,20 +350,40 @@ func (db *DB) MarkClusterRead(clusterID int64, read bool) error {
 }
 
 // MarkAllClustersReadForUser marks all visible clusters as read for a user.
-func (db *DB) MarkAllClustersReadForUser(userID int64, filter string) error {
+func (db *DB) MarkAllClustersReadForUser(userID int64, filter string, feedID int64, category string) error {
 	db.WaitForReady()
 
-	query := `UPDATE clusters SET is_read = 1, updated_at = ? WHERE user_id = ? AND is_hidden = 0`
-	args := []interface{}{time.Now(), userID}
+	query := `UPDATE clusters SET is_read = 1, updated_at = ? WHERE id IN (
+SELECT DISTINCT c.id
+FROM clusters c`
+	args := []interface{}{time.Now()}
+	conditions := []string{"c.user_id = ?", "c.is_hidden = 0"}
+	args = append(args, userID)
+
+	if feedID > 0 || category != "" {
+		query += `
+JOIN articles a ON a.cluster_id = c.id
+JOIN feeds f ON f.id = a.feed_id`
+		if feedID > 0 {
+			conditions = append(conditions, "a.feed_id = ?")
+			args = append(args, feedID)
+		}
+		if category != "" {
+			conditions = append(conditions, `(COALESCE(f.category, '') = ? OR COALESCE(f.category, '') LIKE ?)`)
+			args = append(args, category, category+"/%")
+		}
+	}
 
 	switch filter {
 	case "unread":
-		query += " AND is_read = 0"
+		conditions = append(conditions, "c.is_read = 0")
 	case "favorites":
-		query += " AND is_favorite = 1"
+		conditions = append(conditions, "c.is_favorite = 1")
 	case "readLater":
-		query += " AND is_read_later = 1"
+		conditions = append(conditions, "c.is_read_later = 1")
 	}
+
+	query += " WHERE " + strings.Join(conditions, " AND ") + ")"
 
 	_, err := db.Exec(query, args...)
 	return err
@@ -371,86 +407,4 @@ func (db *DB) ToggleClusterReadLater(clusterID int64) error {
 		WHERE id = ?
 	`, time.Now(), clusterID)
 	return err
-}
-
-// DeleteClusterAndArticles deletes a cluster and its associated articles.
-func (db *DB) DeleteClusterAndArticles(clusterID int64) error {
-	db.WaitForReady()
-	// Delete associated article contents first
-	_, _ = db.Exec(`DELETE FROM article_contents WHERE article_id IN (SELECT id FROM articles WHERE cluster_id = ?)`, clusterID)
-	// Delete associated embeddings
-	_, _ = db.Exec(`DELETE FROM article_embeddings WHERE article_id IN (SELECT id FROM articles WHERE cluster_id = ?)`, clusterID)
-	// Delete articles
-	_, _ = db.Exec(`DELETE FROM articles WHERE cluster_id = ?`, clusterID)
-	// Delete cluster embeddings
-	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
-	// Delete cluster
-	_, err := db.Exec(`DELETE FROM clusters WHERE id = ?`, clusterID)
-	return err
-}
-
-// CleanupExpiredClusters removes expired clusters respecting favorites.
-func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error) {
-	return db.cleanupExpiredClusters(userID, maxAgeDays, nil)
-}
-
-// CleanupExpiredReadClusters removes expired read clusters respecting favorites.
-func (db *DB) CleanupExpiredReadClusters(userID int64, maxAgeDays int) (int64, error) {
-	isRead := true
-	return db.cleanupExpiredClusters(userID, maxAgeDays, &isRead)
-}
-
-// CleanupExpiredUnreadClusters removes expired unread clusters respecting favorites.
-func (db *DB) CleanupExpiredUnreadClusters(userID int64, maxAgeDays int) (int64, error) {
-	isRead := false
-	return db.cleanupExpiredClusters(userID, maxAgeDays, &isRead)
-}
-
-func (db *DB) cleanupExpiredClusters(userID int64, maxAgeDays int, isRead *bool) (int64, error) {
-	db.WaitForReady()
-	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
-
-	query := `
-		SELECT id FROM clusters
-		WHERE is_favorite = 0 AND is_read_later = 0 AND is_ai_recommended = 0 AND updated_at < ?
-	`
-	args := []interface{}{cutoff}
-	if userID > 0 {
-		query += ` AND user_id = ?`
-		args = append(args, userID)
-	}
-	if isRead != nil {
-		query += ` AND is_read = ?`
-		args = append(args, *isRead)
-	}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
-		}
-	}
-
-	if len(ids) == 0 {
-		return 0, nil
-	}
-
-	// Delete each cluster and its articles
-	deleted := int64(0)
-	for _, id := range ids {
-		if err := db.DeleteClusterAndArticles(id); err != nil {
-			log.Printf("Error deleting cluster %d: %v", id, err)
-			continue
-		}
-		deleted++
-	}
-
-	return deleted, nil
 }

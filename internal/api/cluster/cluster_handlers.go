@@ -42,7 +42,13 @@ func HandleClusters(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		offset = (page - 1) * limit
 	}
 
-	clusters, err := h.DB.GetClustersForUser(userID, filter, limit, offset)
+	var feedID int64
+	if feedIDStr := r.URL.Query().Get("feed_id"); feedIDStr != "" {
+		feedID, _ = strconv.ParseInt(feedIDStr, 10, 64)
+	}
+	category := r.URL.Query().Get("category")
+
+	clusters, err := h.DB.GetClustersForUser(userID, filter, feedID, category, limit, offset)
 	if err != nil {
 		log.Printf("Error getting clusters: %v", err)
 		http.Error(w, "Failed to get clusters", http.StatusInternalServerError)
@@ -72,7 +78,6 @@ func HandleClusterDetail(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Populate associated articles
 	articles, err := h.DB.GetArticlesByClusterID(clusterID)
 	if err == nil {
 		cluster.Articles = articles
@@ -125,7 +130,13 @@ func HandleMarkAllClustersRead(h *core.Handler, w http.ResponseWriter, r *http.R
 		filter = "all"
 	}
 
-	if err := h.DB.MarkAllClustersReadForUser(userID, filter); err != nil {
+	var feedID int64
+	if feedIDStr := r.URL.Query().Get("feed_id"); feedIDStr != "" {
+		feedID, _ = strconv.ParseInt(feedIDStr, 10, 64)
+	}
+	category := r.URL.Query().Get("category")
+
+	if err := h.DB.MarkAllClustersReadForUser(userID, filter, feedID, category); err != nil {
 		http.Error(w, "Failed to update", http.StatusInternalServerError)
 		return
 	}
@@ -156,7 +167,6 @@ func HandleClusterFavorite(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Get current favorite state before toggle
 	clusterObj, _ := h.DB.GetClusterByID(req.ID)
 	wasFavorite := clusterObj != nil && clusterObj.IsFavorite
 
@@ -165,8 +175,6 @@ func HandleClusterFavorite(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Level 3: If the cluster was NOT a favorite and is now becoming one,
-	// update interest vector with summary embedding at α=0.20
 	if !wasFavorite {
 		go func() {
 			summaryBlob, err := h.DB.GetClusterEmbedding(req.ID, "summary_embedding")
