@@ -147,6 +147,14 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
 		UNIQUE(user_id, recommendation_date, cluster_id)
 	);
+	CREATE TABLE IF NOT EXISTS article_contents (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL UNIQUE,
+		content TEXT NOT NULL,
+		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+	);
+
 
 	-- Translation cache table
 	CREATE TABLE IF NOT EXISTS translation_cache (
