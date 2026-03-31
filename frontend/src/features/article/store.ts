@@ -12,6 +12,7 @@ export type Filter =
   | 'readLater'
   | 'imageGallery'
   | 'clusters'
+  | 'dailyRecommendations'
   | '';
 
 export interface TempSelection {
@@ -20,7 +21,6 @@ export interface TempSelection {
 }
 
 export const useArticleStore = defineStore('article', () => {
-  // State
   const articles = ref<Article[]>([]);
   const unreadCounts = ref<UnreadCounts>({
     total: 0,
@@ -40,13 +40,10 @@ export const useArticleStore = defineStore('article', () => {
   const filteredArticlesFromServer = ref<Article[]>([]);
   const isFilterLoading = ref(false);
 
-  // Article view mode preferences (persisted across component mounts)
   const articleViewModePreferences = ref<Map<number, 'original' | 'rendered'>>(new Map());
 
-  // AI Search results
   const aiSearchResults = ref<Article[]>([]);
 
-  // Filter-specific counts for sidebar filtering
   const filterCounts = ref<Record<string, Record<number | string, number>>>({
     unread: {},
     favorites: {},
@@ -57,31 +54,30 @@ export const useArticleStore = defineStore('article', () => {
     images_unread: {},
   });
 
-  // Actions
   async function setFilter(filter: Filter): Promise<void> {
     currentFilter.value = filter;
     currentFeedId.value = null;
     currentCategory.value = null;
     tempSelection.value = { feedId: null, category: null };
-    // Refresh filter counts to ensure sidebar shows correct feeds
     await fetchFilterCounts();
-    // Clear and reset will be handled by fetchArticles
+    if (filter === 'clusters' || filter === 'dailyRecommendations') {
+      articles.value = [];
+      hasMore.value = false;
+      isLoading.value = false;
+      return;
+    }
     fetchArticles();
   }
 
   function setFeed(feedId: number): void {
     const feedStore = useFeedStore();
-    // Check if this feed is an image mode feed
     const feed = feedStore.feeds.find((f: Feed) => f.id === feedId);
     if (feed?.is_image_mode) {
-      // For image mode feeds, switch filter to image gallery
       currentFilter.value = 'imageGallery';
       currentFeedId.value = feedId;
       currentCategory.value = null;
       tempSelection.value = { feedId, category: null };
-      // Clear and reset will be handled by fetchArticles
     } else {
-      // For regular feeds, keep currentFilter and set tempSelection
       currentFeedId.value = feedId;
       currentCategory.value = null;
       tempSelection.value = { feedId, category: null };
@@ -91,14 +87,11 @@ export const useArticleStore = defineStore('article', () => {
 
   function setCategory(category: string): void {
     const feedStore = useFeedStore();
-    // Check if this category contains only image mode feeds
     const categoryFeeds = feedStore.feeds.filter((f: Feed) => {
-      // Handle uncategorized category (empty string)
       if (category === '') {
         return !f.category || f.category === '';
       }
 
-      // Handle nested categories by checking if the feed's category starts with the selected path
       const feedCategory = f.category || '';
       return feedCategory === category || feedCategory.startsWith(category + '/');
     });
@@ -106,15 +99,12 @@ export const useArticleStore = defineStore('article', () => {
     const allImageMode =
       categoryFeeds.length > 0 && categoryFeeds.every((f: Feed) => f.is_image_mode);
 
-    // If all feeds in this category are image mode, switch to image gallery filter
     if (allImageMode) {
       currentFilter.value = 'imageGallery';
       currentFeedId.value = null;
       currentCategory.value = category;
       tempSelection.value = { feedId: null, category };
-      // Don't call fetchArticles here - ImageGalleryView will handle fetching
     } else {
-      // For regular categories, keep currentFilter and set tempSelection
       currentFeedId.value = null;
       currentCategory.value = category;
       tempSelection.value = { feedId: null, category };
@@ -123,9 +113,15 @@ export const useArticleStore = defineStore('article', () => {
   }
 
   async function fetchArticles(append: boolean = false): Promise<void> {
+    if (currentFilter.value === 'clusters' || currentFilter.value === 'dailyRecommendations') {
+      articles.value = [];
+      hasMore.value = false;
+      isLoading.value = false;
+      return;
+    }
+
     if (isLoading.value) return;
 
-    // If not appending, reset to page 1 and clear articles
     if (!append) {
       page.value = 1;
       articles.value = [];
@@ -214,39 +210,33 @@ export const useArticleStore = defineStore('article', () => {
       if (category) params.category = category;
 
       await apiClient.post('/articles/mark-all-read', {}, params);
-      // Refresh articles and unread counts
       await fetchArticles();
       await fetchUnreadCounts();
     } catch (e) {
-      console.error('[Article Store] Mark all as read error:', e);
+      console.error('Error marking all as read:', e);
+      throw e;
     }
   }
 
-  function updateArticleSummary(articleId: number, summary: string): void {
-    const articleIndex = articles.value.findIndex((a) => a.id === articleId);
-    if (articleIndex !== -1) {
-      articles.value[articleIndex] = {
-        ...articles.value[articleIndex],
-        summary,
-      };
-    }
+  function setCurrentArticle(id: number | null): void {
+    currentArticleId.value = id;
   }
 
-  function toggleShowOnlyUnread(): void {
-    showOnlyUnread.value = !showOnlyUnread.value;
-    localStorage.setItem('showOnlyUnread', String(showOnlyUnread.value));
+  function setSearchQuery(query: string): void {
+    searchQuery.value = query;
   }
 
-  function setActiveFilters(filters: FilterCondition[]): void {
-    activeFilters.value = filters;
+  function setShowOnlyUnread(value: boolean): void {
+    showOnlyUnread.value = value;
+    localStorage.setItem('showOnlyUnread', String(value));
   }
 
-  function setFilteredArticlesFromServer(articles: Article[]): void {
-    filteredArticlesFromServer.value = articles;
+  function setViewModePreference(articleId: number, mode: 'original' | 'rendered'): void {
+    articleViewModePreferences.value.set(articleId, mode);
   }
 
-  function setIsFilterLoading(loading: boolean): void {
-    isFilterLoading.value = loading;
+  function getViewModePreference(articleId: number): 'original' | 'rendered' | undefined {
+    return articleViewModePreferences.value.get(articleId);
   }
 
   function setAISearchResults(results: Article[]): void {
@@ -255,6 +245,18 @@ export const useArticleStore = defineStore('article', () => {
 
   function clearAISearchResults(): void {
     aiSearchResults.value = [];
+  }
+
+  function setActiveFilters(filters: FilterCondition[]): void {
+    activeFilters.value = filters;
+  }
+
+  function setFilteredArticlesFromServer(articlesFromServer: Article[]): void {
+    filteredArticlesFromServer.value = articlesFromServer;
+  }
+
+  function setFilterLoading(loading: boolean): void {
+    isFilterLoading.value = loading;
   }
 
   return {
@@ -284,12 +286,15 @@ export const useArticleStore = defineStore('article', () => {
     fetchUnreadCounts,
     fetchFilterCounts,
     markAllAsRead,
-    updateArticleSummary,
-    toggleShowOnlyUnread,
-    setActiveFilters,
-    setFilteredArticlesFromServer,
-    setIsFilterLoading,
+    setCurrentArticle,
+    setSearchQuery,
+    setShowOnlyUnread,
+    setViewModePreference,
+    getViewModePreference,
     setAISearchResults,
     clearAISearchResults,
+    setActiveFilters,
+    setFilteredArticlesFromServer,
+    setFilterLoading,
   };
 });

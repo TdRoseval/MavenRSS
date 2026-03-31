@@ -8,6 +8,7 @@ import {
   PhBroom,
   PhMagnifyingGlass,
   PhRocket,
+  PhSparkle,
 } from '@phosphor-icons/vue';
 import {
   TipBox,
@@ -70,6 +71,15 @@ const hasValidFusionProfile = computed(() => {
   return profiles.value.some((profile) => String(profile.id) === profileID);
 });
 
+const hasValidRecommendationProfile = computed(() => {
+  const profileID = String(props.settings.ai_recommendation_profile_id || '').trim();
+  if (profileID === '') {
+    return false;
+  }
+
+  return profiles.value.some((profile) => String(profile.id) === profileID);
+});
+
 const canConfigureAIEnhancedMode = computed(() => {
   const settings = props.settings;
 
@@ -86,6 +96,14 @@ const canConfigureAIEnhancedMode = computed(() => {
 
 const isAIEnhancedModeAvailable = computed(
   () => canConfigureAIEnhancedMode.value && hasValidFusionProfile.value
+);
+
+const canConfigureRecommendation = computed(
+  () => hasProfiles.value && canConfigureAIEnhancedMode.value
+);
+
+const isRecommendationAvailable = computed(
+  () => canConfigureRecommendation.value && hasValidRecommendationProfile.value
 );
 
 async function clearAllChatSessions() {
@@ -111,7 +129,6 @@ async function clearAllChatSessions() {
 
 <template>
   <SettingGroup :icon="PhRobot" :title="t('setting.ai.aiFeatures')">
-    <!-- AI Search -->
     <TipBox type="info" :title="t('setting.ai.isBeta')" />
     <SettingWithToggle
       :icon="PhMagnifyingGlass"
@@ -134,7 +151,6 @@ async function clearAllChatSessions() {
       </SubSettingItem>
     </NestedSettingsContainer>
 
-    <!-- AI Chat -->
     <SettingWithToggle
       :icon="PhChatCircleText"
       :title="t('setting.ai.aiChatEnabled')"
@@ -172,7 +188,6 @@ async function clearAllChatSessions() {
       </SubSettingItem>
     </NestedSettingsContainer>
 
-    <!-- AI Enhanced Mode -->
     <TipBox
       v-if="!canConfigureAIEnhancedMode"
       type="warning"
@@ -202,6 +217,37 @@ async function clearAllChatSessions() {
       :model-value="isAIEnhancedModeAvailable ? props.settings.ai_enhanced_mode : false"
       :disabled="!isAIEnhancedModeAvailable"
       @update:model-value="updateSetting('ai_enhanced_mode', $event)"
+    />
+
+    <TipBox
+      v-if="!canConfigureRecommendation"
+      type="warning"
+      :title="t('setting.ai.aiRecommendationDisabled')"
+    />
+    <TipBox
+      v-else-if="!hasValidRecommendationProfile"
+      type="warning"
+      :title="t('setting.ai.aiRecommendationRequiresProfile')"
+    />
+    <NestedSettingsContainer v-if="canConfigureRecommendation">
+      <SubSettingItem
+        :icon="PhRobot"
+        :title="t('setting.ai.selectRecommendationProfile')"
+        :description="t('setting.ai.selectRecommendationProfileDesc')"
+      >
+        <AIProfileSelector
+          :model-value="props.settings.ai_recommendation_profile_id"
+          @update:model-value="updateSetting('ai_recommendation_profile_id', $event)"
+        />
+      </SubSettingItem>
+    </NestedSettingsContainer>
+    <SettingWithToggle
+      :icon="PhSparkle"
+      :title="t('setting.ai.aiRecommendationEnabled')"
+      :description="t('setting.ai.aiRecommendationEnabledDesc')"
+      :model-value="isRecommendationAvailable ? props.settings.ai_recommendation_enabled : false"
+      :disabled="!isRecommendationAvailable"
+      @update:model-value="updateSetting('ai_recommendation_enabled', $event)"
     />
   </SettingGroup>
 </template>

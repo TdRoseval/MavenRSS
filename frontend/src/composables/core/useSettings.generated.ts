@@ -22,6 +22,8 @@ export function generateInitialSettings(): SettingsData {
     ai_enhanced_mode: settingsDefaults.ai_enhanced_mode,
     ai_fusion_profile_id: settingsDefaults.ai_fusion_profile_id,
     ai_model: settingsDefaults.ai_model,
+    ai_recommendation_enabled: settingsDefaults.ai_recommendation_enabled,
+    ai_recommendation_profile_id: settingsDefaults.ai_recommendation_profile_id,
     ai_search_enabled: settingsDefaults.ai_search_enabled,
     ai_search_profile_id: settingsDefaults.ai_search_profile_id,
     ai_summary_profile_id: settingsDefaults.ai_summary_profile_id,
@@ -140,6 +142,9 @@ export function parseSettingsData(data: Record<string, string>): SettingsData {
     ai_enhanced_mode: data.ai_enhanced_mode === 'true',
     ai_fusion_profile_id: data.ai_fusion_profile_id || settingsDefaults.ai_fusion_profile_id,
     ai_model: data.ai_model || settingsDefaults.ai_model,
+    ai_recommendation_enabled: data.ai_recommendation_enabled === 'true',
+    ai_recommendation_profile_id:
+      data.ai_recommendation_profile_id || settingsDefaults.ai_recommendation_profile_id,
     ai_search_enabled: data.ai_search_enabled === 'true',
     ai_search_profile_id: data.ai_search_profile_id || settingsDefaults.ai_search_profile_id,
     ai_summary_profile_id: data.ai_summary_profile_id || settingsDefaults.ai_summary_profile_id,
@@ -283,6 +288,12 @@ export function buildAutoSavePayload(settingsRef: Ref<SettingsData>): Record<str
     ai_fusion_profile_id:
       settingsRef.value.ai_fusion_profile_id ?? settingsDefaults.ai_fusion_profile_id,
     ai_model: settingsRef.value.ai_model ?? settingsDefaults.ai_model,
+    ai_recommendation_enabled: (
+      settingsRef.value.ai_recommendation_enabled ?? settingsDefaults.ai_recommendation_enabled
+    ).toString(),
+    ai_recommendation_profile_id:
+      settingsRef.value.ai_recommendation_profile_id ??
+      settingsDefaults.ai_recommendation_profile_id,
     ai_search_enabled: (
       settingsRef.value.ai_search_enabled ?? settingsDefaults.ai_search_enabled
     ).toString(),

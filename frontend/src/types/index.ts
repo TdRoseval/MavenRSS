@@ -9,4 +9,3 @@ export type {
   ImageViewerReturn,
   MasonryLayoutReturn,
 } from '@/features/article/components/imageGallery/types';
-

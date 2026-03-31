@@ -48,9 +48,29 @@ export interface Cluster {
   is_favorite: boolean;
   is_read_later: boolean;
   is_hidden: boolean;
+  recommendation_archive_date?: string;
+  recommendation_score?: number;
+  is_ai_recommended?: boolean;
+  recommendation_profile_id?: number;
   feed_titles?: string[];
   authors?: string[];
   articles?: Article[];
+}
+
+export interface DailyRecommendationItem {
+  recommendation_date: string;
+  recommendation_rank: number;
+  recommendation_score: number;
+  recommendation_profile_id: number;
+  latest_published_at?: string;
+  cluster: Cluster;
+}
+
+export interface DailyRecommendationResponse {
+  selected_date: string;
+  available_dates: string[];
+  recommendations: DailyRecommendationItem[];
+  total: number;
 }
 
 export interface UserAIStats {

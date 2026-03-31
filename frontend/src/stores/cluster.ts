@@ -1,173 +1,326 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Cluster } from '@/types/models';
 import { apiClient } from '@/shared/lib/apiClient';
+import type { Cluster, DailyRecommendationItem, DailyRecommendationResponse } from '@/types/models';
+import type { FilterCondition } from '@/types/filter';
 
 export const useClusterStore = defineStore('cluster', () => {
   const clusters = ref<Cluster[]>([]);
+  const dailyRecommendations = ref<DailyRecommendationItem[]>([]);
+  const dailyRecommendationDates = ref<string[]>([]);
+  const selectedRecommendationDate = ref('');
   const currentClusterId = ref<number | null>(null);
-  const isLoading = ref<boolean>(false);
-  const hasMore = ref<boolean>(true);
-  const filterCounts = ref<Record<string, number>>({
-    unread: 0,
-    favorites: 0,
-    read_later: 0,
-  });
+  const isLoading = ref(false);
+  const isInitialLoading = ref(false);
+  const isLoadingMore = ref(false);
+  const hasMore = ref(true);
+  const currentPage = ref(1);
+  const pageSize = 20;
+  const activeFilters = ref<FilterCondition[]>([]);
+  const filteredClusterIds = ref<number[] | null>(null);
+  const isDailyRecommendationsLoading = ref(false);
+  const dailyRecommendationsError = ref('');
 
-  /** Set of cluster IDs already displayed — used for stateless exclusion pagination */
-  const displayedIds = computed<number[]>(() => clusters.value.map((c) => c.id));
-  const isInitialLoading = computed<boolean>(() => isLoading.value && clusters.value.length === 0);
-  const isLoadingMore = computed<boolean>(() => isLoading.value && clusters.value.length > 0);
+  const currentCluster = computed(
+    () =>
+      clusters.value.find((cluster) => cluster.id === currentClusterId.value) ||
+      dailyRecommendations.value.find((item) => item.cluster.id === currentClusterId.value)
+        ?.cluster ||
+      null
+  );
 
-  function updateClusterState(id: number, patch: Partial<Cluster>): void {
-    const index = clusters.value.findIndex((cluster) => cluster.id === id);
-    if (index === -1) {
-      return;
-    }
-
-    clusters.value[index] = {
-      ...clusters.value[index],
-      ...patch,
-    };
-  }
-
-  /**
-   * Fetches clusters using the AI-enhanced feed endpoint with exclude_ids pagination.
-   * @param append If true, appends to existing list; if false, resets the list.
-   */
-  async function fetchClusters(append: boolean = false): Promise<void> {
+  async function fetchClusters(page = 1) {
     if (isLoading.value) return;
 
-    if (!append) {
+    const isFirstPage = page === 1;
+
+    if (isFirstPage) {
+      isInitialLoading.value = true;
       clusters.value = [];
+      currentPage.value = 1;
       hasMore.value = true;
+    } else {
+      isLoadingMore.value = true;
     }
 
     isLoading.value = true;
 
     try {
-      const excludeIds = append ? displayedIds.value : [];
-      const data: Cluster[] =
-        (await apiClient.post<Cluster[]>('/clusters/feed', {
-          exclude_ids: excludeIds,
-        })) || [];
+      const params: Record<string, any> = {
+        page,
+        page_size: pageSize,
+      };
 
-      if (data.length < 30) {
-        hasMore.value = false;
+      if (activeFilters.value.length > 0) {
+        const filterParams = new URLSearchParams();
+        activeFilters.value.forEach((filter, index) => {
+          filterParams.append(`f${index}_type`, filter.type);
+          filterParams.append(`f${index}_op`, filter.operator);
+          filterParams.append(`f${index}_value`, filter.value);
+          filterParams.append(`f${index}_logic`, filter.logic || 'and');
+        });
+        params.filters = filterParams.toString();
       }
 
-      if (append) {
-        const existingIds = new Set(clusters.value.map((cluster) => cluster.id));
-        const nextClusters = data.filter((cluster) => !existingIds.has(cluster.id));
-        clusters.value = [...clusters.value, ...nextClusters];
+      const response = await apiClient.get<{ clusters: Cluster[]; total: number }>(
+        '/clusters',
+        params
+      );
+      const clusterData = response.clusters || [];
+
+      if (isFirstPage) {
+        clusters.value = clusterData;
       } else {
-        clusters.value = data;
+        const existingIds = new Set(clusters.value.map((cluster) => cluster.id));
+        const newClusters = clusterData.filter((cluster) => !existingIds.has(cluster.id));
+        clusters.value = [...clusters.value, ...newClusters];
       }
-    } catch (e) {
-      console.error('Error fetching clusters:', e);
+
+      if (filteredClusterIds.value) {
+        clusters.value = clusters.value.filter((cluster) =>
+          filteredClusterIds.value?.includes(cluster.id)
+        );
+      }
+
+      hasMore.value = clusterData.length === pageSize;
+      currentPage.value = page;
+
+      if (isFirstPage && clusters.value.length > 0) {
+        currentClusterId.value = clusters.value[0].id;
+      }
+    } catch (error) {
+      console.error('Failed to fetch clusters:', error);
+      throw error;
     } finally {
       isLoading.value = false;
+      isInitialLoading.value = false;
+      isLoadingMore.value = false;
     }
   }
 
-  async function loadMore(): Promise<void> {
-    if (hasMore.value && !isLoading.value) {
-      await fetchClusters(true);
+  async function loadMore() {
+    if (!hasMore.value || isLoading.value || isLoadingMore.value) {
+      return;
     }
+
+    await fetchClusters(currentPage.value + 1);
   }
 
-  async function fetchClusterDetail(id: number): Promise<Cluster | null> {
+  async function fetchClusterArticles(clusterId: number) {
+    return apiClient.get(`/clusters/${clusterId}/articles`);
+  }
+
+  async function fetchDailyRecommendationDates(): Promise<string[]> {
     try {
-      return await apiClient.get<Cluster>('/clusters/detail', { id });
-    } catch (e) {
-      console.error('Error fetching cluster detail:', e);
-      return null;
+      const response = await apiClient.get<{ dates: string[] }>('/recommendations/dates');
+      dailyRecommendationDates.value = response.dates || [];
+
+      if (!selectedRecommendationDate.value && dailyRecommendationDates.value.length > 0) {
+        selectedRecommendationDate.value = dailyRecommendationDates.value[0];
+      }
+
+      return dailyRecommendationDates.value;
+    } catch (error) {
+      console.error('Failed to fetch daily recommendation dates:', error);
+      dailyRecommendationDates.value = [];
+      throw error;
     }
   }
 
-  async function markClusterRead(id: number, read: boolean): Promise<void> {
-    updateClusterState(id, { is_read: read });
-
-    try {
-      await apiClient.put('/clusters/read', { id, read });
-    } catch (e) {
-      updateClusterState(id, { is_read: !read });
-      throw e;
+  async function fetchDailyRecommendations(date?: string): Promise<DailyRecommendationItem[]> {
+    const targetDate = date || selectedRecommendationDate.value;
+    if (!targetDate) {
+      dailyRecommendations.value = [];
+      dailyRecommendationsError.value = '';
+      return [];
     }
-  }
 
-  async function toggleClusterFavorite(cluster: Cluster): Promise<boolean> {
-    const nextValue = !cluster.is_favorite;
-    updateClusterState(cluster.id, { is_favorite: nextValue });
-
-    try {
-      await apiClient.put('/clusters/favorite', { id: cluster.id });
-      return nextValue;
-    } catch (e) {
-      updateClusterState(cluster.id, { is_favorite: cluster.is_favorite });
-      throw e;
-    }
-  }
-
-  async function toggleClusterReadLater(
-    cluster: Cluster
-  ): Promise<{ isReadLater: boolean; isRead: boolean }> {
-    const nextReadLater = !cluster.is_read_later;
-    const nextRead = nextReadLater ? false : cluster.is_read;
-    updateClusterState(cluster.id, {
-      is_read_later: nextReadLater,
-      is_read: nextRead,
-    });
+    isDailyRecommendationsLoading.value = true;
+    dailyRecommendationsError.value = '';
 
     try {
-      await apiClient.put('/clusters/read-later', { id: cluster.id });
-      return {
-        isReadLater: nextReadLater,
-        isRead: nextRead,
-      };
-    } catch (e) {
-      updateClusterState(cluster.id, {
-        is_read_later: cluster.is_read_later,
-        is_read: cluster.is_read,
+      const response = await apiClient.get<DailyRecommendationResponse>('/recommendations/daily', {
+        date: targetDate,
       });
-      throw e;
+      dailyRecommendations.value = response.recommendations || [];
+      selectedRecommendationDate.value = response.date || targetDate;
+
+      if (dailyRecommendations.value.length > 0) {
+        currentClusterId.value = dailyRecommendations.value[0].cluster.id;
+      }
+
+      return dailyRecommendations.value;
+    } catch (error: any) {
+      console.error('Failed to fetch daily recommendations:', error);
+      dailyRecommendations.value = [];
+      dailyRecommendationsError.value = error?.message || 'Failed to fetch daily recommendations';
+      throw error;
+    } finally {
+      isDailyRecommendationsLoading.value = false;
     }
   }
 
-  async function markAllAsRead(): Promise<void> {
-    await apiClient.post('/clusters/mark-all-read');
-    clusters.value = clusters.value.map((cluster) => ({
-      ...cluster,
-      is_read: true,
-    }));
+  async function selectRecommendationDate(date: string): Promise<DailyRecommendationItem[]> {
+    selectedRecommendationDate.value = date;
+    return fetchDailyRecommendations(date);
   }
 
-  /** Fire-and-forget click feedback for Level 1 interest vector update */
-  function reportClusterClick(clusterId: number): void {
-    apiClient
-      .post('/clusters/click', { cluster_id: clusterId })
-      .catch((e: unknown) => {
-        console.error('Failed to report cluster click:', e);
-      });
+  async function refreshDailyRecommendations(): Promise<void> {
+    const dates = await fetchDailyRecommendationDates();
+    if (dates.length === 0) {
+      dailyRecommendations.value = [];
+      currentClusterId.value = null;
+      return;
+    }
+
+    const targetDate = selectedRecommendationDate.value || dates[0];
+    await fetchDailyRecommendations(targetDate);
+  }
+
+  async function markClusterRead(clusterId: number, isRead: boolean) {
+    await apiClient.put(`/clusters/${clusterId}/read`, { is_read: isRead });
+    updateClusterState(clusterId, { is_read: isRead });
+  }
+
+  async function toggleClusterFavorite(cluster: Cluster) {
+    const newState = !cluster.is_favorite;
+    await apiClient.put(`/clusters/${cluster.id}/favorite`, { is_favorite: newState });
+    updateClusterState(cluster.id, { is_favorite: newState });
+  }
+
+  async function toggleClusterReadLater(cluster: Cluster) {
+    const newState = !cluster.is_read_later;
+    await apiClient.put(`/clusters/${cluster.id}/read-later`, { is_read_later: newState });
+    updateClusterState(cluster.id, { is_read_later: newState });
+  }
+
+  async function reportClusterClick(clusterId: number) {
+    try {
+      await apiClient.post(`/recommendations/clusters/${clusterId}/click`, {});
+    } catch (error) {
+      console.error('Failed to report cluster click:', error);
+    }
+  }
+
+  function updateClusterState(clusterId: number, updates: Partial<Cluster>) {
+    const cluster = clusters.value.find((item) => item.id === clusterId);
+    if (cluster) {
+      Object.assign(cluster, updates);
+    }
+
+    const recommendationCluster = dailyRecommendations.value.find(
+      (item) => item.cluster.id === clusterId
+    )?.cluster;
+    if (recommendationCluster) {
+      Object.assign(recommendationCluster, updates);
+    }
+  }
+
+  async function markAllAsRead() {
+    if (dailyRecommendations.value.length > 0) {
+      const unreadRecommendationClusters = dailyRecommendations.value
+        .map((item) => item.cluster)
+        .filter((cluster) => !cluster.is_read);
+
+      await Promise.all(
+        unreadRecommendationClusters.map((cluster) => markClusterRead(cluster.id, true))
+      );
+      return;
+    }
+
+    const unreadClusters = clusters.value.filter((cluster) => !cluster.is_read);
+    await Promise.all(unreadClusters.map((cluster) => markClusterRead(cluster.id, true)));
+  }
+
+  async function refreshCurrentCluster() {
+    if (!currentClusterId.value) return;
+
+    try {
+      const response = await apiClient.get<{ cluster: Cluster }>(
+        `/clusters/${currentClusterId.value}`
+      );
+      const updatedCluster = response.cluster;
+      const index = clusters.value.findIndex((cluster) => cluster.id === currentClusterId.value);
+      if (index !== -1) {
+        clusters.value[index] = updatedCluster;
+      }
+
+      const recommendationIndex = dailyRecommendations.value.findIndex(
+        (item) => item.cluster.id === currentClusterId.value
+      );
+      if (recommendationIndex !== -1) {
+        dailyRecommendations.value[recommendationIndex].cluster = updatedCluster;
+      }
+    } catch (error) {
+      console.error('Failed to refresh current cluster:', error);
+      throw error;
+    }
+  }
+
+  function setActiveFilters(filters: FilterCondition[]) {
+    activeFilters.value = filters;
+  }
+
+  function setFilteredClusterIds(ids: number[] | null) {
+    filteredClusterIds.value = ids;
+
+    if (!ids) return;
+
+    clusters.value = clusters.value.filter((cluster) => ids.includes(cluster.id));
+    dailyRecommendations.value = dailyRecommendations.value.filter((item) =>
+      ids.includes(item.cluster.id)
+    );
+
+    if (currentClusterId.value && !ids.includes(currentClusterId.value)) {
+      const firstRecommendation = dailyRecommendations.value[0]?.cluster.id;
+      const firstCluster = clusters.value[0]?.id;
+      currentClusterId.value = firstRecommendation ?? firstCluster ?? null;
+    }
+  }
+
+  function clearData() {
+    clusters.value = [];
+    dailyRecommendations.value = [];
+    dailyRecommendationDates.value = [];
+    selectedRecommendationDate.value = '';
+    currentClusterId.value = null;
+    currentPage.value = 1;
+    hasMore.value = true;
+    dailyRecommendationsError.value = '';
   }
 
   return {
     clusters,
+    dailyRecommendations,
+    dailyRecommendationDates,
+    selectedRecommendationDate,
     currentClusterId,
+    currentCluster,
     isLoading,
     isInitialLoading,
     isLoadingMore,
     hasMore,
-    filterCounts,
-    displayedIds,
+    currentPage,
+    activeFilters,
+    filteredClusterIds,
+    isDailyRecommendationsLoading,
+    dailyRecommendationsError,
     fetchClusters,
     loadMore,
-    fetchClusterDetail,
-    updateClusterState,
+    fetchClusterArticles,
+    fetchDailyRecommendationDates,
+    fetchDailyRecommendations,
+    selectRecommendationDate,
+    refreshDailyRecommendations,
     markClusterRead,
     toggleClusterFavorite,
     toggleClusterReadLater,
-    markAllAsRead,
     reportClusterClick,
+    updateClusterState,
+    markAllAsRead,
+    refreshCurrentCluster,
+    setActiveFilters,
+    setFilteredClusterIds,
+    clearData,
   };
 });

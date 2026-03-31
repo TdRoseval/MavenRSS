@@ -3,60 +3,53 @@ package models
 import "time"
 
 type Feed struct {
-	ID                 int64     `json:"id"`
-	UserID             int64     `json:"user_id"`
-	Title              string    `json:"title"`
-	URL                string    `json:"url"`
-	Link               string    `json:"link"` // Website homepage link
-	Description        string    `json:"description"`
-	Category           string    `json:"category"`
-	ImageURL           string    `json:"image_url"` // New field
-	Position           int       `json:"position"`  // Position within category for custom ordering
-	LastUpdated        time.Time `json:"last_updated"`
-	LastError          string    `json:"last_error,omitempty"`  // Track last fetch error
-	DiscoveryCompleted bool      `json:"discovery_completed"`   // Track if discovery has been run
-	ScriptPath         string    `json:"script_path,omitempty"` // Path to custom script for fetching feed
-	HideFromTimeline   bool      `json:"hide_from_timeline"`    // Hide articles from timeline views
-	ProxyURL           string    `json:"proxy_url,omitempty"`   // Custom proxy URL for this feed (overrides global)
-	ProxyEnabled       bool      `json:"proxy_enabled"`         // Whether to use proxy for this feed
-	RefreshInterval    int       `json:"refresh_interval"`      // Custom refresh interval in minutes (0 = use global, -1 = intelligent, -2 = never, >0 = custom minutes)
-	IsImageMode        bool      `json:"is_image_mode"`         // Whether this feed is for image gallery mode
-	// XPath support for HTML/XML scraping
-	Type                string `json:"type"`                   // "HTML+XPath" or "XML+XPath"
-	XPathItem           string `json:"xpath_item"`             // XPath to extract feed items
-	XPathItemTitle      string `json:"xpath_item_title"`       // XPath to extract item title
-	XPathItemContent    string `json:"xpath_item_content"`     // XPath to extract item content
-	XPathItemUri        string `json:"xpath_item_uri"`         // XPath to extract item URI
-	XPathItemAuthor     string `json:"xpath_item_author"`      // XPath to extract item author
-	XPathItemTimestamp  string `json:"xpath_item_timestamp"`   // XPath to extract item timestamp
-	XPathItemTimeFormat string `json:"xpath_item_time_format"` // Time format for parsing timestamp
-	XPathItemThumbnail  string `json:"xpath_item_thumbnail"`   // XPath to extract item thumbnail
-	XPathItemCategories string `json:"xpath_item_categories"`  // XPath to extract item categories
-	XPathItemUid        string `json:"xpath_item_uid"`         // XPath to extract item unique ID
-	ArticleViewMode     string `json:"article_view_mode"`      // Article view mode override ('global', 'webpage', 'rendered')
-	AutoExpandContent   string `json:"auto_expand_content"`    // Auto expand content mode ('global', 'enabled', 'disabled')
-	// Email/Newsletter support
-	EmailAddress    string `json:"email_address,omitempty"`     // Email address for newsletter subscriptions
-	EmailIMAPServer string `json:"email_imap_server,omitempty"` // IMAP server address
-	EmailIMAPPort   int    `json:"email_imap_port"`             // IMAP server port (default 993)
-	EmailUsername   string `json:"email_username,omitempty"`    // IMAP username
-	EmailPassword   string `json:"email_password,omitempty"`    // IMAP password (encrypted)
-	EmailFolder     string `json:"email_folder"`                // IMAP folder to monitor (default INBOX)
-	EmailLastUID    int    `json:"email_last_uid"`              // Last processed email UID for incremental updates
-	// FreshRSS integration
-	IsFreshRSSSource bool   `json:"is_freshrss_source"` // Whether this feed is from FreshRSS sync
-	FreshRSSStreamID string `json:"freshrss_stream_id"` // FreshRSS stream ID (e.g., "feed/http://...")
-	// Translation settings
-	TranslateArticles bool `json:"translate_articles"` // Whether to translate articles in this feed (requires global translation_enabled)
-	// Caching support (304 Not Modified)
-	ETag         string `json:"etag,omitempty"`
-	LastModified string `json:"last_modified,omitempty"`
-	// Statistics
-	LatestArticleTime *time.Time `json:"latest_article_time,omitempty"` // Latest article publish time
-	ArticlesPerMonth  float64    `json:"articles_per_month,omitempty"`  // Average articles per month (last 90 days / 3)
-	LastUpdateStatus  string     `json:"last_update_status,omitempty"`  // Last update status ("success" or "failed")
-	// Tags (populated by API handlers)
-	Tags []Tag `json:"tags,omitempty"` // Tags assigned to this feed
+	ID                  int64      `json:"id"`
+	UserID              int64      `json:"user_id"`
+	Title               string     `json:"title"`
+	URL                 string     `json:"url"`
+	Link                string     `json:"link"`
+	Description         string     `json:"description"`
+	Category            string     `json:"category"`
+	ImageURL            string     `json:"image_url"`
+	Position            int        `json:"position"`
+	LastUpdated         time.Time  `json:"last_updated"`
+	LastError           string     `json:"last_error,omitempty"`
+	DiscoveryCompleted  bool       `json:"discovery_completed"`
+	ScriptPath          string     `json:"script_path,omitempty"`
+	HideFromTimeline    bool       `json:"hide_from_timeline"`
+	ProxyURL            string     `json:"proxy_url,omitempty"`
+	ProxyEnabled        bool       `json:"proxy_enabled"`
+	RefreshInterval     int        `json:"refresh_interval"`
+	IsImageMode         bool       `json:"is_image_mode"`
+	Type                string     `json:"type"`
+	XPathItem           string     `json:"xpath_item"`
+	XPathItemTitle      string     `json:"xpath_item_title"`
+	XPathItemContent    string     `json:"xpath_item_content"`
+	XPathItemUri        string     `json:"xpath_item_uri"`
+	XPathItemAuthor     string     `json:"xpath_item_author"`
+	XPathItemTimestamp  string     `json:"xpath_item_timestamp"`
+	XPathItemTimeFormat string     `json:"xpath_item_time_format"`
+	XPathItemThumbnail  string     `json:"xpath_item_thumbnail"`
+	XPathItemCategories string     `json:"xpath_item_categories"`
+	XPathItemUid        string     `json:"xpath_item_uid"`
+	ArticleViewMode     string     `json:"article_view_mode"`
+	AutoExpandContent   string     `json:"auto_expand_content"`
+	EmailAddress        string     `json:"email_address,omitempty"`
+	EmailIMAPServer     string     `json:"email_imap_server,omitempty"`
+	EmailIMAPPort       int        `json:"email_imap_port"`
+	EmailUsername       string     `json:"email_username,omitempty"`
+	EmailPassword       string     `json:"email_password,omitempty"`
+	EmailFolder         string     `json:"email_folder"`
+	EmailLastUID        int        `json:"email_last_uid"`
+	IsFreshRSSSource    bool       `json:"is_freshrss_source"`
+	FreshRSSStreamID    string     `json:"freshrss_stream_id"`
+	TranslateArticles   bool       `json:"translate_articles"`
+	ETag                string     `json:"etag,omitempty"`
+	LastModified        string     `json:"last_modified,omitempty"`
+	LatestArticleTime   *time.Time `json:"latest_article_time,omitempty"`
+	ArticlesPerMonth    float64    `json:"articles_per_month,omitempty"`
+	LastUpdateStatus    string     `json:"last_update_status,omitempty"`
+	Tags                []Tag      `json:"tags,omitempty"`
 }
 
 type Article struct {
@@ -67,35 +60,33 @@ type Article struct {
 	URL                   string    `json:"url"`
 	ImageURL              string    `json:"image_url"`
 	AudioURL              string    `json:"audio_url"`
-	VideoURL              string    `json:"video_url"` // YouTube video URL for embedded player
+	VideoURL              string    `json:"video_url"`
 	PublishedAt           time.Time `json:"published_at"`
-	HasValidPublishedTime bool      `json:"-"` // Internal field, not serialized
+	HasValidPublishedTime bool      `json:"-"`
 	IsRead                bool      `json:"is_read"`
 	IsFavorite            bool      `json:"is_favorite"`
 	IsHidden              bool      `json:"is_hidden"`
 	IsReadLater           bool      `json:"is_read_later"`
-	FeedTitle             string    `json:"feed_title,omitempty"` // Joined field
-	Author                string    `json:"author,omitempty"`     // Article author
+	FeedTitle             string    `json:"feed_title,omitempty"`
+	Author                string    `json:"author,omitempty"`
 	TranslatedTitle       string    `json:"translated_title"`
-	Summary               string    `json:"summary"`          // Cached AI-generated summary
-	UniqueID              string    `json:"unique_id"`        // Unique identifier for deduplication (title+feed_id+published_date)
-	FreshRSSItemID        string    `json:"freshrss_item_id"` // FreshRSS/Google Reader item ID for API operations
-	ClusterID             int64     `json:"cluster_id,omitempty"` // ID of the cluster this article belongs to
-	SimHash64             int64     `json:"-"`                // 64-bit SimHash fingerprint (internal, not serialized)
+	Summary               string    `json:"summary"`
+	UniqueID              string    `json:"unique_id"`
+	FreshRSSItemID        string    `json:"freshrss_item_id"`
+	ClusterID             int64     `json:"cluster_id,omitempty"`
+	SimHash64             int64     `json:"-"`
 }
 
-// SavedFilter represents a user-saved article filter
 type SavedFilter struct {
 	ID         int64     `json:"id"`
 	UserID     int64     `json:"user_id"`
 	Name       string    `json:"name"`
-	Conditions string    `json:"conditions"` // JSON string of FilterCondition[]
+	Conditions string    `json:"conditions"`
 	Position   int       `json:"position"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// Tag represents a user-defined tag for organizing feeds
 type Tag struct {
 	ID       int64  `json:"id"`
 	UserID   int64  `json:"user_id"`
@@ -104,49 +95,59 @@ type Tag struct {
 	Position int    `json:"position"`
 }
 
-// AIProfile represents an AI configuration profile
 type AIProfile struct {
 	ID             int64     `json:"id"`
 	UserID         int64     `json:"user_id"`
 	Name           string    `json:"name"`
-	APIKey         string    `json:"api_key,omitempty"` // Hidden in responses, only sent when needed
+	APIKey         string    `json:"api_key,omitempty"`
 	Endpoint       string    `json:"endpoint"`
 	Model          string    `json:"model"`
-	CustomHeaders  string    `json:"custom_headers"`   // JSON string of key-value pairs
-	IsDefault      bool      `json:"is_default"`       // Default profile for new features
-	UseGlobalProxy bool      `json:"use_global_proxy"` // Whether to use global proxy settings
+	CustomHeaders  string    `json:"custom_headers"`
+	IsDefault      bool      `json:"is_default"`
+	UseGlobalProxy bool      `json:"use_global_proxy"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// EmbeddingModelConfig represents a single embedding model configuration
 type EmbeddingModelConfig struct {
 	ModelName      string `json:"modelname"`
 	BaseURL        string `json:"baseurl"`
 	APIKey         string `json:"apikey"`
-	RPM            int    `json:"rpm"`              // Rate Per Minute, 0 means no limit
-	TPM            int    `json:"tpm"`              // Tokens Per Minute, 0 means no limit
-	UseGlobalProxy bool   `json:"use_global_proxy"` // Whether to use global proxy
+	RPM            int    `json:"rpm"`
+	TPM            int    `json:"tpm"`
+	UseGlobalProxy bool   `json:"use_global_proxy"`
 }
 
-// Cluster represents a group of semantically similar articles merged by AI
+type DailyRecommendation struct {
+	ID                      int64     `json:"id"`
+	UserID                  int64     `json:"user_id"`
+	ClusterID               int64     `json:"cluster_id"`
+	RecommendationDate      string    `json:"recommendation_date"`
+	RecommendationScore     float64   `json:"recommendation_score"`
+	RecommendationRank      int       `json:"recommendation_rank"`
+	RecommendationProfileID int64     `json:"recommendation_profile_id"`
+	CreatedAt               time.Time `json:"created_at"`
+}
+
 type Cluster struct {
-	ID            int64     `json:"id"`
-	UserID        int64     `json:"user_id"`
-	Status        string    `json:"status"` // "pending_merge", "pending_embed", "complete"
-	MergedTitle   string    `json:"merged_title"`
-	MergedSummary string    `json:"merged_summary"`
-	MergedContent string    `json:"merged_content"`
-	ArticleCount  int       `json:"article_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	IsRead        bool      `json:"is_read"`
-	IsFavorite    bool      `json:"is_favorite"`
-	IsReadLater   bool      `json:"is_read_later"`
-	IsHidden      bool      `json:"is_hidden"`
-	// Populated by query joins
-	FeedTitles []string  `json:"feed_titles,omitempty"`
-	Authors    []string  `json:"authors,omitempty"`
-	Articles   []Article `json:"articles,omitempty"`
+	ID                        int64     `json:"id"`
+	UserID                    int64     `json:"user_id"`
+	Status                    string    `json:"status"`
+	MergedTitle               string    `json:"merged_title"`
+	MergedSummary             string    `json:"merged_summary"`
+	MergedContent             string    `json:"merged_content"`
+	ArticleCount              int       `json:"article_count"`
+	CreatedAt                 time.Time `json:"created_at"`
+	UpdatedAt                 time.Time `json:"updated_at"`
+	IsRead                    bool      `json:"is_read"`
+	IsFavorite                bool      `json:"is_favorite"`
+	IsReadLater               bool      `json:"is_read_later"`
+	IsHidden                  bool      `json:"is_hidden"`
+	RecommendationArchiveDate string    `json:"recommendation_archive_date,omitempty"`
+	RecommendationScore       float64   `json:"recommendation_score,omitempty"`
+	IsAIRecommended           bool      `json:"is_ai_recommended"`
+	RecommendationProfileID   int64     `json:"recommendation_profile_id,omitempty"`
+	FeedTitles                []string  `json:"feed_titles,omitempty"`
+	Authors                   []string  `json:"authors,omitempty"`
+	Articles                  []Article `json:"articles,omitempty"`
 }
-

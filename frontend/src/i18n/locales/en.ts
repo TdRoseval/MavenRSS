@@ -81,6 +81,14 @@ const en: TranslationMessages = {
     cluster: {
       articleCount: '{count} articles',
       authorLabel: 'Authors',
+      dailyRecommendationCount: '{count} recommendations',
+      dailyRecommendationEmptyDescription:
+        'No daily recommendations have been generated for this date yet. Try refreshing or choosing another date later.',
+      dailyRecommendationEmptyTitle: 'No daily recommendations',
+      dailyRecommendationLoadFailed: 'Failed to load daily recommendations',
+      dailyRecommendationLoadFailedTitle: 'Unable to load daily recommendations',
+      dailyRecommendationRefreshed: 'Daily recommendations refreshed',
+      dailyRecommendationTitle: 'AI Daily Recommendations',
       emptyDescription: 'AI-fused clusters automatically appear here after processing.',
       emptyTitle: 'No clusters found',
       listTitle: 'AI Fusion Clusters',
@@ -88,8 +96,13 @@ const en: TranslationMessages = {
       loadingMore: 'Loading more...',
       markAllReadConfirm: 'Mark all clusters in the current list as read?',
       markAllReadTitle: 'Mark all as read',
+      markAllRecommendationsReadConfirm:
+        'Mark all clusters in the current daily recommendations as read?',
+      markAllRecommendationsReadTitle: 'Mark all recommendations as read',
       markedAllAsRead: 'All clusters marked as read',
+      markedAllRecommendationsAsRead: 'All recommendations marked as read',
       mergedFrom: 'Merged from {count} articles',
+      refreshRecommendations: 'Refresh recommendations',
       selectPrompt: 'Select a cluster to view the AI fused article',
       sourceArticlesTitle: 'Source Articles',
       sourceLabel: 'AI Fusion',
@@ -651,6 +664,16 @@ const en: TranslationMessages = {
         'Enable all AI features (summary, translation, search, chat) to use this mode',
       aiEnhancedModeRequiresFusionProfile:
         'Select a valid fusion profile before enabling AI Enhanced Mode',
+      aiRecommendationEnabled: 'AI Daily Recommendations',
+      aiRecommendationEnabledDesc:
+        'Enable AI-generated daily recommendations and historical recommendation browsing in the sidebar',
+      aiRecommendationDisabled:
+        'Configure the prerequisites for AI Enhanced Mode before enabling AI Daily Recommendations',
+      aiRecommendationRequiresProfile:
+        'Select a valid AI profile for AI Daily Recommendations first',
+      selectRecommendationProfile: 'Recommendation Profile',
+      selectRecommendationProfileDesc:
+        'Select the AI profile used to generate and rank daily recommendations',
     },
     content: {
       addHeader: 'Add Header',
@@ -1136,6 +1159,7 @@ const en: TranslationMessages = {
       allArticles: 'All Articles',
       collapseActivityBar: 'Collapse Activity Bar',
       collapseFeedList: 'Collapse Feed List',
+      dailyRecommendations: 'AI Daily Recommendations',
       expandActivityBar: 'Expand Activity Bar',
       expandFeedList: 'Expand Feed List',
       favorites: 'Favorites',

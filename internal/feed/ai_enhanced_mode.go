@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -36,16 +37,22 @@ type AIEnhancedTask struct {
 
 // AIEnhancedManager manages the AI enhanced mode task queue and workers
 type AIEnhancedManager struct {
-	db                     *sqlite.DB
-	taskChan               chan *AIEnhancedTask
-	workerWg               sync.WaitGroup
-	workerCount            int
-	clusterMu              sync.Mutex
-	clusterPipelineRunning map[int64]bool
-	clusterPipelineQueued  map[int64]bool
-	resolveFusionConfig    func(userID int64) (*dedup.FusionConfig, error)
-	runFusion              func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
-	runEmbedding           func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
+	db                        *sqlite.DB
+	taskChan                  chan *AIEnhancedTask
+	workerWg                  sync.WaitGroup
+	workerCount               int
+	clusterMu                 sync.Mutex
+	clusterPipelineRunning    map[int64]bool
+	clusterPipelineQueued     map[int64]bool
+	recommendationMu          sync.Mutex
+	recommendationRunning     map[int64]bool
+	pendingRecommendationDate map[int64]string
+	pendingRecommendationWait map[int64]bool
+	activeAsyncWork           int64
+	stopChan                  chan struct{}
+	resolveFusionConfig       func(userID int64) (*dedup.FusionConfig, error)
+	runFusion                 func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
+	runEmbedding              func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
 }
 
 // NewAIEnhancedManager creates a new AI enhanced mode manager
@@ -62,11 +69,15 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 	taskChan := make(chan *AIEnhancedTask, 100)
 
 	manager := &AIEnhancedManager{
-		db:                     db,
-		taskChan:               taskChan,
-		workerCount:            numWorkers,
-		clusterPipelineRunning: make(map[int64]bool),
-		clusterPipelineQueued:  make(map[int64]bool),
+		db:                        db,
+		taskChan:                  taskChan,
+		workerCount:               numWorkers,
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+		stopChan:                  make(chan struct{}),
 	}
 	manager.resolveFusionConfig = manager.buildFusionConfig
 	manager.runFusion = dedup.RunFusion
@@ -74,6 +85,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 
 	log.Printf("Starting %d AI enhanced mode workers", numWorkers)
 	manager.startWorkers()
+	manager.startDailyRecommendationScheduler()
 
 	return manager
 }
@@ -135,7 +147,13 @@ func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 }
 
 func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, content string) {
+	atomic.AddInt64(&m.activeAsyncWork, 1)
 	go func() {
+		defer func() {
+			if atomic.AddInt64(&m.activeAsyncWork, -1) == 0 {
+				m.onAsyncWorkDrained()
+			}
+		}()
 		time.Sleep(2 * time.Second)
 
 		article, err := m.db.GetArticleByID(task.ArticleID)
@@ -536,6 +554,7 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 		if clusterRunNeeded {
 			m.scheduleClusterPipeline(userID)
 		}
+		m.requestMissingRecommendationBackfill(userID)
 
 		log.Printf("Batch AI processing: queued %d tasks for user %d", queued, userID)
 	}()
@@ -554,6 +573,7 @@ func (m *AIEnhancedManager) AddTask(task *AIEnhancedTask) {
 // Stop stops the AI enhanced mode manager and cleans up resources
 func (m *AIEnhancedManager) Stop() {
 	log.Println("Stopping AI enhanced mode manager...")
+	close(m.stopChan)
 	close(m.taskChan)
 	m.workerWg.Wait()
 	log.Println("AI enhanced mode manager stopped")

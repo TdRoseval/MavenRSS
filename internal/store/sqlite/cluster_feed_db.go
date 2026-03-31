@@ -48,8 +48,9 @@ func (db *DB) GetClustersByVectorSimilarity(
 
 	query := fmt.Sprintf(`
 		SELECT c.id, c.user_id, c.status, c.merged_title, c.merged_summary,
-			c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read_later, c.is_hidden,
-			ce.distance
+c.recommendation_archive_date, c.recommendation_score, c.is_ai_recommended, c.recommendation_profile_id,
+c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read_later, c.is_hidden,
+ce.distance
 		FROM cluster_embeddings ce
 		JOIN clusters c ON ce.cluster_id = c.id
 		WHERE c.user_id = ?
@@ -72,6 +73,7 @@ func (db *DB) GetClustersByVectorSimilarity(
 		var distance float64
 		if err := clusterRows.Scan(
 			&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary,
+			&c.RecommendationArchiveDate, &c.RecommendationScore, &c.IsAIRecommended, &c.RecommendationProfileID,
 			&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
 			&distance,
 		); err != nil {
@@ -115,7 +117,8 @@ func (db *DB) GetRecentClustersChronological(
 
 	query := fmt.Sprintf(`
 		SELECT id, user_id, status, merged_title, merged_summary,
-			article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
+article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
 		FROM clusters
 		WHERE user_id = ? AND is_hidden = 0 AND status = 'complete'%s
 		ORDER BY updated_at DESC

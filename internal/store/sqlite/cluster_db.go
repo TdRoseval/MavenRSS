@@ -28,10 +28,12 @@ func (db *DB) GetClusterByID(clusterID int64) (*models.Cluster, error) {
 	var c models.Cluster
 	err := db.QueryRow(`
 		SELECT id, user_id, status, merged_title, merged_summary, merged_content,
-			article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
-		FROM clusters WHERE id = ?
-	`, clusterID).Scan(
+recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
+article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+FROM clusters WHERE id = ?
+`, clusterID).Scan(
 		&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary, &c.MergedContent,
+		&c.RecommendationArchiveDate, &c.RecommendationScore, &c.IsAIRecommended, &c.RecommendationProfileID,
 		&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
 	)
 	if err == sql.ErrNoRows {
@@ -79,8 +81,9 @@ func (db *DB) GetClustersByStatus(userID int64, status string) ([]models.Cluster
 	db.WaitForReady()
 	rows, err := db.Query(`
 		SELECT id, user_id, status, merged_title, merged_summary,
-			article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
-		FROM clusters WHERE user_id = ? AND status = ?
+recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
+article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+FROM clusters WHERE user_id = ? AND status = ?
 	`, userID, status)
 	if err != nil {
 		return nil, err
@@ -92,6 +95,7 @@ func (db *DB) GetClustersByStatus(userID int64, status string) ([]models.Cluster
 		var c models.Cluster
 		if err := rows.Scan(
 			&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary,
+			&c.RecommendationArchiveDate, &c.RecommendationScore, &c.IsAIRecommended, &c.RecommendationProfileID,
 			&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
 		); err != nil {
 			log.Printf("Error scanning cluster: %v", err)
@@ -250,8 +254,9 @@ func (db *DB) GetClustersForUser(userID int64, filter string, limit, offset int)
 	db.WaitForReady()
 
 	baseQuery := `SELECT id, user_id, status, merged_title, merged_summary,
-		article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
-		FROM clusters WHERE user_id = ? AND is_hidden = 0`
+recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
+article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+FROM clusters WHERE user_id = ? AND is_hidden = 0`
 	args := []interface{}{userID}
 
 	switch filter {
@@ -277,6 +282,7 @@ func (db *DB) GetClustersForUser(userID int64, filter string, limit, offset int)
 		var c models.Cluster
 		if err := rows.Scan(
 			&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary,
+			&c.RecommendationArchiveDate, &c.RecommendationScore, &c.IsAIRecommended, &c.RecommendationProfileID,
 			&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
 		); err != nil {
 			log.Printf("Error scanning cluster: %v", err)
@@ -406,7 +412,7 @@ func (db *DB) cleanupExpiredClusters(userID int64, maxAgeDays int, isRead *bool)
 
 	query := `
 		SELECT id FROM clusters
-		WHERE is_favorite = 0 AND is_read_later = 0 AND updated_at < ?
+		WHERE is_favorite = 0 AND is_read_later = 0 AND is_ai_recommended = 0 AND updated_at < ?
 	`
 	args := []interface{}{cutoff}
 	if userID > 0 {

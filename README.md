@@ -23,14 +23,14 @@
 
 ## 🧠 AI-Enhanced Mode
 
-AI-Enhanced Mode turns MavenRSS from a feed reader into an AI-powered reading assistant. After articles are fetched, the system can automatically build embeddings, merge related stories into clusters, and continuously improve recommendations based on your interests. The result is a reading experience that helps you scan faster, discover repeated topics less often, and surface more relevant stories over time.
+AI-Enhanced Mode turns MavenRSS from a feed reader into an AI-powered reading assistant. After articles are fetched, the system can merge related content into article clusters, continuously improve recommendations based on reading behavior, and generate daily top-10 recommendations using multi-dimensional model scoring. The result is a reading experience that helps you understand articles faster, stay less distracted by repeated information, and discover content that better matches your interests.
 
 ### Key AI Features
 
-- **Deduplication & Topic Clustering**: With **SimHash**, **Embedding**, and **sqlite-vec**, related articles can be grouped into the same **Cluster**, reducing repetitive reading and making ongoing topics easier to follow.
-- **Interest-Aware Recall & Reranking**: The system can learn from clicks, deep reads, and favorites to build a per-user interest vector, then recall and rerank recent clusters so recommendations become increasingly aligned with your interests.
-- **Support Vector Retrieval**: Embeddings are generated through OpenAI-compatible APIs and searched locally in SQLite vector tables, combining cloud AI flexibility with local semantic retrieval.
-- **Automatic AI Workflow**: Once enabled, new content can move through summary, translation, embedding, clustering, fusion, and reranking as one continuous pipeline, while older relevant content can also be backfilled automatically.
+- **Article Deduplication & Clustering**: With **SimHash** and **sqlite-vec**, related articles can be grouped into the same **Cluster**, reducing repetitive reading and making ongoing topics easier to follow.
+- **Interest-Based Ranking**: The system can continuously update a per-user interest vector based on clicks, deep reads, and favorites.
+- **AI Daily Recommendations**: Daily recommendations are not based on vector similarity alone. Candidate summaries first go through a grouped tournament, then the full text is scored across multiple dimensions before the final top 10 are selected.
+- **Automatic AI Workflow**: Once enabled, new content can move through summary, translation, embedding, clustering, fusion, reranking, daily recommendation scheduling, and missing-day backfill as one continuous pipeline.
 
 ### Architecture
 
@@ -65,6 +65,20 @@ flowchart TD
     W --> X["Recall Recent Complete Clusters \n by Vector Similarity"]
     X --> Y["Rerank with Time Decay"]
     Y --> Z["Personalized Cluster Feed"]
+    U --> AA["Wait for Async AI Work to Drain"]
+    AA --> AB{"Need missing-day \n backfill or scheduled run?"}
+    AB -->|No| AC["End current AI cycle"]
+    AB -->|Yes| AD["Queue Daily Recommendation Generation"]
+    AD --> AE["Recall Candidate Clusters \n by interest vector or chronology"]
+    AE --> AF{"Recommendation AI \n profile available?"}
+    AF -->|No| AG["Rule-based rerank \n recall score + freshness"]
+    AF -->|Yes| AH["Stage 1: grouped tournament \n pick top candidates from summaries"]
+    AH --> AI["Stage 2: full-text multi-factor scoring \n density / value / interest / timeliness"]
+    AI --> AJ["Finalize Top 10 Recommendations"]
+    AG --> AJ
+    AJ --> AK["Store daily recommendations \n and recommendation scores"]
+    AK --> AL["Expose recommendation dates/list API"]
+    AL --> AM["Daily Recommendation View"]
 ```
 
 ## 🚀 Quick Start

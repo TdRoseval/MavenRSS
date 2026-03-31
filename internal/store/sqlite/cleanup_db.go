@@ -114,10 +114,10 @@ func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 func (db *DB) DeleteAllArticles(userID int64) (int64, error) {
 	db.WaitForReady()
 
-	clusterQuery := `SELECT id FROM clusters`
+	clusterQuery := `SELECT id FROM clusters WHERE is_ai_recommended = 0`
 	clusterArgs := []interface{}{}
 	if userID > 0 {
-		clusterQuery += ` WHERE user_id = ?`
+		clusterQuery += ` AND user_id = ?`
 		clusterArgs = append(clusterArgs, userID)
 	}
 

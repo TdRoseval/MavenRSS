@@ -78,18 +78,18 @@ func (h *Handler) ApproveRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quota := &models.UserQuota{
-		UserID:                   userID,
-		MaxFeeds:                 100,
-		MaxArticles:              100000,
-		MaxAITokens:              1000000,
-		MaxAIConcurrency:         5,
-		MaxFeedFetchConcurrency:  3,
-		MaxDBQueryConcurrency:    5,
-		MaxMediaCacheConcurrency: 5,
+		UserID:                     userID,
+		MaxFeeds:                   100,
+		MaxArticles:                100000,
+		MaxAITokens:                1000000,
+		MaxAIConcurrency:           5,
+		MaxFeedFetchConcurrency:    3,
+		MaxDBQueryConcurrency:      5,
+		MaxMediaCacheConcurrency:   5,
 		MaxRSSDiscoveryConcurrency: 8,
 		MaxRSSPathCheckConcurrency: 5,
-		MaxTranslationConcurrency: 3,
-		MaxStorageMB:             500,
+		MaxTranslationConcurrency:  3,
+		MaxStorageMB:               500,
 	}
 	_, err = h.db.CreateUserQuota(quota)
 	if err != nil {
@@ -284,7 +284,7 @@ type UpdateQuotaRequest struct {
 	MaxDBQueryConcurrency      int   `json:"max_db_query_concurrency"`
 	MaxMediaCacheConcurrency   int   `json:"max_media_cache_concurrency"`
 	MaxRSSDiscoveryConcurrency int   `json:"max_rss_discovery_concurrency"`
-	MaxRSSPathCheckConcurrency int  `json:"max_rss_path_check_concurrency"`
+	MaxRSSPathCheckConcurrency int   `json:"max_rss_path_check_concurrency"`
 	MaxTranslationConcurrency  int   `json:"max_translation_concurrency"`
 	MaxStorageMB               int   `json:"max_storage_mb"`
 }
@@ -409,18 +409,18 @@ func (h *Handler) CreateTemplateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	quota := &models.UserQuota{
-		UserID:                   userID,
-		MaxFeeds:                 1000,
-		MaxArticles:              1000000,
-		MaxAITokens:              10000000,
-		MaxAIConcurrency:         20,
-		MaxFeedFetchConcurrency:  10,
-		MaxDBQueryConcurrency:    10,
-		MaxMediaCacheConcurrency: 10,
+		UserID:                     userID,
+		MaxFeeds:                   1000,
+		MaxArticles:                1000000,
+		MaxAITokens:                10000000,
+		MaxAIConcurrency:           20,
+		MaxFeedFetchConcurrency:    10,
+		MaxDBQueryConcurrency:      10,
+		MaxMediaCacheConcurrency:   10,
 		MaxRSSDiscoveryConcurrency: 16,
 		MaxRSSPathCheckConcurrency: 10,
-		MaxTranslationConcurrency: 10,
-		MaxStorageMB:             5000,
+		MaxTranslationConcurrency:  10,
+		MaxStorageMB:               5000,
 	}
 	_, err = h.db.CreateUserQuota(quota)
 	if err != nil {
@@ -496,9 +496,9 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		profileCount = 0
 	}
-	
+
 	log.Printf("[InheritTemplate] Template user has %d AI profiles to copy", profileCount)
-	
+
 	var profileIDMap map[int64]int64
 	if profileCount > 0 {
 		profileIDMap, err = h.db.CopyAIProfiles(templateUser.ID, user.ID, tx)
@@ -515,12 +515,12 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		feedCount = 0
 	}
-	
+
 	if feedCount > 0 {
 		_, err = tx.Exec(`DELETE FROM feeds WHERE user_id = ?`, user.ID)
 		if err != nil {
 		}
-		
+
 		query := `INSERT INTO feeds (
 			user_id, title, url, link, description, category, image_url, 
 			script_path, hide_from_timeline, proxy_url, proxy_enabled, refresh_interval,
@@ -559,19 +559,19 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		count = 0
 	}
-	
+
 	log.Printf("[InheritTemplate] Template user has %d settings to copy", count)
-	
+
 	if count > 0 {
 		err = h.db.CopyUserSettings(templateUser.ID, user.ID, tx)
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "failed to copy settings: "+err.Error())
 			return
 		}
-		
+
 		// Update profile ID references in settings if we have a map
 		if profileIDMap != nil && len(profileIDMap) > 0 {
-			profileSettingKeys := []string{"ai_chat_profile_id", "ai_fusion_profile_id", "ai_search_profile_id", "ai_summary_profile_id", "ai_translation_profile_id"}
+			profileSettingKeys := []string{"ai_chat_profile_id", "ai_fusion_profile_id", "ai_recommendation_profile_id", "ai_search_profile_id", "ai_summary_profile_id", "ai_translation_profile_id"}
 			for _, key := range profileSettingKeys {
 				var oldIDStr string
 				err = tx.QueryRow(`SELECT value FROM user_settings WHERE user_id = ? AND key = ?`, user.ID, key).Scan(&oldIDStr)
@@ -588,7 +588,7 @@ func (h *Handler) InheritTemplate(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		
+
 		var copiedCount int
 		err = tx.QueryRow(`SELECT COUNT(*) FROM user_settings WHERE user_id = ?`, user.ID).Scan(&copiedCount)
 		log.Printf("[InheritTemplate] Copied %d settings to user %d", copiedCount, user.ID)
@@ -658,8 +658,8 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 
 	user.PasswordHash = ""
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"user":              user,
-		"quota":             quota,
+		"user":               user,
+		"quota":              quota,
 		"template_available": templateAvailable,
 	})
 }

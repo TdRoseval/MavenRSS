@@ -2,13 +2,15 @@
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
-import { PhCheckCircle } from '@phosphor-icons/vue';
+import { PhCheckCircle, PhArrowClockwise } from '@phosphor-icons/vue';
 import ClusterItem from './ClusterItem.vue';
 import { useSettings } from '@/composables/core/useSettings';
-import type { Cluster } from '@/types/models';
+import type { Cluster, DailyRecommendationItem } from '@/types/models';
 import { useClusterStore } from '@/stores/cluster';
+import { useArticleStore } from '@/features/article/store';
 
 const clusterStore = useClusterStore();
+const articleStore = useArticleStore();
 const authStore = useAuthStore();
 const { t } = useI18n();
 const { settings } = useSettings();
@@ -34,13 +36,23 @@ const emit = defineEmits<{
 const layoutMode = computed(() => settings.value.layout_mode || 'normal');
 const isCardMode = computed(() => layoutMode.value === 'card');
 const itemHeight = computed(() => (layoutMode.value === 'compact' ? 104 : 128));
+const isDailyRecommendationMode = computed(
+  () => articleStore.currentFilter === 'dailyRecommendations'
+);
+
+const displayedClusters = computed<Cluster[]>(() => {
+  if (isDailyRecommendationMode.value) {
+    return clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster);
+  }
+  return clusterStore.clusters;
+});
 
 const scrollTop = ref(0);
 const containerHeight = ref(0);
 const BUFFER_SIZE = 10;
 
 const visibleRange = computed(() => {
-  const clusters = clusterStore.clusters;
+  const clusters = displayedClusters.value;
   if (!clusters.length) return { start: 0, end: 0 };
 
   const start = Math.max(0, Math.floor(scrollTop.value / itemHeight.value) - BUFFER_SIZE);
@@ -53,7 +65,7 @@ const visibleRange = computed(() => {
 });
 
 const visibleClusters = computed(() => {
-  const clusters = clusterStore.clusters;
+  const clusters = displayedClusters.value;
   const { start, end } = visibleRange.value;
   return clusters.slice(start, end);
 });
@@ -63,12 +75,20 @@ const listPaddingTop = computed(() => {
 });
 
 const listPaddingBottom = computed(() => {
-  return (clusterStore.clusters.length - visibleRange.value.end) * itemHeight.value;
+  return (displayedClusters.value.length - visibleRange.value.end) * itemHeight.value;
 });
+
+const selectedRecommendationDate = computed({
+  get: () => clusterStore.selectedRecommendationDate,
+  set: (value: string) => {
+    clusterStore.selectedRecommendationDate = value;
+  },
+});
+
+const isRefreshingRecommendations = ref(false);
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
-    await clusterStore.fetchClusters();
     await nextTick();
     if (listRef.value) {
       containerHeight.value = listRef.value.clientHeight;
@@ -77,7 +97,7 @@ onMounted(async () => {
 });
 
 watch(
-  () => clusterStore.clusters.length,
+  () => displayedClusters.value.length,
   async () => {
     if (shouldRestoreScroll.value && listRef.value) {
       const currentScroll = listRef.value.scrollTop;
@@ -102,8 +122,6 @@ function selectCluster(cluster: Cluster): void {
   }
 
   clusterStore.currentClusterId = cluster.id;
-
-  // Fire-and-forget Level 1 click feedback for interest vector update
   clusterStore.reportClusterClick(cluster.id);
 
   if (!cluster.is_read) {
@@ -133,7 +151,10 @@ function handleScroll(e: Event): void {
     scrollThrottleTimer = null;
     const { scrollTop, clientHeight, scrollHeight } = target;
 
-    if (scrollTop + clientHeight >= scrollHeight - SCROLL_THRESHOLD) {
+    if (
+      !isDailyRecommendationMode.value &&
+      scrollTop + clientHeight >= scrollHeight - SCROLL_THRESHOLD
+    ) {
       clusterStore.loadMore();
     }
   }, SCROLL_THROTTLE_DELAY);
@@ -197,8 +218,12 @@ function handleContextmenu(e: MouseEvent, cluster: Cluster) {
 
 async function markAllAsRead(): Promise<void> {
   const confirmed = await window.showConfirm({
-    title: t('article.cluster.markAllReadTitle'),
-    message: t('article.cluster.markAllReadConfirm'),
+    title: isDailyRecommendationMode.value
+      ? t('article.cluster.markAllRecommendationsReadTitle')
+      : t('article.cluster.markAllReadTitle'),
+    message: isDailyRecommendationMode.value
+      ? t('article.cluster.markAllRecommendationsReadConfirm')
+      : t('article.cluster.markAllReadConfirm'),
     confirmText: t('common.confirm'),
     cancelText: t('common.cancel'),
     isDanger: false,
@@ -210,7 +235,12 @@ async function markAllAsRead(): Promise<void> {
 
   try {
     await clusterStore.markAllAsRead();
-    window.showToast(t('article.cluster.markedAllAsRead'), 'success');
+    window.showToast(
+      isDailyRecommendationMode.value
+        ? t('article.cluster.markedAllRecommendationsAsRead')
+        : t('article.cluster.markedAllAsRead'),
+      'success'
+    );
   } catch (error) {
     console.error('Error marking all clusters as read:', error);
     window.showToast(t('common.errors.savingSettings'), 'error');
@@ -219,6 +249,33 @@ async function markAllAsRead(): Promise<void> {
 
 function handleHoverMarkAsRead(clusterId: number): void {
   clusterStore.updateClusterState(clusterId, { is_read: true });
+}
+
+async function handleRecommendationDateChange(): Promise<void> {
+  if (!selectedRecommendationDate.value) {
+    return;
+  }
+
+  try {
+    await clusterStore.selectRecommendationDate(selectedRecommendationDate.value);
+    clusterStore.currentClusterId = null;
+  } catch (error) {
+    console.error('Error changing recommendation date:', error);
+    window.showToast(t('article.cluster.dailyRecommendationLoadFailed'), 'error');
+  }
+}
+
+async function refreshRecommendations(): Promise<void> {
+  isRefreshingRecommendations.value = true;
+  try {
+    await clusterStore.refreshDailyRecommendations();
+    window.showToast(t('article.cluster.dailyRecommendationRefreshed'), 'success');
+  } catch (error) {
+    console.error('Error refreshing daily recommendations:', error);
+    window.showToast(t('article.cluster.dailyRecommendationLoadFailed'), 'error');
+  } finally {
+    isRefreshingRecommendations.value = false;
+  }
 }
 </script>
 
@@ -229,29 +286,71 @@ function handleHoverMarkAsRead(clusterId: number): void {
       { 'card-mode': isCardMode },
     ]"
   >
-    <div class="p-2 sm:p-4 border-b border-border bg-bg-primary">
-      <div class="flex items-center justify-between">
+    <div class="p-2 sm:p-4 border-b border-border bg-bg-primary space-y-3">
+      <div class="flex items-center justify-between gap-2">
         <h3
           class="m-0 text-base sm:text-lg font-semibold truncate flex-1"
-          :title="t('article.cluster.listTitle')"
+          :title="
+            isDailyRecommendationMode
+              ? t('article.cluster.dailyRecommendationTitle')
+              : t('article.cluster.listTitle')
+          "
         >
-          {{ t('article.cluster.listTitle') }}
+          {{
+            isDailyRecommendationMode
+              ? t('article.cluster.dailyRecommendationTitle')
+              : t('article.cluster.listTitle')
+          }}
         </h3>
         <div class="flex items-center gap-1 sm:gap-2">
           <button
+            v-if="isDailyRecommendationMode"
+            class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors disabled:opacity-50"
+            :disabled="isRefreshingRecommendations || clusterStore.isDailyRecommendationsLoading"
+            :title="t('article.cluster.refreshRecommendations')"
+            @click="refreshRecommendations"
+          >
+            <PhArrowClockwise :size="18" class="sm:w-5 sm:h-5" />
+          </button>
+          <button
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
-            :title="t('article.cluster.markAllReadTitle')"
+            :title="
+              isDailyRecommendationMode
+                ? t('article.cluster.markAllRecommendationsReadTitle')
+                : t('article.cluster.markAllReadTitle')
+            "
             @click="markAllAsRead"
           >
             <PhCheckCircle :size="18" class="sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
+
+      <div v-if="isDailyRecommendationMode" class="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <select
+          v-model="selectedRecommendationDate"
+          class="min-w-0 flex-1 bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-text-primary"
+          @change="handleRecommendationDateChange"
+        >
+          <option v-for="date in clusterStore.dailyRecommendationDates" :key="date" :value="date">
+            {{ date }}
+          </option>
+        </select>
+        <span class="text-xs text-text-secondary whitespace-nowrap">
+          {{
+            t('article.cluster.dailyRecommendationCount', {
+              count: clusterStore.dailyRecommendations.length,
+            })
+          }}
+        </span>
+      </div>
     </div>
 
-    <!-- Loading State for full refresh -->
     <div
-      v-if="clusterStore.isInitialLoading"
+      v-if="
+        clusterStore.isInitialLoading ||
+        (isDailyRecommendationMode && clusterStore.isDailyRecommendationsLoading)
+      "
       class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary"
     >
       <div
@@ -260,9 +359,26 @@ function handleHoverMarkAsRead(clusterId: number): void {
       <div>{{ t('article.content.loadingContent') }}</div>
     </div>
 
-    <!-- Virtual Scrolling List -->
     <div
-      v-else-if="clusterStore.clusters.length > 0"
+      v-else-if="isDailyRecommendationMode && clusterStore.dailyRecommendationsError"
+      class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary text-center"
+    >
+      <div class="w-16 h-16 bg-bg-tertiary rounded-full flex items-center justify-center mb-4">
+        <span class="text-2xl">⚠️</span>
+      </div>
+      <h3 class="text-lg font-medium text-text-primary mb-2">
+        {{ t('article.cluster.dailyRecommendationLoadFailedTitle') }}
+      </h3>
+      <p class="text-sm max-w-[280px] mb-4">
+        {{ clusterStore.dailyRecommendationsError }}
+      </p>
+      <button class="btn-secondary" @click="refreshRecommendations">
+        {{ t('article.cluster.refreshRecommendations') }}
+      </button>
+    </div>
+
+    <div
+      v-else-if="displayedClusters.length > 0"
       ref="listRef"
       class="flex-1 overflow-y-auto w-full custom-scrollbar"
       @scroll="handleScroll"
@@ -284,9 +400,8 @@ function handleHoverMarkAsRead(clusterId: number): void {
           @hover-mark-as-read="handleHoverMarkAsRead"
         />
 
-        <!-- Loading More Indicator -->
         <div
-          v-if="clusterStore.isLoadingMore"
+          v-if="!isDailyRecommendationMode && clusterStore.isLoadingMore"
           class="py-4 flex justify-center items-center text-text-secondary w-full"
         >
           <div
@@ -297,7 +412,6 @@ function handleHoverMarkAsRead(clusterId: number): void {
       </div>
     </div>
 
-    <!-- Empty State -->
     <div
       v-else
       class="flex-1 flex flex-col items-center justify-center p-8 text-text-secondary text-center"
@@ -306,10 +420,18 @@ function handleHoverMarkAsRead(clusterId: number): void {
         <span class="text-2xl">⚡️</span>
       </div>
       <h3 class="text-lg font-medium text-text-primary mb-2">
-        {{ t('article.cluster.emptyTitle') }}
+        {{
+          isDailyRecommendationMode
+            ? t('article.cluster.dailyRecommendationEmptyTitle')
+            : t('article.cluster.emptyTitle')
+        }}
       </h3>
       <p class="text-sm max-w-[250px]">
-        {{ t('article.cluster.emptyDescription') }}
+        {{
+          isDailyRecommendationMode
+            ? t('article.cluster.dailyRecommendationEmptyDescription')
+            : t('article.cluster.emptyDescription')
+        }}
       </p>
     </div>
   </section>

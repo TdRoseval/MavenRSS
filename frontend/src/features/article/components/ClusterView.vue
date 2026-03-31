@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import ClusterList from './ClusterList.vue';
 import ClusterDetail from './ClusterDetail.vue';
+import { useArticleStore } from '@/features/article/store';
+import { useClusterStore } from '@/stores/cluster';
 
 interface Props {
   isSidebarOpen?: boolean;
@@ -15,6 +17,8 @@ const emit = defineEmits<{
   toggleSidebar: [];
 }>();
 
+const articleStore = useArticleStore();
+const clusterStore = useClusterStore();
 const isMobile = ref(window.innerWidth < 768);
 const mobileView = ref<'list' | 'detail'>('list');
 
@@ -27,7 +31,21 @@ function handleResize() {
   }
 }
 
-window.addEventListener('resize', handleResize);
+async function loadClusterData() {
+  if (articleStore.currentFilter === 'dailyRecommendations') {
+    const dates = await clusterStore.fetchDailyRecommendationDates();
+    if (dates.length > 0) {
+      await clusterStore.fetchDailyRecommendations(
+        clusterStore.selectedRecommendationDate || dates[0]
+      );
+    } else {
+      clusterStore.dailyRecommendations = [];
+    }
+    return;
+  }
+
+  await clusterStore.fetchClusters();
+}
 
 function openClusterOnMobile() {
   mobileView.value = 'detail';
@@ -36,11 +54,32 @@ function openClusterOnMobile() {
 function closeClusterOnMobile() {
   mobileView.value = 'list';
 }
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize);
+  loadClusterData().catch((error) => {
+    console.error('Failed to load cluster data:', error);
+  });
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize);
+});
+
+watch(
+  () => articleStore.currentFilter,
+  () => {
+    clusterStore.currentClusterId = null;
+    mobileView.value = 'list';
+    loadClusterData().catch((error) => {
+      console.error('Failed to reload cluster data:', error);
+    });
+  }
+);
 </script>
 
 <template>
   <div class="flex h-full w-full overflow-hidden relative">
-    <!-- Mobile View -->
     <div v-if="isMobile" class="flex-1 flex flex-col h-full w-full relative">
       <div
         :class="[
@@ -66,7 +105,6 @@ function closeClusterOnMobile() {
       </div>
     </div>
 
-    <!-- Desktop View -->
     <template v-else>
       <ClusterList :is-sidebar-open="isSidebarOpen" @toggle-sidebar="emit('toggleSidebar')" />
       <div class="resizer hidden md:block"></div>

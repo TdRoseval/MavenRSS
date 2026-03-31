@@ -14,6 +14,8 @@ export interface SettingsData {
   ai_enhanced_mode: boolean;
   ai_fusion_profile_id: string;
   ai_model: string;
+  ai_recommendation_enabled: boolean;
+  ai_recommendation_profile_id: string;
   ai_search_enabled: boolean;
   ai_search_profile_id: string;
   ai_summary_profile_id: string;

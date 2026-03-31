@@ -13,8 +13,22 @@ import (
 	"MavenRSS/internal/models"
 )
 
-// HandleClustersFeed handles POST /api/clusters/feed — AI-enhanced lazy-load with
-// vector similarity recall and Gravity time-decay reranking.
+type dailyRecommendationItem struct {
+	RecommendationDate      string         `json:"recommendation_date"`
+	RecommendationRank      int            `json:"recommendation_rank"`
+	RecommendationScore     float64        `json:"recommendation_score"`
+	RecommendationProfileID int64          `json:"recommendation_profile_id"`
+	LatestPublishedAt       string         `json:"latest_published_at,omitempty"`
+	Cluster                 models.Cluster `json:"cluster"`
+}
+
+type dailyRecommendationResponse struct {
+	SelectedDate    string                    `json:"selected_date"`
+	AvailableDates  []string                  `json:"available_dates"`
+	Recommendations []dailyRecommendationItem `json:"recommendations"`
+	Total           int                       `json:"total"`
+}
+
 func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -31,7 +45,6 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		ExcludeIDs []int64 `json:"exclude_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Allow empty body (first load)
 		req.ExcludeIDs = nil
 	}
 
@@ -41,10 +54,7 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		maxAgeDays  = 3
 	)
 
-	// Load user interest vector
 	vecBlob, _ := h.DB.GetUserInterestVector(userID)
-
-	// Cold-start: try to initialize from favorites
 	if len(vecBlob) == 0 {
 		favBlobs, _ := h.DB.GetFavoriteClusterSummaryEmbeddings(userID)
 		if len(favBlobs) > 0 {
@@ -52,14 +62,12 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			if err == nil && len(initVec) > 0 {
 				if blob, err := interest.SerializeVector(initVec); err == nil {
 					vecBlob = blob
-					// Persist the initialized vector
 					_ = h.DB.UpdateUserInterestVector(userID, vecBlob)
 				}
 			}
 		}
 	}
 
-	// Fallback: no interest vector → chronological ordering
 	if len(vecBlob) == 0 {
 		clusters, err := h.DB.GetRecentClustersChronological(userID, req.ExcludeIDs, returnLimit)
 		if err != nil {
@@ -75,13 +83,11 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Vector similarity recall (top 100)
 	candidates, err := h.DB.GetClustersByVectorSimilarity(
 		userID, vecBlob, req.ExcludeIDs, maxAgeDays, recallTopK,
 	)
 	if err != nil {
 		log.Printf("Error in vector similarity recall: %v", err)
-		// Fallback to chronological
 		clusters, _ := h.DB.GetRecentClustersChronological(userID, req.ExcludeIDs, returnLimit)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(clusters)
@@ -89,17 +95,13 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	if len(candidates) == 0 {
-		// No vector matches, fallback to chronological
 		clusters, _ := h.DB.GetRecentClustersChronological(userID, req.ExcludeIDs, returnLimit)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(clusters)
 		return
 	}
 
-	// Gravity reranking: FinalScore = Similarity × 1/(T+2)^1.5
 	now := time.Now()
-
-	// Apply Gravity decay
 	for i := range candidates {
 		hoursOld := now.Sub(candidates[i].Cluster.UpdatedAt).Hours()
 		if hoursOld < 0 {
@@ -110,20 +112,17 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			similarity = 0
 		}
 		gravity := 1.0 / math.Pow(hoursOld+2.0, 1.5)
-		candidates[i].Distance = similarity * gravity // Reuse Distance field as FinalScore
+		candidates[i].Distance = similarity * gravity
 	}
 
-	// Sort by final score descending
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].Distance > candidates[j].Distance
 	})
 
-	// Truncate to returnLimit
 	if len(candidates) > returnLimit {
 		candidates = candidates[:returnLimit]
 	}
 
-	// Extract clusters for response
 	result := make([]models.Cluster, len(candidates))
 	for i, c := range candidates {
 		result[i] = c.Cluster
@@ -133,8 +132,101 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(result)
 }
 
-// HandleClusterClick handles POST /api/clusters/click — Level 1 interest update.
-// Updates user interest vector with cluster title embedding at α=0.05.
+func HandleDailyRecommendationDates(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	dates, err := h.DB.ListDailyRecommendationDates(userID)
+	if err != nil {
+		log.Printf("Error listing daily recommendation dates: %v", err)
+		http.Error(w, "Failed to get daily recommendation dates", http.StatusInternalServerError)
+		return
+	}
+	if dates == nil {
+		dates = []string{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dates)
+}
+
+func HandleDailyRecommendations(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	availableDates, err := h.DB.ListDailyRecommendationDates(userID)
+	if err != nil {
+		log.Printf("Error listing daily recommendation dates: %v", err)
+		http.Error(w, "Failed to get daily recommendations", http.StatusInternalServerError)
+		return
+	}
+	if availableDates == nil {
+		availableDates = []string{}
+	}
+
+	selectedDate := r.URL.Query().Get("date")
+	if selectedDate == "" && len(availableDates) > 0 {
+		selectedDate = availableDates[0]
+	}
+
+	response := dailyRecommendationResponse{
+		SelectedDate:    selectedDate,
+		AvailableDates:  availableDates,
+		Recommendations: []dailyRecommendationItem{},
+		Total:           0,
+	}
+
+	if selectedDate == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	results, err := h.DB.GetDailyRecommendationsByDate(userID, selectedDate)
+	if err != nil {
+		log.Printf("Error getting daily recommendations by date: %v", err)
+		http.Error(w, "Failed to get daily recommendations", http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]dailyRecommendationItem, 0, len(results))
+	for _, item := range results {
+		mapped := dailyRecommendationItem{
+			RecommendationDate:      item.Recommendation.RecommendationDate,
+			RecommendationRank:      item.Recommendation.RecommendationRank,
+			RecommendationScore:     item.Recommendation.RecommendationScore,
+			RecommendationProfileID: item.Recommendation.RecommendationProfileID,
+			Cluster:                 item.Cluster,
+		}
+		if !item.LatestPublishedAt.IsZero() {
+			mapped.LatestPublishedAt = item.LatestPublishedAt.Format(time.RFC3339)
+		}
+		items = append(items, mapped)
+	}
+
+	response.Recommendations = items
+	response.Total = len(items)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func HandleClusterClick(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -155,10 +247,8 @@ func HandleClusterClick(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get cluster title embedding
 	titleBlob, err := h.DB.GetClusterEmbedding(req.ClusterID, "title_embedding")
 	if err != nil || len(titleBlob) == 0 {
-		// No embedding available, silently succeed
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"success": true})
 		return
@@ -171,14 +261,12 @@ func HandleClusterClick(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Load current interest vector
 	vecBlob, _ := h.DB.GetUserInterestVector(userID)
 	var oldVec []float32
 	if len(vecBlob) > 0 {
 		oldVec, _ = interest.DeserializeVector(vecBlob)
 	}
 
-	// EMA update with α_click = 0.05
 	newVec := interest.UpdateVector(oldVec, featureVec, interest.AlphaClick)
 	if newBlob, err := interest.SerializeVector(newVec); err == nil {
 		_ = h.DB.UpdateUserInterestVector(userID, newBlob)
@@ -188,9 +276,6 @@ func HandleClusterClick(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-// HandleClusterReadTime handles POST /api/clusters/read-time — Level 2 deep-read update.
-// If actual read time exceeds the user's dynamic average, updates interest vector
-// with cluster summary embedding at α=0.10 and accumulates reading stats.
 func HandleClusterReadTime(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -212,16 +297,13 @@ func HandleClusterReadTime(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Compute dynamic average reading time
 	readCount, totalReadTime, _ := h.DB.GetUserAIReadStats(userID)
 	avgReadTime := interest.ComputeAvgReadTime(totalReadTime, readCount)
 
-	// Always update reading stats (count + time)
 	newCount := readCount + 1
 	newTotal := totalReadTime + req.ReadTimeSeconds
 	_ = h.DB.UpdateUserAIReadStats(userID, newCount, newTotal)
 
-	// Level 2 trigger: actual read time exceeds dynamic average
 	if float64(req.ReadTimeSeconds) > avgReadTime {
 		summaryBlob, err := h.DB.GetClusterEmbedding(req.ClusterID, "summary_embedding")
 		if err == nil && len(summaryBlob) > 0 {

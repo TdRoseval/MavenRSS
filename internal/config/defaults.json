@@ -8,6 +8,8 @@
   "ai_enhanced_mode": false,
   "ai_fusion_profile_id": "",
   "ai_model": "gpt-4o-mini",
+  "ai_recommendation_enabled": false,
+  "ai_recommendation_profile_id": "",
   "ai_search_enabled": false,
   "ai_search_profile_id": "",
   "ai_summary_profile_id": "",

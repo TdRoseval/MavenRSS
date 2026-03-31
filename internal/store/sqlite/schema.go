@@ -127,10 +127,28 @@ func initSchema(db *sql.DB) error {
 		is_favorite BOOLEAN DEFAULT 0,
 		is_read_later BOOLEAN DEFAULT 0,
 		is_hidden BOOLEAN DEFAULT 0,
+		recommendation_archive_date TEXT DEFAULT '',
+		recommendation_score REAL DEFAULT 0,
+		is_ai_recommended BOOLEAN DEFAULT 0,
+		recommendation_profile_id INTEGER DEFAULT 0,
 		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 
-	-- Translation cache table to avoid redundant API calls
+	CREATE TABLE IF NOT EXISTS daily_recommendations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		cluster_id INTEGER NOT NULL,
+		recommendation_date TEXT NOT NULL,
+		recommendation_score REAL DEFAULT 0,
+		recommendation_rank INTEGER DEFAULT 0,
+		recommendation_profile_id INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
+		UNIQUE(user_id, recommendation_date, cluster_id)
+	);
+
+	-- Translation cache table
 	CREATE TABLE IF NOT EXISTS translation_cache (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		source_text_hash TEXT NOT NULL,
@@ -142,27 +160,7 @@ func initSchema(db *sql.DB) error {
 		UNIQUE(source_text_hash, target_lang, provider)
 	);
 
-	-- Article content cache table to store full article content
-	CREATE TABLE IF NOT EXISTS article_contents (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		article_id INTEGER NOT NULL UNIQUE,
-		content TEXT NOT NULL,
-		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
-	);
-
-	-- Article translated content table to store translated article content
-	CREATE TABLE IF NOT EXISTS article_translated_contents (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		article_id INTEGER NOT NULL UNIQUE,
-		content TEXT NOT NULL,
-		target_lang TEXT NOT NULL,
-		provider TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
-	);
-
-	-- Chat sessions table to store AI chat conversations per article
+	-- Chat sessions table for AI chat feature
 	CREATE TABLE IF NOT EXISTS chat_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER NOT NULL,
@@ -170,8 +168,8 @@ func initSchema(db *sql.DB) error {
 		title TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
-		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
 	);
 
 	-- Chat messages table to store individual messages in chat sessions
@@ -303,6 +301,10 @@ func initSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_clusters_user_status ON clusters(user_id, status);
 	CREATE INDEX IF NOT EXISTS idx_clusters_user_favorite ON clusters(user_id, is_favorite);
 	CREATE INDEX IF NOT EXISTS idx_clusters_user_read ON clusters(user_id, is_read);
+	CREATE INDEX IF NOT EXISTS idx_clusters_user_ai_recommended ON clusters(user_id, is_ai_recommended);
+	CREATE INDEX IF NOT EXISTS idx_clusters_archive_date ON clusters(user_id, recommendation_archive_date DESC);
+	CREATE INDEX IF NOT EXISTS idx_daily_recommendations_user_date ON daily_recommendations(user_id, recommendation_date DESC);
+	CREATE INDEX IF NOT EXISTS idx_daily_recommendations_cluster ON daily_recommendations(cluster_id);
 
 	-- Translation cache index
 	CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);

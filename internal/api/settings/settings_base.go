@@ -26,6 +26,8 @@ var AllSettings = []SettingDef{
 	{Key: "ai_enhanced_mode", Encrypted: false},
 	{Key: "ai_fusion_profile_id", Encrypted: false},
 	{Key: "ai_model", Encrypted: false},
+	{Key: "ai_recommendation_enabled", Encrypted: false},
+	{Key: "ai_recommendation_profile_id", Encrypted: false},
 	{Key: "ai_search_enabled", Encrypted: false},
 	{Key: "ai_search_profile_id", Encrypted: false},
 	{Key: "ai_summary_profile_id", Encrypted: false},

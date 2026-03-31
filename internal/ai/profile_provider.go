@@ -31,11 +31,12 @@ func NewProfileProvider(db ProfileDB) *ProfileProvider {
 type FeatureType string
 
 const (
-	FeatureTranslation FeatureType = "translation"
-	FeatureSummary     FeatureType = "summary"
-	FeatureChat        FeatureType = "chat"
-	FeatureSearch      FeatureType = "search"
-	FeatureFusion      FeatureType = "fusion"
+	FeatureTranslation    FeatureType = "translation"
+	FeatureSummary        FeatureType = "summary"
+	FeatureChat           FeatureType = "chat"
+	FeatureSearch         FeatureType = "search"
+	FeatureFusion         FeatureType = "fusion"
+	FeatureRecommendation FeatureType = "recommendation"
 )
 
 // GetProfileForFeature returns the AI profile configured for a specific feature
@@ -106,6 +107,8 @@ func (p *ProfileProvider) getSettingKeyForFeature(feature FeatureType) string {
 		return "ai_search_profile_id"
 	case FeatureFusion:
 		return "ai_fusion_profile_id"
+	case FeatureRecommendation:
+		return "ai_recommendation_profile_id"
 	default:
 		return ""
 	}

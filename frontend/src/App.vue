@@ -391,7 +391,9 @@ function onLogin(): void {
         </template>
 
         <!-- Show ClusterView when in clusters mode -->
-        <template v-else-if="articleStore.currentFilter === 'clusters'">
+        <template
+          v-else-if="['clusters', 'dailyRecommendations'].includes(articleStore.currentFilter)"
+        >
           <ClusterView :is-sidebar-open="isSidebarOpen" @toggle-sidebar="toggleSidebar" />
         </template>
 
