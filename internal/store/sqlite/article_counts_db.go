@@ -2,7 +2,68 @@ package sqlite
 
 import "log"
 
-// GetTotalUnreadCount returns the total number of unread articles.
+func (db *DB) getClusterCount(userID int64, clusterCondition string, args ...interface{}) (int, error) {
+	db.WaitForReady()
+
+	query := `SELECT COUNT(*) FROM clusters WHERE is_hidden = 0`
+	queryArgs := make([]interface{}, 0, len(args)+1)
+	if userID > 0 {
+		query += ` AND user_id = ?`
+		queryArgs = append(queryArgs, userID)
+	}
+	if clusterCondition != "" {
+		query += ` AND ` + clusterCondition
+		queryArgs = append(queryArgs, args...)
+	}
+
+	var count int
+	if err := db.QueryRow(query, queryArgs...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (db *DB) getClusterCountsForAllFeeds(userID int64, articleCondition string, clusterCondition string, args ...interface{}) (map[int64]int, error) {
+	db.WaitForReady()
+
+	query := `
+		SELECT a.feed_id, COUNT(DISTINCT c.id)
+		FROM clusters c
+		JOIN articles a ON a.cluster_id = c.id
+		WHERE c.is_hidden = 0`
+	queryArgs := make([]interface{}, 0, len(args)+1)
+	if userID > 0 {
+		query += ` AND c.user_id = ?`
+		queryArgs = append(queryArgs, userID)
+	}
+	if clusterCondition != "" {
+		query += ` AND ` + clusterCondition
+		queryArgs = append(queryArgs, args...)
+	}
+	if articleCondition != "" {
+		query += ` AND ` + articleCondition
+	}
+	query += ` GROUP BY a.feed_id`
+
+	rows, err := db.Query(query, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[int64]int)
+	for rows.Next() {
+		var feedID int64
+		var count int
+		if err := rows.Scan(&feedID, &count); err != nil {
+			log.Println("Error scanning cluster count:", err)
+			continue
+		}
+		counts[feedID] = count
+	}
+	return counts, rows.Err()
+}
+
 func (db *DB) GetTotalUnreadCount(userID int64) (int, error) {
 	db.WaitForReady()
 	var count int
@@ -18,7 +79,10 @@ func (db *DB) GetTotalUnreadCount(userID int64) (int, error) {
 	return count, nil
 }
 
-// GetUnreadCountByFeed returns the number of unread articles for a specific feed.
+func (db *DB) GetTotalUnreadClusterCount(userID int64) (int, error) {
+	return db.getClusterCount(userID, "is_read = 0")
+}
+
 func (db *DB) GetUnreadCountByFeed(feedID int64, userID int64) (int, error) {
 	db.WaitForReady()
 	var count int
@@ -34,7 +98,6 @@ func (db *DB) GetUnreadCountByFeed(feedID int64, userID int64) (int, error) {
 	return count, nil
 }
 
-// GetUnreadCountsForAllFeeds returns a map of feed_id to unread count.
 func (db *DB) GetUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -77,7 +140,10 @@ func (db *DB) GetUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	return counts, rows.Err()
 }
 
-// GetFavoriteCountsForAllFeeds returns a map of feed_id to favorite article count.
+func (db *DB) GetUnreadClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "", "c.is_read = 0")
+}
+
 func (db *DB) GetFavoriteCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -120,7 +186,10 @@ func (db *DB) GetFavoriteCountsForAllFeeds(userID int64) (map[int64]int, error) 
 	return counts, rows.Err()
 }
 
-// GetReadLaterCountsForAllFeeds returns a map of feed_id to read_later article count.
+func (db *DB) GetFavoriteClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "", "c.is_favorite = 1")
+}
+
 func (db *DB) GetReadLaterCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -163,7 +232,10 @@ func (db *DB) GetReadLaterCountsForAllFeeds(userID int64) (map[int64]int, error)
 	return counts, rows.Err()
 }
 
-// GetImageModeCountsForAllFeeds returns a map of feed_id to image article count.
+func (db *DB) GetReadLaterClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "", "c.is_read_later = 1")
+}
+
 func (db *DB) GetImageModeCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -206,7 +278,10 @@ func (db *DB) GetImageModeCountsForAllFeeds(userID int64) (map[int64]int, error)
 	return counts, rows.Err()
 }
 
-// GetImageUnreadCountsForAllFeeds returns a map of feed_id to unread image article count.
+func (db *DB) GetImageClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "(a.image_url IS NOT NULL AND a.image_url != '')", "")
+}
+
 func (db *DB) GetImageUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -249,7 +324,10 @@ func (db *DB) GetImageUnreadCountsForAllFeeds(userID int64) (map[int64]int, erro
 	return counts, rows.Err()
 }
 
-// GetFavoriteUnreadCountsForAllFeeds returns a map of feed_id to favorite AND unread article count.
+func (db *DB) GetImageUnreadClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "(a.image_url IS NOT NULL AND a.image_url != '')", "c.is_read = 0")
+}
+
 func (db *DB) GetFavoriteUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -292,7 +370,10 @@ func (db *DB) GetFavoriteUnreadCountsForAllFeeds(userID int64) (map[int64]int, e
 	return counts, rows.Err()
 }
 
-// GetReadLaterUnreadCountsForAllFeeds returns a map of feed_id to read_later AND unread article count.
+func (db *DB) GetFavoriteUnreadClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "", "c.is_favorite = 1 AND c.is_read = 0")
+}
+
 func (db *DB) GetReadLaterUnreadCountsForAllFeeds(userID int64) (map[int64]int, error) {
 	db.WaitForReady()
 	var rows interface {
@@ -333,4 +414,8 @@ func (db *DB) GetReadLaterUnreadCountsForAllFeeds(userID int64) (map[int64]int, 
 		counts[feedID] = count
 	}
 	return counts, rows.Err()
+}
+
+func (db *DB) GetReadLaterUnreadClusterCountsForAllFeeds(userID int64) (map[int64]int, error) {
+	return db.getClusterCountsForAllFeeds(userID, "", "c.is_read_later = 1 AND c.is_read = 0")
 }

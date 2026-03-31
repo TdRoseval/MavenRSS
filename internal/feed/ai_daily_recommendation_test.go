@@ -12,8 +12,8 @@ func TestComputeDailyRecommendationRunTime(t *testing.T) {
 	manager := NewAIEnhancedManager(db)
 	defer manager.Stop()
 
-	userID := int64(1)
-	if _, err := db.Exec(`INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, 'u1', 'hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, userID); err != nil {
+	userID := int64(999)
+	if _, err := db.Exec(`INSERT INTO users (id, username, password_hash, email, created_at, updated_at) VALUES (?, 'u999', 'hash', 'u999@test.com', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, userID); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
 	if err := db.SetSetting("last_global_refresh", "2026-03-30T23:45:00Z"); err != nil {

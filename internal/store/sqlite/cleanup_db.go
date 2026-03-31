@@ -799,3 +799,222 @@ func (db *DB) CleanupOldUnreadArticles(maxAgeDays int, userID int64) (int64, err
 	count, _ := result.RowsAffected()
 	return count, nil
 }
+
+// CleanupExpiredClusters removes clusters older than maxAgeDays that are not AI recommended.
+// Returns the number of deleted clusters (and their articles).
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error) {
+	db.WaitForReady()
+
+	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
+
+	// Query to find expired clusters (not AI recommended, older than cutoff)
+	query := `SELECT id FROM clusters WHERE is_ai_recommended = 0 AND updated_at < ?`
+	args := []interface{}{cutoffDate}
+	if userID > 0 {
+		query += ` AND user_id = ?`
+		args = append(args, userID)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var clusterIDs []int64
+	for rows.Next() {
+		var clusterID int64
+		if err := rows.Scan(&clusterID); err != nil {
+			return 0, err
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	var totalDeleted int64
+	for _, clusterID := range clusterIDs {
+		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
+			return totalDeleted, err
+		}
+		totalDeleted++
+	}
+
+	return totalDeleted, nil
+}
+
+// DeleteClusterAndArticles deletes a cluster and all its associated articles and related data.
+func (db *DB) DeleteClusterAndArticles(clusterID int64) error {
+	db.WaitForReady()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Get all article IDs in this cluster
+	articleRows, err := tx.Query(`SELECT id FROM articles WHERE cluster_id = ?`, clusterID)
+	if err != nil {
+		return err
+	}
+	var articleIDs []int64
+	for articleRows.Next() {
+		var articleID int64
+		if err := articleRows.Scan(&articleID); err != nil {
+			_ = articleRows.Close()
+			return err
+		}
+		articleIDs = append(articleIDs, articleID)
+	}
+	_ = articleRows.Close()
+
+	// Delete article embeddings for these articles
+	for _, articleID := range articleIDs {
+		if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
+	}
+
+	// Delete article contents for these articles
+	for _, articleID := range articleIDs {
+		if _, err := tx.Exec(`DELETE FROM article_contents WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
+	}
+
+	// Delete translated contents for these articles
+	for _, articleID := range articleIDs {
+		if _, err := tx.Exec(`DELETE FROM article_translated_contents WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
+	}
+
+	// Delete chat sessions and messages for these articles
+	for _, articleID := range articleIDs {
+		// First delete chat messages
+		if _, err := tx.Exec(`DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE article_id = ?)`, articleID); err != nil {
+			return err
+		}
+		// Then delete chat sessions
+		if _, err := tx.Exec(`DELETE FROM chat_sessions WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
+	}
+
+	// Delete the articles themselves
+	if _, err := tx.Exec(`DELETE FROM articles WHERE cluster_id = ?`, clusterID); err != nil {
+		return err
+	}
+
+	// Delete cluster embeddings
+	if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
+		return err
+	}
+
+	// Delete from daily_recommendations if present
+	if _, err := tx.Exec(`DELETE FROM daily_recommendations WHERE cluster_id = ?`, clusterID); err != nil {
+		return err
+	}
+
+	// Finally delete the cluster
+	if _, err := tx.Exec(`DELETE FROM clusters WHERE id = ?`, clusterID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// CleanupExpiredReadClusters removes read clusters older than maxAgeDays that are not favorited or read later.
+// Returns the number of deleted clusters.
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupExpiredReadClusters(userID int64, maxAgeDays int) (int64, error) {
+	db.WaitForReady()
+
+	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
+
+	query := `SELECT id FROM clusters WHERE is_read = 1 AND is_favorite = 0 AND is_read_later = 0 AND is_ai_recommended = 0 AND updated_at < ?`
+	args := []interface{}{cutoffDate}
+	if userID > 0 {
+		query += ` AND user_id = ?`
+		args = append(args, userID)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var clusterIDs []int64
+	for rows.Next() {
+		var clusterID int64
+		if err := rows.Scan(&clusterID); err != nil {
+			return 0, err
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	var totalDeleted int64
+	for _, clusterID := range clusterIDs {
+		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
+			return totalDeleted, err
+		}
+		totalDeleted++
+	}
+
+	return totalDeleted, nil
+}
+
+// CleanupExpiredUnreadClusters removes unread clusters older than maxAgeDays that are not favorited or read later.
+// Returns the number of deleted clusters.
+// If userID > 0, only clean up for that user; otherwise clean up for all users
+func (db *DB) CleanupExpiredUnreadClusters(userID int64, maxAgeDays int) (int64, error) {
+	db.WaitForReady()
+
+	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
+
+	query := `SELECT id FROM clusters WHERE is_read = 0 AND is_favorite = 0 AND is_read_later = 0 AND is_ai_recommended = 0 AND updated_at < ?`
+	args := []interface{}{cutoffDate}
+	if userID > 0 {
+		query += ` AND user_id = ?`
+		args = append(args, userID)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var clusterIDs []int64
+	for rows.Next() {
+		var clusterID int64
+		if err := rows.Scan(&clusterID); err != nil {
+			return 0, err
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	var totalDeleted int64
+	for _, clusterID := range clusterIDs {
+		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
+			return totalDeleted, err
+		}
+		totalDeleted++
+	}
+
+	return totalDeleted, nil
+}

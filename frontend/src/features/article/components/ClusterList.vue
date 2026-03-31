@@ -40,11 +40,18 @@ const isDailyRecommendationMode = computed(
   () => articleStore.currentFilter === 'dailyRecommendations'
 );
 
+const temporarilyKeptClusterIds = ref<Set<number>>(new Set());
+
 const displayedClusters = computed<Cluster[]>(() => {
-  if (isDailyRecommendationMode.value) {
-    return clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster);
+  const source = isDailyRecommendationMode.value
+    ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
+    : clusterStore.clusters;
+
+  if (!articleStore.showOnlyUnread) {
+    return source;
   }
-  return clusterStore.clusters;
+
+  return source.filter((cluster) => !cluster.is_read || temporarilyKeptClusterIds.value.has(cluster.id));
 });
 
 const scrollTop = ref(0);
@@ -110,6 +117,7 @@ watch(
 
 let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 onBeforeUnmount(() => {
+  temporarilyKeptClusterIds.value.clear();
   if (scrollThrottleTimer) {
     clearTimeout(scrollThrottleTimer);
     scrollThrottleTimer = null;
@@ -125,7 +133,16 @@ function selectCluster(cluster: Cluster): void {
   clusterStore.reportClusterClick(cluster.id);
 
   if (!cluster.is_read) {
+    if (articleStore.showOnlyUnread) {
+      temporarilyKeptClusterIds.value = new Set(temporarilyKeptClusterIds.value).add(cluster.id);
+    }
+
     clusterStore.markClusterRead(cluster.id, true).catch((e) => {
+      if (articleStore.showOnlyUnread) {
+        const next = new Set(temporarilyKeptClusterIds.value);
+        next.delete(cluster.id);
+        temporarilyKeptClusterIds.value = next;
+      }
       console.error('Error marking as read:', e);
       window.showToast(t('common.errors.savingSettings'), 'error');
     });
@@ -249,6 +266,8 @@ async function markAllAsRead(): Promise<void> {
 
 function handleHoverMarkAsRead(clusterId: number): void {
   clusterStore.updateClusterState(clusterId, { is_read: true });
+  articleStore.fetchUnreadCounts();
+  articleStore.fetchFilterCounts();
 }
 
 async function handleRecommendationDateChange(): Promise<void> {

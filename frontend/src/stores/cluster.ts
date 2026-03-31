@@ -128,7 +128,7 @@ export const useClusterStore = defineStore('cluster', () => {
     await fetchClusters(currentPage.value + 1);
   }
 
-  async function fetchClusterArticles(clusterId: number) {
+  async function fetchClusterDetail(clusterId: number) {
     return apiClient.get('/clusters/detail', { id: clusterId });
   }
 
@@ -200,22 +200,30 @@ export const useClusterStore = defineStore('cluster', () => {
   }
 
   async function markClusterRead(clusterId: number, isRead: boolean) {
+    const articleStore = useArticleStore();
     await apiClient.put('/clusters/read', { id: clusterId, read: isRead });
     updateClusterState(clusterId, { is_read: isRead });
+    await articleStore.fetchUnreadCounts();
+    await articleStore.fetchFilterCounts();
   }
 
   async function toggleClusterFavorite(cluster: Cluster) {
+    const articleStore = useArticleStore();
     await apiClient.put('/clusters/favorite', { id: cluster.id });
     updateClusterState(cluster.id, { is_favorite: !cluster.is_favorite });
+    await articleStore.fetchFilterCounts();
   }
 
   async function toggleClusterReadLater(cluster: Cluster) {
+    const articleStore = useArticleStore();
     const nextReadLater = !cluster.is_read_later;
     await apiClient.put('/clusters/read-later', { id: cluster.id });
     updateClusterState(cluster.id, {
       is_read_later: nextReadLater,
       is_read: nextReadLater ? cluster.is_read : false,
     });
+    await articleStore.fetchUnreadCounts();
+    await articleStore.fetchFilterCounts();
   }
 
   async function reportClusterClick(clusterId: number) {
@@ -273,6 +281,8 @@ export const useClusterStore = defineStore('cluster', () => {
     dailyRecommendations.value.forEach((item) => {
       item.cluster.is_read = true;
     });
+    await articleStore.fetchUnreadCounts();
+    await articleStore.fetchFilterCounts();
   }
 
   async function refreshCurrentCluster() {
@@ -349,7 +359,7 @@ export const useClusterStore = defineStore('cluster', () => {
     dailyRecommendationsError,
     fetchClusters,
     loadMore,
-    fetchClusterArticles,
+    fetchClusterDetail,
     fetchDailyRecommendationDates,
     fetchDailyRecommendations,
     selectRecommendationDate,

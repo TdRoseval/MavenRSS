@@ -67,7 +67,7 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => articleStore.currentFilter,
+  () => [articleStore.currentFilter, articleStore.currentFeedId, articleStore.currentCategory],
   () => {
     clusterStore.currentClusterId = null;
     mobileView.value = 'list';

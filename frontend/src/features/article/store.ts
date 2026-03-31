@@ -209,9 +209,13 @@ export const useArticleStore = defineStore('article', () => {
     }
   }
 
+  function getCountViewParams(): Record<string, string> {
+    return shouldUseClusterList() ? { view: 'clusters' } : {};
+  }
+
   async function fetchUnreadCounts(): Promise<void> {
     try {
-      const data: any = await apiClient.get('/articles/unread-counts');
+      const data: any = await apiClient.get('/articles/unread-counts', getCountViewParams());
       unreadCounts.value = {
         total: data.total || 0,
         feedCounts: data.feed_counts || {},
@@ -223,7 +227,7 @@ export const useArticleStore = defineStore('article', () => {
 
   async function fetchFilterCounts(): Promise<void> {
     try {
-      const data: any = await apiClient.get('/articles/filter-counts');
+      const data: any = await apiClient.get('/articles/filter-counts', getCountViewParams());
       filterCounts.value = {
         unread: data.unread || {},
         favorites: data.favorites || {},
