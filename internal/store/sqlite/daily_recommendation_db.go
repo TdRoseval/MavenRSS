@@ -135,7 +135,7 @@ func (db *DB) GetDailyRecommendationsByDate(userID int64, recommendationDate str
 	results := make([]DailyRecommendationResult, 0)
 	for rows.Next() {
 		var item DailyRecommendationResult
-		var latestPublishedAt sql.NullTime
+		var latestPublishedAt sql.NullString
 		if err := rows.Scan(
 			&item.Recommendation.ID,
 			&item.Recommendation.UserID,
@@ -166,8 +166,8 @@ func (db *DB) GetDailyRecommendationsByDate(userID int64, recommendationDate str
 		); err != nil {
 			return nil, fmt.Errorf("scan daily recommendation by date: %w", err)
 		}
-		if latestPublishedAt.Valid {
-			item.LatestPublishedAt = latestPublishedAt.Time
+		if parsedTime, ok := parseNullableSQLiteTime(latestPublishedAt); ok {
+			item.LatestPublishedAt = parsedTime
 		}
 		db.populateClusterMeta(&item.Cluster)
 		results = append(results, item)
@@ -379,11 +379,34 @@ func (db *DB) SaveDailyRecommendations(userID int64, recommendationDate string, 
 	return tx.Commit()
 }
 
+func parseNullableSQLiteTime(value sql.NullString) (time.Time, bool) {
+	if !value.Valid || value.String == "" {
+		return time.Time{}, false
+	}
+
+	formats := []string{
+		"2006-01-02 15:04:05 -0700 MST",
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+	}
+
+	for _, format := range formats {
+		parsedTime, err := time.Parse(format, value.String)
+		if err == nil {
+			return parsedTime, true
+		}
+	}
+
+	return time.Time{}, false
+}
+
 func scanDailyRecommendationCandidates(db *DB, rows *sql.Rows, withDistance bool) ([]DailyRecommendationCandidate, error) {
 	results := make([]DailyRecommendationCandidate, 0)
 	for rows.Next() {
 		var candidate DailyRecommendationCandidate
-		var publishedAt sql.NullTime
+		var publishedAt sql.NullString
 		if withDistance {
 			if err := rows.Scan(
 				&candidate.Cluster.ID,
@@ -434,8 +457,8 @@ func scanDailyRecommendationCandidates(db *DB, rows *sql.Rows, withDistance bool
 				continue
 			}
 		}
-		if publishedAt.Valid {
-			candidate.PublishedAt = publishedAt.Time
+		if parsedTime, ok := parseNullableSQLiteTime(publishedAt); ok {
+			candidate.PublishedAt = parsedTime
 		}
 		db.populateClusterMeta(&candidate.Cluster)
 		results = append(results, candidate)
