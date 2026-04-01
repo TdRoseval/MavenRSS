@@ -427,6 +427,7 @@ onUnmounted(() => {
     <ImageGalleryHeader
       :show-text-overlay="showTextOverlay"
       :show-only-unread="galleryData.showOnlyUnread.value"
+      :is-sidebar-open="isSidebarOpen"
       @toggle-sidebar="emit('toggleSidebar')"
       @toggle-text-overlay="showTextOverlay = !showTextOverlay"
       @toggle-show-only-unread="galleryData.toggleShowOnlyUnread()"

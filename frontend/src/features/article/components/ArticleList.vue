@@ -91,6 +91,9 @@ const { activeFilters, resetFilterState, fetchFilteredArticles, loadMoreFiltered
 
 // AI Search enabled from settings
 const isAISearchEnabled = computed(() => settings.value.ai_search_enabled);
+const sidebarToggleLabel = computed(() =>
+  props.isSidebarOpen ? t('sidebar.activity.collapseFeedList') : t('sidebar.activity.expandFeedList')
+);
 
 // AI search active state
 const isAISearchActive = computed(() => articleStore.aiSearchResults.length > 0);
@@ -953,7 +956,12 @@ function cardModalRetryLoadContent(): void {
               </div>
             </Transition>
           </div>
-          <button class="md:hidden text-xl sm:text-2xl p-1" @click="emit('toggleSidebar')">
+          <button
+            class="md:hidden text-xl sm:text-2xl p-1"
+            :title="sidebarToggleLabel"
+            :aria-label="sidebarToggleLabel"
+            @click="emit('toggleSidebar')"
+          >
             <PhList :size="18" class="sm:w-5 sm:h-5" />
           </button>
         </div>

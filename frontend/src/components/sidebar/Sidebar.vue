@@ -139,7 +139,6 @@ function toggleActivityBar() {
         @add-feed="emitShowAddFeed"
         @settings="emitShowSettings"
         @toggle-feed-drawer="handleToggleFeedList"
-        @toggle-activity-bar="toggleActivityBar"
         @ready="handleActivityBarReady"
         @open-user-management="emit('open-user-management')"
       />

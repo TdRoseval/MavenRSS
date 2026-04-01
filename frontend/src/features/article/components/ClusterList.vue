@@ -2,7 +2,7 @@
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
-import { PhCheckCircle, PhArrowClockwise } from '@phosphor-icons/vue';
+import { PhCheckCircle, PhArrowClockwise, PhList } from '@phosphor-icons/vue';
 import ClusterItem from './ClusterItem.vue';
 import { useSettings } from '@/composables/core/useSettings';
 import type { Cluster, DailyRecommendationItem } from '@/types/models';
@@ -38,6 +38,9 @@ const isCardMode = computed(() => layoutMode.value === 'card');
 const itemHeight = computed(() => (layoutMode.value === 'compact' ? 104 : 128));
 const isDailyRecommendationMode = computed(
   () => articleStore.currentFilter === 'dailyRecommendations'
+);
+const sidebarToggleLabel = computed(() =>
+  props.isSidebarOpen ? t('sidebar.activity.collapseFeedList') : t('sidebar.activity.expandFeedList')
 );
 
 const temporarilyKeptClusterIds = ref<Set<number>>(new Set());
@@ -342,6 +345,14 @@ async function refreshRecommendations(): Promise<void> {
             @click="markAllAsRead"
           >
             <PhCheckCircle :size="18" class="sm:w-5 sm:h-5" />
+          </button>
+          <button
+            class="md:hidden text-xl sm:text-2xl p-1"
+            :title="sidebarToggleLabel"
+            :aria-label="sidebarToggleLabel"
+            @click="emit('toggleSidebar')"
+          >
+            <PhList :size="18" class="sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>

@@ -9,7 +9,6 @@ import {
   PhPlus,
   PhGear,
   PhTextOutdent,
-  PhSidebar,
   PhUsers,
   PhSignOut,
   PhSparkle,
@@ -57,7 +56,6 @@ const emit = defineEmits<{
   settings: [];
   'toggle-feed-drawer': [];
   ready: [{ expanded: boolean; pinned: boolean }];
-  'toggle-activity-bar': [];
   'open-user-management': [];
 }>();
 
@@ -304,7 +302,11 @@ defineExpose({
       <div class="flex flex-col items-center gap-1 mt-auto w-full">
         <button
           class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
-          :title="t('sidebar.feedList.toggleFeedDrawer')"
+          :title="
+            isFeedListExpanded
+              ? t('sidebar.activity.collapseFeedList')
+              : t('sidebar.activity.expandFeedList')
+          "
           @click="emit('toggle-feed-drawer')"
         >
           <PhTextOutdent :size="24" />
@@ -329,7 +331,7 @@ defineExpose({
 
         <button
           class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
-          :title="t('sidebar.activity.settings')"
+          :title="t('setting.tab.settings')"
           @click="emit('settings')"
         >
           <PhGear :size="24" />
@@ -337,44 +339,39 @@ defineExpose({
 
         <button
           class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-red-500 transition-colors"
-          :title="t('common.logout')"
+          :title="t('admin.logout')"
           @click="showLogoutConfirm = true"
         >
           <PhSignOut :size="24" />
         </button>
-
-        <button
-          class="md:hidden w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
-          :title="t('sidebar.activity.hideSidebar')"
-          @click="emit('toggle-activity-bar')"
-        >
-          <PhSidebar :size="24" />
-        </button>
       </div>
 
-      <div
-        v-if="showLogoutConfirm"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4"
-      >
-        <div class="w-full max-w-sm rounded-xl border border-border bg-bg-primary p-5 shadow-xl">
-          <h3 class="text-base font-semibold text-text-primary mb-2">
-            {{ t('common.logout') }}
-          </h3>
-          <p class="text-sm text-text-secondary mb-5">
-            {{ t('common.logoutConfirm') }}
-          </p>
-          <div class="flex justify-end gap-3">
-            <button class="btn-secondary" @click="cancelLogout">
-              {{ t('common.cancel') }}
-            </button>
-            <button class="btn-danger" @click="handleLogoutConfirm">
-              {{ t('common.confirm') }}
-            </button>
-          </div>
+    </div>
+  </Transition>
+
+  <Teleport to="body">
+    <div
+      v-if="showLogoutConfirm"
+      class="fixed inset-0 z-[160] flex items-center justify-center bg-black/50 px-4"
+    >
+      <div class="w-full max-w-sm rounded-xl border border-border bg-bg-primary p-5 shadow-xl">
+        <h3 class="text-base font-semibold text-text-primary mb-2">
+          {{ t('admin.logout') }}
+        </h3>
+        <p class="text-sm text-text-secondary mb-5">
+          {{ t('admin.confirmLogout') }}
+        </p>
+        <div class="flex justify-end gap-3">
+          <button class="btn-secondary" @click="cancelLogout">
+            {{ t('common.cancel') }}
+          </button>
+          <button class="btn-danger" @click="handleLogoutConfirm">
+            {{ t('common.confirm') }}
+          </button>
         </div>
       </div>
     </div>
-  </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
