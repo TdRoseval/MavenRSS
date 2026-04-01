@@ -660,16 +660,24 @@ const en: TranslationMessages = {
       tokens: 'tokens',
       aiEnhancedMode: 'AI Enhanced Mode',
       aiEnhancedModeDesc:
-        'Automatically generate AI summaries and translations for new articles in the background. Requires all AI features to be enabled.',
+        'Automatically process new articles in the background. Requires the base AI capabilities, AI Fusion, and AI Daily Recommendations to all be enabled.',
       aiEnhancedModeDisabled:
-        'Enable all AI features (summary, translation, search, chat) to use this mode',
+        'Enable the base AI capabilities (summary, translation, search, chat) plus AI Fusion and AI Daily Recommendations before using this mode',
       aiEnhancedModeRequiresFusionProfile:
         'Select a valid fusion profile before enabling AI Enhanced Mode',
+      aiEnhancedModeRequiresRecommendationProfile:
+        'Select a valid recommendation profile before enabling AI Enhanced Mode',
+      aiFusionEnabled: 'AI Fusion',
+      aiFusionEnabledDesc:
+        'Enable AI-based clustering and article fusion so related content can be merged into cluster views',
+      aiFusionDisabled:
+        'Configure the base AI capabilities (summary, translation, search, chat, embeddings) before enabling AI Fusion',
+      aiFusionRequiresProfile: 'Select a valid AI profile for AI Fusion first',
       aiRecommendationEnabled: 'AI Daily Recommendations',
       aiRecommendationEnabledDesc:
         'Enable AI-generated daily recommendations and historical recommendation browsing in the sidebar',
       aiRecommendationDisabled:
-        'Configure the prerequisites for AI Enhanced Mode before enabling AI Daily Recommendations',
+        'Enable the base AI capabilities and AI Fusion before enabling AI Daily Recommendations',
       aiRecommendationRequiresProfile:
         'Select a valid AI profile for AI Daily Recommendations first',
       selectRecommendationProfile: 'Recommendation Profile',

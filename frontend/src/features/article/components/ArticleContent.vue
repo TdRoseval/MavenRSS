@@ -383,13 +383,17 @@ async function generateSummary(article: Article, force: boolean = false) {
 
   const result = await generateSummaryComposable(article, displayContent.value, force);
 
+  // Update local UI state first so store sync issues can't swallow the summary.
+  summaryResult.value = result;
+
   // Update the article summary in store for caching
   if (result?.summary) {
-    articleStore.updateArticleSummary(article.id, result.summary);
+    try {
+      articleStore.updateArticleSummary(article.id, result.summary);
+    } catch (error) {
+      console.error('Error updating article summary cache:', error);
+    }
   }
-
-  // Set summary result
-  summaryResult.value = result;
 }
 
 // Check if should auto-generate summary

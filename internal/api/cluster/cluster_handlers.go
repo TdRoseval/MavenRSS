@@ -8,6 +8,7 @@ import (
 
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/interest"
+	"MavenRSS/internal/models"
 )
 
 // HandleClusters handles GET /api/clusters — list clusters with filtering and pagination.
@@ -53,6 +54,9 @@ func HandleClusters(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error getting clusters: %v", err)
 		http.Error(w, "Failed to get clusters", http.StatusInternalServerError)
 		return
+	}
+	if clusters == nil {
+		clusters = []models.Cluster{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

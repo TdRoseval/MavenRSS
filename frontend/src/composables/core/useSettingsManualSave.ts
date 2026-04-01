@@ -97,12 +97,32 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
       return true; // No changes to save
     }
 
-    if (
-      settingsRef.value.ai_enhanced_mode &&
-      String(settingsRef.value.ai_fusion_profile_id ?? '').trim() === ''
-    ) {
-      window.showToast?.(t('setting.ai.aiEnhancedModeRequiresFusionProfile'), 'error');
-      return false;
+    if (settingsRef.value.ai_enhanced_mode) {
+      const hasBaseAIEnhancedPrerequisites =
+        settingsRef.value.summary_enabled &&
+        settingsRef.value.summary_provider === 'ai' &&
+        settingsRef.value.translation_enabled &&
+        settingsRef.value.ai_search_enabled &&
+        settingsRef.value.ai_chat_enabled;
+
+      if (
+        !hasBaseAIEnhancedPrerequisites ||
+        !settingsRef.value.ai_fusion_enabled ||
+        !settingsRef.value.ai_recommendation_enabled
+      ) {
+        window.showToast?.(t('setting.ai.aiEnhancedModeDisabled'), 'error');
+        return false;
+      }
+
+      if (String(settingsRef.value.ai_fusion_profile_id ?? '').trim() === '') {
+        window.showToast?.(t('setting.ai.aiEnhancedModeRequiresFusionProfile'), 'error');
+        return false;
+      }
+
+      if (String(settingsRef.value.ai_recommendation_profile_id ?? '').trim() === '') {
+        window.showToast?.(t('setting.ai.aiEnhancedModeRequiresRecommendationProfile'), 'error');
+        return false;
+      }
     }
 
     isSaving.value = true;
@@ -170,6 +190,14 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
         new CustomEvent('image-gallery-setting-changed', {
           detail: {
             enabled: settingsRef.value.image_gallery_enabled,
+          },
+        })
+      );
+
+      window.dispatchEvent(
+        new CustomEvent('ai-recommendation-setting-changed', {
+          detail: {
+            enabled: settingsRef.value.ai_recommendation_enabled,
           },
         })
       );

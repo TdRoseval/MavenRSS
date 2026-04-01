@@ -6,6 +6,7 @@
   "ai_embedding_models": "[]",
   "ai_endpoint": "https://api.openai.com/v1/chat/completions",
   "ai_enhanced_mode": false,
+  "ai_fusion_enabled": false,
   "ai_fusion_profile_id": "",
   "ai_model": "gpt-4o-mini",
   "ai_recommendation_enabled": false,

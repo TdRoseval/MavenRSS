@@ -25,6 +25,7 @@ type Defaults struct {
 	AIEmbeddingModels             string `json:"ai_embedding_models"`
 	AIEndpoint                    string `json:"ai_endpoint"`
 	AIEnhancedMode                bool   `json:"ai_enhanced_mode"`
+	AIFusionEnabled               bool   `json:"ai_fusion_enabled"`
 	AIFusionProfileId             string `json:"ai_fusion_profile_id"`
 	AIModel                       string `json:"ai_model"`
 	AIRecommendationEnabled       bool   `json:"ai_recommendation_enabled"`
@@ -161,6 +162,8 @@ func GetString(key string) string {
 		return defaults.AIEndpoint
 	case "ai_enhanced_mode":
 		return strconv.FormatBool(defaults.AIEnhancedMode)
+	case "ai_fusion_enabled":
+		return strconv.FormatBool(defaults.AIFusionEnabled)
 	case "ai_fusion_profile_id":
 		return defaults.AIFusionProfileId
 	case "ai_model":

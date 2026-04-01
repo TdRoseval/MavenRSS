@@ -74,6 +74,8 @@ func TestShouldProcessUsesUserProfilesWithoutGlobalAIKey(t *testing.T) {
 	mustSetUserSetting(t, db, 1, "summary_enabled", "true")
 	mustSetUserSetting(t, db, 1, "summary_provider", "ai")
 	mustSetUserSetting(t, db, 1, "translation_enabled", "true")
+	mustSetUserSetting(t, db, 1, "ai_fusion_enabled", "true")
+	mustSetUserSetting(t, db, 1, "ai_recommendation_enabled", "true")
 	mustSetUserSetting(t, db, 1, "ai_search_enabled", "true")
 	mustSetUserSetting(t, db, 1, "ai_chat_enabled", "true")
 
@@ -89,6 +91,8 @@ func TestShouldProcessIgnoresGlobalAIKeyWithoutUserConfig(t *testing.T) {
 	mustSetGlobalSetting(t, db, "summary_enabled", "true")
 	mustSetGlobalSetting(t, db, "summary_provider", "ai")
 	mustSetGlobalSetting(t, db, "translation_enabled", "true")
+	mustSetGlobalSetting(t, db, "ai_fusion_enabled", "true")
+	mustSetGlobalSetting(t, db, "ai_recommendation_enabled", "true")
 	mustSetGlobalSetting(t, db, "ai_search_enabled", "true")
 	mustSetGlobalSetting(t, db, "ai_chat_enabled", "true")
 	mustSetGlobalEncryptedSetting(t, db, "ai_api_key", "global-key")
@@ -97,6 +101,82 @@ func TestShouldProcessIgnoresGlobalAIKeyWithoutUserConfig(t *testing.T) {
 
 	if ShouldProcess(db, 1) {
 		t.Fatal("ShouldProcess() = true, want false when only global AI config exists")
+	}
+}
+
+func TestShouldProcessRequiresFusionAndRecommendationEnabled(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:   1,
+		Name:     "summary",
+		APIKey:   "summary-key",
+		Endpoint: "https://summary.example.com",
+		Model:    "summary-model",
+	}); err != nil {
+		t.Fatalf("CreateAIProfile summary error: %v", err)
+	}
+
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:   1,
+		Name:     "translation",
+		APIKey:   "translation-key",
+		Endpoint: "https://translation.example.com",
+		Model:    "translation-model",
+	}); err != nil {
+		t.Fatalf("CreateAIProfile translation error: %v", err)
+	}
+
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:   1,
+		Name:     "search",
+		APIKey:   "search-key",
+		Endpoint: "https://search.example.com",
+		Model:    "search-model",
+	}); err != nil {
+		t.Fatalf("CreateAIProfile search error: %v", err)
+	}
+
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:   1,
+		Name:     "chat",
+		APIKey:   "chat-key",
+		Endpoint: "https://chat.example.com",
+		Model:    "chat-model",
+	}); err != nil {
+		t.Fatalf("CreateAIProfile chat error: %v", err)
+	}
+
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:   1,
+		Name:     "fusion",
+		APIKey:   "fusion-key",
+		Endpoint: "https://fusion.example.com",
+		Model:    "fusion-model",
+	}); err != nil {
+		t.Fatalf("CreateAIProfile fusion error: %v", err)
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+	mustSetUserSetting(t, db, 1, "ai_embedding_models", `[{"modelname":"embed","baseurl":"https://embed.example.com","apikey":"embed-key","rpm":0,"tpm":0,"use_global_proxy":true}]`)
+	mustSetUserSetting(t, db, 1, "summary_enabled", "true")
+	mustSetUserSetting(t, db, 1, "summary_provider", "ai")
+	mustSetUserSetting(t, db, 1, "translation_enabled", "true")
+	mustSetUserSetting(t, db, 1, "ai_search_enabled", "true")
+	mustSetUserSetting(t, db, 1, "ai_chat_enabled", "true")
+
+	if ShouldProcess(db, 1) {
+		t.Fatal("ShouldProcess() = true, want false when fusion/recommendation toggles are disabled")
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_fusion_enabled", "true")
+	if ShouldProcess(db, 1) {
+		t.Fatal("ShouldProcess() = true, want false when recommendation toggle is disabled")
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_recommendation_enabled", "true")
+	if !ShouldProcess(db, 1) {
+		t.Fatal("ShouldProcess() = false, want true when fusion/recommendation toggles are enabled")
 	}
 }
 

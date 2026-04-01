@@ -643,6 +643,18 @@ func ShouldProcess(db *sqlite.DB, userID int64) bool {
 		return false
 	}
 
+	// Check if AI fusion is enabled
+	aiFusionEnabled, _ := db.GetSettingWithFallback(userID, "ai_fusion_enabled")
+	if aiFusionEnabled != "true" {
+		return false
+	}
+
+	// Check if AI daily recommendations are enabled
+	aiRecommendationEnabled, _ := db.GetSettingWithFallback(userID, "ai_recommendation_enabled")
+	if aiRecommendationEnabled != "true" {
+		return false
+	}
+
 	return true
 }
 

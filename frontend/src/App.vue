@@ -181,6 +181,18 @@ function handleShowUserManagement(): void {
   }
 }
 
+function isEnabled(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
+function isAIEnhancedModeEnabled(data: Record<string, unknown>): boolean {
+  return (
+    isEnabled(data.ai_enhanced_mode) &&
+    isEnabled(data.ai_fusion_enabled) &&
+    isEnabled(data.ai_recommendation_enabled)
+  );
+}
+
 onMounted(() => {
   authStore.loadFromStorage();
   installGlobalHandlers();
@@ -247,7 +259,7 @@ async function loadInitialSettings() {
     isCardMode.value = layoutMode === 'card';
     setCompactMode(isCompactModeLayout);
     setArticleListWidth(isCompactModeLayout ? 500 : 350);
-    articleStore.setAIEnhancedMode(data.ai_enhanced_mode === 'true');
+    articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(data));
 
     window.dispatchEvent(new CustomEvent('settings-loaded'));
 

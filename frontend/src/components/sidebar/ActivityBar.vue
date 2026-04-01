@@ -15,7 +15,7 @@ import {
   PhSparkle,
 } from '@phosphor-icons/vue';
 import { useAuthStore } from '@/stores/auth';
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
 import { authFetchJson } from '@/shared/lib/authFetch';
@@ -118,12 +118,24 @@ const navItems = computed<NavItem[]>(() => [
 const imageGalleryEnabled = ref(false);
 const aiRecommendationEnabled = ref(false);
 
+function isEnabled(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
+function isAIEnhancedModeEnabled(data: Record<string, unknown>): boolean {
+  return (
+    isEnabled(data.ai_enhanced_mode) &&
+    isEnabled(data.ai_fusion_enabled) &&
+    isEnabled(data.ai_recommendation_enabled)
+  );
+}
+
 async function loadFeatureSettings() {
   try {
     const data = await authFetchJson<any>('/api/settings');
-    imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
-    aiRecommendationEnabled.value = data.ai_recommendation_enabled === 'true';
-    articleStore.setAIEnhancedMode(data.ai_enhanced_mode === 'true');
+    imageGalleryEnabled.value = isEnabled(data.image_gallery_enabled);
+    aiRecommendationEnabled.value = isEnabled(data.ai_recommendation_enabled);
+    articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(data));
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -158,16 +170,36 @@ onMounted(async () => {
     pinned: isFeedListPinned.value,
   });
 
-  window.addEventListener('image-gallery-setting-changed', (e: Event) => {
-    const customEvent = e as CustomEvent;
-    imageGalleryEnabled.value = customEvent.detail.enabled;
-  });
-
-  window.addEventListener('ai-recommendation-setting-changed', (e: Event) => {
-    const customEvent = e as CustomEvent<{ enabled: boolean }>;
-    aiRecommendationEnabled.value = customEvent.detail.enabled;
-  });
+  window.addEventListener('image-gallery-setting-changed', handleImageGallerySettingChanged);
+  window.addEventListener('ai-recommendation-setting-changed', handleAIRecommendationSettingChanged);
+  window.addEventListener('settings-updated', handleSettingsUpdated);
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('image-gallery-setting-changed', handleImageGallerySettingChanged);
+  window.removeEventListener(
+    'ai-recommendation-setting-changed',
+    handleAIRecommendationSettingChanged
+  );
+  window.removeEventListener('settings-updated', handleSettingsUpdated);
+});
+
+function handleImageGallerySettingChanged(e: Event) {
+  const customEvent = e as CustomEvent<{ enabled: boolean }>;
+  imageGalleryEnabled.value = customEvent.detail.enabled;
+}
+
+function handleAIRecommendationSettingChanged(e: Event) {
+  const customEvent = e as CustomEvent<{ enabled: boolean }>;
+  aiRecommendationEnabled.value = customEvent.detail.enabled;
+}
+
+function handleSettingsUpdated() {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
+  loadFeatureSettings();
+}
 
 function handleNavClick(item: NavItem) {
   clearAllFilters();

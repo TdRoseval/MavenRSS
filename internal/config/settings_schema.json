@@ -753,6 +753,13 @@
       "encrypted": false,
       "frontend_key": "aiEnhancedMode"
     },
+    "ai_fusion_enabled": {
+      "type": "bool",
+      "default": false,
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiFusionEnabled"
+    },
     "ai_embedding_models": {
       "type": "string",
       "default": "[]",

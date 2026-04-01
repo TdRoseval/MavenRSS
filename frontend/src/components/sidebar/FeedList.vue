@@ -130,13 +130,25 @@ const compactMode = computed(() => {
   return settings.value.layout_mode === 'compact';
 });
 
+function isEnabled(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
+function isAIEnhancedModeEnabled(data: Record<string, unknown>): boolean {
+  return (
+    isEnabled(data.ai_enhanced_mode) &&
+    isEnabled(data.ai_fusion_enabled) &&
+    isEnabled(data.ai_recommendation_enabled)
+  );
+}
+
 // Initialize settings on mount
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     try {
       await fetchSettings();
       await fetchSavedFilters();
-      articleStore.setAIEnhancedMode(settings.value.ai_enhanced_mode === 'true');
+      articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(settings.value));
     } catch (e) {
       console.error('Error loading settings in FeedList:', e);
     }
@@ -153,7 +165,7 @@ function handleLayoutModeChange() {
   }
   fetchSettings()
     .then(() => {
-      articleStore.setAIEnhancedMode(settings.value.ai_enhanced_mode === 'true');
+      articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(settings.value));
     })
     .catch((e) => {
       console.error('Error re-fetching settings after layout mode change:', e);

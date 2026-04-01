@@ -307,6 +307,17 @@ export const useArticleStore = defineStore('article', () => {
     isFilterLoading.value = loading;
   }
 
+  function updateArticleSummary(articleId: number, summary: string): void {
+    const collections = [articles.value, filteredArticlesFromServer.value, aiSearchResults.value];
+
+    collections.forEach((collection) => {
+      const article = collection.find((item) => item.id === articleId);
+      if (article) {
+        article.summary = summary;
+      }
+    });
+  }
+
   return {
     articles,
     unreadCounts,
@@ -347,5 +358,6 @@ export const useArticleStore = defineStore('article', () => {
     setActiveFilters,
     setFilteredArticlesFromServer,
     setFilterLoading,
+    updateArticleSummary,
   };
 });

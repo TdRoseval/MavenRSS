@@ -35,12 +35,18 @@ export const useClusterStore = defineStore('cluster', () => {
       null
   );
 
-  function normalizeClusterListResponse(response: Cluster[] | ClusterListResponse): Cluster[] {
-    if (Array.isArray(response)) {
-      return response;
-    }
+function normalizeClusterListResponse(
+  response: Cluster[] | ClusterListResponse | null | undefined
+): Cluster[] {
+  if (!response) {
+    return [];
+  }
 
-    return response.clusters || [];
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  return response.clusters || [];
   }
 
   async function fetchClusters(page = 1) {
@@ -134,8 +140,8 @@ export const useClusterStore = defineStore('cluster', () => {
 
   async function fetchDailyRecommendationDates(): Promise<string[]> {
     try {
-      const response = await apiClient.get<{ dates: string[] }>('/recommendations/dates');
-      dailyRecommendationDates.value = response.dates || [];
+      const response = await apiClient.get<string[]>('/clusters/daily-recommendations/dates');
+      dailyRecommendationDates.value = response || [];
 
       if (!selectedRecommendationDate.value && dailyRecommendationDates.value.length > 0) {
         selectedRecommendationDate.value = dailyRecommendationDates.value[0];
@@ -161,11 +167,14 @@ export const useClusterStore = defineStore('cluster', () => {
     dailyRecommendationsError.value = '';
 
     try {
-      const response = await apiClient.get<DailyRecommendationResponse>('/recommendations/daily', {
-        date: targetDate,
-      });
+      const response = await apiClient.get<DailyRecommendationResponse>(
+        '/clusters/daily-recommendations',
+        {
+          date: targetDate,
+        }
+      );
       dailyRecommendations.value = response.recommendations || [];
-      selectedRecommendationDate.value = response.date || targetDate;
+      selectedRecommendationDate.value = response.selected_date || targetDate;
 
       if (dailyRecommendations.value.length > 0) {
         currentClusterId.value = dailyRecommendations.value[0].cluster.id;
@@ -228,7 +237,7 @@ export const useClusterStore = defineStore('cluster', () => {
 
   async function reportClusterClick(clusterId: number) {
     try {
-      await apiClient.post(`/recommendations/clusters/${clusterId}/click`, {});
+      await apiClient.post('/clusters/click', { cluster_id: clusterId });
     } catch (error) {
       console.error('Failed to report cluster click:', error);
     }
