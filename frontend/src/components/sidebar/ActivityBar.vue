@@ -115,14 +115,15 @@ const navItems = computed<NavItem[]>(() => [
 ]);
 
 const imageGalleryEnabled = ref(false);
-const aiRecommendationEnabled = ref(false);
+const dailyRecommendationsVisible = ref(false);
 
 async function loadFeatureSettings() {
   try {
     const data = await authFetchJson<any>('/api/settings');
     imageGalleryEnabled.value = isEnabledSetting(data.image_gallery_enabled);
-    aiRecommendationEnabled.value = isEnabledSetting(data.ai_recommendation_enabled);
-    articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(data));
+    const aiEnhancedModeEnabled = isAIEnhancedModeEffectivelyEnabled(data);
+    dailyRecommendationsVisible.value = aiEnhancedModeEnabled;
+    articleStore.setAIEnhancedMode(aiEnhancedModeEnabled);
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -177,8 +178,10 @@ function handleImageGallerySettingChanged(e: Event) {
 }
 
 function handleAIRecommendationSettingChanged(e: Event) {
-  const customEvent = e as CustomEvent<{ enabled: boolean }>;
-  aiRecommendationEnabled.value = customEvent.detail.enabled;
+  if (!authStore.isAuthenticated) {
+    return;
+  }
+  loadFeatureSettings();
 }
 
 function handleSettingsUpdated() {
@@ -226,7 +229,7 @@ function isVisible(item: NavItem) {
     return imageGalleryEnabled.value;
   }
   if (item.id === 'dailyRecommendations') {
-    return aiRecommendationEnabled.value;
+    return dailyRecommendationsVisible.value;
   }
   return true;
 }

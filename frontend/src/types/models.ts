@@ -42,6 +42,7 @@ export interface Cluster {
   display_title?: string;
   merged_summary: string;
   merged_content: string;
+  image_url?: string;
   article_count: number;
   created_at: string;
   updated_at: string;
@@ -72,6 +73,32 @@ export interface DailyRecommendationResponse {
   available_dates: string[];
   recommendations: DailyRecommendationItem[];
   total: number;
+}
+
+export interface DailyRecommendationTaskStatus {
+  is_enabled: boolean;
+  has_task: boolean;
+  recommendation_date?: string;
+  trigger?: string;
+  stage?: string;
+  is_queued: boolean;
+  is_running: boolean;
+  is_waiting_for_idle: boolean;
+  force: boolean;
+  progress_percent: number;
+  candidate_count: number;
+  selected_count: number;
+  saved_count: number;
+  started_at?: string;
+  updated_at?: string;
+  last_error_message?: string;
+  last_error_at?: string;
+}
+
+export interface DailyRecommendationRefreshResponse {
+  scheduled: boolean;
+  date: string;
+  status: DailyRecommendationTaskStatus;
 }
 
 export interface AIProcessingStatus {

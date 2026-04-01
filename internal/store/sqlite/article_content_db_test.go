@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -95,6 +96,40 @@ func TestArticleContentCache(t *testing.T) {
 		}
 		if content != updatedContent {
 			t.Errorf("Updated content mismatch: got %q, want %q", content, updatedContent)
+		}
+	})
+
+	t.Run("Get ArticleContent normalizes legacy markdown cache", func(t *testing.T) {
+		articleID := int64(22)
+		_, err = db.Exec(`INSERT INTO articles (id, user_id, title, url, published_at) VALUES (?, 1, 'Legacy', 'url22', CURRENT_TIMESTAMP)`, articleID)
+		if err != nil {
+			t.Fatalf("Failed to insert dummy article %d: %v", articleID, err)
+		}
+
+		legacyMarkdown := "Intro paragraph\n\nTable of Contents [Toggle](https://example.com/toggle)\n- [One](https://example.com/one)\n- [Two](https://example.com/two)\n\n## Heading"
+		_, err = db.Exec(
+			`INSERT INTO article_contents (article_id, content, fetched_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+			articleID, legacyMarkdown,
+		)
+		if err != nil {
+			t.Fatalf("Failed to insert legacy article content: %v", err)
+		}
+
+		content, found, err := db.GetArticleContent(articleID)
+		if err != nil {
+			t.Fatalf("Failed to get normalized legacy content: %v", err)
+		}
+		if !found {
+			t.Fatal("Expected normalized legacy content to be found")
+		}
+		if content == legacyMarkdown {
+			t.Fatalf("Expected legacy markdown to be normalized, got original content: %q", content)
+		}
+		if content == "" {
+			t.Fatal("Expected normalized content to be non-empty")
+		}
+		if contains := strings.Contains(content, "Table of Contents"); contains {
+			t.Fatalf("Expected normalized content to remove TOC boilerplate: %q", content)
 		}
 	})
 

@@ -186,6 +186,8 @@ const forceTranslated = ref(false); // 是否是强制翻译的
 const isForceTranslating = ref(false); // 是否正在进行强制翻译
 const translatedContentCache = ref<Map<number, { content: string; targetLang: string }>>(new Map());
 const isLoadingTranslatedContent = ref(false);
+const proseContentRef = ref<HTMLElement | null>(null);
+const articleRenderGeneration = ref(0);
 
 // Computed: whether translation is effectively enabled (global + feed setting)
 const effectiveTranslationEnabled = computed(() => {
@@ -251,9 +253,23 @@ async function loadTranslatedContent(
   return null;
 }
 
+function getProseContainer(): HTMLElement | null {
+  return (proseContentRef.value?.querySelector('.prose-content') as HTMLElement | null) ?? null;
+}
+
+function isStaleArticleRender(articleId: number | null, generation: number): boolean {
+  return props.article?.id !== articleId || articleRenderGeneration.value !== generation;
+}
+
 // Apply translated content directly to DOM
-function applyTranslatedContent(htmlContent: string): void {
-  const proseContainer = document.querySelector('.prose-content');
+function applyTranslatedContent(
+  htmlContent: string,
+  articleId: number | null,
+  generation: number
+): void {
+  if (isStaleArticleRender(articleId, generation)) return;
+
+  const proseContainer = getProseContainer();
   if (!proseContainer) return;
 
   proseContainer.innerHTML = htmlContent;
@@ -481,10 +497,12 @@ async function translateContentParagraphs(content: string) {
     return;
   }
 
+  const articleId = props.article?.id || null;
+  const generation = articleRenderGeneration.value;
   const contentHash = simpleHash(content);
 
   if (
-    lastTranslatedArticleId.value === props.article?.id &&
+    lastTranslatedArticleId.value === articleId &&
     lastTranslatedContentHash.value === contentHash
   ) {
     // console.log('[ArticleContent] Translation skipped: already translated');
@@ -492,14 +510,18 @@ async function translateContentParagraphs(content: string) {
   }
 
   isTranslatingContent.value = true;
-  lastTranslatedArticleId.value = props.article?.id || null;
+  lastTranslatedArticleId.value = articleId;
   lastTranslatedContentHash.value = contentHash;
 
   // Wait for content to render
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
 
   // Find all text elements in the prose content
-  const proseContainer = document.querySelector('.prose-content');
+  const proseContainer = getProseContainer();
   if (!proseContainer) {
     isTranslatingContent.value = false;
     return;
@@ -649,6 +671,10 @@ async function translateContentParagraphs(content: string) {
     // Always use force: true for individual paragraphs
     // This ensures each paragraph gets translated, even if language detection is uncertain
     const translation = await translateText(textWithPlaceholders, true);
+    if (isStaleArticleRender(articleId, generation)) {
+      isTranslatingContent.value = false;
+      return;
+    }
 
     // Skip if translation was already added by another concurrent translation
     if (htmlEl.querySelector('.translation-text') || htmlEl.closest('.translation-text')) {
@@ -702,6 +728,10 @@ async function translateContentParagraphs(content: string) {
 
   // Re-apply rendering enhancements to translation elements (for math formulas)
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
   proseContainer.querySelectorAll('.translation-text').forEach((el) => {
     renderMathFormulas(el as HTMLElement);
     highlightCodeBlocks(el as HTMLElement);
@@ -712,9 +742,9 @@ async function translateContentParagraphs(content: string) {
   await reattachImageInteractions();
 
   // Save the translated HTML content to database for future use
-  if (proseContainer && props.article) {
+  if (proseContainer && articleId !== null) {
     await saveTranslatedContent(
-      props.article.id,
+      articleId,
       proseContainer.innerHTML,
       targetLanguage.value,
       translationSettings.value.provider || 'unknown'
@@ -801,6 +831,8 @@ watch(
   () => props.article?.id,
   async (newId, oldId) => {
     if (newId !== oldId) {
+      articleRenderGeneration.value++;
+
       // Cancel any ongoing summary generation for the previous article
       if (oldId !== undefined) {
         cancelSummaryGeneration(oldId);
@@ -831,18 +863,24 @@ watch(
 
         // Try to load cached translated content first
         if (translationEnabled.value && targetLanguage.value) {
+          const articleId = props.article.id;
+          const generation = articleRenderGeneration.value;
           isLoadingTranslatedContent.value = true;
-          const cachedContent = await loadTranslatedContent(props.article.id, targetLanguage.value);
+          const cachedContent = await loadTranslatedContent(articleId, targetLanguage.value);
+
+          if (isStaleArticleRender(articleId, generation)) {
+            isLoadingTranslatedContent.value = false;
+            return;
+          }
 
           if (cachedContent) {
             // Apply cached content directly after DOM is ready
             await nextTick();
-            // Wait for original content to be rendered first
-            setTimeout(async () => {
-              applyTranslatedContent(cachedContent);
-              lastTranslatedArticleId.value = props.article?.id || null;
+            applyTranslatedContent(cachedContent, articleId, generation);
+            if (!isStaleArticleRender(articleId, generation)) {
+              lastTranslatedArticleId.value = articleId;
               lastTranslatedContentHash.value = simpleHash(displayContent.value || '');
-            }, 100);
+            }
           } else {
             // No cached content, translate title and content as usual
             translateTitle(props.article);
@@ -1054,7 +1092,7 @@ async function forceTranslateAll() {
   lastTranslatedContentHash.value = '';
 
   // Clear existing translations in DOM
-  const proseContainer = document.querySelector('.prose-content');
+  const proseContainer = getProseContainer();
   if (proseContainer) {
     const existingTranslations = proseContainer.querySelectorAll('.translation-text');
     existingTranslations.forEach((el) => el.remove());
@@ -1099,15 +1137,21 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
 
   // Do NOT check feed translation setting - force translation regardless
 
+  const articleId = props.article?.id || null;
+  const generation = articleRenderGeneration.value;
   isTranslatingContent.value = true;
-  lastTranslatedArticleId.value = props.article?.id || null;
+  lastTranslatedArticleId.value = articleId;
   lastTranslatedContentHash.value = simpleHash(content);
 
   // Wait for content to render
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
 
   // Find all text elements in the prose content
-  const proseContainer = document.querySelector('.prose-content');
+  const proseContainer = getProseContainer();
   if (!proseContainer) {
     isTranslatingContent.value = false;
     return;
@@ -1241,6 +1285,10 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
     // Use preemptive flag only on first request
     const translation = await translateText(textWithPlaceholders, true, firstRequest);
     firstRequest = false;
+    if (isStaleArticleRender(articleId, generation)) {
+      isTranslatingContent.value = false;
+      return;
+    }
 
     const translatedText = translation.text;
     // console.log(`[Translation] Original="${textWithPlaceholders.substring(0, 50)}...", Translated="${translatedText.substring(0, 50)}..."`);
@@ -1285,6 +1333,10 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
 
   // Re-apply rendering enhancements
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
   proseContainer.querySelectorAll('.translation-text').forEach((el) => {
     renderMathFormulas(el as HTMLElement);
     highlightCodeBlocks(el as HTMLElement);
@@ -1294,9 +1346,9 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
   await reattachImageInteractions();
 
   // Save the translated HTML content to database for future use
-  if (proseContainer && props.article) {
+  if (proseContainer && articleId !== null) {
     await saveTranslatedContent(
-      props.article.id,
+      articleId,
       proseContainer.innerHTML,
       targetLanguage.value,
       translationSettings.value.provider || 'unknown'
@@ -1329,6 +1381,7 @@ defineExpose({
 
 <template>
   <div
+    ref="proseContentRef"
     class="flex-1 overflow-y-scroll bg-bg-primary p-3 sm:p-6 scroll-smooth"
     @click="handleContainerClick"
   >

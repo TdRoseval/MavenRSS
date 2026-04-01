@@ -47,10 +47,9 @@ const {
   goToPreviousArticle,
   goToNextArticle,
   isRefreshing,
+  refreshArticle: refreshArticleFromComposable,
   t,
 } = useArticleDetail();
-
-const { refreshArticle: refreshArticleFromComposable } = useArticleDetail();
 
 async function refreshArticle() {
   await refreshArticleFromComposable();

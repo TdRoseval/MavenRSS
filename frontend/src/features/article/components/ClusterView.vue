@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ClusterList from './ClusterList.vue';
 import ClusterDetail from './ClusterDetail.vue';
@@ -26,6 +26,10 @@ const { startResizeArticleList } = useResizablePanels();
 const isMobile = ref(window.innerWidth < 768);
 const mobileView = ref<'list' | 'detail'>('list');
 const showRecentFailureModal = ref(false);
+const isDailyRecommendationMode = computed(
+  () => articleStore.currentFilter === 'dailyRecommendations'
+);
+const dailyRecommendationTaskStatus = computed(() => clusterStore.dailyRecommendationTaskStatus);
 
 function handleResize() {
   const wasMobile = isMobile.value;
@@ -37,11 +41,10 @@ function handleResize() {
 }
 
 async function loadClusterData() {
-  if (clusterStore.shouldBlockClusterView) {
-    return;
-  }
-
-  if (articleStore.currentFilter === 'dailyRecommendations') {
+  if (isDailyRecommendationMode.value) {
+    if (clusterStore.shouldBlockDailyRecommendationView) {
+      return;
+    }
     const dates = await clusterStore.fetchDailyRecommendationDates();
     if (dates.length > 0) {
       await clusterStore.fetchDailyRecommendations(
@@ -50,6 +53,10 @@ async function loadClusterData() {
     } else {
       clusterStore.dailyRecommendations = [];
     }
+    return;
+  }
+
+  if (clusterStore.shouldBlockClusterView) {
     return;
   }
 
@@ -96,6 +103,47 @@ function getFailureStageLabel(stage?: string) {
   }
 }
 
+function getRecommendationTaskStageLabel(stage?: string) {
+  switch (stage) {
+    case 'queued':
+      return t('article.cluster.dailyRecommendationTaskStageQueued');
+    case 'waiting_for_idle':
+      return t('article.cluster.dailyRecommendationTaskStageWaiting');
+    case 'preparing':
+      return t('article.cluster.dailyRecommendationTaskStagePreparing');
+    case 'recalling':
+      return t('article.cluster.dailyRecommendationTaskStageRecalling');
+    case 'ranking':
+      return t('article.cluster.dailyRecommendationTaskStageRanking');
+    case 'scoring':
+      return t('article.cluster.dailyRecommendationTaskStageScoring');
+    case 'saving':
+      return t('article.cluster.dailyRecommendationTaskStageSaving');
+    case 'failed':
+      return t('article.cluster.dailyRecommendationTaskStageFailed');
+    default:
+      return t('article.cluster.processingUnknownFailureStage');
+  }
+}
+
+function getRecommendationTaskTriggerLabel(trigger?: string) {
+  return trigger === 'manual'
+    ? t('article.cluster.dailyRecommendationTaskTriggerManual')
+    : t('article.cluster.dailyRecommendationTaskTriggerAutomatic');
+}
+
+function getRecommendationTaskDescription() {
+  if (dailyRecommendationTaskStatus.value?.is_waiting_for_idle) {
+    return t('article.cluster.dailyRecommendationTaskWaitingDescription');
+  }
+
+  if (dailyRecommendationTaskStatus.value?.trigger === 'manual') {
+    return t('article.cluster.dailyRecommendationTaskManualDescription');
+  }
+
+  return t('article.cluster.dailyRecommendationTaskAutomaticDescription');
+}
+
 onMounted(() => {
   window.addEventListener('resize', handleResize);
   clusterStore
@@ -114,6 +162,10 @@ onBeforeUnmount(() => {
 watch(
   () => clusterStore.shouldBlockClusterView,
   (isBlocked, wasBlocked) => {
+    if (isDailyRecommendationMode.value) {
+      return;
+    }
+
     if (isBlocked) {
       clusterStore.clearData();
       return;
@@ -152,6 +204,13 @@ watch(
     clusterStore.currentClusterId = null;
     mobileView.value = 'list';
 
+    if (isDailyRecommendationMode.value) {
+      loadClusterData().catch((error) => {
+        console.error('Failed to reload daily recommendations:', error);
+      });
+      return;
+    }
+
     if (clusterStore.shouldBlockClusterView) {
       clusterStore.clearData();
       return;
@@ -160,6 +219,21 @@ watch(
     loadClusterData().catch((error) => {
       console.error('Failed to reload cluster data:', error);
     });
+  }
+);
+
+watch(
+  () => clusterStore.shouldBlockDailyRecommendationView,
+  (isBlocked, wasBlocked) => {
+    if (!isDailyRecommendationMode.value) {
+      return;
+    }
+
+    if (wasBlocked && !isBlocked) {
+      loadClusterData().catch((error) => {
+        console.error('Failed to load daily recommendations after task completed:', error);
+      });
+    }
   }
 );
 
@@ -175,7 +249,126 @@ watch(
 
 <template>
   <div class="flex h-full w-full overflow-hidden relative">
-    <template v-if="clusterStore.shouldBlockClusterView">
+    <template v-if="isDailyRecommendationMode && clusterStore.shouldBlockDailyRecommendationView">
+      <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
+        <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">
+          <div class="text-sm font-medium uppercase tracking-[0.18em] text-text-tertiary">
+            {{ t('article.cluster.dailyRecommendationTaskLabel') }}
+          </div>
+          <h3 class="mt-3 text-xl font-semibold text-text-primary">
+            {{ t('article.cluster.dailyRecommendationTaskTitle') }}
+          </h3>
+          <p class="mt-2 text-sm leading-6 text-text-secondary">
+            {{ getRecommendationTaskDescription() }}
+          </p>
+
+          <div class="mt-6">
+            <div class="mb-2 flex items-center justify-between text-sm text-text-secondary">
+              <span>{{ t('article.cluster.processingProgress') }}</span>
+              <span>{{ clusterStore.dailyRecommendationTaskProgressPercent }}%</span>
+            </div>
+            <div class="h-3 overflow-hidden rounded-full bg-bg-tertiary">
+              <div
+                class="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+                :style="{ width: `${clusterStore.dailyRecommendationTaskProgressPercent}%` }"
+              />
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div class="rounded-xl bg-bg-primary p-3">
+              <div class="text-text-tertiary">
+                {{ t('article.cluster.dailyRecommendationTaskDate') }}
+              </div>
+              <div class="mt-1 text-sm font-semibold text-text-primary">
+                {{ dailyRecommendationTaskStatus?.recommendation_date || '-' }}
+              </div>
+            </div>
+            <div class="rounded-xl bg-bg-primary p-3">
+              <div class="text-text-tertiary">
+                {{ t('article.cluster.dailyRecommendationTaskTrigger') }}
+              </div>
+              <div class="mt-1 text-sm font-semibold text-text-primary">
+                {{ getRecommendationTaskTriggerLabel(dailyRecommendationTaskStatus?.trigger) }}
+              </div>
+            </div>
+            <div class="rounded-xl bg-bg-primary p-3">
+              <div class="text-text-tertiary">
+                {{ t('article.cluster.dailyRecommendationTaskCandidates') }}
+              </div>
+              <div class="mt-1 text-lg font-semibold text-text-primary">
+                {{ dailyRecommendationTaskStatus?.candidate_count ?? 0 }}
+              </div>
+            </div>
+            <div class="rounded-xl bg-bg-primary p-3">
+              <div class="text-text-tertiary">
+                {{ t('article.cluster.dailyRecommendationTaskSelected') }}
+              </div>
+              <div class="mt-1 text-lg font-semibold text-text-primary">
+                {{ dailyRecommendationTaskStatus?.selected_count ?? 0 }}
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 rounded-2xl border border-border/70 bg-bg-primary p-4">
+            <div class="text-sm font-medium text-text-primary">
+              {{ t('article.cluster.dailyRecommendationTaskStage') }}
+            </div>
+            <p class="mt-1 text-xs leading-5 text-text-tertiary">
+              {{ getRecommendationTaskStageLabel(dailyRecommendationTaskStatus?.stage) }}
+            </p>
+
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <div class="rounded-xl bg-bg-secondary p-3">
+                <div class="text-text-tertiary">
+                  {{ t('article.cluster.dailyRecommendationTaskSaved') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-text-primary">
+                  {{ dailyRecommendationTaskStatus?.saved_count ?? 0 }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-bg-secondary p-3">
+                <div class="text-text-tertiary">
+                  {{ t('article.cluster.processingQueued') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-text-primary">
+                  {{ dailyRecommendationTaskStatus?.is_queued ? 1 : 0 }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-bg-secondary p-3">
+                <div class="text-text-tertiary">
+                  {{ t('article.cluster.processingWorkers') }}
+                </div>
+                <div class="mt-1 text-lg font-semibold text-text-primary">
+                  {{ dailyRecommendationTaskStatus?.is_running ? 1 : 0 }}
+                </div>
+              </div>
+            </div>
+
+            <p
+              v-if="dailyRecommendationTaskStatus?.is_waiting_for_idle"
+              class="mt-4 text-xs leading-5 text-text-tertiary"
+            >
+              {{ t('article.cluster.dailyRecommendationTaskWaitingHint') }}
+            </p>
+
+            <div
+              v-if="dailyRecommendationTaskStatus?.last_error_message"
+              class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+            >
+              <div class="font-medium">
+                {{ t('article.cluster.processingRecentFailureTitle') }}
+              </div>
+              <div class="mt-2 rounded-lg bg-white/70 p-3 text-xs leading-5 text-amber-900">
+                {{ dailyRecommendationTaskStatus?.last_error_message }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="clusterStore.shouldBlockClusterView">
       <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
         <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">
           <div class="text-sm font-medium uppercase tracking-[0.18em] text-text-tertiary">

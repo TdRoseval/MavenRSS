@@ -28,12 +28,12 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 	summaryText := article.Summary
 	if summaryText == "" {
 		// No summary available, create a standalone cluster
-		return createStandaloneCluster(db, articleID, userID)
+		return createStandaloneCluster(db, articleID, userID, article.IsFavorite)
 	}
 
 	// Step 1: SimHash-based literal dedup
 	if !IsValidForSimHash(summaryText) {
-		return createStandaloneCluster(db, articleID, userID)
+		return createStandaloneCluster(db, articleID, userID, article.IsFavorite)
 	}
 
 	hash := ComputeSimHash64(summaryText)
@@ -58,7 +58,7 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 		if dist <= SimHashThreshold {
 			log.Printf("Article %d matched article %d via SimHash (distance=%d), joining cluster %d",
 				articleID, c.ArticleID, dist, c.ClusterID)
-			return joinCluster(db, articleID, c.ClusterID)
+			return joinCluster(db, articleID, c.ClusterID, article.IsFavorite)
 		}
 	}
 
@@ -69,11 +69,11 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 	}
 	if clusterID > 0 {
 		log.Printf("Article %d matched cluster %d via semantic search", articleID, clusterID)
-		return joinCluster(db, articleID, clusterID)
+		return joinCluster(db, articleID, clusterID, article.IsFavorite)
 	}
 
 	// Step 3: No match — create new standalone cluster
-	return createStandaloneCluster(db, articleID, userID)
+	return createStandaloneCluster(db, articleID, userID, article.IsFavorite)
 }
 
 func semanticSearch(db *sqlite.DB, articleID, userID int64) (int64, error) {
@@ -103,8 +103,11 @@ func semanticSearch(db *sqlite.DB, articleID, userID int64) (int64, error) {
 	return 0, nil
 }
 
-func joinCluster(db *sqlite.DB, articleID, clusterID int64) error {
+func joinCluster(db *sqlite.DB, articleID, clusterID int64, articleIsFavorite bool) error {
 	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		return err
+	}
+	if err := syncClusterFavoriteFromArticle(db, clusterID, articleIsFavorite); err != nil {
 		return err
 	}
 	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
@@ -114,7 +117,7 @@ func joinCluster(db *sqlite.DB, articleID, clusterID int64) error {
 	return db.UpdateClusterStatus(clusterID, "pending_merge")
 }
 
-func createStandaloneCluster(db *sqlite.DB, articleID, userID int64) error {
+func createStandaloneCluster(db *sqlite.DB, articleID, userID int64, articleIsFavorite bool) error {
 	clusterID, err := db.CreateCluster(userID, "pending_merge")
 	if err != nil {
 		return err
@@ -122,8 +125,18 @@ func createStandaloneCluster(db *sqlite.DB, articleID, userID int64) error {
 	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
 		return err
 	}
+	if err := syncClusterFavoriteFromArticle(db, clusterID, articleIsFavorite); err != nil {
+		return err
+	}
 	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
 		return err
 	}
 	return nil
+}
+
+func syncClusterFavoriteFromArticle(db *sqlite.DB, clusterID int64, articleIsFavorite bool) error {
+	if !articleIsFavorite {
+		return nil
+	}
+	return db.SetClusterFavorite(clusterID, true)
 }

@@ -292,7 +292,7 @@ async function refreshRecommendations(): Promise<void> {
   isRefreshingRecommendations.value = true;
   try {
     await clusterStore.refreshDailyRecommendations();
-    window.showToast(t('article.cluster.dailyRecommendationRefreshed'), 'success');
+    window.showToast(t('article.cluster.dailyRecommendationRefreshStarted'), 'success');
   } catch (error) {
     console.error('Error refreshing daily recommendations:', error);
     window.showToast(t('article.cluster.dailyRecommendationLoadFailed'), 'error');
@@ -329,7 +329,11 @@ async function refreshRecommendations(): Promise<void> {
           <button
             v-if="isDailyRecommendationMode"
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors disabled:opacity-50"
-            :disabled="isRefreshingRecommendations || clusterStore.isDailyRecommendationsLoading"
+            :disabled="
+              isRefreshingRecommendations ||
+              clusterStore.isDailyRecommendationsLoading ||
+              clusterStore.shouldBlockDailyRecommendationView
+            "
             :title="t('article.cluster.refreshRecommendations')"
             @click="refreshRecommendations"
           >

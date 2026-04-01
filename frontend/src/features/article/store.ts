@@ -68,6 +68,16 @@ export const useArticleStore = defineStore('article', () => {
 
   function setAIEnhancedMode(enabled: boolean): void {
     aiEnhancedMode.value = enabled;
+    if (!enabled && currentFilter.value === 'dailyRecommendations') {
+      currentFilter.value = 'all';
+      currentFeedId.value = null;
+      currentCategory.value = null;
+      tempSelection.value = { feedId: null, category: null };
+      void fetchFilterCounts();
+      fetchArticles();
+      return;
+    }
+
     if (shouldUseClusterList()) {
       resetArticleCollection();
       return;

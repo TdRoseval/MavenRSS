@@ -111,7 +111,7 @@ FROM clusters WHERE user_id = ? AND status = ?
 func (db *DB) GetArticlesByClusterID(clusterID int64) ([]models.Article, error) {
 	db.WaitForReady()
 	rows, err := db.Query(`
-		SELECT a.id, a.feed_id, a.title, a.url, a.published_at, a.summary, f.title, a.author, COALESCE(a.translated_title, '')
+		SELECT a.id, a.feed_id, a.title, a.url, COALESCE(a.image_url, ''), a.published_at, a.summary, f.title, a.author, COALESCE(a.translated_title, '')
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.cluster_id = ?
@@ -127,7 +127,7 @@ func (db *DB) GetArticlesByClusterID(clusterID int64) ([]models.Article, error) 
 		var a models.Article
 		var publishedAt sql.NullTime
 		var summary, feedTitle, author sql.NullString
-		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &publishedAt, &summary, &feedTitle, &author, &a.TranslatedTitle); err != nil {
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &a.ImageURL, &publishedAt, &summary, &feedTitle, &author, &a.TranslatedTitle); err != nil {
 			log.Printf("Error scanning cluster article: %v", err)
 			continue
 		}
@@ -328,7 +328,7 @@ func chooseClusterDisplayTitle(mergedTitle, translatedTitle, articleTitle string
 // populateClusterMeta populates FeedTitles and Authors for a cluster.
 func (db *DB) populateClusterMeta(c *models.Cluster) {
 	rows, err := db.Query(`
-		SELECT COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, '')
+		SELECT COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, ''), COALESCE(a.image_url, '')
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.cluster_id = ?
@@ -344,15 +344,19 @@ func (db *DB) populateClusterMeta(c *models.Cluster) {
 	articleCount := 0
 	latestTitle := ""
 	latestTranslatedTitle := ""
+	c.ImageURL = ""
 	for rows.Next() {
-		var feedTitle, author, articleTitle, translatedTitle string
-		if err := rows.Scan(&feedTitle, &author, &articleTitle, &translatedTitle); err != nil {
+		var feedTitle, author, articleTitle, translatedTitle, imageURL string
+		if err := rows.Scan(&feedTitle, &author, &articleTitle, &translatedTitle, &imageURL); err != nil {
 			continue
 		}
 		articleCount++
 		if articleCount == 1 {
 			latestTitle = articleTitle
 			latestTranslatedTitle = translatedTitle
+		}
+		if c.ImageURL == "" && imageURL != "" {
+			c.ImageURL = imageURL
 		}
 		if feedTitle != "" && !feedSet[feedTitle] {
 			feedSet[feedTitle] = true
@@ -422,6 +426,13 @@ JOIN feeds f ON f.id = a.feed_id`
 func (db *DB) ToggleClusterFavorite(clusterID int64) error {
 	db.WaitForReady()
 	_, err := db.Exec(`UPDATE clusters SET is_favorite = 1 - is_favorite, updated_at = ? WHERE id = ?`, time.Now(), clusterID)
+	return err
+}
+
+// SetClusterFavorite sets the favorite status of a cluster.
+func (db *DB) SetClusterFavorite(clusterID int64, favorite bool) error {
+	db.WaitForReady()
+	_, err := db.Exec(`UPDATE clusters SET is_favorite = ?, updated_at = ? WHERE id = ?`, favorite, time.Now(), clusterID)
 	return err
 }
 

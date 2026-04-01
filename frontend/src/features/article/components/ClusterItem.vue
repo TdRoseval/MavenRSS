@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PhEyeSlash, PhStar, PhClockCountdown, PhSparkle } from '@phosphor-icons/vue';
+import { PhEyeSlash, PhStar, PhClockCountdown } from '@phosphor-icons/vue';
 import type { Cluster } from '@/types/models';
 import { formatDate as formatDateUtil } from '@/shared/lib/date';
+import { getProxiedMediaUrl, isMediaCacheEnabled } from '@/shared/lib/mediaProxy';
+import { useShowPreviewImages } from '@/composables/ui/useShowPreviewImages';
 import { useAuthStore } from '@/stores/auth';
 import { useSettings } from '@/composables/core/useSettings';
 import { apiClient } from '@/shared/lib/apiClient';
+import { imageCache } from '@/shared/lib/imageCache';
 
 interface Props {
   cluster: Cluster;
@@ -23,6 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const { showPreviewImages } = useShowPreviewImages();
 const { settings } = useSettings();
 const authStore = useAuthStore();
 
@@ -31,13 +35,108 @@ const compactMode = computed(() => {
 });
 const feedTitlesText = computed(() => props.cluster.feed_titles?.filter(Boolean).join(' · ') || '');
 const authorsText = computed(() => props.cluster.authors?.filter(Boolean).join(' · ') || '');
+const clusterImageSource = computed(() => {
+  if (props.cluster.image_url) {
+    return props.cluster.image_url;
+  }
+
+  return props.cluster.articles?.find((article) => article.image_url)?.image_url || '';
+});
 
 const formatDateWithI18n = (dateStr: string): string => {
   return formatDateUtil(dateStr, locale.value, t);
 };
 
+const mediaCacheEnabled = ref(false);
 const hoverMarkAsRead = ref(false);
+const imageFailed = ref(false);
+const imageLoading = ref(true);
+const imageInViewport = ref(false);
+const imageContainerRef = ref<HTMLDivElement | null>(null);
 let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+let sharedObserver: IntersectionObserver | null = null;
+const observerTargets = new WeakMap<Element, () => void>();
+
+const imageUrl = computed(() => {
+  if (!clusterImageSource.value) return '';
+
+  const finalUrl = mediaCacheEnabled.value
+    ? getProxiedMediaUrl(clusterImageSource.value)
+    : clusterImageSource.value;
+
+  return imageCache.getImageUrl(finalUrl);
+});
+
+const shouldShowImage = computed(() => {
+  return showPreviewImages.value && !!clusterImageSource.value && !imageFailed.value;
+});
+
+onMounted(() => {
+  if ('IntersectionObserver' in window && imageContainerRef.value) {
+    if (!sharedObserver) {
+      sharedObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            const callback = observerTargets.get(entry.target);
+            if (callback && entry.isIntersecting) {
+              callback();
+            }
+          });
+        },
+        {
+          rootMargin: '200px',
+          threshold: 0,
+        }
+      );
+    }
+
+    const callback = () => {
+      imageInViewport.value = true;
+      if (sharedObserver && imageContainerRef.value) {
+        sharedObserver.unobserve(imageContainerRef.value);
+        observerTargets.delete(imageContainerRef.value);
+      }
+    };
+
+    observerTargets.set(imageContainerRef.value, callback);
+    sharedObserver.observe(imageContainerRef.value);
+  } else {
+    imageInViewport.value = true;
+  }
+
+  isMediaCacheEnabled().then((enabled) => {
+    mediaCacheEnabled.value = enabled;
+  });
+});
+
+onBeforeUnmount(() => {
+  if (hoverTimeout) {
+    clearTimeout(hoverTimeout);
+  }
+  if (sharedObserver && imageContainerRef.value) {
+    sharedObserver.unobserve(imageContainerRef.value);
+    observerTargets.delete(imageContainerRef.value);
+  }
+});
+
+function handleImageLoad(event: Event) {
+  const target = event.target as HTMLImageElement;
+  const url = target.src;
+
+  imageCache.markAsLoaded(url);
+  imageLoading.value = false;
+  imageFailed.value = false;
+  target.style.opacity = '1';
+}
+
+function handleImageError(event: Event) {
+  const target = event.target as HTMLImageElement;
+  const url = target.src;
+
+  imageLoading.value = false;
+  imageFailed.value = true;
+  imageCache.handleLoadError(url);
+}
 
 function handleMouseEnter() {
   if (!hoverMarkAsRead.value || props.cluster.is_read || props.cluster.is_read_later) {
@@ -85,12 +184,26 @@ async function markAsRead() {
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
   >
-    <!-- Simple AI or cluster icon instead of thumbnail for now -->
     <div
-      class="article-thumbnail-placeholder flex items-center justify-center bg-blue-50 dark:bg-blue-900/20 text-blue-500"
+      v-if="shouldShowImage"
+      ref="imageContainerRef"
+      class="article-thumbnail-placeholder"
       :class="{ 'compact-thumbnail': compactMode }"
     >
-      <PhSparkle :size="compactMode ? 20 : 28" weight="fill" />
+      <img
+        v-if="imageInViewport && imageUrl"
+        :src="imageUrl"
+        :alt="cluster.display_title || cluster.merged_title"
+        class="article-thumbnail"
+        :class="{ 'image-loaded': !imageLoading }"
+        decoding="async"
+        @load="handleImageLoad"
+        @error="handleImageError"
+      />
+      <div
+        v-if="imageLoading && imageInViewport"
+        class="article-thumbnail article-thumbnail-loading"
+      />
     </div>
 
     <div class="flex-1 min-w-0">
@@ -133,7 +246,7 @@ async function markAsRead() {
         :class="{ 'mt-0 sm:mt-1': !compactMode, 'mt-0': compactMode }"
       >
         <span class="flex items-center gap-1.5 truncate flex-1 min-w-0 mr-2">
-          <span class="font-medium text-blue-500">{{ t('article.cluster.sourceLabel') }}</span>
+          <span class="font-semibold text-orange-500">{{ t('article.cluster.sourceLabel') }}</span>
           <span
             class="text-[11px] sm:text-[11px] text-text-secondary opacity-75 truncate max-w-[120px]"
           >
@@ -160,7 +273,7 @@ async function markAsRead() {
       </div>
       <div
         v-if="feedTitlesText"
-        class="mt-1 text-[11px] sm:text-xs text-text-secondary line-clamp-1 break-all"
+        class="mt-1 text-[11px] sm:text-xs font-medium text-blue-500 line-clamp-1 break-all"
       >
         {{ feedTitlesText }}
       </div>
@@ -218,9 +331,25 @@ async function markAsRead() {
   -webkit-line-clamp: 1;
 }
 
+.article-thumbnail {
+  @apply w-16 h-12 sm:w-20 sm:h-[60px] object-cover rounded bg-bg-tertiary shrink-0 border border-border;
+  contain: layout style paint;
+  will-change: auto;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.article-card.compact .article-thumbnail {
+  @apply w-12 h-9 sm:w-14 sm:h-[42px];
+}
+
+.article-thumbnail.image-loaded {
+  opacity: 1;
+}
+
 .article-thumbnail-placeholder {
-  @apply w-16 h-12 sm:w-20 sm:h-[60px] shrink-0 border border-border rounded overflow-hidden;
-  contain: layout style;
+  @apply w-16 h-12 sm:w-20 sm:h-[60px] shrink-0 border border-border rounded overflow-hidden bg-bg-tertiary;
+  contain: layout style paint;
   flex-shrink: 0;
 }
 
@@ -228,7 +357,13 @@ async function markAsRead() {
   @apply w-12 h-9 sm:w-14 sm:h-[42px];
 }
 
+.article-thumbnail-loading {
+  @apply w-full h-full bg-bg-tertiary animate-pulse;
+  contain: layout style;
+}
+
 @media (max-width: 1400px) {
+  .article-thumbnail,
   .article-thumbnail-placeholder {
     width: 56px !important;
     height: 42px !important;

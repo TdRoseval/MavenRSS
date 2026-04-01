@@ -137,6 +137,7 @@ type Cluster struct {
 	DisplayTitle              string    `json:"display_title,omitempty"`
 	MergedSummary             string    `json:"merged_summary"`
 	MergedContent             string    `json:"merged_content"`
+	ImageURL                  string    `json:"image_url,omitempty"`
 	ArticleCount              int       `json:"article_count"`
 	CreatedAt                 time.Time `json:"created_at"`
 	UpdatedAt                 time.Time `json:"updated_at"`

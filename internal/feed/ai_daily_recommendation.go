@@ -51,6 +51,42 @@ type stageTwoReviewResponse struct {
 	Timeliness         float64 `json:"timeliness"`
 }
 
+type DailyRecommendationTaskStatus struct {
+	IsEnabled          bool    `json:"is_enabled"`
+	HasTask            bool    `json:"has_task"`
+	RecommendationDate string  `json:"recommendation_date,omitempty"`
+	Trigger            string  `json:"trigger,omitempty"`
+	Stage              string  `json:"stage,omitempty"`
+	IsQueued           bool    `json:"is_queued"`
+	IsRunning          bool    `json:"is_running"`
+	IsWaitingForIdle   bool    `json:"is_waiting_for_idle"`
+	Force              bool    `json:"force"`
+	ProgressPercent    float64 `json:"progress_percent"`
+	CandidateCount     int     `json:"candidate_count"`
+	SelectedCount      int     `json:"selected_count"`
+	SavedCount         int     `json:"saved_count"`
+	StartedAt          string  `json:"started_at,omitempty"`
+	UpdatedAt          string  `json:"updated_at,omitempty"`
+	LastErrorMessage   string  `json:"last_error_message,omitempty"`
+	LastErrorAt        string  `json:"last_error_at,omitempty"`
+}
+
+const (
+	recommendationTriggerAutomatic = "automatic"
+	recommendationTriggerManual    = "manual"
+	recommendationStageQueued      = "queued"
+	recommendationStageWaiting     = "waiting_for_idle"
+	recommendationStagePreparing   = "preparing"
+	recommendationStageRecalling   = "recalling"
+	recommendationStageRanking     = "ranking"
+	recommendationStageScoring     = "scoring"
+	recommendationStageSaving      = "saving"
+	recommendationStageFailed      = "failed"
+
+	recommendationDirectChronologicalMaxCandidates = 10
+	recommendationStageOneMinCandidates            = 40
+)
+
 func (m *AIEnhancedManager) startDailyRecommendationScheduler() {
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -99,7 +135,7 @@ func (m *AIEnhancedManager) tryScheduleDailyRecommendation(userID int64, now tim
 		return
 	}
 
-	m.queueRecommendationGeneration(userID, targetDate, false, forceRegenerate)
+	m.queueRecommendationGeneration(userID, targetDate, false, forceRegenerate, recommendationTriggerAutomatic)
 }
 
 func (m *AIEnhancedManager) computeDailyRecommendationRunTime(userID int64, now time.Time) (time.Time, bool) {
@@ -168,7 +204,7 @@ func (m *AIEnhancedManager) requestMissingRecommendationBackfill(userID int64) {
 	if !shouldQueue {
 		return
 	}
-	m.queueRecommendationGeneration(userID, targetDate, true, forceRegenerate)
+	m.queueRecommendationGeneration(userID, targetDate, true, forceRegenerate, recommendationTriggerAutomatic)
 }
 
 func (m *AIEnhancedManager) shouldQueueDailyRecommendations(userID int64, recommendationDate string) (bool, bool, error) {
@@ -225,11 +261,23 @@ func (m *AIEnhancedManager) QueueDailyRecommendations(userID int64, recommendati
 		return false, nil
 	}
 
-	m.queueRecommendationGeneration(userID, recommendationDate, waitForIdle, forceRegenerate)
+	m.queueRecommendationGeneration(userID, recommendationDate, waitForIdle, forceRegenerate, recommendationTriggerAutomatic)
 	return true, nil
 }
 
-func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommendationDate string, waitForIdle bool, force bool) {
+func (m *AIEnhancedManager) ForceDailyRecommendations(userID int64, recommendationDate string, waitForIdle bool) (DailyRecommendationTaskStatus, error) {
+	if userID <= 0 {
+		return DailyRecommendationTaskStatus{}, nil
+	}
+	if recommendationDate == "" {
+		recommendationDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	}
+
+	m.queueRecommendationGeneration(userID, recommendationDate, waitForIdle, true, recommendationTriggerManual)
+	return m.GetDailyRecommendationTaskStatus(userID), nil
+}
+
+func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommendationDate string, waitForIdle bool, force bool, trigger string) {
 	m.recommendationMu.Lock()
 	defer m.recommendationMu.Unlock()
 
@@ -245,21 +293,64 @@ func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommen
 	if m.pendingRecommendationForce == nil {
 		m.pendingRecommendationForce = make(map[int64]bool)
 	}
+	if m.pendingRecommendationMode == nil {
+		m.pendingRecommendationMode = make(map[int64]string)
+	}
+	if m.recommendationStatusByUser == nil {
+		m.recommendationStatusByUser = make(map[int64]DailyRecommendationTaskStatus)
+	}
 
 	if m.recommendationRunning[userID] {
 		m.pendingRecommendationDate[userID] = recommendationDate
 		m.pendingRecommendationWait[userID] = m.pendingRecommendationWait[userID] || waitForIdle
 		m.pendingRecommendationForce[userID] = m.pendingRecommendationForce[userID] || force
+		if trigger != "" {
+			m.pendingRecommendationMode[userID] = trigger
+		}
 		return
 	}
 	if waitForIdle && atomic.LoadInt64(&m.activeAsyncWork) > 0 {
 		m.pendingRecommendationDate[userID] = recommendationDate
 		m.pendingRecommendationWait[userID] = true
 		m.pendingRecommendationForce[userID] = m.pendingRecommendationForce[userID] || force
+		m.pendingRecommendationMode[userID] = trigger
+		m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
+			status.HasTask = true
+			status.RecommendationDate = recommendationDate
+			status.Trigger = trigger
+			status.Stage = recommendationStageWaiting
+			status.IsQueued = true
+			status.IsRunning = false
+			status.IsWaitingForIdle = true
+			status.Force = force
+			status.ProgressPercent = 5
+			status.CandidateCount = 0
+			status.SelectedCount = 0
+			status.SavedCount = 0
+			status.StartedAt = ""
+			status.LastErrorMessage = ""
+			status.LastErrorAt = ""
+		})
 		return
 	}
 	m.recommendationRunning[userID] = true
-	go m.runRecommendationLoop(userID, recommendationDate, force)
+	m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
+		status.HasTask = true
+		status.RecommendationDate = recommendationDate
+		status.Trigger = trigger
+		status.Stage = recommendationStageQueued
+		status.IsQueued = false
+		status.IsRunning = true
+		status.IsWaitingForIdle = false
+		status.Force = force
+		status.ProgressPercent = 10
+		status.CandidateCount = 0
+		status.SelectedCount = 0
+		status.SavedCount = 0
+		status.LastErrorMessage = ""
+		status.LastErrorAt = ""
+	})
+	go m.runRecommendationLoop(userID, recommendationDate, force, trigger)
 }
 
 func (m *AIEnhancedManager) onAsyncWorkDrained() {
@@ -268,6 +359,7 @@ func (m *AIEnhancedManager) onAsyncWorkDrained() {
 		userID int64
 		date   string
 		force  bool
+		mode   string
 	}, 0)
 	for userID, recommendationDate := range m.pendingRecommendationDate {
 		if !m.pendingRecommendationWait[userID] || m.recommendationRunning[userID] {
@@ -277,45 +369,125 @@ func (m *AIEnhancedManager) onAsyncWorkDrained() {
 			userID int64
 			date   string
 			force  bool
-		}{userID: userID, date: recommendationDate, force: m.pendingRecommendationForce[userID]})
+			mode   string
+		}{
+			userID: userID,
+			date:   recommendationDate,
+			force:  m.pendingRecommendationForce[userID],
+			mode:   m.pendingRecommendationMode[userID],
+		})
 		delete(m.pendingRecommendationDate, userID)
 		delete(m.pendingRecommendationWait, userID)
 		delete(m.pendingRecommendationForce, userID)
+		delete(m.pendingRecommendationMode, userID)
 		m.recommendationRunning[userID] = true
+		m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
+			status.HasTask = true
+			status.RecommendationDate = recommendationDate
+			status.Trigger = pending[len(pending)-1].mode
+			status.Stage = recommendationStageQueued
+			status.IsQueued = false
+			status.IsRunning = true
+			status.IsWaitingForIdle = false
+			status.Force = pending[len(pending)-1].force
+			status.ProgressPercent = 10
+			status.CandidateCount = 0
+			status.SelectedCount = 0
+			status.SavedCount = 0
+			status.StartedAt = ""
+			status.LastErrorMessage = ""
+			status.LastErrorAt = ""
+		})
 	}
 	m.recommendationMu.Unlock()
 
 	for _, item := range pending {
-		go m.runRecommendationLoop(item.userID, item.date, item.force)
+		go m.runRecommendationLoop(item.userID, item.date, item.force, item.mode)
 	}
 }
 
-func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDate string, force bool) {
+func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDate string, force bool, trigger string) {
 	for {
-		if err := m.generateDailyRecommendations(userID, recommendationDate, force); err != nil {
-			m.recordTaskFailure(userID, "recommendation", nil, "", "", err)
-			log.Printf("generate daily recommendations for user %d on %s error: %v", userID, recommendationDate, err)
+		m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+			status.HasTask = true
+			status.RecommendationDate = recommendationDate
+			status.Trigger = trigger
+			status.Stage = recommendationStagePreparing
+			status.IsQueued = false
+			status.IsRunning = true
+			status.IsWaitingForIdle = false
+			status.Force = force
+			if status.ProgressPercent < 10 {
+				status.ProgressPercent = 10
+			}
+			if status.StartedAt == "" {
+				status.StartedAt = time.Now().Format(time.RFC3339)
+			}
+			status.LastErrorMessage = ""
+			status.LastErrorAt = ""
+		})
+
+		runErr := m.generateDailyRecommendations(userID, recommendationDate, force)
+		if runErr != nil {
+			m.recordTaskFailure(userID, "recommendation", nil, "", "", runErr)
+			log.Printf("generate daily recommendations for user %d on %s error: %v", userID, recommendationDate, runErr)
 		}
 
 		m.recommendationMu.Lock()
 		nextDate, hasNext := m.pendingRecommendationDate[userID]
 		waitForIdle := m.pendingRecommendationWait[userID]
 		nextForce := m.pendingRecommendationForce[userID]
+		nextMode := m.pendingRecommendationMode[userID]
 		if hasNext {
 			if waitForIdle && atomic.LoadInt64(&m.activeAsyncWork) > 0 {
 				m.recommendationRunning[userID] = false
+				m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
+					status.HasTask = true
+					status.RecommendationDate = nextDate
+					status.Trigger = nextMode
+					status.Stage = recommendationStageWaiting
+					status.IsQueued = true
+					status.IsRunning = false
+					status.IsWaitingForIdle = true
+					status.Force = nextForce
+					status.ProgressPercent = 5
+					status.CandidateCount = 0
+					status.SelectedCount = 0
+					status.SavedCount = 0
+					status.StartedAt = ""
+					if runErr != nil {
+						status.LastErrorMessage = recommendationTaskErrorMessage(runErr)
+						status.LastErrorAt = time.Now().Format(time.RFC3339)
+					}
+				})
 				m.recommendationMu.Unlock()
 				return
 			}
 			delete(m.pendingRecommendationDate, userID)
 			delete(m.pendingRecommendationWait, userID)
 			delete(m.pendingRecommendationForce, userID)
+			delete(m.pendingRecommendationMode, userID)
 			recommendationDate = nextDate
 			force = nextForce
+			trigger = nextMode
 			m.recommendationMu.Unlock()
 			continue
 		}
 		delete(m.recommendationRunning, userID)
+		if runErr != nil {
+			m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
+				status.HasTask = false
+				status.Stage = recommendationStageFailed
+				status.IsQueued = false
+				status.IsRunning = false
+				status.IsWaitingForIdle = false
+				status.ProgressPercent = 0
+				status.LastErrorMessage = recommendationTaskErrorMessage(runErr)
+				status.LastErrorAt = time.Now().Format(time.RFC3339)
+			})
+		} else {
+			delete(m.recommendationStatusByUser, userID)
+		}
 		m.recommendationMu.Unlock()
 		return
 	}
@@ -344,11 +516,29 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 	}
 	dayEnd := dayStart.Add(24 * time.Hour)
 
+	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+		status.Stage = recommendationStageRecalling
+		status.ProgressPercent = 20
+		status.CandidateCount = 0
+		status.SelectedCount = 0
+		status.SavedCount = 0
+	})
 	candidates, err := m.recallRecommendationCandidates(userID, recommendationDate, dayStart, dayEnd)
 	if err != nil {
 		return err
 	}
+	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+		status.Stage = recommendationStageRanking
+		status.ProgressPercent = 35
+		status.CandidateCount = len(candidates)
+	})
 	if len(candidates) == 0 {
+		m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+			status.Stage = recommendationStageSaving
+			status.ProgressPercent = 92
+			status.SelectedCount = 0
+			status.SavedCount = 0
+		})
 		return m.db.SaveDailyRecommendations(userID, recommendationDate, nil)
 	}
 
@@ -357,7 +547,21 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 		return err
 	}
 
-	ranked := m.rankRecommendationCandidates(userID, recommendationDate, candidates, config, profileID, hasAIConfig)
+	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+		status.Stage = recommendationStageRanking
+		status.ProgressPercent = 55
+	})
+	ranked := []rankedRecommendationCandidate(nil)
+	if len(candidates) <= recommendationDirectChronologicalMaxCandidates {
+		ranked = rankRecommendationCandidatesChronological(candidates, profileID)
+	} else {
+		ranked = m.rankRecommendationCandidates(userID, recommendationDate, candidates, config, profileID, hasAIConfig)
+	}
+	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+		status.Stage = recommendationStageSaving
+		status.ProgressPercent = 92
+		status.SelectedCount = minInt(len(ranked), 10)
+	})
 	recommendations := make([]models.DailyRecommendation, 0, minInt(len(ranked), 10))
 	for idx, item := range ranked {
 		if idx >= 10 {
@@ -372,8 +576,30 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 			RecommendationProfileID: profileID,
 		})
 	}
+	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+		status.SavedCount = len(recommendations)
+	})
 
 	return m.db.SaveDailyRecommendations(userID, recommendationDate, recommendations)
+}
+
+func rankRecommendationCandidatesChronological(candidates []rankedRecommendationCandidate, profileID int64) []rankedRecommendationCandidate {
+	results := make([]rankedRecommendationCandidate, len(candidates))
+	copy(results, candidates)
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Candidate.PublishedAt.Equal(results[j].Candidate.PublishedAt) {
+			if results[i].RecallScore == results[j].RecallScore {
+				return results[i].Candidate.Cluster.ID < results[j].Candidate.Cluster.ID
+			}
+			return results[i].RecallScore > results[j].RecallScore
+		}
+		return results[i].Candidate.PublishedAt.After(results[j].Candidate.PublishedAt)
+	})
+	for i := range results {
+		results[i].ProfileID = profileID
+		results[i].FinalScore = float64(len(results) - i)
+	}
+	return results
 }
 
 func (m *AIEnhancedManager) recallRecommendationCandidates(userID int64, recommendationDate string, dayStart, dayEnd time.Time) ([]rankedRecommendationCandidate, error) {
@@ -440,10 +666,36 @@ func (m *AIEnhancedManager) rankRecommendationCandidates(userID int64, recommend
 		return m.rankRecommendationCandidatesRuleBased(candidates)
 	}
 
+	if len(candidates) < recommendationStageOneMinCandidates {
+		m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+			status.Stage = recommendationStageScoring
+			status.ProgressPercent = 70
+			status.SelectedCount = len(candidates)
+		})
+
+		ranked, ok := m.runRecommendationStageTwo(userID, candidates, config, profileID)
+		if !ok || len(ranked) == 0 {
+			return m.rankRecommendationCandidatesRuleBased(candidates)
+		}
+
+		sort.SliceStable(ranked, func(i, j int) bool {
+			if ranked[i].FinalScore == ranked[j].FinalScore {
+				return ranked[i].Candidate.PublishedAt.After(ranked[j].Candidate.PublishedAt)
+			}
+			return ranked[i].FinalScore > ranked[j].FinalScore
+		})
+		return ranked
+	}
+
 	stageOneSelected, ok := m.runRecommendationStageOne(userID, recommendationDate, candidates, config, profileID)
 	if !ok || len(stageOneSelected) == 0 {
 		return m.rankRecommendationCandidatesRuleBased(candidates)
 	}
+	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+		status.Stage = recommendationStageScoring
+		status.ProgressPercent = 70
+		status.SelectedCount = len(stageOneSelected)
+	})
 
 	ranked, ok := m.runRecommendationStageTwo(userID, stageOneSelected, config, profileID)
 	if !ok || len(ranked) == 0 {
@@ -614,12 +866,19 @@ func (m *AIEnhancedManager) runRecommendationStageOneRound(userID int64, group [
 
 func (m *AIEnhancedManager) runRecommendationStageTwo(userID int64, candidates []rankedRecommendationCandidate, config *ai.ClientConfig, profileID int64) ([]rankedRecommendationCandidate, bool) {
 	results := make([]rankedRecommendationCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
+	total := maxInt(len(candidates), 1)
+	for idx, candidate := range candidates {
 		scored, ok := m.scoreRecommendationCandidate(userID, candidate, config, profileID)
 		if !ok {
 			return nil, false
 		}
 		results = append(results, scored)
+		progress := 70 + (20 * float64(idx+1) / float64(total))
+		m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+			status.Stage = recommendationStageScoring
+			status.ProgressPercent = progress
+			status.SelectedCount = len(candidates)
+		})
 	}
 	return results, true
 }
@@ -714,6 +973,95 @@ func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.C
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 	return content, content != ""
+}
+
+func (m *AIEnhancedManager) GetDailyRecommendationTaskStatus(userID int64) DailyRecommendationTaskStatus {
+	status := DailyRecommendationTaskStatus{}
+	if userID <= 0 {
+		return status
+	}
+
+	recommendationEnabled, _ := m.db.GetSettingWithFallback(userID, "ai_recommendation_enabled")
+	status.IsEnabled = recommendationEnabled == "true"
+
+	m.recommendationMu.Lock()
+	if existing, ok := m.recommendationStatusByUser[userID]; ok {
+		status = existing
+		status.IsEnabled = recommendationEnabled == "true"
+	} else if m.recommendationRunning[userID] {
+		status.HasTask = true
+		status.IsRunning = true
+		status.Stage = recommendationStagePreparing
+		status.ProgressPercent = 10
+		status.IsEnabled = recommendationEnabled == "true"
+	} else if date := m.pendingRecommendationDate[userID]; date != "" {
+		status.HasTask = true
+		status.RecommendationDate = date
+		status.Trigger = m.pendingRecommendationMode[userID]
+		status.Stage = recommendationStageWaiting
+		status.IsQueued = true
+		status.IsWaitingForIdle = m.pendingRecommendationWait[userID]
+		status.Force = m.pendingRecommendationForce[userID]
+		status.ProgressPercent = 5
+		status.IsEnabled = recommendationEnabled == "true"
+	}
+	m.recommendationMu.Unlock()
+
+	if status.ProgressPercent < 0 {
+		status.ProgressPercent = 0
+	}
+	if status.ProgressPercent > 100 {
+		status.ProgressPercent = 100
+	}
+	return status
+}
+
+func (m *AIEnhancedManager) updateRecommendationTaskStatus(userID int64, update func(*DailyRecommendationTaskStatus)) {
+	m.recommendationMu.Lock()
+	defer m.recommendationMu.Unlock()
+	m.setRecommendationTaskStatusLocked(userID, update)
+}
+
+func (m *AIEnhancedManager) setRecommendationTaskStatusLocked(userID int64, update func(*DailyRecommendationTaskStatus)) {
+	if userID <= 0 || update == nil {
+		return
+	}
+	if m.recommendationStatusByUser == nil {
+		m.recommendationStatusByUser = make(map[int64]DailyRecommendationTaskStatus)
+	}
+
+	status := m.recommendationStatusByUser[userID]
+	update(&status)
+	status.UpdatedAt = time.Now().Format(time.RFC3339)
+	if status.HasTask && status.IsRunning && status.StartedAt == "" {
+		status.StartedAt = status.UpdatedAt
+	}
+	if !status.HasTask {
+		status.IsQueued = false
+		status.IsRunning = false
+		status.IsWaitingForIdle = false
+	}
+	if status.ProgressPercent < 0 {
+		status.ProgressPercent = 0
+	}
+	if status.ProgressPercent > 100 {
+		status.ProgressPercent = 100
+	}
+	m.recommendationStatusByUser[userID] = status
+}
+
+func recommendationTaskErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(ai.DiagnosticMessage(err))
+	if message == "" {
+		message = strings.TrimSpace(err.Error())
+	}
+	if len(message) > 600 {
+		message = message[:600]
+	}
+	return message
 }
 
 func validScoreResponse(scores ...float64) bool {

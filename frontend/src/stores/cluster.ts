@@ -5,8 +5,10 @@ import { authGet } from '@/shared/lib/authFetch';
 import type {
   AIProcessingStatus,
   Cluster,
+  DailyRecommendationRefreshResponse,
   DailyRecommendationItem,
   DailyRecommendationResponse,
+  DailyRecommendationTaskStatus,
 } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 import { useArticleStore } from '@/features/article/store';
@@ -34,6 +36,8 @@ export const useClusterStore = defineStore('cluster', () => {
   const filteredClusterIds = ref<number[] | null>(null);
   const isDailyRecommendationsLoading = ref(false);
   const dailyRecommendationsError = ref('');
+  const dailyRecommendationTaskStatus = ref<DailyRecommendationTaskStatus | null>(null);
+  const isDailyRecommendationTaskStatusLoading = ref(false);
   const aiProcessingStatus = ref<AIProcessingStatus | null>(null);
   const isAIProcessingStatusLoading = ref(false);
   const hasLoadedAIProcessingStatus = ref(false);
@@ -50,6 +54,9 @@ export const useClusterStore = defineStore('cluster', () => {
   );
 
   const isAIProcessingLocked = computed(() => aiProcessingStatus.value?.is_config_frozen === true);
+  const shouldBlockDailyRecommendationView = computed(
+    () => dailyRecommendationTaskStatus.value?.has_task === true
+  );
   const hasRealtimeInterestStream = computed(() => {
     const articleStore = useArticleStore();
     return (
@@ -64,6 +71,10 @@ export const useClusterStore = defineStore('cluster', () => {
   );
   const aiProcessingProgressPercent = computed(() => {
     const rawValue = aiProcessingStatus.value?.progress_percent ?? 0;
+    return Math.max(0, Math.min(100, Math.round(rawValue)));
+  });
+  const dailyRecommendationTaskProgressPercent = computed(() => {
+    const rawValue = dailyRecommendationTaskStatus.value?.progress_percent ?? 0;
     return Math.max(0, Math.min(100, Math.round(rawValue)));
   });
 
@@ -269,21 +280,19 @@ export const useClusterStore = defineStore('cluster', () => {
   }
 
   async function refreshDailyRecommendations(): Promise<void> {
-    await apiClient.post('/clusters/daily-recommendations/regenerate', {
+    dailyRecommendationsError.value = '';
+    const response = await apiClient.post<DailyRecommendationRefreshResponse>(
+      '/clusters/daily-recommendations/refresh',
+      {
       date: selectedRecommendationDate.value || undefined,
       wait_for_idle: true,
-      force_if_incomplete: true,
-    });
+      }
+    );
 
-    const dates = await fetchDailyRecommendationDates();
-    if (dates.length === 0) {
-      dailyRecommendations.value = [];
-      currentClusterId.value = null;
-      return;
+    if (response.date) {
+      selectedRecommendationDate.value = response.date;
     }
-
-    const targetDate = selectedRecommendationDate.value || dates[0];
-    await fetchDailyRecommendations(targetDate);
+    dailyRecommendationTaskStatus.value = response.status;
   }
 
   async function markClusterRead(clusterId: number, isRead: boolean) {
@@ -419,22 +428,55 @@ export const useClusterStore = defineStore('cluster', () => {
     }
   }
 
+  async function fetchDailyRecommendationTaskStatus(): Promise<DailyRecommendationTaskStatus | null> {
+    isDailyRecommendationTaskStatusLoading.value = true;
+
+    try {
+      const response = await apiClient.get<DailyRecommendationTaskStatus>(
+        '/clusters/daily-recommendations/task-status'
+      );
+      dailyRecommendationTaskStatus.value = response;
+      if (response?.recommendation_date) {
+        selectedRecommendationDate.value = response.recommendation_date;
+      }
+      return response;
+    } catch (error) {
+      console.error('Failed to fetch daily recommendation task status:', error);
+      throw error;
+    } finally {
+      isDailyRecommendationTaskStatusLoading.value = false;
+    }
+  }
+
+  async function fetchProcessingStatuses(): Promise<void> {
+    const results = await Promise.allSettled([
+      fetchAIProcessingStatus(),
+      fetchDailyRecommendationTaskStatus(),
+    ]);
+    const firstRejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+    if (firstRejected && results.every((result) => result.status === 'rejected')) {
+      throw firstRejected.reason;
+    }
+  }
+
   async function startAIProcessingPolling() {
     aiProcessingPollingConsumers += 1;
 
     if (aiProcessingPollingConsumers === 1) {
-      await fetchAIProcessingStatus();
+      await fetchProcessingStatuses();
 
       aiProcessingPollingTimer = setInterval(() => {
-        fetchAIProcessingStatus().catch((error) => {
-          console.error('Failed to poll AI processing status:', error);
+        fetchProcessingStatuses().catch((error) => {
+          console.error('Failed to poll processing status:', error);
         });
       }, AI_PROCESSING_POLL_INTERVAL_MS);
       return;
     }
 
     if (!hasLoadedAIProcessingStatus.value && !isAIProcessingStatusLoading.value) {
-      await fetchAIProcessingStatus();
+      await fetchProcessingStatuses();
     }
   }
 
@@ -473,6 +515,7 @@ export const useClusterStore = defineStore('cluster', () => {
     currentPage.value = 1;
     hasMore.value = true;
     dailyRecommendationsError.value = '';
+    dailyRecommendationTaskStatus.value = null;
   }
 
   return {
@@ -491,13 +534,17 @@ export const useClusterStore = defineStore('cluster', () => {
     filteredClusterIds,
     isDailyRecommendationsLoading,
     dailyRecommendationsError,
+    dailyRecommendationTaskStatus,
+    isDailyRecommendationTaskStatusLoading,
     aiProcessingStatus,
     isAIProcessingStatusLoading,
     hasLoadedAIProcessingStatus,
     isAIProcessingLocked,
+    shouldBlockDailyRecommendationView,
     shouldBlockClusterView,
     hasRealtimeInterestStream,
     aiProcessingProgressPercent,
+    dailyRecommendationTaskProgressPercent,
     fetchClusters,
     loadMore,
     fetchClusterDetail,
@@ -514,6 +561,7 @@ export const useClusterStore = defineStore('cluster', () => {
     refreshCurrentCluster,
     setActiveFilters,
     fetchAIProcessingStatus,
+    fetchDailyRecommendationTaskStatus,
     startAIProcessingPolling,
     stopAIProcessingPolling,
     setFilteredClusterIds,

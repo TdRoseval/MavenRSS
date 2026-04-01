@@ -277,6 +277,30 @@ func HandleDailyRecommendations(h *core.Handler, w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(response)
 }
 
+func HandleDailyRecommendationTaskStatus(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
+		response.JSON(w, map[string]any{
+			"is_enabled":       false,
+			"has_task":         false,
+			"progress_percent": 100,
+		})
+		return
+	}
+
+	response.JSON(w, h.Fetcher.GetAIEnhancedManager().GetDailyRecommendationTaskStatus(userID))
+}
+
 func HandleRegenerateDailyRecommendations(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -326,6 +350,48 @@ func HandleRegenerateDailyRecommendations(h *core.Handler, w http.ResponseWriter
 	response.JSON(w, map[string]any{
 		"scheduled": scheduled,
 		"date":      req.Date,
+	})
+}
+
+func HandleRefreshDailyRecommendations(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
+		http.Error(w, "AI enhanced mode unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		Date        string `json:"date"`
+		WaitForIdle bool   `json:"wait_for_idle"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req.WaitForIdle = true
+	}
+	if !req.WaitForIdle {
+		req.WaitForIdle = true
+	}
+
+	status, err := h.Fetcher.GetAIEnhancedManager().ForceDailyRecommendations(userID, req.Date, req.WaitForIdle)
+	if err != nil {
+		log.Printf("Error forcing daily recommendation refresh: %v", err)
+		http.Error(w, "Failed to refresh daily recommendations", http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, map[string]any{
+		"scheduled": true,
+		"date":      status.RecommendationDate,
+		"status":    status,
 	})
 }
 

@@ -70,9 +70,11 @@ type AIEnhancedManager struct {
 	clusterPipelineQueued      map[int64]bool
 	recommendationMu           sync.Mutex
 	recommendationRunning      map[int64]bool
+	recommendationStatusByUser map[int64]DailyRecommendationTaskStatus
 	pendingRecommendationDate  map[int64]string
 	pendingRecommendationWait  map[int64]bool
 	pendingRecommendationForce map[int64]bool
+	pendingRecommendationMode  map[int64]string
 	activeAsyncWork            int64
 	stopChan                   chan struct{}
 	resolveFusionConfig        func(userID int64) (*dedup.FusionConfig, error)
@@ -144,9 +146,11 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		clusterPipelineRunning:     make(map[int64]bool),
 		clusterPipelineQueued:      make(map[int64]bool),
 		recommendationRunning:      make(map[int64]bool),
+		recommendationStatusByUser: make(map[int64]DailyRecommendationTaskStatus),
 		pendingRecommendationDate:  make(map[int64]string),
 		pendingRecommendationWait:  make(map[int64]bool),
 		pendingRecommendationForce: make(map[int64]bool),
+		pendingRecommendationMode:  make(map[int64]string),
 		stopChan:                   make(chan struct{}),
 	}
 	manager.resolveFusionConfig = manager.buildFusionConfig
