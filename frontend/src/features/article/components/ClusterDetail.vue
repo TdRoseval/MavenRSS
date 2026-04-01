@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhSparkle,
@@ -8,6 +8,7 @@ import {
   PhStar,
   PhEnvelope,
   PhEnvelopeOpen,
+  PhTranslate,
 } from '@phosphor-icons/vue';
 import type { Cluster } from '@/types/models';
 import { useClusterStore } from '@/stores/cluster';
@@ -15,8 +16,14 @@ import { formatDate as formatDateUtil } from '@/shared/lib/date';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useReadingTimeTracker } from '../composables/useReadingTimeTracker';
+import { useSettings } from '@/composables/core/useSettings';
+import { authPost } from '@/shared/lib/authFetch';
+import {
+  extractTextWithPlaceholders,
+  restorePreservedElements,
+} from '@/features/article/composables/useContentTranslation';
+import { useArticleRendering } from '../composables/useArticleRendering';
 
-// Activate reading time tracker for AI Enhanced Mode (Level 2 deep-read feedback)
 useReadingTimeTracker();
 
 interface Props {
@@ -33,27 +40,347 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const clusterStore = useClusterStore();
+const { settings, fetchSettings } = useSettings();
+const { renderMathFormulas, highlightCodeBlocks } = useArticleRendering();
 
 const cluster = ref<Cluster | null>(null);
 const isLoading = ref(false);
+const isForceTranslating = ref(false);
+const contentArticleRef = ref<HTMLElement | null>(null);
+const translatedClusterTitle = ref('');
+const translatedClusterSummary = ref('');
+const hasBodyTranslations = ref(false);
+const forceTranslateRunId = ref(0);
 
 const formatDateWithI18n = (dateStr: string): string => {
   return formatDateUtil(dateStr, locale.value, t);
 };
 
 const formattedContent = computed(() => {
-  if (!cluster.value?.merged_content) return '';
+  const content = cluster.value?.merged_content || '';
+  if (!content) return '';
 
-  const html = marked.parse(cluster.value.merged_content, { async: false }) as string;
+  const html = marked.parse(content, { async: false }) as string;
   return DOMPurify.sanitize(html);
 });
+
 const feedTitles = computed(() => cluster.value?.feed_titles?.filter(Boolean) || []);
 const authors = computed(() => cluster.value?.authors?.filter(Boolean) || []);
 
+const translationEnabled = computed(
+  () => settings.value.translation_enabled === true || settings.value.translation_enabled === 'true'
+);
+
+const translationOnlyMode = computed(
+  () =>
+    settings.value.translation_only_mode === true ||
+    settings.value.translation_only_mode === 'true'
+);
+
+const targetLanguage = computed(() => settings.value.target_language || 'zh');
+
+const originalClusterTitle = computed(
+  () => cluster.value?.display_title || cluster.value?.merged_title || ''
+);
+
+const originalClusterSummary = computed(() => cluster.value?.merged_summary || '');
+
+const hasTranslatedTitle = computed(
+  () =>
+    translatedClusterTitle.value.trim() !== '' &&
+    translatedClusterTitle.value.trim() !== originalClusterTitle.value.trim()
+);
+
+const hasTranslatedSummary = computed(
+  () =>
+    translatedClusterSummary.value.trim() !== '' &&
+    translatedClusterSummary.value.trim() !== originalClusterSummary.value.trim()
+);
+
+const clusterTitle = computed(() => {
+  if (hasTranslatedTitle.value) {
+    return translatedClusterTitle.value;
+  }
+  return originalClusterTitle.value;
+});
+
+const clusterOriginalTitle = computed(() => {
+  if (!hasTranslatedTitle.value || translationOnlyMode.value) {
+    return '';
+  }
+  return originalClusterTitle.value;
+});
+
+const clusterSummary = computed(() => {
+  if (hasTranslatedSummary.value) {
+    return translatedClusterSummary.value;
+  }
+  return originalClusterSummary.value;
+});
+
+const clusterOriginalSummary = computed(() => {
+  if (!hasTranslatedSummary.value || translationOnlyMode.value) {
+    return '';
+  }
+  return originalClusterSummary.value;
+});
+
+function clearBodyTranslations() {
+  if (!contentArticleRef.value) {
+    hasBodyTranslations.value = false;
+    return;
+  }
+
+  const existingTranslations = contentArticleRef.value.querySelectorAll('.translation-text');
+  existingTranslations.forEach((el) => el.remove());
+  hasBodyTranslations.value = false;
+}
+
+function resetTranslationState() {
+  translatedClusterTitle.value = '';
+  translatedClusterSummary.value = '';
+  clearBodyTranslations();
+}
+
+async function enhanceRenderedContent() {
+  await nextTick();
+  if (!contentArticleRef.value) {
+    return;
+  }
+
+  renderMathFormulas(contentArticleRef.value);
+  highlightCodeBlocks(contentArticleRef.value);
+}
+
 async function loadClusterDetail(id: number) {
-  isLoading.value = true;
-  cluster.value = await clusterStore.fetchClusterDetail(id);
-  isLoading.value = false;
+  resetTranslationState();
+
+  const currentCluster = clusterStore.currentCluster;
+  if (currentCluster && currentCluster.id === id) {
+    cluster.value = { ...currentCluster };
+  }
+
+  isLoading.value = !cluster.value?.merged_content;
+
+  try {
+    cluster.value = await clusterStore.fetchClusterDetail(id);
+    await enhanceRenderedContent();
+  } catch (error) {
+    console.error('Failed to load cluster detail:', error);
+    if (!cluster.value) {
+      window.showToast(t('common.errors.savingSettings'), 'error');
+    }
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function translateClusterField(text: string, force: boolean, preemptive: boolean) {
+  if (!text.trim()) {
+    return '';
+  }
+
+  const response = await authPost<any>('/api/articles/translate-text', {
+    text,
+    target_language: targetLanguage.value,
+    force,
+    high_priority: true,
+    preemptive,
+  });
+
+  return response?.translated_text || '';
+}
+
+function isTranslationRunActive(runId: number) {
+  return isForceTranslating.value && forceTranslateRunId.value === runId;
+}
+
+async function forceTranslateClusterParagraphs(runId: number, preemptive: boolean) {
+  await nextTick();
+
+  const proseContainer = contentArticleRef.value;
+  if (!proseContainer) {
+    return;
+  }
+
+  clearBodyTranslations();
+
+  const textTags = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'TD', 'TH', 'FIGCAPTION', 'DT', 'DD'];
+  const translatedElements = new Set<HTMLElement>();
+  const allElements = Array.from(proseContainer.querySelectorAll(textTags.join(',')));
+
+  allElements.sort((a, b) => {
+    const getDepth = (el: Element): number => {
+      let depth = 0;
+      let parent = el.parentElement;
+      while (parent && parent !== proseContainer) {
+        depth++;
+        parent = parent.parentElement;
+      }
+      return depth;
+    };
+    return getDepth(a) - getDepth(b);
+  });
+
+  const canContainNestedTranslatableElements = (el: HTMLElement): boolean => {
+    const nestableTags = ['LI', 'BLOCKQUOTE', 'DD', 'DT', 'TD', 'TH'];
+    return nestableTags.includes(el.tagName);
+  };
+
+  const getNestedTranslatableChildren = (el: HTMLElement): Element[] => {
+    return Array.from(el.children).filter((child) => textTags.includes(child.tagName));
+  };
+
+  let firstRequest = preemptive;
+
+  for (const el of allElements) {
+    if (!isTranslationRunActive(runId)) {
+      return;
+    }
+
+    const htmlEl = el as HTMLElement;
+
+    if (htmlEl.closest('.translation-text')) continue;
+    if (htmlEl.querySelector('.translation-text')) continue;
+    if (translatedElements.has(htmlEl)) continue;
+
+    let hasTranslatedAncestor = false;
+    let ancestor = htmlEl.parentElement;
+    while (ancestor && ancestor !== proseContainer) {
+      if (translatedElements.has(ancestor)) {
+        if (canContainNestedTranslatableElements(htmlEl)) {
+          const ancestorNested = getNestedTranslatableChildren(ancestor as HTMLElement);
+          if (ancestorNested.length > 0) {
+            ancestor = ancestor.parentElement;
+            continue;
+          }
+        }
+        hasTranslatedAncestor = true;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    if (hasTranslatedAncestor) continue;
+
+    if (
+      htmlEl.closest('pre') ||
+      htmlEl.tagName === 'CODE' ||
+      htmlEl.closest('kbd') ||
+      htmlEl.classList.contains('katex') ||
+      htmlEl.classList.contains('katex-display') ||
+      htmlEl.classList.contains('katex-inline')
+    ) {
+      continue;
+    }
+
+    const { text, preservedElements, hyperlinks } = extractTextWithPlaceholders(htmlEl);
+    if (!text.trim()) {
+      continue;
+    }
+
+    const translatedText = await translateClusterField(text, true, firstRequest);
+    firstRequest = false;
+
+    if (!isTranslationRunActive(runId)) {
+      return;
+    }
+
+    if (!translatedText.trim()) {
+      continue;
+    }
+
+    const translatedHTML = restorePreservedElements(
+      translatedText,
+      preservedElements,
+      hyperlinks
+    );
+
+    const translationEl = document.createElement('div');
+    if (
+      htmlEl.tagName === 'LI' ||
+      htmlEl.tagName === 'TD' ||
+      htmlEl.tagName === 'TH' ||
+      htmlEl.tagName === 'DD' ||
+      htmlEl.tagName === 'DT'
+    ) {
+      translationEl.className = 'translation-text translation-inline';
+      translationEl.innerHTML = translatedHTML;
+      htmlEl.appendChild(translationEl);
+    } else if (htmlEl.closest('blockquote')) {
+      translationEl.className = 'translation-text translation-blockquote';
+      translationEl.innerHTML = translatedHTML;
+      htmlEl.appendChild(translationEl);
+    } else {
+      translationEl.className = 'translation-text';
+      translationEl.innerHTML = translatedHTML;
+      htmlEl.parentNode?.insertBefore(translationEl, htmlEl.nextSibling);
+    }
+
+    translatedElements.add(htmlEl);
+    hasBodyTranslations.value = true;
+  }
+
+  await nextTick();
+  proseContainer.querySelectorAll('.translation-text').forEach((el) => {
+    renderMathFormulas(el as HTMLElement);
+    highlightCodeBlocks(el as HTMLElement);
+  });
+}
+
+async function forceTranslateCluster() {
+  if (!cluster.value || !translationEnabled.value || !targetLanguage.value) {
+    return;
+  }
+
+  const runId = forceTranslateRunId.value + 1;
+  forceTranslateRunId.value = runId;
+  isForceTranslating.value = true;
+  translatedClusterTitle.value = '';
+  translatedClusterSummary.value = '';
+  clearBodyTranslations();
+
+  try {
+    let preemptive = true;
+
+    if (originalClusterTitle.value.trim()) {
+      translatedClusterTitle.value = await translateClusterField(
+        originalClusterTitle.value,
+        true,
+        preemptive
+      );
+      preemptive = false;
+    }
+
+    if (!isTranslationRunActive(runId)) {
+      return;
+    }
+
+    if (originalClusterSummary.value.trim()) {
+      translatedClusterSummary.value = await translateClusterField(
+        originalClusterSummary.value,
+        true,
+        preemptive
+      );
+      preemptive = false;
+    }
+
+    if (!isTranslationRunActive(runId)) {
+      return;
+    }
+
+    await forceTranslateClusterParagraphs(runId, preemptive);
+
+    if (isTranslationRunActive(runId)) {
+      window.showToast(t('article.action.forceTranslateSuccess'), 'success');
+    }
+  } catch (error) {
+    console.error('Failed to force translate cluster:', error);
+    window.showToast(t('common.errors.translatingContent'), 'error');
+  } finally {
+    if (forceTranslateRunId.value === runId) {
+      isForceTranslating.value = false;
+    }
+  }
 }
 
 async function toggleRead(): Promise<void> {
@@ -127,14 +454,36 @@ async function toggleReadLater(): Promise<void> {
 watch(
   () => clusterStore.currentClusterId,
   (newId) => {
+    forceTranslateRunId.value += 1;
+    isForceTranslating.value = false;
+
     if (newId) {
       loadClusterDetail(newId);
     } else {
       cluster.value = null;
+      resetTranslationState();
     }
   },
   { immediate: true }
 );
+
+watch(
+  () => cluster.value?.merged_content,
+  async () => {
+    await enhanceRenderedContent();
+  }
+);
+
+onMounted(() => {
+  fetchSettings().catch((error) => {
+    console.error('Failed to load translation settings for cluster detail:', error);
+  });
+});
+
+onBeforeUnmount(() => {
+  forceTranslateRunId.value += 1;
+  isForceTranslating.value = false;
+});
 
 function handleClose() {
   clusterStore.currentClusterId = null;
@@ -147,18 +496,15 @@ function handleClose() {
 <template>
   <main
     :class="[
-      'flex-1 bg-bg-primary flex flex-col h-full absolute w-full md:static md:w-auto z-30 transition-transform duration-300',
+      'flex-1 min-w-0 bg-bg-primary flex flex-col h-full absolute w-full md:static md:w-auto z-30 transition-transform duration-300',
       clusterStore.currentClusterId ? 'translate-x-0 md:translate-x-0' : 'translate-x-full',
     ]"
   >
-    <!-- Mobile header with back button -->
     <div
       v-if="isMobile && cluster"
       class="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-secondary"
     >
-      <span class="flex-1 truncate text-sm font-medium text-center pr-8">{{
-        cluster.merged_title
-      }}</span>
+      <span class="flex-1 truncate text-sm font-medium text-center pr-8">{{ clusterTitle }}</span>
       <button
         class="flex items-center justify-center p-2 -mr-2 rounded-lg hover:bg-bg-tertiary transition-colors"
         :title="t('article.navigation.backToList')"
@@ -201,6 +547,19 @@ function handleClose() {
         </div>
 
         <div class="flex items-center gap-0.5 sm:gap-1 pl-2">
+          <button
+            v-if="translationEnabled"
+            class="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors disabled:opacity-50"
+            :title="t('article.action.forceReTranslate')"
+            :disabled="isForceTranslating"
+            @click="forceTranslateCluster"
+          >
+            <PhTranslate
+              :size="18"
+              class="sm:w-5 sm:h-5"
+              :class="{ 'animate-spin': isForceTranslating }"
+            />
+          </button>
           <button
             class="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
             :title="
@@ -262,17 +621,22 @@ function handleClose() {
         </div>
       </div>
 
-      <!-- Content -->
       <div class="flex-1 overflow-y-auto w-full custom-scrollbar">
         <div
           class="max-w-[800px] w-[95%] sm:w-[90%] md:w-[85%] mx-auto py-6 sm:py-8 lg:py-12 px-4 sm:px-0"
         >
           <header class="mb-6 sm:mb-8 text-center sm:text-left">
             <h1
-              class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight font-serif mb-4 sm:mb-6"
+              class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight font-serif mb-2 sm:mb-3"
             >
-              {{ cluster.merged_title }}
+              {{ clusterTitle }}
             </h1>
+            <p
+              v-if="clusterOriginalTitle"
+              class="text-sm sm:text-base leading-7 text-text-secondary mb-4 sm:mb-6"
+            >
+              {{ clusterOriginalTitle }}
+            </p>
 
             <div
               class="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2 text-sm sm:text-base text-text-secondary"
@@ -324,14 +688,26 @@ function handleClose() {
           <hr class="border-border my-6 sm:my-8" />
 
           <div
-            v-if="cluster.merged_summary"
+            v-if="clusterSummary"
             class="bg-bg-secondary p-4 rounded-lg mb-8 border border-border"
           >
             <h3 class="font-semibold text-lg mb-2">{{ t('article.cluster.summaryTitle') }}</h3>
-            <p class="text-text-secondary leading-relaxed">{{ cluster.merged_summary }}</p>
+            <p class="text-text-secondary leading-relaxed">{{ clusterSummary }}</p>
+            <p
+              v-if="clusterOriginalSummary"
+              class="mt-3 border-t border-dashed border-border pt-3 text-sm leading-7 text-text-secondary/80"
+            >
+              {{ clusterOriginalSummary }}
+            </p>
           </div>
 
-          <article class="prose-content w-full" v-html="formattedContent" />
+          <div :class="{ 'translation-only-mode': translationOnlyMode && hasBodyTranslations }">
+            <article
+              ref="contentArticleRef"
+              class="prose prose-content w-full"
+              v-html="formattedContent"
+            />
+          </div>
 
           <div
             v-if="cluster.articles && cluster.articles.length > 0"
@@ -351,7 +727,7 @@ function handleClose() {
                   target="_blank"
                   class="font-medium text-accent hover:underline line-clamp-1"
                 >
-                  {{ article.title }}
+                  {{ article.translated_title || article.title }}
                 </a>
                 <span class="text-xs text-text-secondary">
                   {{ article.feed_title || t('article.cluster.unknownFeed') }} •
@@ -366,6 +742,8 @@ function handleClose() {
     </div>
   </main>
 </template>
+
+<style src="./ArticleContent.css"></style>
 
 <style scoped>
 @reference "../../style.css";

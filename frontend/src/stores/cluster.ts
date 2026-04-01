@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { apiClient } from '@/shared/lib/apiClient';
-import type { Cluster, DailyRecommendationItem, DailyRecommendationResponse } from '@/types/models';
+import { authGet } from '@/shared/lib/authFetch';
+import type {
+  AIProcessingStatus,
+  Cluster,
+  DailyRecommendationItem,
+  DailyRecommendationResponse,
+} from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 import { useArticleStore } from '@/features/article/store';
 
@@ -11,6 +17,9 @@ interface ClusterListResponse {
 }
 
 export const useClusterStore = defineStore('cluster', () => {
+  const AI_PROCESSING_POLL_INTERVAL_MS = 2000;
+  const DEFAULT_PAGE_SIZE = 20;
+  const REALTIME_BATCH_SIZE = 30;
   const clusters = ref<Cluster[]>([]);
   const dailyRecommendations = ref<DailyRecommendationItem[]>([]);
   const dailyRecommendationDates = ref<string[]>([]);
@@ -21,11 +30,16 @@ export const useClusterStore = defineStore('cluster', () => {
   const isLoadingMore = ref(false);
   const hasMore = ref(true);
   const currentPage = ref(1);
-  const pageSize = 20;
   const activeFilters = ref<FilterCondition[]>([]);
   const filteredClusterIds = ref<number[] | null>(null);
   const isDailyRecommendationsLoading = ref(false);
   const dailyRecommendationsError = ref('');
+  const aiProcessingStatus = ref<AIProcessingStatus | null>(null);
+  const isAIProcessingStatusLoading = ref(false);
+  const hasLoadedAIProcessingStatus = ref(false);
+
+  let aiProcessingPollingTimer: ReturnType<typeof setInterval> | null = null;
+  let aiProcessingPollingConsumers = 0;
 
   const currentCluster = computed(
     () =>
@@ -35,18 +49,36 @@ export const useClusterStore = defineStore('cluster', () => {
       null
   );
 
-function normalizeClusterListResponse(
-  response: Cluster[] | ClusterListResponse | null | undefined
-): Cluster[] {
-  if (!response) {
-    return [];
-  }
+  const isAIProcessingLocked = computed(() => aiProcessingStatus.value?.is_config_frozen === true);
+  const hasRealtimeInterestStream = computed(() => {
+    const articleStore = useArticleStore();
+    return (
+      articleStore.shouldUseClusterList() && aiProcessingStatus.value?.has_interest_vector === true
+    );
+  });
+  const shouldBlockClusterView = computed(
+    () =>
+      aiProcessingStatus.value?.is_enabled === true &&
+      (isAIProcessingLocked.value ||
+        (!hasLoadedAIProcessingStatus.value && isAIProcessingStatusLoading.value))
+  );
+  const aiProcessingProgressPercent = computed(() => {
+    const rawValue = aiProcessingStatus.value?.progress_percent ?? 0;
+    return Math.max(0, Math.min(100, Math.round(rawValue)));
+  });
 
-  if (Array.isArray(response)) {
-    return response;
-  }
+  function normalizeClusterListResponse(
+    response: Cluster[] | ClusterListResponse | null | undefined
+  ): Cluster[] {
+    if (!response) {
+      return [];
+    }
 
-  return response.clusters || [];
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    return response.clusters || [];
   }
 
   async function fetchClusters(page = 1) {
@@ -67,9 +99,49 @@ function normalizeClusterListResponse(
     isLoading.value = true;
 
     try {
+      if (hasRealtimeInterestStream.value) {
+        const payload: Record<string, any> = {
+          exclude_ids: isFirstPage ? [] : clusters.value.map((cluster) => cluster.id),
+        };
+
+        if (articleStore.currentFilter && articleStore.currentFilter !== 'all') {
+          payload.filter = articleStore.currentFilter;
+        }
+        if (articleStore.currentFeedId) {
+          payload.feed_id = articleStore.currentFeedId;
+        }
+        if (articleStore.currentCategory !== null) {
+          payload.category = articleStore.currentCategory;
+        }
+
+        const clusterData = await apiClient.post<Cluster[]>('/clusters/feed', payload);
+
+        if (isFirstPage) {
+          clusters.value = clusterData || [];
+        } else {
+          const existingIds = new Set(clusters.value.map((cluster) => cluster.id));
+          const newClusters = (clusterData || []).filter((cluster) => !existingIds.has(cluster.id));
+          clusters.value = [...clusters.value, ...newClusters];
+        }
+
+        if (filteredClusterIds.value) {
+          clusters.value = clusters.value.filter((cluster) =>
+            filteredClusterIds.value?.includes(cluster.id)
+          );
+        }
+
+        hasMore.value = (clusterData?.length || 0) === REALTIME_BATCH_SIZE;
+        currentPage.value = page;
+
+        if (isFirstPage) {
+          currentClusterId.value = clusters.value[0]?.id ?? null;
+        }
+        return;
+      }
+
       const params: Record<string, any> = {
         page,
-        limit: pageSize,
+        limit: DEFAULT_PAGE_SIZE,
       };
 
       if (articleStore.currentFilter && articleStore.currentFilter !== 'all') {
@@ -110,7 +182,7 @@ function normalizeClusterListResponse(
         );
       }
 
-      hasMore.value = clusterData.length === pageSize;
+      hasMore.value = clusterData.length === DEFAULT_PAGE_SIZE;
       currentPage.value = page;
 
       if (isFirstPage) {
@@ -197,6 +269,12 @@ function normalizeClusterListResponse(
   }
 
   async function refreshDailyRecommendations(): Promise<void> {
+    await apiClient.post('/clusters/daily-recommendations/regenerate', {
+      date: selectedRecommendationDate.value || undefined,
+      wait_for_idle: true,
+      force_if_incomplete: true,
+    });
+
     const dates = await fetchDailyRecommendationDates();
     if (dates.length === 0) {
       dailyRecommendations.value = [];
@@ -322,6 +400,53 @@ function normalizeClusterListResponse(
     activeFilters.value = filters;
   }
 
+  async function fetchAIProcessingStatus(): Promise<AIProcessingStatus | null> {
+    isAIProcessingStatusLoading.value = true;
+
+    try {
+      const response = await authGet<AIProcessingStatus>('/api/clusters/ai-processing-status');
+      aiProcessingStatus.value = response;
+      hasLoadedAIProcessingStatus.value = true;
+      return response;
+    } catch (error) {
+      console.error('Failed to fetch AI processing status:', error);
+      if (!hasLoadedAIProcessingStatus.value) {
+        aiProcessingStatus.value = null;
+      }
+      throw error;
+    } finally {
+      isAIProcessingStatusLoading.value = false;
+    }
+  }
+
+  async function startAIProcessingPolling() {
+    aiProcessingPollingConsumers += 1;
+
+    if (aiProcessingPollingConsumers === 1) {
+      await fetchAIProcessingStatus();
+
+      aiProcessingPollingTimer = setInterval(() => {
+        fetchAIProcessingStatus().catch((error) => {
+          console.error('Failed to poll AI processing status:', error);
+        });
+      }, AI_PROCESSING_POLL_INTERVAL_MS);
+      return;
+    }
+
+    if (!hasLoadedAIProcessingStatus.value && !isAIProcessingStatusLoading.value) {
+      await fetchAIProcessingStatus();
+    }
+  }
+
+  function stopAIProcessingPolling() {
+    aiProcessingPollingConsumers = Math.max(0, aiProcessingPollingConsumers - 1);
+
+    if (aiProcessingPollingConsumers === 0 && aiProcessingPollingTimer) {
+      clearInterval(aiProcessingPollingTimer);
+      aiProcessingPollingTimer = null;
+    }
+  }
+
   function setFilteredClusterIds(ids: number[] | null) {
     filteredClusterIds.value = ids;
 
@@ -366,6 +491,13 @@ function normalizeClusterListResponse(
     filteredClusterIds,
     isDailyRecommendationsLoading,
     dailyRecommendationsError,
+    aiProcessingStatus,
+    isAIProcessingStatusLoading,
+    hasLoadedAIProcessingStatus,
+    isAIProcessingLocked,
+    shouldBlockClusterView,
+    hasRealtimeInterestStream,
+    aiProcessingProgressPercent,
     fetchClusters,
     loadMore,
     fetchClusterDetail,
@@ -381,6 +513,9 @@ function normalizeClusterListResponse(
     markAllAsRead,
     refreshCurrentCluster,
     setActiveFilters,
+    fetchAIProcessingStatus,
+    startAIProcessingPolling,
+    stopAIProcessingPolling,
     setFilteredClusterIds,
     clearData,
   };

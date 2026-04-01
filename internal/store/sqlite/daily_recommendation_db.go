@@ -22,7 +22,7 @@ type DailyRecommendationResult struct {
 	LatestPublishedAt time.Time
 }
 
-func (db *DB) HasDailyRecommendations(userID int64, recommendationDate string) (bool, error) {
+func (db *DB) CountDailyRecommendations(userID int64, recommendationDate string) (int, error) {
 	db.WaitForReady()
 	var count int
 	err := db.QueryRow(
@@ -30,9 +30,59 @@ func (db *DB) HasDailyRecommendations(userID int64, recommendationDate string) (
 		userID, recommendationDate,
 	).Scan(&count)
 	if err != nil {
+		return 0, fmt.Errorf("count daily recommendations: %w", err)
+	}
+	return count, nil
+}
+
+func (db *DB) HasDailyRecommendations(userID int64, recommendationDate string) (bool, error) {
+	count, err := db.CountDailyRecommendations(userID, recommendationDate)
+	if err != nil {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (db *DB) CountDailyRecommendationReadyClusters(userID int64, dayStart, dayEnd time.Time) (int, error) {
+	db.WaitForReady()
+	var count int
+	err := db.QueryRow(`
+		SELECT COUNT(DISTINCT c.id)
+		FROM clusters c
+		JOIN articles a ON a.cluster_id = c.id
+		WHERE c.user_id = ?
+		  AND c.status = 'complete'
+		  AND c.is_hidden = 0
+		  AND a.published_at >= ?
+		  AND a.published_at < ?
+	`, userID, dayStart, dayEnd).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count ready recommendation clusters: %w", err)
+	}
+	return count, nil
+}
+
+func (db *DB) ListAIRecommendedClusterIDsExcludingDate(userID int64, recommendationDate string) ([]int64, error) {
+	db.WaitForReady()
+	rows, err := db.Query(`
+		SELECT DISTINCT cluster_id
+		FROM daily_recommendations
+		WHERE user_id = ? AND recommendation_date <> ?
+	`, userID, recommendationDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (db *DB) ListDailyRecommendationDates(userID int64) ([]string, error) {

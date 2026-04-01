@@ -606,7 +606,7 @@ function handleFilterDragEnd() {
   >
     <div
       v-if="isExpanded || isPinned"
-      class="w-[280px] min-w-[280px] max-w-[80vw] md:w-[280px] md:min-w-[280px] flex flex-col h-full flex-shrink-0 relative border-r border-border feed-drawer-width z-20"
+      class="feed-drawer-width max-w-[80vw] flex flex-col h-full flex-shrink-0 relative border-r border-border z-20"
       :class="[isPinned ? 'bg-bg-primary' : 'bg-bg-secondary shadow-2xl']"
     >
       <!-- Drawer Header -->
@@ -841,6 +841,11 @@ function handleFilterDragEnd() {
 </template>
 
 <style scoped>
+.feed-drawer-width {
+  width: var(--sidebar-width, 234px);
+  min-width: var(--sidebar-width, 234px);
+}
+
 .categories-list {
   /* Force scrollbar to always be visible */
   scrollbar-gutter: stable;
@@ -866,8 +871,8 @@ function handleFilterDragEnd() {
 /* Responsive width for feed drawer on medium screens */
 @media (max-width: 1400px) {
   .feed-drawer-width {
-    width: 240px !important;
-    min-width: 240px !important;
+    width: min(var(--sidebar-width, 234px), 200px) !important;
+    min-width: min(var(--sidebar-width, 234px), 200px) !important;
   }
 }
 </style>

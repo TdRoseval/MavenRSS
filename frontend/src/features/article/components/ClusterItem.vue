@@ -103,7 +103,7 @@ async function markAsRead() {
             'read-title text-text-secondary font-normal': cluster.is_read && compactMode,
           }"
         >
-          {{ cluster.merged_title }}
+          {{ cluster.display_title || cluster.merged_title }}
         </h4>
 
         <PhEyeSlash

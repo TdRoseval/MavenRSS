@@ -155,6 +155,37 @@ func (db *DB) ListUsers() ([]*models.User, error) {
 	return users, nil
 }
 
+func (db *DB) ListKnownUserIDs() ([]int64, error) {
+	rows, err := db.Query(`
+		SELECT DISTINCT user_id FROM (
+			SELECT id AS user_id FROM users
+			UNION
+			SELECT user_id FROM user_settings WHERE user_id > 0
+			UNION
+			SELECT user_id FROM feeds WHERE user_id > 0
+			UNION
+			SELECT user_id FROM articles WHERE user_id > 0
+		)
+		WHERE user_id > 0
+		ORDER BY user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var userIDs []int64
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs, rows.Err()
+}
+
 // ListActiveUsers returns all active users.
 func (db *DB) ListActiveUsers() ([]*models.User, error) {
 	query := `
@@ -345,7 +376,7 @@ func (db *DB) GetUserSessionByToken(token string) (*models.UserSession, error) {
 	`
 	var session models.UserSession
 	err := db.QueryRow(query, token).Scan(
-		&session.ID, &session.UserID, &session.RefreshToken, &session.UserAgent, 
+		&session.ID, &session.UserID, &session.RefreshToken, &session.UserAgent,
 		&session.IPAddress, &session.ExpiresAt, &session.CreatedAt,
 	)
 	if err != nil {
@@ -437,7 +468,7 @@ func (db *DB) UpdateUserQuota(quota *models.UserQuota) error {
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE user_id = ?
 	`
-	_, err := db.Exec(query, 
+	_, err := db.Exec(query,
 		quota.MaxFeeds, quota.MaxArticles, quota.MaxAITokens, quota.MaxAIConcurrency, quota.MaxFeedFetchConcurrency, quota.MaxDBQueryConcurrency, quota.MaxMediaCacheConcurrency, quota.MaxRSSDiscoveryConcurrency, quota.MaxRSSPathCheckConcurrency, quota.MaxTranslationConcurrency, quota.MaxStorageMB,
 		quota.UsedFeeds, quota.UsedArticles, quota.UsedAITokens, quota.UsedStorageMB,
 		quota.UserID,
@@ -489,9 +520,9 @@ func (db *DB) GetTemplateUser() (*models.User, error) {
 }
 
 var (
-	ErrQuotaExceededFeeds     = errors.New("quota exceeded: maximum number of feeds reached")
-	ErrQuotaExceededArticles  = errors.New("quota exceeded: maximum number of articles reached")
-	ErrQuotaExceededStorage   = errors.New("quota exceeded: maximum storage reached")
+	ErrQuotaExceededFeeds    = errors.New("quota exceeded: maximum number of feeds reached")
+	ErrQuotaExceededArticles = errors.New("quota exceeded: maximum number of articles reached")
+	ErrQuotaExceededStorage  = errors.New("quota exceeded: maximum storage reached")
 )
 
 func (db *DB) CheckFeedQuota(userID int64) (bool, error) {
@@ -499,17 +530,17 @@ func (db *DB) CheckFeedQuota(userID int64) (bool, error) {
 	if err != nil {
 		return true, nil
 	}
-	
+
 	var currentCount int
 	err = db.QueryRow("SELECT COUNT(*) FROM feeds WHERE user_id = ?", userID).Scan(&currentCount)
 	if err != nil {
 		return true, nil
 	}
-	
+
 	if quota.MaxFeeds > 0 && currentCount >= quota.MaxFeeds {
 		return false, ErrQuotaExceededFeeds
 	}
-	
+
 	return true, nil
 }
 
@@ -518,17 +549,17 @@ func (db *DB) CheckArticleQuota(userID int64, additionalCount int64) (bool, erro
 	if err != nil {
 		return true, nil
 	}
-	
+
 	var currentCount int64
 	err = db.QueryRow("SELECT COUNT(*) FROM articles WHERE user_id = ?", userID).Scan(&currentCount)
 	if err != nil {
 		return true, nil
 	}
-	
+
 	if quota.MaxArticles > 0 && currentCount+additionalCount > quota.MaxArticles {
 		return false, ErrQuotaExceededArticles
 	}
-	
+
 	return true, nil
 }
 
@@ -537,11 +568,11 @@ func (db *DB) CheckStorageQuota(userID int64) (bool, error) {
 	if err != nil {
 		return true, nil
 	}
-	
+
 	if quota.MaxStorageMB <= 0 {
 		return true, nil
 	}
-	
+
 	var totalSizeBytes int64
 	err = db.QueryRow(`
 		SELECT IFNULL(SUM(LENGTH(content)), 0) 
@@ -551,12 +582,12 @@ func (db *DB) CheckStorageQuota(userID int64) (bool, error) {
 	if err != nil {
 		return true, nil
 	}
-	
+
 	currentSizeMB := int(totalSizeBytes / (1024 * 1024))
 	if currentSizeMB >= quota.MaxStorageMB {
 		return false, ErrQuotaExceededStorage
 	}
-	
+
 	return true, nil
 }
 
@@ -569,13 +600,13 @@ func (db *DB) GetEffectiveMaxCacheSizeMB(userID int64) int {
 		}
 		return 500
 	}
-	
+
 	userSettingStr, _ := db.GetSettingForUser(userID, "max_cache_size_mb")
 	if userSettingSize, err := strconv.Atoi(userSettingStr); err == nil && userSettingSize > 0 {
 		if userSettingSize <= quota.MaxStorageMB {
 			return userSettingSize
 		}
 	}
-	
+
 	return quota.MaxStorageMB
 }

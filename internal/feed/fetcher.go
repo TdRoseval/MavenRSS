@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/rsshub"
 	"MavenRSS/internal/rules"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/utils"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
@@ -39,21 +39,21 @@ type PostProcessTask struct {
 }
 
 type Fetcher struct {
-	db                   *sqlite.DB
-	fp                   FeedParser
-	highPriorityFp       FeedParser // High priority parser for content fetching
-	scriptExecutor       *ScriptExecutor
-	emailFetcher         *EmailFetcher
-	progress             Progress
-	mu                   sync.Mutex
-	refreshCalculator    *IntelligentRefreshCalculator
-	taskManager          *TaskManager
-	cleanupManager       *CleanupManager
-	postProcessChan      chan *PostProcessTask
-	postProcessWg        sync.WaitGroup
-	articleSink          chan []*models.Article // Global sink for article writes (Eco mode)
-	writerWg             sync.WaitGroup         // WaitGroup for article writer loop
-	aiEnhancedManager    *AIEnhancedManager    // AI enhanced mode task manager
+	db                *sqlite.DB
+	fp                FeedParser
+	highPriorityFp    FeedParser // High priority parser for content fetching
+	scriptExecutor    *ScriptExecutor
+	emailFetcher      *EmailFetcher
+	progress          Progress
+	mu                sync.Mutex
+	refreshCalculator *IntelligentRefreshCalculator
+	taskManager       *TaskManager
+	cleanupManager    *CleanupManager
+	postProcessChan   chan *PostProcessTask
+	postProcessWg     sync.WaitGroup
+	articleSink       chan []*models.Article // Global sink for article writes (Eco mode)
+	writerWg          sync.WaitGroup         // WaitGroup for article writer loop
+	aiEnhancedManager *AIEnhancedManager     // AI enhanced mode task manager
 }
 
 func NewFetcher(db *sqlite.DB) *Fetcher {
@@ -170,7 +170,7 @@ func (f *Fetcher) articleWriterLoop() {
 				for i, a := range articles {
 					awcs[i] = &ArticleWithContent{Article: a}
 				}
-				
+
 				// Get feed title and user ID (assuming all articles in batch for same feed have same user)
 				var feedTitle string
 				var userID int64
@@ -284,6 +284,7 @@ func (f *Fetcher) processPostTask(task *PostProcessTask) {
 					ArticleID:         awc.Article.ID,
 					UserID:            task.UserID,
 					FeedID:            task.FeedID,
+					ArticleTitle:      awc.Article.Title,
 					NeedsSummary:      !hasSummary,
 					NeedsTranslation:  true,
 					TranslateArticles: feed != nil && feed.TranslateArticles,
@@ -319,14 +320,14 @@ func (f *Fetcher) StopRefreshForUser(userID int64) {
 // Stop stops the fetcher and cleans up all resources
 func (f *Fetcher) Stop() {
 	log.Println("Stopping fetcher...")
-	
+
 	// Stop post-processing workers by closing the channel
 	// This is the clean way to stop workers - they'll finish
 	// all pending tasks first before exiting
 	close(f.postProcessChan)
 	f.postProcessWg.Wait()
 	log.Println("Post-processing workers stopped")
-	
+
 	// Stop article writer loop
 	close(f.articleSink)
 	f.writerWg.Wait()
@@ -741,7 +742,7 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-			
+
 			// In Eco mode, we skip immediate post-processing here
 			// The writer loop handles sending to postProcessChan after saving
 		} else {
@@ -848,7 +849,7 @@ func (f *Fetcher) cacheArticleContents(articlesWithContent []*ArticleWithContent
 			// Fallback to recalculating if unique_id is not available
 			articleID, err = f.db.GetArticleIDByUniqueID(awc.Article.UserID, awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
 		}
-		
+
 		if err != nil {
 			// Article might not exist yet (race condition) or other error
 			utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)

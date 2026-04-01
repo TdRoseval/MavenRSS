@@ -229,7 +229,10 @@ func DetectAPIProvider(endpoint string) string {
 
 	// OpenAI endpoints (check before Ollama to avoid false positives)
 	if strings.Contains(endpoint, "openai.com") ||
-		strings.Contains(endpoint, "api.openai.com") {
+		strings.Contains(endpoint, "api.openai.com") ||
+		strings.Contains(endpoint, "bigmodel.cn") ||
+		strings.Contains(endpoint, "/chat/completions") ||
+		strings.Contains(endpoint, "/responses") {
 		return "openai"
 	}
 

@@ -22,6 +22,9 @@ func (db *DB) GetClustersByVectorSimilarity(
 	userID int64,
 	interestVecBlob []byte,
 	excludeIDs []int64,
+	filter string,
+	feedID int64,
+	category string,
 	maxAgeDays int,
 	topK int,
 ) ([]ClusterWithScore, error) {
@@ -31,8 +34,40 @@ func (db *DB) GetClustersByVectorSimilarity(
 		topK = 100
 	}
 
-	args := make([]interface{}, 0, len(excludeIDs)+4)
+	args := make([]interface{}, 0, len(excludeIDs)+8)
 	args = append(args, userID, maxAgeDays)
+
+	joinClause := ""
+	if feedID > 0 || category != "" {
+		joinClause = `
+		JOIN articles a ON a.cluster_id = c.id
+		JOIN feeds f ON f.id = a.feed_id`
+	}
+
+	conditions := []string{
+		"c.user_id = ?",
+		"c.is_hidden = 0",
+		"c.status = 'complete'",
+		"c.updated_at >= datetime('now', '-' || ? || ' days')",
+	}
+
+	switch filter {
+	case "unread":
+		conditions = append(conditions, "c.is_read = 0")
+	case "favorites":
+		conditions = append(conditions, "c.is_favorite = 1")
+	case "readLater":
+		conditions = append(conditions, "c.is_read_later = 1")
+	}
+
+	if feedID > 0 {
+		conditions = append(conditions, "a.feed_id = ?")
+		args = append(args, feedID)
+	}
+	if category != "" {
+		conditions = append(conditions, "(COALESCE(f.category, '') = ? OR COALESCE(f.category, '') LIKE ?)")
+		args = append(args, category, category+"/%")
+	}
 
 	excludeClause := ""
 	if len(excludeIDs) > 0 {
@@ -52,14 +87,11 @@ c.recommendation_archive_date, c.recommendation_score, c.is_ai_recommended, c.re
 c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read_later, c.is_hidden,
 ce.distance
 		FROM cluster_embeddings ce
-		JOIN clusters c ON ce.cluster_id = c.id
-		WHERE c.user_id = ?
-		  AND c.is_hidden = 0
-		  AND c.status = 'complete'
-		  AND c.updated_at >= datetime('now', '-' || ? || ' days')%s
+		JOIN clusters c ON ce.cluster_id = c.id%s
+		WHERE %s%s
 		  AND ce.summary_embedding MATCH ? AND k = ?
 		ORDER BY ce.distance
-	`, excludeClause)
+	`, joinClause, strings.Join(conditions, " AND "), excludeClause)
 
 	clusterRows, err := db.Query(query, args...)
 	if err != nil {
@@ -95,6 +127,9 @@ ce.distance
 func (db *DB) GetRecentClustersChronological(
 	userID int64,
 	excludeIDs []int64,
+	filter string,
+	feedID int64,
+	category string,
 	limit int,
 ) ([]models.Cluster, error) {
 	db.WaitForReady()
@@ -104,6 +139,33 @@ func (db *DB) GetRecentClustersChronological(
 	}
 
 	args := []interface{}{userID}
+	baseQuery := `FROM clusters c`
+	conditions := []string{"c.user_id = ?", "c.is_hidden = 0", "c.status = 'complete'"}
+
+	if feedID > 0 || category != "" {
+		baseQuery += `
+		JOIN articles a ON a.cluster_id = c.id
+		JOIN feeds f ON f.id = a.feed_id`
+	}
+
+	switch filter {
+	case "unread":
+		conditions = append(conditions, "c.is_read = 0")
+	case "favorites":
+		conditions = append(conditions, "c.is_favorite = 1")
+	case "readLater":
+		conditions = append(conditions, "c.is_read_later = 1")
+	}
+
+	if feedID > 0 {
+		conditions = append(conditions, "a.feed_id = ?")
+		args = append(args, feedID)
+	}
+	if category != "" {
+		conditions = append(conditions, `(COALESCE(f.category, '') = ? OR COALESCE(f.category, '') LIKE ?)`)
+		args = append(args, category, category+"/%")
+	}
+
 	excludeClause := ""
 	if len(excludeIDs) > 0 {
 		placeholders := make([]string, len(excludeIDs))
@@ -111,19 +173,19 @@ func (db *DB) GetRecentClustersChronological(
 			placeholders[i] = "?"
 			args = append(args, id)
 		}
-		excludeClause = fmt.Sprintf(" AND id NOT IN (%s)", strings.Join(placeholders, ","))
+		excludeClause = fmt.Sprintf(" AND c.id NOT IN (%s)", strings.Join(placeholders, ","))
 	}
 	args = append(args, limit)
 
 	query := fmt.Sprintf(`
-		SELECT id, user_id, status, merged_title, merged_summary,
-recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
-article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
-		FROM clusters
-		WHERE user_id = ? AND is_hidden = 0 AND status = 'complete'%s
-		ORDER BY updated_at DESC
+		SELECT DISTINCT c.id, c.user_id, c.status, c.merged_title, c.merged_summary,
+c.recommendation_archive_date, c.recommendation_score, c.is_ai_recommended, c.recommendation_profile_id,
+c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read_later, c.is_hidden
+		%s
+		WHERE %s%s
+		ORDER BY c.updated_at DESC
 		LIMIT ?
-	`, excludeClause)
+	`, baseQuery, strings.Join(conditions, " AND "), excludeClause)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -136,6 +198,7 @@ article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_h
 		var c models.Cluster
 		if err := rows.Scan(
 			&c.ID, &c.UserID, &c.Status, &c.MergedTitle, &c.MergedSummary,
+			&c.RecommendationArchiveDate, &c.RecommendationScore, &c.IsAIRecommended, &c.RecommendationProfileID,
 			&c.ArticleCount, &c.CreatedAt, &c.UpdatedAt, &c.IsRead, &c.IsFavorite, &c.IsReadLater, &c.IsHidden,
 		); err != nil {
 			log.Printf("Error scanning cluster: %v", err)

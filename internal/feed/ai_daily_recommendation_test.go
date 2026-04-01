@@ -66,6 +66,64 @@ func TestSaveDailyRecommendationsUpdatesClusterFlags(t *testing.T) {
 	}
 }
 
+func TestShouldQueueDailyRecommendationsForIncompleteResults(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	userID := int64(999)
+	if _, err := db.Exec(`INSERT INTO users (id, username, password_hash, email, created_at, updated_at) VALUES (?, 'u999', 'hash', 'u999@test.com', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, userID); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	feedID := mustCreateTestFeed(t, db, userID, false)
+	recommendationDate := "2026-03-31"
+	publishedAt := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
+
+	clusterIDs := make([]int64, 0, 3)
+	for i := 0; i < 3; i++ {
+		clusterID, err := db.CreateCluster(userID, "complete")
+		if err != nil {
+			t.Fatalf("create cluster %d: %v", i, err)
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+		if _, err := db.Exec(
+			`INSERT INTO articles (user_id, feed_id, title, url, published_at, unique_id, cluster_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			userID,
+			feedID,
+			"article",
+			"https://example.com/article/"+time.Now().Format("150405.000000"),
+			publishedAt.Add(time.Duration(i)*time.Minute),
+			time.Now().Format("150405.000000")+string(rune('a'+i)),
+			clusterID,
+		); err != nil {
+			t.Fatalf("insert article %d: %v", i, err)
+		}
+	}
+
+	if err := db.SaveDailyRecommendations(userID, recommendationDate, []models.DailyRecommendation{{
+		UserID:              userID,
+		ClusterID:           clusterIDs[0],
+		RecommendationDate:  recommendationDate,
+		RecommendationRank:  1,
+		RecommendationScore: 9,
+	}}); err != nil {
+		t.Fatalf("save initial recommendations: %v", err)
+	}
+
+	shouldQueue, forceRegenerate, err := manager.shouldQueueDailyRecommendations(userID, recommendationDate)
+	if err != nil {
+		t.Fatalf("shouldQueueDailyRecommendations error: %v", err)
+	}
+	if !shouldQueue {
+		t.Fatalf("expected incomplete recommendations to be queued for regeneration")
+	}
+	if !forceRegenerate {
+		t.Fatalf("expected incomplete recommendations to force regeneration")
+	}
+}
+
 func TestCleanupExpiredClustersKeepsRecommendedClusters(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	userID := int64(1)

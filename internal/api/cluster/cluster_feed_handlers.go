@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/api/response"
 	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 )
@@ -29,6 +30,31 @@ type dailyRecommendationResponse struct {
 	Total           int                       `json:"total"`
 }
 
+func HandleAIProcessingStatus(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
+		response.JSON(w, map[string]any{
+			"is_enabled":          false,
+			"has_interest_vector": false,
+			"is_config_frozen":    false,
+			"progress_percent":    100,
+		})
+		return
+	}
+
+	response.JSON(w, h.Fetcher.GetAIEnhancedManager().GetProcessingStatus(userID))
+}
+
 func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -43,6 +69,9 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	var req struct {
 		ExcludeIDs []int64 `json:"exclude_ids"`
+		Filter     string  `json:"filter"`
+		FeedID     int64   `json:"feed_id"`
+		Category   string  `json:"category"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		req.ExcludeIDs = nil
@@ -69,7 +98,14 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	if len(vecBlob) == 0 {
-		clusters, err := h.DB.GetRecentClustersChronological(userID, req.ExcludeIDs, returnLimit)
+		clusters, err := h.DB.GetRecentClustersChronological(
+			userID,
+			req.ExcludeIDs,
+			req.Filter,
+			req.FeedID,
+			req.Category,
+			returnLimit,
+		)
 		if err != nil {
 			log.Printf("Error fetching chronological clusters: %v", err)
 			http.Error(w, "Failed to get clusters", http.StatusInternalServerError)
@@ -84,18 +120,32 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	candidates, err := h.DB.GetClustersByVectorSimilarity(
-		userID, vecBlob, req.ExcludeIDs, maxAgeDays, recallTopK,
+		userID, vecBlob, req.ExcludeIDs, req.Filter, req.FeedID, req.Category, maxAgeDays, recallTopK,
 	)
 	if err != nil {
 		log.Printf("Error in vector similarity recall: %v", err)
-		clusters, _ := h.DB.GetRecentClustersChronological(userID, req.ExcludeIDs, returnLimit)
+		clusters, _ := h.DB.GetRecentClustersChronological(
+			userID,
+			req.ExcludeIDs,
+			req.Filter,
+			req.FeedID,
+			req.Category,
+			returnLimit,
+		)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(clusters)
 		return
 	}
 
 	if len(candidates) == 0 {
-		clusters, _ := h.DB.GetRecentClustersChronological(userID, req.ExcludeIDs, returnLimit)
+		clusters, _ := h.DB.GetRecentClustersChronological(
+			userID,
+			req.ExcludeIDs,
+			req.Filter,
+			req.FeedID,
+			req.Category,
+			returnLimit,
+		)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(clusters)
 		return
@@ -225,6 +275,58 @@ func HandleDailyRecommendations(h *core.Handler, w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func HandleRegenerateDailyRecommendations(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
+		http.Error(w, "AI enhanced mode unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		Date              string `json:"date"`
+		WaitForIdle       bool   `json:"wait_for_idle"`
+		ForceIfIncomplete bool   `json:"force_if_incomplete"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req.WaitForIdle = true
+		req.ForceIfIncomplete = true
+	}
+
+	if !req.WaitForIdle {
+		req.WaitForIdle = true
+	}
+	if !req.ForceIfIncomplete {
+		req.ForceIfIncomplete = true
+	}
+
+	scheduled, err := h.Fetcher.GetAIEnhancedManager().QueueDailyRecommendations(
+		userID,
+		req.Date,
+		req.WaitForIdle,
+		req.ForceIfIncomplete,
+	)
+	if err != nil {
+		log.Printf("Error scheduling daily recommendation regeneration: %v", err)
+		http.Error(w, "Failed to schedule daily recommendation regeneration", http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, map[string]any{
+		"scheduled": scheduled,
+		"date":      req.Date,
+	})
 }
 
 func HandleClusterClick(h *core.Handler, w http.ResponseWriter, r *http.Request) {

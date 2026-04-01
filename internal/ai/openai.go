@@ -3,6 +3,7 @@ package ai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -151,19 +152,104 @@ func (h *OpenAIHandler) ValidateResponse(statusCode int, body []byte) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Errorf("authentication failed - check API key")
+		return errors.New(withOpenAIErrorDetails("authentication failed - check API key", body))
 	case http.StatusNotFound:
-		return fmt.Errorf("model not found")
+		return errors.New(withOpenAIErrorDetails("model not found", body))
 	case http.StatusBadRequest:
-		return fmt.Errorf("bad request - check parameters")
+		return errors.New(withOpenAIErrorDetails("bad request - check parameters", body))
 	default:
-		return fmt.Errorf("OpenAI API returned status %d: %s", statusCode, string(body))
+		return errors.New(withOpenAIErrorDetails(fmt.Sprintf("OpenAI API returned status %d", statusCode), body))
 	}
 }
 
 // FormatEndpoint returns the endpoint as-is for OpenAI format
 func (h *OpenAIHandler) FormatEndpoint(endpoint, model string) string {
 	return strings.TrimSuffix(endpoint, "/")
+}
+
+func withOpenAIErrorDetails(prefix string, body []byte) string {
+	details := extractOpenAIErrorDetails(body)
+	if details == "" {
+		return prefix
+	}
+	return fmt.Sprintf("%s: %s", prefix, details)
+}
+
+func extractOpenAIErrorDetails(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return ""
+	}
+
+	var response struct {
+		Error *struct {
+			Message string      `json:"message"`
+			Type    string      `json:"type"`
+			Code    interface{} `json:"code"`
+			Param   interface{} `json:"param"`
+		} `json:"error"`
+		Message string      `json:"message"`
+		Msg     string      `json:"msg"`
+		Code    interface{} `json:"code"`
+	}
+
+	if err := json.Unmarshal(body, &response); err == nil {
+		parts := make([]string, 0, 4)
+
+		if response.Error != nil {
+			if code := stringifyOpenAIErrorField(response.Error.Code); code != "" {
+				parts = append(parts, "code="+code)
+			}
+			if response.Error.Message != "" {
+				parts = append(parts, response.Error.Message)
+			}
+			if response.Error.Type != "" {
+				parts = append(parts, "type="+response.Error.Type)
+			}
+			if param := stringifyOpenAIErrorField(response.Error.Param); param != "" {
+				parts = append(parts, "param="+param)
+			}
+		} else {
+			if code := stringifyOpenAIErrorField(response.Code); code != "" {
+				parts = append(parts, "code="+code)
+			}
+			if response.Message != "" {
+				parts = append(parts, response.Message)
+			} else if response.Msg != "" {
+				parts = append(parts, response.Msg)
+			}
+		}
+
+		if len(parts) > 0 {
+			return strings.Join(parts, ", ")
+		}
+	}
+
+	return truncateOpenAIErrorDetail(trimmed)
+}
+
+func stringifyOpenAIErrorField(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func truncateOpenAIErrorDetail(detail string) string {
+	detail = strings.Join(strings.Fields(detail), " ")
+	const maxLen = 300
+	if len(detail) <= maxLen {
+		return detail
+	}
+	return detail[:maxLen] + "..."
 }
 
 // IsOpenAIError checks if an error message indicates an OpenAI API format

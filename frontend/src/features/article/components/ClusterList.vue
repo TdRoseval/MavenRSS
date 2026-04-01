@@ -279,7 +279,6 @@ async function handleRecommendationDateChange(): Promise<void> {
 
   try {
     await clusterStore.selectRecommendationDate(selectedRecommendationDate.value);
-    clusterStore.currentClusterId = null;
   } catch (error) {
     console.error('Error changing recommendation date:', error);
     window.showToast(t('article.cluster.dailyRecommendationLoadFailed'), 'error');
@@ -460,4 +459,16 @@ async function refreshRecommendations(): Promise<void> {
 
 <style scoped>
 @reference "../../style.css";
+
+@media (min-width: 768px) {
+  .article-list {
+    width: var(--article-list-width, 400px);
+  }
+}
+
+@media (max-width: 1400px) and (min-width: 768px) {
+  .article-list {
+    width: min(var(--article-list-width, 400px), 320px) !important;
+  }
+}
 </style>

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -31,6 +32,84 @@ type ClientConfig struct {
 type Client struct {
 	config ClientConfig
 	client *http.Client
+}
+
+// RequestError keeps a user-facing message while preserving provider diagnostics.
+type RequestError struct {
+	UserMessage string
+	Diagnostics []string
+}
+
+func (e *RequestError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.UserMessage
+}
+
+func (e *RequestError) DiagnosticString() string {
+	if e == nil {
+		return ""
+	}
+	if len(e.Diagnostics) == 0 {
+		return e.UserMessage
+	}
+	return strings.Join(e.Diagnostics, "; ")
+}
+
+func DiagnosticMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	var requestErr *RequestError
+	if errors.As(err, &requestErr) {
+		if diagnostic := requestErr.DiagnosticString(); diagnostic != "" {
+			return diagnostic
+		}
+	}
+	return err.Error()
+}
+
+// ShouldSkipArticleRetry reports whether an AI failure is tied to the article
+// content itself and should not be retried automatically by background workers.
+func ShouldSkipArticleRetry(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(strings.TrimSpace(DiagnosticMessage(err)))
+	if errStr == "" {
+		errStr = strings.ToLower(strings.TrimSpace(err.Error()))
+	}
+	if errStr == "" {
+		return false
+	}
+
+	articleScopedPatterns := []string{
+		"code=1301",
+		"safety policy",
+		"content policy",
+		"unsafe or sensitive content",
+		"unsafe content",
+		"sensitive content",
+		"不安全或敏感内容",
+		"敏感内容",
+		"context_length_exceeded",
+		"maximum context length",
+		"prompt is too long",
+		"input is too long",
+		"payload too large",
+		"request too large",
+		"token limit exceeded",
+	}
+
+	for _, pattern := range articleScopedPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // NewClient creates a new universal AI client
@@ -92,18 +171,18 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 // RequestWithConfig makes an AI request with full configuration
 func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error) {
 	const totalAITimeout = 120 * time.Second
-	
+
 	ctx := config.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	
+
 	totalCtx, cancel := context.WithTimeout(ctx, totalAITimeout)
 	defer cancel()
-	
+
 	configWithContext := config
 	configWithContext.Context = totalCtx
-	
+
 	provider := DetectAPIProvider(c.config.Endpoint)
 
 	var allErrors []string
@@ -125,7 +204,10 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		return result, nil
 	}
 	logFn("OpenAI", err)
-	
+	if provider == "openai" && shouldShortCircuitDetectedProviderFallback(provider, err) {
+		return ResponseResult{}, buildUserFriendlyRequestError(allErrors, networkErrors)
+	}
+
 	// Check if we've already timed out
 	select {
 	case <-totalCtx.Done():
@@ -141,6 +223,9 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 			return result, nil
 		}
 		logFn("Gemini", err)
+		if shouldShortCircuitDetectedProviderFallback(provider, err) {
+			return ResponseResult{}, buildUserFriendlyRequestError(allErrors, networkErrors)
+		}
 		select {
 		case <-totalCtx.Done():
 			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
@@ -153,6 +238,9 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 			return result, nil
 		}
 		logFn("Anthropic", err)
+		if shouldShortCircuitDetectedProviderFallback(provider, err) {
+			return ResponseResult{}, buildUserFriendlyRequestError(allErrors, networkErrors)
+		}
 		select {
 		case <-totalCtx.Done():
 			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
@@ -165,6 +253,9 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 			return result, nil
 		}
 		logFn("DeepSeek", err)
+		if shouldShortCircuitDetectedProviderFallback(provider, err) {
+			return ResponseResult{}, buildUserFriendlyRequestError(allErrors, networkErrors)
+		}
 		select {
 		case <-totalCtx.Done():
 			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
@@ -177,6 +268,9 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 			return result, nil
 		}
 		logFn("Ollama", err)
+		if shouldShortCircuitDetectedProviderFallback(provider, err) {
+			return ResponseResult{}, buildUserFriendlyRequestError(allErrors, networkErrors)
+		}
 		select {
 		case <-totalCtx.Done():
 			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
@@ -205,7 +299,7 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 			return result, nil
 		}
 		logFn(h.name, err)
-		
+
 		select {
 		case <-totalCtx.Done():
 			return ResponseResult{}, fmt.Errorf("AI request total timeout exceeded after %v: %w", totalAITimeout, totalCtx.Err())
@@ -214,8 +308,49 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 	}
 
 	// All formats failed - return user-friendly error
+	return ResponseResult{}, buildUserFriendlyRequestError(allErrors, networkErrors)
+}
+
+func shouldShortCircuitDetectedProviderFallback(provider string, err error) bool {
+	if provider == "" || provider == "unknown" || err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(fmt.Sprintf("%v", err))
+	if errStr == "" || isNetworkError(errStr) {
+		return false
+	}
+
+	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") || strings.Contains(errStr, "request cancelled") {
+		return false
+	}
+
+	terminalPatterns := []string{
+		"bad request",
+		"authentication failed",
+		"invalid api key",
+		"access denied",
+		"forbidden",
+		"model not found",
+		"endpoint or model not found",
+		"not found",
+		"unsupported",
+		"invalid argument",
+		"invalid request",
+	}
+
+	for _, pattern := range terminalPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func buildUserFriendlyRequestError(allErrors, networkErrors []string) error {
 	var userFriendlyErr string
-	
+
 	if len(networkErrors) > 0 {
 		// Network connectivity issues
 		userFriendlyErr = "AI service unavailable: Unable to connect to the AI service. Please check your network connection and proxy settings."
@@ -241,8 +376,10 @@ func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error)
 		userFriendlyErr = "AI service unavailable: Unknown error occurred."
 	}
 
-	// fmt.Errorf requires a constant format string; the string is the message.
-	return ResponseResult{}, fmt.Errorf("%s", userFriendlyErr)
+	return &RequestError{
+		UserMessage: userFriendlyErr,
+		Diagnostics: append([]string(nil), allErrors...),
+	}
 }
 
 // tryFormat attempts to make a request using a specific format handler
@@ -316,7 +453,7 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 		// Read response body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		
+
 		if err != nil {
 			lastErr = fmt.Errorf("failed to read response body: %w", err)
 			if isNetworkError(fmt.Sprintf("%v", err)) && attempt < maxRetries-1 {
@@ -576,21 +713,21 @@ func isNetworkError(errMsg string) bool {
 // RequestStream makes a streaming AI request and returns a channel of chunks
 func (c *Client) RequestStream(config RequestConfig) (<-chan StreamChunk, error) {
 	const totalAITimeout = 300 * time.Second
-	
+
 	ctx := config.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	
+
 	totalCtx, cancel := context.WithTimeout(ctx, totalAITimeout)
 	config.Context = totalCtx
-	
+
 	chunkChan := make(chan StreamChunk, 100)
-	
+
 	go func() {
 		defer close(chunkChan)
 		defer cancel()
-		
+
 		// Try OpenAI format first
 		handler := NewOpenAIHandler()
 		if streamHandler, ok := any(handler).(StreamFormatHandler); ok {
@@ -604,7 +741,7 @@ func (c *Client) RequestStream(config RequestConfig) (<-chan StreamChunk, error)
 			chunkChan <- StreamChunk{Error: fmt.Errorf("OpenAI handler does not support streaming")}
 		}
 	}()
-	
+
 	return chunkChan, nil
 }
 
@@ -615,15 +752,15 @@ func (c *Client) tryStreamFormat(streamHandler StreamFormatHandler, handler Form
 	if err != nil {
 		return fmt.Errorf("failed to build stream request: %w", err)
 	}
-	
+
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
 		return fmt.Errorf("failed to marshal stream request: %w", err)
 	}
-	
+
 	// Format endpoint
 	formattedEndpoint := handler.FormatEndpoint(c.config.Endpoint, c.config.Model)
-	
+
 	// Check context before making request
 	if config.Context != nil {
 		select {
@@ -632,14 +769,14 @@ func (c *Client) tryStreamFormat(streamHandler StreamFormatHandler, handler Form
 		default:
 		}
 	}
-	
+
 	// Send request
 	resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
 	if err != nil {
 		return fmt.Errorf("stream request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Validate response status
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -648,46 +785,46 @@ func (c *Client) tryStreamFormat(streamHandler StreamFormatHandler, handler Form
 		}
 		return fmt.Errorf("stream request returned status %d", resp.StatusCode)
 	}
-	
+
 	// Parse streaming response
 	reader := resp.Body
 	buf := make([]byte, 4096)
 	var lineBuffer strings.Builder
-	
+
 	// Check if handler has ParseStreamChunk method
 	type StreamChunkParser interface {
 		ParseStreamChunk(line string) StreamChunk
 	}
-	
+
 	parser, ok := handler.(StreamChunkParser)
 	if !ok {
 		return fmt.Errorf("handler does not support stream chunk parsing")
 	}
-	
+
 	for {
 		select {
 		case <-config.Context.Done():
 			return fmt.Errorf("request cancelled: %w", config.Context.Err())
 		default:
 		}
-		
+
 		n, err := reader.Read(buf)
 		if n > 0 {
 			for i := 0; i < n; i++ {
 				if buf[i] == '\n' {
 					line := lineBuffer.String()
 					lineBuffer.Reset()
-					
+
 					chunk := parser.ParseStreamChunk(line)
 					if chunk.Error != nil {
 						log.Printf("[AI Client] Stream chunk parse error: %v", chunk.Error)
 						continue
 					}
-					
+
 					if chunk.Content != "" || chunk.Done || chunk.Thinking != "" {
 						chunkChan <- chunk
 					}
-					
+
 					if chunk.Done {
 						return nil
 					}
@@ -696,7 +833,7 @@ func (c *Client) tryStreamFormat(streamHandler StreamFormatHandler, handler Form
 				}
 			}
 		}
-		
+
 		if err != nil {
 			if err == io.EOF {
 				return nil

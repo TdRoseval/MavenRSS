@@ -104,7 +104,7 @@ func TestGetClustersByVectorSimilarityAppliesSQLFilters(t *testing.T) {
 		t.Fatalf("update old cluster time error = %v", err)
 	}
 
-	results, err := db.GetClustersByVectorSimilarity(userID, queryBlob, []int64{excludedClusterID}, 3, 100)
+	results, err := db.GetClustersByVectorSimilarity(userID, queryBlob, []int64{excludedClusterID}, "", 0, "", 3, 100)
 	if err != nil {
 		t.Fatalf("GetClustersByVectorSimilarity() error = %v", err)
 	}

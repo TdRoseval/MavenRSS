@@ -110,6 +110,7 @@ const {
   sidebarWidth,
   articleListWidth,
   startResizeArticleList,
+  setSidebarWidth,
   setArticleListWidth,
   setCompactMode,
 } = useResizablePanels();
@@ -166,8 +167,9 @@ function handleLayoutModeChanged(e: Event): void {
   const isCompactModeLayout = mode === 'compact';
   isCardMode.value = mode === 'card';
   setCompactMode(isCompactModeLayout);
+  setSidebarWidth(234);
   if (!isCardMode.value) {
-    setArticleListWidth(isCompactModeLayout ? 600 : 400);
+    setArticleListWidth(isCompactModeLayout ? 408 : 312);
   }
 }
 
@@ -258,7 +260,8 @@ async function loadInitialSettings() {
     const isCompactModeLayout = layoutMode === 'compact';
     isCardMode.value = layoutMode === 'card';
     setCompactMode(isCompactModeLayout);
-    setArticleListWidth(isCompactModeLayout ? 500 : 350);
+    setSidebarWidth(234);
+    setArticleListWidth(isCompactModeLayout ? 408 : 312);
     articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(data));
 
     window.dispatchEvent(new CustomEvent('settings-loaded'));

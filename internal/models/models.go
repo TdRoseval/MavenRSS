@@ -134,6 +134,7 @@ type Cluster struct {
 	UserID                    int64     `json:"user_id"`
 	Status                    string    `json:"status"`
 	MergedTitle               string    `json:"merged_title"`
+	DisplayTitle              string    `json:"display_title,omitempty"`
 	MergedSummary             string    `json:"merged_summary"`
 	MergedContent             string    `json:"merged_content"`
 	ArticleCount              int       `json:"article_count"`

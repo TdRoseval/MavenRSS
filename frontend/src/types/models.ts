@@ -39,6 +39,7 @@ export interface Cluster {
   user_id: number;
   status: string; // 'pending_merge' | 'pending_embed' | 'complete'
   merged_title: string;
+  display_title?: string;
   merged_summary: string;
   merged_content: string;
   article_count: number;
@@ -71,6 +72,37 @@ export interface DailyRecommendationResponse {
   available_dates: string[];
   recommendations: DailyRecommendationItem[];
   total: number;
+}
+
+export interface AIProcessingStatus {
+  is_enabled: boolean;
+  has_interest_vector: boolean;
+  is_config_frozen: boolean;
+  is_stale: boolean;
+  is_freeze_suspended: boolean;
+  eligible_articles: number;
+  pending_articles: number;
+  completed_articles: number;
+  pending_summary_articles: number;
+  pending_translation_articles: number;
+  pending_embedding_articles: number;
+  pending_clustering_articles: number;
+  pending_recommendation_days: number;
+  progress_percent: number;
+  queued_tasks: number;
+  active_worker_tasks: number;
+  active_async_work: number;
+  is_cluster_pipeline_busy: boolean;
+  last_progress_at?: string;
+  stalled_for_seconds?: number;
+  recent_failure_stage?: string;
+  recent_failure_message?: string;
+  recent_failure_article_id?: number;
+  recent_failure_article_title?: string;
+  recent_failure_model?: string;
+  recent_failure_endpoint?: string;
+  recent_failure_at?: string;
+  recent_failure_count?: number;
 }
 
 export interface UserAIStats {

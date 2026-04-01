@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/models"
@@ -27,6 +28,7 @@ type FusionConfig struct {
 	Summarizer     *summary.AISummarizer // LLM client for fusion
 	EmbConfigsJSON string                // Embedding model configs JSON
 	GlobalProxyURL string                // Global proxy URL for embedding API
+	TargetLanguage string                // Target output language for fused result
 }
 
 // RunFusion processes all pending_merge clusters for a user.
@@ -55,7 +57,7 @@ func RunFusion(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionConf
 
 		if len(articles) <= 1 {
 			if len(articles) == 1 {
-				if err := copySingleArticle(db, cluster.ID, articles[0]); err != nil {
+				if err := copySingleArticle(db, userID, cluster.ID, articles[0]); err != nil {
 					log.Printf("Single-article fusion fallback failed for cluster %d: %v", cluster.ID, err)
 					continue
 				}
@@ -70,10 +72,10 @@ func RunFusion(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionConf
 			continue
 		}
 
-		result, err := callLLMFusion(articles, db, cfg.Summarizer)
+		result, err := callLLMFusion(articles, db, cfg)
 		if err != nil {
 			log.Printf("LLM fusion failed for cluster %d: %v", cluster.ID, err)
-			if fallbackErr := copySingleArticle(db, cluster.ID, articles[0]); fallbackErr != nil {
+			if fallbackErr := copySingleArticle(db, userID, cluster.ID, articles[0]); fallbackErr != nil {
 				log.Printf("Fallback write failed for cluster %d: %v", cluster.ID, fallbackErr)
 				continue
 			}
@@ -139,10 +141,27 @@ func RunEmbedding(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionC
 	return nil
 }
 
-func copySingleArticle(db *sqlite.DB, clusterID int64, a models.Article) error {
+func copySingleArticle(db *sqlite.DB, userID, clusterID int64, a models.Article) error {
 	content, _, _ := db.GetArticleContent(a.ID)
-	title := a.Title
-	smry := a.Summary
+	title := strings.TrimSpace(a.TranslatedTitle)
+	if title == "" {
+		title = strings.TrimSpace(a.Title)
+	}
+	smry := strings.TrimSpace(a.Summary)
+
+	targetLang, _ := db.GetSettingWithFallback(userID, "target_language")
+	if targetLang == "" {
+		targetLang = "zh"
+	}
+
+	feed, _ := db.GetFeedByIDForUser(userID, a.FeedID)
+	if feed != nil && feed.TranslateArticles {
+		if translatedContent, _, found, err := db.GetArticleTranslatedContent(a.ID, targetLang); err == nil && found && strings.TrimSpace(translatedContent) != "" {
+			content = translatedContent
+			smry = deriveSummaryFromTranslatedContent(translatedContent)
+		}
+	}
+
 	if smry == "" {
 		smry = title
 	}
@@ -152,30 +171,48 @@ func copySingleArticle(db *sqlite.DB, clusterID int64, a models.Article) error {
 	return db.UpdateClusterMergedContent(clusterID, title, smry, content)
 }
 
-func callLLMFusion(articles []models.Article, db *sqlite.DB, s *summary.AISummarizer) (*FusionResult, error) {
+func callLLMFusion(articles []models.Article, db *sqlite.DB, cfg *FusionConfig) (*FusionResult, error) {
+	s := cfg.Summarizer
+	targetLabel := normalizeFusionLanguageLabel(cfg.TargetLanguage)
+
+	if cfg.TargetLanguage != "" {
+		s.SetLanguage(cfg.TargetLanguage)
+	}
+	s.SetSystemPrompt(buildFusionSystemPrompt(targetLabel))
+
 	var sb strings.Builder
 	for i, a := range articles {
 		content, _, _ := db.GetArticleContent(a.ID)
 		if content == "" {
 			content = a.Summary
 		}
-		sb.WriteString(fmt.Sprintf("--- 文章 %d ---\n标题: %s\n作者: %s\n来源: %s\n摘要: %s\n内容: %s\n\n",
-			i+1, a.Title, a.Author, a.FeedTitle, a.Summary, truncate(content, 2000)))
-	}
 
-	// Set a custom system prompt for fusion
-	s.SetSystemPrompt("你是一个资深编辑。请整合以下多篇语义相近的RSS文章，去除重复内容，保留各方不同的事实与观点，输出一篇逻辑连贯的综合报道。必须以JSON格式返回：{\"merged_title\": \"...\", \"merged_summary\": \"...\", \"merged_content\": \"...\"}")
+		title := strings.TrimSpace(a.TranslatedTitle)
+		if title == "" {
+			title = strings.TrimSpace(a.Title)
+		}
+
+		sb.WriteString(fmt.Sprintf(
+			"Article %d\nTitle: %s\nAuthor: %s\nSource: %s\nSummary: %s\nContent: %s\n\n",
+			i+1,
+			title,
+			strings.TrimSpace(a.Author),
+			strings.TrimSpace(a.FeedTitle),
+			strings.TrimSpace(a.Summary),
+			truncate(content, 2000),
+		))
+	}
 
 	result, err := s.Summarize(sb.String(), summary.Long)
 	if err != nil {
 		return nil, fmt.Errorf("LLM fusion call: %w", err)
 	}
 
-	// Parse JSON from response
 	jsonStr := extractJSON(result.Summary)
 	if jsonStr == "" {
 		return nil, fmt.Errorf("no JSON found in LLM response")
 	}
+
 	var fr FusionResult
 	if err := json.Unmarshal([]byte(jsonStr), &fr); err != nil {
 		return nil, fmt.Errorf("parse fusion JSON: %w", err)
@@ -207,9 +244,109 @@ func extractJSON(text string) string {
 }
 
 func truncate(s string, maxLen int) string {
-	runes := []rune(s)
+	runes := []rune(strings.TrimSpace(s))
 	if len(runes) <= maxLen {
-		return s
+		return string(runes)
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+func deriveSummaryFromTranslatedContent(content string) string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	parts := make([]string, 0, 3)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		line = strings.TrimLeft(line, "#*- ")
+		line = strings.TrimPrefix(line, ">")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			if len(parts) > 0 {
+				break
+			}
+			continue
+		}
+
+		parts = append(parts, line)
+		if utf8.RuneCountInString(strings.Join(parts, " ")) >= 180 {
+			break
+		}
+	}
+
+	summaryText := strings.TrimSpace(strings.Join(parts, " "))
+	if summaryText == "" {
+		summaryText = strings.TrimSpace(normalized)
+	}
+	if utf8.RuneCountInString(summaryText) > 240 {
+		return truncate(summaryText, 240)
+	}
+	return summaryText
+}
+
+func normalizeFusionLanguageLabel(targetLanguage string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(targetLanguage))
+	switch trimmed {
+	case "", "zh", "zh-cn", "zh-hans", "中文", "简体中文":
+		return "Simplified Chinese"
+	case "zh-tw", "zh-hk", "zh-hant", "繁體中文", "繁体中文":
+		return "Traditional Chinese"
+	case "en", "en-us", "en-gb", "english":
+		return "English"
+	case "ja", "ja-jp", "japanese", "日本語":
+		return "Japanese"
+	case "ko", "ko-kr", "korean", "한국어":
+		return "Korean"
+	case "fr", "fr-fr", "french":
+		return "French"
+	case "de", "de-de", "german":
+		return "German"
+	case "es", "es-es", "spanish":
+		return "Spanish"
+	case "it", "it-it", "italian":
+		return "Italian"
+	case "pt", "pt-br", "pt-pt", "portuguese":
+		return "Portuguese"
+	case "ru", "ru-ru", "russian":
+		return "Russian"
+	case "ar", "ar-sa", "arabic":
+		return "Arabic"
+	default:
+		if strings.Contains(trimmed, "中文") {
+			return "Simplified Chinese"
+		}
+		return strings.TrimSpace(targetLanguage)
+	}
+}
+
+func buildFusionSystemPrompt(targetLanguage string) string {
+	switch targetLanguage {
+	case "", "Simplified Chinese":
+		return `你是一名资深编辑，负责融合多篇语义相近的 RSS 文章。
+请始终使用简体中文输出，去除重复内容，保留不同事实、背景与观点，不要编造信息。
+只返回合法 JSON，格式必须为 {"merged_title":"...","merged_summary":"...","merged_content":"..."}。
+其中：
+- merged_title：简洁、准确的标题
+- merged_summary：2 到 4 句摘要
+- merged_content：结构清晰、可直接展示的 Markdown 正文
+不要输出代码块，不要输出 JSON 以外的任何说明。`
+	case "Traditional Chinese":
+		return `你是一名資深編輯，負責融合多篇語義相近的 RSS 文章。
+請始終使用繁體中文輸出，去除重複內容，保留不同事實、背景與觀點，不要編造資訊。
+只返回合法 JSON，格式必須為 {"merged_title":"...","merged_summary":"...","merged_content":"..."}。
+其中：
+- merged_title：簡潔、準確的標題
+- merged_summary：2 到 4 句摘要
+- merged_content：結構清晰、可直接展示的 Markdown 正文
+不要輸出程式碼區塊，不要輸出 JSON 以外的任何說明。`
+	default:
+		return fmt.Sprintf(`You are a senior editor merging multiple semantically similar RSS articles into one coherent report.
+Write every field in %s. Remove duplicated points, preserve unique facts and perspectives, and do not invent details.
+Return valid JSON only in this exact shape: {"merged_title":"...","merged_summary":"...","merged_content":"..."}.
+Requirements:
+- merged_title: concise and accurate headline
+- merged_summary: 2 to 4 sentence overview
+- merged_content: well-structured Markdown article ready for display
+Do not wrap the JSON in code fences and do not add any extra commentary.`, targetLanguage)
+	}
 }

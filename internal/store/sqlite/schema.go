@@ -155,6 +155,19 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
 	);
 
+	CREATE TABLE IF NOT EXISTS ai_article_stage_skips (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		article_id INTEGER NOT NULL,
+		stage TEXT NOT NULL,
+		reason TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
+		UNIQUE(article_id, stage)
+	);
+
 
 	-- Translation cache table
 	CREATE TABLE IF NOT EXISTS translation_cache (
@@ -307,6 +320,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_recommendations_user_date ON daily_recommen
 CREATE INDEX IF NOT EXISTS idx_daily_recommendations_cluster ON daily_recommendations(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
 CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id);
+CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage);
+CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_article_stage ON ai_article_stage_skips(article_id, stage);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_article_id ON chat_sessions(article_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);

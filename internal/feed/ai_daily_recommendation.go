@@ -19,14 +19,14 @@ import (
 )
 
 type rankedRecommendationCandidate struct {
-	Candidate       sqlite.DailyRecommendationCandidate
-	RecallScore     float64
-	FinalScore      float64
-	StageOneScore   float64
-	StageTwoScore   float64
-	ProfileID       int64
-	StageOneReason  string
-	StageTwoReason  string
+	Candidate      sqlite.DailyRecommendationCandidate
+	RecallScore    float64
+	FinalScore     float64
+	StageOneScore  float64
+	StageTwoScore  float64
+	ProfileID      int64
+	StageOneReason string
+	StageTwoReason string
 }
 
 type stageOneResponse struct {
@@ -85,12 +85,12 @@ func (m *AIEnhancedManager) scheduleDailyRecommendationsForAllUsers() {
 
 func (m *AIEnhancedManager) tryScheduleDailyRecommendation(userID int64, now time.Time) {
 	targetDate := now.AddDate(0, 0, -1).Format("2006-01-02")
-	hasRecommendations, err := m.db.HasDailyRecommendations(userID, targetDate)
+	shouldQueue, forceRegenerate, err := m.shouldQueueDailyRecommendations(userID, targetDate)
 	if err != nil {
 		log.Printf("check daily recommendations for user %d error: %v", userID, err)
 		return
 	}
-	if hasRecommendations {
+	if !shouldQueue {
 		return
 	}
 
@@ -99,7 +99,7 @@ func (m *AIEnhancedManager) tryScheduleDailyRecommendation(userID int64, now tim
 		return
 	}
 
-	m.queueRecommendationGeneration(userID, targetDate, false)
+	m.queueRecommendationGeneration(userID, targetDate, false, forceRegenerate)
 }
 
 func (m *AIEnhancedManager) computeDailyRecommendationRunTime(userID int64, now time.Time) (time.Time, bool) {
@@ -160,33 +160,106 @@ func (m *AIEnhancedManager) requestMissingRecommendationBackfill(userID int64) {
 		return
 	}
 	targetDate := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	hasRecommendations, err := m.db.HasDailyRecommendations(userID, targetDate)
+	shouldQueue, forceRegenerate, err := m.shouldQueueDailyRecommendations(userID, targetDate)
 	if err != nil {
 		log.Printf("check missing recommendation backfill for user %d error: %v", userID, err)
 		return
 	}
-	if hasRecommendations {
+	if !shouldQueue {
 		return
 	}
-	m.queueRecommendationGeneration(userID, targetDate, true)
+	m.queueRecommendationGeneration(userID, targetDate, true, forceRegenerate)
 }
 
-func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommendationDate string, waitForIdle bool) {
+func (m *AIEnhancedManager) shouldQueueDailyRecommendations(userID int64, recommendationDate string) (bool, bool, error) {
+	if recommendationDate == "" {
+		recommendationDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	}
+
+	currentCount, err := m.db.CountDailyRecommendations(userID, recommendationDate)
+	if err != nil {
+		return false, false, err
+	}
+	if currentCount == 0 {
+		return true, false, nil
+	}
+	if currentCount >= 10 {
+		return false, false, nil
+	}
+
+	dayStart, err := time.ParseInLocation("2006-01-02", recommendationDate, time.Local)
+	if err != nil {
+		return false, false, fmt.Errorf("parse recommendation date: %w", err)
+	}
+	dayEnd := dayStart.Add(24 * time.Hour)
+
+	readyCount, err := m.db.CountDailyRecommendationReadyClusters(userID, dayStart, dayEnd)
+	if err != nil {
+		return false, false, err
+	}
+
+	expectedCount := minInt(10, readyCount)
+	if expectedCount <= currentCount {
+		return false, false, nil
+	}
+
+	return true, true, nil
+}
+
+func (m *AIEnhancedManager) QueueDailyRecommendations(userID int64, recommendationDate string, waitForIdle bool, forceIfIncomplete bool) (bool, error) {
+	if userID <= 0 {
+		return false, nil
+	}
+	if recommendationDate == "" {
+		recommendationDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	}
+
+	shouldQueue, forceRegenerate, err := m.shouldQueueDailyRecommendations(userID, recommendationDate)
+	if err != nil {
+		return false, err
+	}
+	if !shouldQueue {
+		return false, nil
+	}
+	if !forceIfIncomplete && forceRegenerate {
+		return false, nil
+	}
+
+	m.queueRecommendationGeneration(userID, recommendationDate, waitForIdle, forceRegenerate)
+	return true, nil
+}
+
+func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommendationDate string, waitForIdle bool, force bool) {
 	m.recommendationMu.Lock()
 	defer m.recommendationMu.Unlock()
+
+	if m.recommendationRunning == nil {
+		m.recommendationRunning = make(map[int64]bool)
+	}
+	if m.pendingRecommendationDate == nil {
+		m.pendingRecommendationDate = make(map[int64]string)
+	}
+	if m.pendingRecommendationWait == nil {
+		m.pendingRecommendationWait = make(map[int64]bool)
+	}
+	if m.pendingRecommendationForce == nil {
+		m.pendingRecommendationForce = make(map[int64]bool)
+	}
 
 	if m.recommendationRunning[userID] {
 		m.pendingRecommendationDate[userID] = recommendationDate
 		m.pendingRecommendationWait[userID] = m.pendingRecommendationWait[userID] || waitForIdle
+		m.pendingRecommendationForce[userID] = m.pendingRecommendationForce[userID] || force
 		return
 	}
 	if waitForIdle && atomic.LoadInt64(&m.activeAsyncWork) > 0 {
 		m.pendingRecommendationDate[userID] = recommendationDate
 		m.pendingRecommendationWait[userID] = true
+		m.pendingRecommendationForce[userID] = m.pendingRecommendationForce[userID] || force
 		return
 	}
 	m.recommendationRunning[userID] = true
-	go m.runRecommendationLoop(userID, recommendationDate)
+	go m.runRecommendationLoop(userID, recommendationDate, force)
 }
 
 func (m *AIEnhancedManager) onAsyncWorkDrained() {
@@ -194,6 +267,7 @@ func (m *AIEnhancedManager) onAsyncWorkDrained() {
 	pending := make([]struct {
 		userID int64
 		date   string
+		force  bool
 	}, 0)
 	for userID, recommendationDate := range m.pendingRecommendationDate {
 		if !m.pendingRecommendationWait[userID] || m.recommendationRunning[userID] {
@@ -202,27 +276,31 @@ func (m *AIEnhancedManager) onAsyncWorkDrained() {
 		pending = append(pending, struct {
 			userID int64
 			date   string
-		}{userID: userID, date: recommendationDate})
+			force  bool
+		}{userID: userID, date: recommendationDate, force: m.pendingRecommendationForce[userID]})
 		delete(m.pendingRecommendationDate, userID)
 		delete(m.pendingRecommendationWait, userID)
+		delete(m.pendingRecommendationForce, userID)
 		m.recommendationRunning[userID] = true
 	}
 	m.recommendationMu.Unlock()
 
 	for _, item := range pending {
-		go m.runRecommendationLoop(item.userID, item.date)
+		go m.runRecommendationLoop(item.userID, item.date, item.force)
 	}
 }
 
-func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDate string) {
+func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDate string, force bool) {
 	for {
-		if err := m.generateDailyRecommendations(userID, recommendationDate); err != nil {
+		if err := m.generateDailyRecommendations(userID, recommendationDate, force); err != nil {
+			m.recordTaskFailure(userID, "recommendation", nil, "", "", err)
 			log.Printf("generate daily recommendations for user %d on %s error: %v", userID, recommendationDate, err)
 		}
 
 		m.recommendationMu.Lock()
 		nextDate, hasNext := m.pendingRecommendationDate[userID]
 		waitForIdle := m.pendingRecommendationWait[userID]
+		nextForce := m.pendingRecommendationForce[userID]
 		if hasNext {
 			if waitForIdle && atomic.LoadInt64(&m.activeAsyncWork) > 0 {
 				m.recommendationRunning[userID] = false
@@ -231,7 +309,9 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 			}
 			delete(m.pendingRecommendationDate, userID)
 			delete(m.pendingRecommendationWait, userID)
+			delete(m.pendingRecommendationForce, userID)
 			recommendationDate = nextDate
+			force = nextForce
 			m.recommendationMu.Unlock()
 			continue
 		}
@@ -241,19 +321,21 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 	}
 }
 
-func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommendationDate string) error {
+func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommendationDate string, force bool) error {
 	if !ShouldProcess(m.db, userID) {
 		return nil
 	}
 	if recommendationDate == "" {
 		recommendationDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	}
-	hasRecommendations, err := m.db.HasDailyRecommendations(userID, recommendationDate)
-	if err != nil {
-		return err
-	}
-	if hasRecommendations {
-		return nil
+	if !force {
+		hasRecommendations, err := m.db.HasDailyRecommendations(userID, recommendationDate)
+		if err != nil {
+			return err
+		}
+		if hasRecommendations {
+			return nil
+		}
 	}
 
 	dayStart, err := time.ParseInLocation("2006-01-02", recommendationDate, time.Local)
@@ -262,7 +344,7 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 	}
 	dayEnd := dayStart.Add(24 * time.Hour)
 
-	candidates, err := m.recallRecommendationCandidates(userID, dayStart, dayEnd)
+	candidates, err := m.recallRecommendationCandidates(userID, recommendationDate, dayStart, dayEnd)
 	if err != nil {
 		return err
 	}
@@ -294,8 +376,8 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 	return m.db.SaveDailyRecommendations(userID, recommendationDate, recommendations)
 }
 
-func (m *AIEnhancedManager) recallRecommendationCandidates(userID int64, dayStart, dayEnd time.Time) ([]rankedRecommendationCandidate, error) {
-	excludeIDs, err := m.db.ListAIRecommendedClusterIDs(userID)
+func (m *AIEnhancedManager) recallRecommendationCandidates(userID int64, recommendationDate string, dayStart, dayEnd time.Time) ([]rankedRecommendationCandidate, error) {
+	excludeIDs, err := m.db.ListAIRecommendedClusterIDsExcludingDate(userID, recommendationDate)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +504,7 @@ func (m *AIEnhancedManager) runRecommendationStageOne(userID int64, recommendati
 			selected = append(selected, group...)
 			continue
 		}
-		groupSelected, ok := m.pickRecommendationTopThree(group, config)
+		groupSelected, ok := m.pickRecommendationTopThree(userID, group, config)
 		if !ok {
 			return nil, false
 		}
@@ -434,7 +516,7 @@ func (m *AIEnhancedManager) runRecommendationStageOne(userID int64, recommendati
 	return selected, true
 }
 
-func (m *AIEnhancedManager) pickRecommendationTopThree(group []rankedRecommendationCandidate, config *ai.ClientConfig) ([]rankedRecommendationCandidate, bool) {
+func (m *AIEnhancedManager) pickRecommendationTopThree(userID int64, group []rankedRecommendationCandidate, config *ai.ClientConfig) ([]rankedRecommendationCandidate, bool) {
 	order1 := make([]int, len(group))
 	for i := range group {
 		order1[i] = i
@@ -444,11 +526,11 @@ func (m *AIEnhancedManager) pickRecommendationTopThree(group []rankedRecommendat
 		order2 = append(order2[1:], order2[0])
 	}
 
-	firstPick, firstUnion, ok := m.runRecommendationStageOneRound(group, order1, config)
+	firstPick, firstUnion, ok := m.runRecommendationStageOneRound(userID, group, order1, config)
 	if !ok {
 		return nil, false
 	}
-	secondPick, secondUnion, ok := m.runRecommendationStageOneRound(group, order2, config)
+	secondPick, secondUnion, ok := m.runRecommendationStageOneRound(userID, group, order2, config)
 	if !ok {
 		return nil, false
 	}
@@ -473,14 +555,14 @@ func (m *AIEnhancedManager) pickRecommendationTopThree(group []rankedRecommendat
 	for i := range merged {
 		order3[i] = i
 	}
-	finalPick, _, ok := m.runRecommendationStageOneRound(merged, order3, config)
+	finalPick, _, ok := m.runRecommendationStageOneRound(userID, merged, order3, config)
 	if !ok {
 		return nil, false
 	}
 	return finalPick, true
 }
 
-func (m *AIEnhancedManager) runRecommendationStageOneRound(group []rankedRecommendationCandidate, order []int, config *ai.ClientConfig) ([]rankedRecommendationCandidate, []rankedRecommendationCandidate, bool) {
+func (m *AIEnhancedManager) runRecommendationStageOneRound(userID int64, group []rankedRecommendationCandidate, order []int, config *ai.ClientConfig) ([]rankedRecommendationCandidate, []rankedRecommendationCandidate, bool) {
 	letters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
 	var prompt strings.Builder
 	prompt.WriteString("你是 RSS 每日推荐助手。请根据信息密度、实用价值、有趣程度、时效性四个维度，从候选摘要中选出最值得推荐的 3 个选项。")
@@ -495,7 +577,7 @@ func (m *AIEnhancedManager) runRecommendationStageOneRound(group []rankedRecomme
 		prompt.WriteString("\n")
 	}
 
-	responseText, ok := m.requestRecommendationJSON(config, prompt.String())
+	responseText, ok := m.requestRecommendationJSON(userID, config, prompt.String())
 	if !ok {
 		return nil, nil, false
 	}
@@ -554,7 +636,7 @@ func (m *AIEnhancedManager) scoreRecommendationCandidate(userID int64, candidate
 	}
 
 	scorePrompt := fmt.Sprintf("你是 RSS 每日推荐评分助手。请阅读文章内容，并按 0 到 5 分给出 information_density、practical_value、interestingness、timeliness 四个分数。只返回 JSON，格式为 {\"analysis\":\"...\",\"information_density\":1,\"practical_value\":1,\"interestingness\":1,\"timeliness\":1}。\n标题：%s\n内容：%s", strings.TrimSpace(candidate.Candidate.Cluster.MergedTitle), content)
-	scoreText, ok := m.requestRecommendationJSON(config, scorePrompt)
+	scoreText, ok := m.requestRecommendationJSON(userID, config, scorePrompt)
 	if !ok {
 		return rankedRecommendationCandidate{}, false
 	}
@@ -567,7 +649,7 @@ func (m *AIEnhancedManager) scoreRecommendationCandidate(userID int64, candidate
 	}
 
 	reviewPrompt := fmt.Sprintf("你是 RSS 每日推荐评分复核助手。请根据文章全文与首轮分析判断评分是否合理。若合理，只返回 JSON：{\"analysis\":\"...\",\"is_reasonable\":true}；若不合理，返回 JSON：{\"analysis\":\"...\",\"is_reasonable\":false,\"information_density\":1,\"practical_value\":1,\"interestingness\":1,\"timeliness\":1}。\n标题：%s\n内容：%s\n首轮分析：%s", strings.TrimSpace(candidate.Candidate.Cluster.MergedTitle), content, scoreResponse.Analysis)
-	reviewText, ok := m.requestRecommendationJSON(config, reviewPrompt)
+	reviewText, ok := m.requestRecommendationJSON(userID, config, reviewPrompt)
 	if !ok {
 		return rankedRecommendationCandidate{}, false
 	}
@@ -603,7 +685,7 @@ func (m *AIEnhancedManager) scoreRecommendationCandidate(userID int64, candidate
 	return candidate, true
 }
 
-func (m *AIEnhancedManager) requestRecommendationJSON(config *ai.ClientConfig, prompt string) (string, bool) {
+func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.ClientConfig, prompt string) (string, bool) {
 	client := ai.NewClient(ai.ClientConfig{
 		APIKey:        config.APIKey,
 		Endpoint:      config.Endpoint,
@@ -622,6 +704,7 @@ func (m *AIEnhancedManager) requestRecommendationJSON(config *ai.ClientConfig, p
 		Context:     ctx,
 	})
 	if err != nil {
+		m.recordTaskFailure(userID, "recommendation", nil, config.Model, config.Endpoint, err)
 		log.Printf("recommendation ai request error: %v", err)
 		return "", false
 	}

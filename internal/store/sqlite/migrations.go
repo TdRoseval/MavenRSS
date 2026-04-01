@@ -246,6 +246,21 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_article_translated_contents_article_id ON article_translated_contents(article_id)`)
 
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ai_article_stage_skips (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		article_id INTEGER NOT NULL,
+		stage TEXT NOT NULL,
+		reason TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
+		UNIQUE(article_id, stage)
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_article_stage ON ai_article_stage_skips(article_id, stage)`)
+
 	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
 		article_id INTEGER PRIMARY KEY,
 		title_embedding float[1024],

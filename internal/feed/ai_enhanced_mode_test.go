@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -445,6 +446,110 @@ func TestGetArticlesForAIBatchProcessingFiltersCompletedAndScope(t *testing.T) {
 	}
 }
 
+func TestGetArticlesForAIBatchProcessingTreatsSkippedTranslationAsResolved(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-2*time.Hour), "skip-translation", true)
+
+	if err := db.UpdateArticleSummary(articleID, "done"); err != nil {
+		t.Fatalf("UpdateArticleSummary error: %v", err)
+	}
+	mustAttachCompleteCluster(t, db, 1, articleID, "complete")
+	if err := db.SetAIArticleStageSkip(1, articleID, "translation", "code=1301"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip error: %v", err)
+	}
+
+	articles, err := db.GetArticlesForAIBatchProcessing(1, "zh")
+	if err != nil {
+		t.Fatalf("GetArticlesForAIBatchProcessing error: %v", err)
+	}
+
+	for _, article := range articles {
+		if article.Article.ID == articleID {
+			t.Fatalf("article %d should be skipped after non-recoverable translation failure", articleID)
+		}
+	}
+}
+
+func TestGetArticlesForAIBatchProcessingIncludesArticlesWithoutContentForTitleFallback(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-2*time.Hour), "no-content", false)
+	if err := db.DeleteArticleContent(articleID); err != nil {
+		t.Fatalf("DeleteArticleContent error: %v", err)
+	}
+
+	articles, err := db.GetArticlesForAIBatchProcessing(1, "zh")
+	if err != nil {
+		t.Fatalf("GetArticlesForAIBatchProcessing error: %v", err)
+	}
+
+	found := false
+	for _, article := range articles {
+		if article.Article.ID == articleID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("article %d should remain eligible so title fallback can be generated", articleID)
+	}
+}
+
+func TestGetProcessingStatusCountsEligibleAndPendingArticles(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	completedArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		true,
+		time.Now().Add(-12*time.Hour),
+		"completed-article",
+		true,
+	)
+	mustAttachCompleteCluster(t, db, 1, completedArticleID, "complete")
+
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-6*time.Hour),
+		"pending-article",
+		true,
+	)
+
+	status := manager.GetProcessingStatus(1)
+
+	if !status.IsEnabled {
+		t.Fatal("GetProcessingStatus().IsEnabled = false, want true")
+	}
+	if status.EligibleArticles != 2 {
+		t.Fatalf("EligibleArticles = %d, want 2", status.EligibleArticles)
+	}
+	if status.CompletedArticles != 1 {
+		t.Fatalf("CompletedArticles = %d, want 1", status.CompletedArticles)
+	}
+	if status.PendingArticles != 1 {
+		t.Fatalf("PendingArticles = %d, want 1", status.PendingArticles)
+	}
+	if !status.IsConfigFrozen {
+		t.Fatal("IsConfigFrozen = false, want true while pending work exists")
+	}
+	if status.ProgressPercent != 50 {
+		t.Fatalf("ProgressPercent = %v, want 50", status.ProgressPercent)
+	}
+}
+
 func TestBatchProcessExistingArticlesSchedulesClusterPipelineWithoutRequeueingCompleteArticle(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 
@@ -501,6 +606,362 @@ func TestBatchProcessExistingArticlesSchedulesClusterPipelineWithoutRequeueingCo
 	}
 }
 
+func TestGetProcessingStatusTriggersRecoveryWhenPendingButIdle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-4*time.Hour),
+		"recoverable-pending-article",
+		false,
+	)
+
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	status := manager.GetProcessingStatus(1)
+	if status.PendingArticles == 0 {
+		t.Fatalf("PendingArticles = %d, want > 0 for recovery test", status.PendingArticles)
+	}
+	if !status.IsConfigFrozen {
+		t.Fatal("IsConfigFrozen = false, want true while pending work exists before recovery")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		queued, _, _ := manager.getUserTaskCounts(1)
+		if queued > 0 || len(manager.taskChan) > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected recovery to queue AI work, queued=%d len(taskChan)=%d", queued, len(manager.taskChan))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+	mustSetUserSetting(t, db, 1, "ai_recommendation_enabled", "true")
+
+	plainFeedID := mustCreateTestFeed(t, db, 1, false)
+	translatedFeedID := mustCreateTestFeed(t, db, 1, true)
+
+	firstArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		plainFeedID,
+		false,
+		time.Now().Add(-3*time.Hour),
+		"needs-summary-embedding-cluster",
+		false,
+	)
+	if err := db.SetArticleTranslatedContent(firstArticleID, "already translated", "zh", "ai"); err != nil {
+		t.Fatalf("SetArticleTranslatedContent error: %v", err)
+	}
+
+	clusteredArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		translatedFeedID,
+		false,
+		time.Now().Add(-2*time.Hour),
+		"needs-translation-and-cluster-complete",
+		true,
+	)
+	if err := db.UpdateArticleEmbeddings(clusteredArticleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings error: %v", err)
+	}
+	clusterID, err := db.CreateCluster(1, "pending_merge")
+	if err != nil {
+		t.Fatalf("CreateCluster error: %v", err)
+	}
+	if err := db.UpdateArticleClusterID(clusteredArticleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error: %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error: %v", err)
+	}
+
+	clusteringArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		plainFeedID,
+		false,
+		time.Now().Add(-90*time.Minute),
+		"needs-clustering-only",
+		true,
+	)
+	if err := db.SetArticleTranslatedContent(clusteringArticleID, "already translated", "zh", "ai"); err != nil {
+		t.Fatalf("SetArticleTranslatedContent error: %v", err)
+	}
+	if err := db.UpdateArticleEmbeddings(clusteringArticleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings error: %v", err)
+	}
+
+	status := manager.GetProcessingStatus(1)
+
+	if status.PendingArticles != 3 {
+		t.Fatalf("PendingArticles = %d, want 3", status.PendingArticles)
+	}
+	if status.PendingSummaryArticles != 1 {
+		t.Fatalf("PendingSummaryArticles = %d, want 1", status.PendingSummaryArticles)
+	}
+	if status.PendingTranslationArticles != 1 {
+		t.Fatalf("PendingTranslationArticles = %d, want 1", status.PendingTranslationArticles)
+	}
+	if status.PendingEmbeddingArticles != 0 {
+		t.Fatalf("PendingEmbeddingArticles = %d, want 0", status.PendingEmbeddingArticles)
+	}
+	if status.PendingClusteringArticles != 1 {
+		t.Fatalf("PendingClusteringArticles = %d, want 1", status.PendingClusteringArticles)
+	}
+	if status.PendingRecommendationDays != 1 {
+		t.Fatalf("PendingRecommendationDays = %d, want 1", status.PendingRecommendationDays)
+	}
+	if status.PendingSummaryArticles+status.PendingTranslationArticles+status.PendingEmbeddingArticles+status.PendingClusteringArticles != status.PendingArticles {
+		t.Fatalf(
+			"pending breakdown sum = %d, want %d",
+			status.PendingSummaryArticles+status.PendingTranslationArticles+status.PendingEmbeddingArticles+status.PendingClusteringArticles,
+			status.PendingArticles,
+		)
+	}
+}
+
+func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-1*time.Hour),
+		"stale-pending-article",
+		false,
+	)
+
+	initial := manager.GetProcessingStatus(1)
+	if !initial.IsConfigFrozen {
+		t.Fatal("initial IsConfigFrozen = false, want true")
+	}
+
+	if err := db.SetSettingForUser(1, aiProcessingSnapshotSettingKey, manager.buildProcessingSnapshot(initial)); err != nil {
+		t.Fatalf("SetSettingForUser snapshot error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, aiProcessingLastProgressAtSettingKey, time.Now().Add(-31*time.Minute).Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("SetSettingForUser last progress error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, aiProcessingFreezeSuspendedSettingKey, "false"); err != nil {
+		t.Fatalf("SetSettingForUser freeze suspended error: %v", err)
+	}
+
+	status := manager.GetProcessingStatus(1)
+	if status.IsConfigFrozen {
+		t.Fatal("IsConfigFrozen = true, want false after stale timeout")
+	}
+	if !status.IsStale {
+		t.Fatal("IsStale = false, want true after stale timeout")
+	}
+	if !status.IsFreezeSuspended {
+		t.Fatal("IsFreezeSuspended = false, want true after stale timeout")
+	}
+	if status.StalledForSeconds < int64((30 * time.Minute).Seconds()) {
+		t.Fatalf("StalledForSeconds = %d, want >= %d", status.StalledForSeconds, int64((30 * time.Minute).Seconds()))
+	}
+}
+
+func TestGetProcessingStatusIncludesRecentFailureDiagnostics(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := &AIEnhancedManager{
+		db:                      db,
+		taskChan:                make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:       make(map[int64]int),
+		activeWorkerTasksByUser: make(map[int64]int64),
+		activeAsyncWorkByUser:   make(map[int64]int64),
+		recentFailureByUser:     make(map[int64]AIProcessingFailure),
+		clusterPipelineRunning:  make(map[int64]bool),
+		clusterPipelineQueued:   make(map[int64]bool),
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-30*time.Minute),
+		"diagnostic-pending-article",
+		false,
+	)
+
+	task := &AIEnhancedTask{
+		ArticleID:    articleID,
+		UserID:       1,
+		FeedID:       feedID,
+		ArticleTitle: "diagnostic-pending-article",
+	}
+	manager.recordTaskFailure(1, "summary", task, "gpt-test", "https://api.example.com/v1/chat/completions", &ai.RequestError{
+		UserMessage: "AI service unavailable",
+		Diagnostics: []string{"OpenAI: bad request - check parameters"},
+	})
+
+	status := manager.GetProcessingStatus(1)
+	if status.RecentFailureStage != "summary" {
+		t.Fatalf("RecentFailureStage = %q, want %q", status.RecentFailureStage, "summary")
+	}
+	if status.RecentFailureArticleID != articleID {
+		t.Fatalf("RecentFailureArticleID = %d, want %d", status.RecentFailureArticleID, articleID)
+	}
+	if status.RecentFailureArticleTitle != "diagnostic-pending-article" {
+		t.Fatalf("RecentFailureArticleTitle = %q", status.RecentFailureArticleTitle)
+	}
+	if status.RecentFailureModel != "gpt-test" {
+		t.Fatalf("RecentFailureModel = %q", status.RecentFailureModel)
+	}
+	if status.RecentFailureEndpoint != "https://api.example.com/v1/chat/completions" {
+		t.Fatalf("RecentFailureEndpoint = %q", status.RecentFailureEndpoint)
+	}
+	if !strings.Contains(status.RecentFailureMessage, "bad request - check parameters") {
+		t.Fatalf("RecentFailureMessage = %q", status.RecentFailureMessage)
+	}
+	if status.RecentFailureCount != 1 {
+		t.Fatalf("RecentFailureCount = %d, want 1", status.RecentFailureCount)
+	}
+}
+
+func TestGetProcessingStatusTreatsSkippedSummaryAndTranslationAsCompleted(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-1*time.Hour), "skipped-pipeline", true)
+
+	if err := db.SetAIArticleStageSkip(1, articleID, "summary", "safety"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip summary error: %v", err)
+	}
+	if err := db.SetAIArticleStageSkip(1, articleID, "translation", "safety"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip translation error: %v", err)
+	}
+	mustAttachCompleteCluster(t, db, 1, articleID, "complete")
+
+	status := manager.GetProcessingStatus(1)
+	if status.PendingArticles != 0 {
+		t.Fatalf("PendingArticles = %d, want 0 after summary/translation skips", status.PendingArticles)
+	}
+	if status.CompletedArticles != 1 {
+		t.Fatalf("CompletedArticles = %d, want 1", status.CompletedArticles)
+	}
+}
+
+func TestProcessTaskUsesTitleAsFallbackSummaryAndContent(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-1*time.Hour), "missing-content", false)
+	if err := db.DeleteArticleContent(articleID); err != nil {
+		t.Fatalf("DeleteArticleContent error: %v", err)
+	}
+
+	task := &AIEnhancedTask{
+		ArticleID:         articleID,
+		UserID:            1,
+		FeedID:            feedID,
+		ArticleTitle:      "missing-content",
+		NeedsSummary:      true,
+		NeedsTranslation:  false,
+		TranslateArticles: false,
+		NeedsEmbedding:    false,
+		NeedsDedup:        false,
+	}
+	manager.processTask(task, 0)
+
+	article, err := db.GetArticleByID(articleID)
+	if err != nil {
+		t.Fatalf("GetArticleByID error: %v", err)
+	}
+	if article == nil {
+		t.Fatal("GetArticleByID returned nil article")
+	}
+	if article.Summary != "missing-content" {
+		t.Fatalf("Summary = %q, want title fallback", article.Summary)
+	}
+
+	content, found, err := db.GetArticleContent(articleID)
+	if err != nil {
+		t.Fatalf("GetArticleContent error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected title fallback content to be cached")
+	}
+	if !strings.Contains(content, "missing-content") {
+		t.Fatalf("fallback content = %q, want title text", content)
+	}
+}
+
 func newAIEnhancedModeTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 
@@ -543,6 +1004,49 @@ func mustSetUserEncryptedSetting(t *testing.T, db *sqlite.DB, userID int64, key,
 	}
 }
 
+func mustCreateAIProfile(t *testing.T, db *sqlite.DB, userID int64, name string) int64 {
+	t.Helper()
+
+	profileID, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:   userID,
+		Name:     name,
+		APIKey:   name + "-key",
+		Endpoint: "https://" + name + ".example.com",
+		Model:    name + "-model",
+	})
+	if err != nil {
+		t.Fatalf("CreateAIProfile(%s) error: %v", name, err)
+	}
+
+	return profileID
+}
+
+func mustEnableAIEnhancedProcessing(t *testing.T, db *sqlite.DB, userID int64) {
+	t.Helper()
+
+	profileIDs := []int64{
+		mustCreateAIProfile(t, db, userID, "summary"),
+		mustCreateAIProfile(t, db, userID, "translation"),
+		mustCreateAIProfile(t, db, userID, "search"),
+		mustCreateAIProfile(t, db, userID, "chat"),
+		mustCreateAIProfile(t, db, userID, "fusion"),
+	}
+
+	if err := db.SetDefaultAIProfileForUser(userID, profileIDs[0]); err != nil {
+		t.Fatalf("SetDefaultAIProfileForUser error: %v", err)
+	}
+
+	mustSetUserSetting(t, db, userID, "ai_enhanced_mode", "true")
+	mustSetUserSetting(t, db, userID, "ai_embedding_models", `[{"modelname":"embed","baseurl":"https://embed.example.com","apikey":"embed-key","rpm":0,"tpm":0,"use_global_proxy":true}]`)
+	mustSetUserSetting(t, db, userID, "summary_enabled", "true")
+	mustSetUserSetting(t, db, userID, "summary_provider", "ai")
+	mustSetUserSetting(t, db, userID, "translation_enabled", "true")
+	mustSetUserSetting(t, db, userID, "ai_fusion_enabled", "true")
+	mustSetUserSetting(t, db, userID, "ai_recommendation_enabled", "true")
+	mustSetUserSetting(t, db, userID, "ai_search_enabled", "true")
+	mustSetUserSetting(t, db, userID, "ai_chat_enabled", "true")
+}
+
 func mustCreateTestFeed(t *testing.T, db *sqlite.DB, userID int64, translateArticles bool) int64 {
 	t.Helper()
 	feedID, err := db.AddFeedForUser(userID, &models.Feed{
@@ -562,7 +1066,7 @@ func mustInsertBatchArticle(t *testing.T, db *sqlite.DB, userID, feedID int64, i
 	t.Helper()
 	summary := ""
 	if withSummary {
-		summary = "用于测试的摘要内容，长度足以通过有效性检查"
+		summary = "summary content for batch processing tests"
 	}
 	result, err := db.Exec(
 		`INSERT INTO articles (user_id, feed_id, title, url, published_at, is_favorite, summary, unique_id)
@@ -576,7 +1080,7 @@ func mustInsertBatchArticle(t *testing.T, db *sqlite.DB, userID, feedID int64, i
 	if err != nil {
 		t.Fatalf("LastInsertId error: %v", err)
 	}
-	if err := db.SetArticleContent(articleID, "用于测试的正文内容"); err != nil {
+	if err := db.SetArticleContent(articleID, "article content for batch processing tests"); err != nil {
 		t.Fatalf("SetArticleContent error: %v", err)
 	}
 	return articleID
@@ -612,4 +1116,30 @@ func mustEmbeddingBlob(t *testing.T) []byte {
 		t.Fatalf("SerializeFloat32 error: %v", err)
 	}
 	return blob
+}
+
+func TestPrepareAITranslationInputConvertsHTMLToStableText(t *testing.T) {
+	t.Parallel()
+
+	input := `<p>Hello <strong>world</strong></p><ul><li>First item</li><li>Second item</li></ul>`
+	got := prepareAITranslationInput(input)
+
+	if got == "" {
+		t.Fatal("prepareAITranslationInput() returned empty string")
+	}
+	if strings.Contains(got, "<") || strings.Contains(got, ">") {
+		t.Fatalf("prepareAITranslationInput() = %q, want HTML tags removed", got)
+	}
+	if !strings.Contains(got, "Hello") || !strings.Contains(got, "First item") || !strings.Contains(got, "Second item") {
+		t.Fatalf("prepareAITranslationInput() = %q, want readable text content preserved", got)
+	}
+}
+
+func TestPrepareAITranslationInputReturnsEmptyForNonTextHTML(t *testing.T) {
+	t.Parallel()
+
+	input := `<div><img src="cover.jpg" /><br/></div>`
+	if got := prepareAITranslationInput(input); got != "" {
+		t.Fatalf("prepareAITranslationInput() = %q, want empty string", got)
+	}
 }

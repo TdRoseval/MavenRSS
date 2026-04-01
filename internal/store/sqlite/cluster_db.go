@@ -111,7 +111,7 @@ FROM clusters WHERE user_id = ? AND status = ?
 func (db *DB) GetArticlesByClusterID(clusterID int64) ([]models.Article, error) {
 	db.WaitForReady()
 	rows, err := db.Query(`
-		SELECT a.id, a.feed_id, a.title, a.url, a.published_at, a.summary, f.title, a.author
+		SELECT a.id, a.feed_id, a.title, a.url, a.published_at, a.summary, f.title, a.author, COALESCE(a.translated_title, '')
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.cluster_id = ?
@@ -127,7 +127,7 @@ func (db *DB) GetArticlesByClusterID(clusterID int64) ([]models.Article, error) 
 		var a models.Article
 		var publishedAt sql.NullTime
 		var summary, feedTitle, author sql.NullString
-		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &publishedAt, &summary, &feedTitle, &author); err != nil {
+		if err := rows.Scan(&a.ID, &a.FeedID, &a.Title, &a.URL, &publishedAt, &summary, &feedTitle, &author, &a.TranslatedTitle); err != nil {
 			log.Printf("Error scanning cluster article: %v", err)
 			continue
 		}
@@ -311,13 +311,28 @@ JOIN feeds f ON f.id = a.feed_id`
 	return clusters, nil
 }
 
+func chooseClusterDisplayTitle(mergedTitle, translatedTitle, articleTitle string) string {
+	mergedTitle = strings.TrimSpace(mergedTitle)
+	translatedTitle = strings.TrimSpace(translatedTitle)
+	articleTitle = strings.TrimSpace(articleTitle)
+
+	if translatedTitle != "" {
+		return translatedTitle
+	}
+	if mergedTitle != "" {
+		return mergedTitle
+	}
+	return articleTitle
+}
+
 // populateClusterMeta populates FeedTitles and Authors for a cluster.
 func (db *DB) populateClusterMeta(c *models.Cluster) {
 	rows, err := db.Query(`
-		SELECT DISTINCT f.title, a.author
+		SELECT COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, '')
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.cluster_id = ?
+		ORDER BY a.published_at DESC, a.id DESC
 	`, c.ID)
 	if err != nil {
 		return
@@ -326,20 +341,34 @@ func (db *DB) populateClusterMeta(c *models.Cluster) {
 
 	feedSet := make(map[string]bool)
 	authorSet := make(map[string]bool)
+	articleCount := 0
+	latestTitle := ""
+	latestTranslatedTitle := ""
 	for rows.Next() {
-		var feedTitle, author sql.NullString
-		if err := rows.Scan(&feedTitle, &author); err != nil {
+		var feedTitle, author, articleTitle, translatedTitle string
+		if err := rows.Scan(&feedTitle, &author, &articleTitle, &translatedTitle); err != nil {
 			continue
 		}
-		if feedTitle.Valid && feedTitle.String != "" && !feedSet[feedTitle.String] {
-			feedSet[feedTitle.String] = true
-			c.FeedTitles = append(c.FeedTitles, feedTitle.String)
+		articleCount++
+		if articleCount == 1 {
+			latestTitle = articleTitle
+			latestTranslatedTitle = translatedTitle
 		}
-		if author.Valid && author.String != "" && !authorSet[author.String] {
-			authorSet[author.String] = true
-			c.Authors = append(c.Authors, author.String)
+		if feedTitle != "" && !feedSet[feedTitle] {
+			feedSet[feedTitle] = true
+			c.FeedTitles = append(c.FeedTitles, feedTitle)
+		}
+		if author != "" && !authorSet[author] {
+			authorSet[author] = true
+			c.Authors = append(c.Authors, author)
 		}
 	}
+
+	if articleCount <= 1 {
+		c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, latestTranslatedTitle, latestTitle)
+		return
+	}
+	c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, "", latestTitle)
 }
 
 // MarkClusterRead marks a cluster as read/unread.
