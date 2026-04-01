@@ -1,4 +1,4 @@
-# MavenRSS (fork from [MrRSS](https://github.com/WCY-dt/MrRSS))
+# MavenRSS
 
 <p>
    <strong>English</strong> | <a href="README_zh.md">简体中文</a>
@@ -36,154 +36,162 @@ AI-Enhanced Mode turns MavenRSS from a feed reader into an AI-powered reading as
 
 ```mermaid
 flowchart TD
-    A["New Article"] --> B["Cache Article Content"]
-    B --> C["Apply Rules"]
-    C --> D{"AI Enhanced Mode \n prerequisites satisfied?"}
-    D -->|No| E["Skip AI pipeline"]
-    D -->|Yes| F{"Article already \n has summary?"}
-    F -->|No| G["Generate AI Summary"]
-    F -->|Yes| H["Keep Existing Summary"]
-    G --> I{"Feed enables \n translate_articles?"}
-    H --> I
-    I -->|Yes| J["Translate Article Body"]
-    I -->|No| K["Skip Translation"]
-    J --> L["Generate Article Embeddings"]
-    K --> L
-    L --> M["Step 1: SimHash \n summary text, Hamming ≤ 3"]
-    M -->|Match| N["Join Existing Cluster"]
-    M -->|No match| O["Step 2: sqlite-vec ANN \n cosine distance ≤ 0.15"]
-    O -->|Match| N
-    O -->|No match| P["Create New Cluster"]
-    N --> Q["Mark Cluster as pending_merge"]
-    P --> Q
-    Q --> R["Run Fusion / Fallback Copy"]
-    R --> S["Mark Cluster as pending_embed"]
-    S --> T["Generate Cluster Embeddings"]
-    T --> U["Mark Cluster as complete"]
-    U --> V["Collect User Feedback \n clicks / deep reads / favorites"]
-    V --> W["Update Per-User Interest Vector"]
-    W --> X["Recall Recent Complete Clusters \n by Vector Similarity"]
-    X --> Y["Rerank with Time Decay"]
-    Y --> Z["Personalized Cluster Feed"]
-    U --> AA["Wait for Async AI Work to Drain"]
-    AA --> AB{"Need missing-day \n backfill or scheduled run?"}
-    AB -->|No| AC["End current AI cycle"]
-    AB -->|Yes| AD["Queue Daily Recommendation Generation"]
-    AD --> AE["Recall Candidate Clusters \n by interest vector or chronology"]
-    AE --> AF{"Recommendation AI \n profile available?"}
-    AF -->|No| AG["Rule-based rerank \n recall score + freshness"]
-    AF -->|Yes| AH["Stage 1: grouped tournament \n pick top candidates from summaries"]
-    AH --> AI["Stage 2: full-text multi-factor scoring \n density / value / interest / timeliness"]
-    AI --> AJ["Finalize Top 10 Recommendations"]
-    AG --> AJ
-    AJ --> AK["Store daily recommendations \n and recommendation scores"]
-    AK --> AL["Expose recommendation dates/list API"]
-    AL --> AM["Daily Recommendation View"]
+    subgraph "Data Ingestion Layer"
+        A["New Article Fetch"] --> B["Cache Article Content"]
+        B --> C["Apply Rules Filter"]
+    end
+
+    subgraph "AI Processing Pipeline"
+        C --> D{AI Enhanced Mode<br/>prerequisites satisfied?}
+        D -->|No| E["Skip AI pipeline"]
+        D -->|Yes| F{Article already<br/>has summary?}
+        F -->|No| G["Generate AI Summary"]
+        F -->|Yes| H["Keep Existing Summary"]
+        G --> I{Feed enables<br/>translate_articles?}
+        H --> I
+        I -->|Yes| J["Translate Article Body"]
+        I -->|No| K["Skip Translation"]
+        J --> L["Generate Article Embeddings"]
+        K --> L
+    end
+
+    subgraph "Deduplication & Clustering"
+        L --> M["Step 1: SimHash summary<br/>Hamming distance ≤ 3"]
+        M -->|Match| N["Join Existing Cluster"]
+        M -->|No match| O["Step 2: sqlite-vec ANN<br/>cosine distance ≤ 0.15"]
+        O -->|Match| N
+        O -->|No match| P["Create New Cluster"]
+        N --> Q["Mark Cluster as pending_merge"]
+        P --> Q
+        Q --> R["Run Fusion / Fallback Copy"]
+        R --> S["Mark Cluster as pending_embed"]
+        S --> T["Generate Cluster Embeddings"]
+        T --> U["Mark Cluster as complete"]
+    end
+
+    subgraph "Interest Tracking & Recommendation"
+        U --> V["Collect User Feedback<br/>clicks / deep reads / favorites"]
+        V --> W["Update User Interest Vector<br/>EMA update"]
+        W --> X["Recall Recent Complete Clusters<br/>by Vector Similarity"]
+        X --> Y["Rerank with Time Decay"]
+        Y --> Z["Personalized Cluster Feed"]
+        U --> AA["Wait for Async AI Work to Drain"]
+        AA --> AB{Need missing-day<br/>backfill or scheduled run?}
+        AB -->|No| AC["End current AI cycle"]
+        AB -->|Yes| AD["Queue Daily Recommendation Generation"]
+        AD --> AE["Recall Candidate Clusters<br/>by interest vector or chronology"]
+        AE --> AF{Recommendation AI<br/>profile available?}
+        AF -->|No| AG["Rule-based rerank<br/>recall score + freshness"]
+        AF -->|Yes| AH["Stage 1: Grouped Tournament<br/>pick top candidates from summaries"]
+        AH --> AI["Stage 2: Full-text multi-factor scoring<br/>density / value / interest / timeliness"]
+        AI --> AJ["Finalize Top 10 Recommendations"]
+        AG --> AJ
+        AJ --> AK["Store daily recommendations<br/>and recommendation scores"]
+        AK --> AL["Expose recommendation dates/list API"]
+        AL --> AM["Daily Recommendation View"]
+    end
+
+    style A fill:#e3f2fd,color:#0d47a1
+    style G fill:#fff3e0,color:#e65100
+    style J fill:#fff3e0,color:#e65100
+    style L fill:#f3e5f5,color:#7b1fa2
+    style T fill:#f3e5f5,color:#7b1fa2
+    style W fill:#c8e6c9,color:#1a5e20
+    style AJ fill:#c8e6c9,color:#1a5e20
 ```
 
 ## 🚀 Quick Start
 
-### Deployment Options
+### Choose how to run MavenRSS
 
-MavenRSS offers three deployment options:
+#### Option 1: Server mode with Docker
 
-#### Option 1: Desktop Application (Recommended for Personal Use)
-
-Download the latest installer for your platform from the [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) page of the upstream repository.
-
-#### Option 2: Web Server (Recommended for Teams/Shared Use)
-
-Deploy MavenRSS as a web server for multi-user access.
-
-##### Using Docker (Recommended)
+This repository includes `docker-compose.yml` and server Dockerfiles, so the fastest way to try the web version locally is:
 
 ```bash
-# Start using Docker Compose
-docker-compose up -d
-
-# Or using Docker directly
-docker run -d -p 1234:1234 \
-  -v mavenrss-data:/app/data \
-  --name mavenrss-server \
-  ghcr.io/tdroseval/mavenrss:latest
+docker compose up -d --build
 ```
 
-Access the web interface at `http://localhost:1234`
+Then open `http://localhost:1234`.
 
-##### Configuration
+Common server environment variables:
 
-The following environment variables are available for configuration:
+- `MRRSS_DEBUG`
+- `MRRSS_JWT_SECRET`
+- `MRRSS_ADMIN_USERNAME`
+- `MRRSS_ADMIN_EMAIL`
+- `MRRSS_ADMIN_PASSWORD`
+- `MRRSS_TEMPLATE_USERNAME`
+- `MRRSS_TEMPLATE_EMAIL`
+- `MRRSS_TEMPLATE_PASSWORD`
 
-- `MRRSS_JWT_SECRET`: Secret key for JWT tokens (required for production)
-- `MRRSS_ADMIN_USERNAME`: Admin username
-- `MRRSS_ADMIN_EMAIL`: Admin email
-- `MRRSS_ADMIN_PASSWORD`: Admin password
-- `MRRSS_TEMPLATE_USERNAME`: Template user username
-- `MRRSS_TEMPLATE_EMAIL`: Template user email
-- `MRRSS_TEMPLATE_PASSWORD`: Template user password
+If you prefer to build the server binary directly instead of using Compose:
 
-#### Option 3: Build from Source (Desktop)
+```bash
+task build:server
+```
+
+The output is written to `build/bin/` as `MavenRSS-server` or `MavenRSS-server.exe`, depending on platform.
+
+#### Option 2: Build from source
 
 <details>
 
-<summary>Click to expand the build from source guide</summary>
+<summary>Click to expand the source build guide</summary>
 
 <div markdown="1">
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+The current repository is configured around:
 
-- [Go](https://go.dev/) (1.25 or higher)
-- [Node.js](https://nodejs.org/) (20 LTS or higher with npm)
-- [Wails v3](https://v3alpha.wails.io/getting-started/installation/) CLI
+- [Go](https://go.dev/) 1.25+ (`go.mod` currently targets Go 1.25.0 and toolchain 1.25.6)
+- [Node.js](https://nodejs.org/) LTS with npm (`18+` works well; `20/22` is recommended)
+- [Wails v3 CLI](https://v3alpha.wails.io/getting-started/installation/)
 
-**Platform-specific requirements:**
+Platform notes:
 
-- **Linux**: GTK3, WebKit2GTK 4.1, libsoup 3.0, GCC, pkg-config
-- **Windows**: MinGW-w64 (for CGO support), NSIS (for installers)
-- **macOS**: Xcode Command Line Tools
+- **Linux**: install `gcc` or `clang`, `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, and `libsoup-3.0-dev`
+- **Windows**: for native CGO builds, use Zig or MinGW-w64; install NSIS only if you need installer packaging
+- **macOS**: install Xcode Command Line Tools
 
-For detailed installation instructions, see [Build Requirements](docs/BUILD_REQUIREMENTS.md)
+See [Build Requirements](docs/BUILD_REQUIREMENTS.md) for more detail.
 
 ```bash
-# Quick setup for Linux (Ubuntu 24.04+):
+# Ubuntu 24.04+ example
 sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-config
 ```
 
 ### Installation
 
-1. **Clone the repository**
+1. Clone the repository:
    ```bash
    git clone https://github.com/TdRoseval/MavenRSS.git
    cd MavenRSS
    ```
-2. **Install frontend dependencies**
+2. Install backend and frontend dependencies:
    ```bash
+   go mod download
    cd frontend
    npm install
    cd ..
    ```
-3. **Install Wails v3 CLI**
+3. Install the Wails CLI:
    ```bash
    go install github.com/wailsapp/wails/v3/cmd/wails3@latest
    ```
-4. **Build the application**
+4. Build the desktop app:
    ```bash
-   # Using Task (recommended)
+   # Recommended if you use Task
    task build
 
-   # Or using Makefile
+   # Makefile wrapper
    make build
 
-   # Or directly with wails3
-   wails3 build
+   # Direct Wails command using this repo's config
+   wails3 build -config ./build/config.yml
    ```
-   The executable will be created in the `build/bin` directory.
-5. **Run the application**
-   - Windows: `build/bin/MavenRSS.exe`
-   - macOS: `build/bin/MavenRSS.app`
-   - Linux: `build/bin/MavenRSS`
+5. Built artifacts are written to `build/bin/`.
 
 </div>
 
@@ -224,54 +232,84 @@ This ensures your data persists across application updates and reinstalls.
 
 <div markdown="1">
 
-### Running in Development Mode
+### Run the desktop app in development mode
 
-Start the application with hot reloading:
+The repository's default dev entrypoint is:
 
 ```bash
-# Using Wails v3
-wails3 dev
-
-# Or using Task
 task dev
 ```
 
-### Code Quality Tools
+It runs `wails3 dev -config ./build/config.yml`, builds the frontend through the Wails config, and enables `MRRSS_DEBUG=1`.
 
-#### Using Make
-
-We provide a `Makefile` for handling common development tasks (available on Linux/macOS/Windows):
+If you want the direct command:
 
 ```bash
-# Show all available commands
+wails3 dev -config ./build/config.yml
+```
+
+### Common build commands
+
+```bash
+# List Task targets
+task --list
+
+# Desktop build
+task build
+
+# Package installer / bundles
+task package
+
+# Build server mode binary
+task build:server
+
+# Build a local server Docker image
+task docker:build:server
+```
+
+`make` is available as a convenience wrapper around the common workflows:
+
+```bash
 make help
-
-# Run full check (lint + test + build)
-make check
-
-# Clean build artifacts
-make clean
-
-# Setup development environment
-make setup
-```
-
-### Pre-commit Hooks
-
-This project uses pre-commit hooks to ensure code quality:
-
-```bash
-# Install hooks
-pre-commit install
-
-# Run on all files
-pre-commit run --all-files
-```
-
-### Running Tests
-
-```bash
+make build
 make test
+make check
+make setup
+make clean
+```
+
+### Frontend commands
+
+```bash
+cd frontend
+npm run dev
+npm run lint
+npm run test:unit
+npm run test:e2e
+npm run format
+```
+
+### Quality checks and release validation
+
+Cross-platform scripts are available in `scripts/`:
+
+```bash
+# Linux / macOS
+./scripts/check.sh
+./scripts/pre-release.sh
+```
+
+```powershell
+# Windows PowerShell
+.\scripts\check.ps1
+.\scripts\pre-release.ps1
+```
+
+### Pre-commit hooks
+
+```bash
+pre-commit install
+pre-commit run --all-files
 ```
 
 </div>

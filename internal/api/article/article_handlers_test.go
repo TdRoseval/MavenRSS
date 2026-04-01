@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"MavenRSS/internal/auth"
-	"MavenRSS/internal/store/sqlite"
-	ff "MavenRSS/internal/feed"
 	"MavenRSS/internal/api/article"
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/auth"
+	ff "MavenRSS/internal/feed"
 	"MavenRSS/internal/middleware"
 	"MavenRSS/internal/models"
+	"MavenRSS/internal/store/sqlite"
 )
 
 func setupHandler(t *testing.T) *core.Handler {
@@ -95,6 +95,94 @@ func TestHandleArticles_ListAndImageGallery(t *testing.T) {
 	}
 	if len(imgs) == 0 {
 		t.Fatalf("expected image articles, got 0")
+	}
+}
+
+func TestHandleArticleContentCacheInfoAndCleanup(t *testing.T) {
+	h := setupHandler(t)
+
+	if _, err := h.DB.CreateUser(&models.User{
+		Username:     "user2",
+		Email:        "user2@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	}); err != nil {
+		t.Fatalf("create user 2: %v", err)
+	}
+
+	if _, err := h.DB.Exec(`INSERT INTO articles (id, user_id, title, url, published_at) VALUES (101, 1, 'U1-A1', 'https://example.com/1', CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatalf("insert article 101: %v", err)
+	}
+	if _, err := h.DB.Exec(`INSERT INTO articles (id, user_id, title, url, published_at) VALUES (102, 1, 'U1-A2', 'https://example.com/2', CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatalf("insert article 102: %v", err)
+	}
+	if _, err := h.DB.Exec(`INSERT INTO articles (id, user_id, title, url, published_at) VALUES (201, 2, 'U2-A1', 'https://example.com/3', CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatalf("insert article 201: %v", err)
+	}
+
+	if err := h.DB.SetArticleContent(101, "<p>cached 1</p>"); err != nil {
+		t.Fatalf("set article content 101: %v", err)
+	}
+	if err := h.DB.SetArticleContent(102, "<p>cached 2</p>"); err != nil {
+		t.Fatalf("set article content 102: %v", err)
+	}
+	if err := h.DB.SetArticleContent(201, "<p>cached 3</p>"); err != nil {
+		t.Fatalf("set article content 201: %v", err)
+	}
+
+	req := withTestUser(httptest.NewRequest(http.MethodGet, "/api/articles/content-cache-info", nil))
+	w := httptest.NewRecorder()
+	article.HandleGetArticleContentCacheInfo(h, w, req)
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for cache info, got %d", w.Result().StatusCode)
+	}
+
+	var info map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&info); err != nil {
+		t.Fatalf("decode cache info: %v", err)
+	}
+
+	if got := int(info["cached_articles"].(float64)); got != 2 {
+		t.Fatalf("expected 2 cached articles for user 1, got %d", got)
+	}
+	if got := int(info["count"].(float64)); got != 2 {
+		t.Fatalf("expected count alias to equal 2, got %d", got)
+	}
+
+	cleanupReq := withTestUser(httptest.NewRequest(http.MethodPost, "/api/articles/cleanup-content", nil))
+	cleanupW := httptest.NewRecorder()
+	article.HandleCleanupArticleContents(h, cleanupW, cleanupReq)
+	if cleanupW.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for cleanup, got %d", cleanupW.Result().StatusCode)
+	}
+
+	var cleanupResp map[string]interface{}
+	if err := json.NewDecoder(cleanupW.Body).Decode(&cleanupResp); err != nil {
+		t.Fatalf("decode cleanup response: %v", err)
+	}
+
+	if got := int(cleanupResp["deleted"].(float64)); got != 2 {
+		t.Fatalf("expected deleted to equal 2, got %d", got)
+	}
+	if got := int(cleanupResp["entries_cleaned"].(float64)); got != 2 {
+		t.Fatalf("expected entries_cleaned to equal 2, got %d", got)
+	}
+
+	count, err := h.DB.GetArticleContentCount(1)
+	if err != nil {
+		t.Fatalf("GetArticleContentCount user 1: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected user 1 cache count to be 0 after cleanup, got %d", count)
+	}
+
+	otherUserCount, err := h.DB.GetArticleContentCount(2)
+	if err != nil {
+		t.Fatalf("GetArticleContentCount user 2: %v", err)
+	}
+	if otherUserCount != 1 {
+		t.Fatalf("expected user 2 cache count to remain 1, got %d", otherUserCount)
 	}
 }
 

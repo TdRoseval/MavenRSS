@@ -306,8 +306,9 @@ func HandleCleanupArticleContents(h *core.Handler, w http.ResponseWriter, r *htt
 	}
 
 	response.JSON(w, map[string]interface{}{
-		"deleted": count,
-		"message": "Article contents cleaned up",
+		"deleted":         count,
+		"entries_cleaned": count,
+		"message":         "Article contents cleaned up",
 	})
 }
 
@@ -370,7 +371,24 @@ func HandleCleanupArticleContent(h *core.Handler, w http.ResponseWriter, r *http
 
 // HandleGetArticleContentCacheInfo returns article content cache information.
 func HandleGetArticleContentCacheInfo(h *core.Handler, w http.ResponseWriter, r *http.Request) {
-	response.JSON(w, map[string]interface{}{"size": 0, "count": 0})
+	if r.Method != http.MethodGet {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	count, err := h.DB.GetArticleContentCount(userID)
+	if err != nil {
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, map[string]interface{}{
+		"cached_articles": count,
+		"count":           count,
+		"size":            0,
+	})
 }
 
 // HandleClearArticlesForFeed clears all articles for a specific feed.

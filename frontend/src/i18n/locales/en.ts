@@ -718,9 +718,9 @@ const en: TranslationMessages = {
       tokens: 'tokens',
       aiEnhancedMode: 'AI Enhanced Mode',
       aiEnhancedModeDesc:
-        'Automatically process new articles in the background. Requires the base AI capabilities, AI Fusion, and AI Daily Recommendations to all be enabled.',
+        'Automatically process new articles in the background. Before turning it on, enable AI Summary with the AI provider, Translation, AI Search, AI Chat, AI Fusion, and AI Daily Recommendations, add at least one usable embedding model, and ensure the required AI profiles or credentials are available.',
       aiEnhancedModeDisabled:
-        'Enable the base AI capabilities (summary, translation, search, chat) plus AI Fusion and AI Daily Recommendations before using this mode',
+        'Before enabling AI Enhanced Mode, turn on AI Summary (provider set to AI), Translation, AI Search, AI Chat, AI Fusion, and AI Daily Recommendations, add at least one usable embedding model, and make sure the related AI capabilities have usable profiles or API credentials.',
       aiEnhancedModeRequiresFusionProfile:
         'Select a valid fusion profile before enabling AI Enhanced Mode',
       aiEnhancedModeRequiresRecommendationProfile:
@@ -757,7 +757,7 @@ const en: TranslationMessages = {
       rpm: 'RPM (0 = unlimited)',
       tpm: 'TPM (0 = unlimited)',
       noEmbeddingModels: 'No embedding models configured',
-      noEmbeddingModelsHint: 'Add a model to enable AI Enhanced Mode',
+      noEmbeddingModelsHint: 'Add at least one usable embedding model to enable AI Enhanced Mode',
     },
     content: {
       addHeader: 'Add Header',

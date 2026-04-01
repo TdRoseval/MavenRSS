@@ -1,4 +1,4 @@
-# MavenRSS (fork from [MrRSS](https://github.com/WCY-dt/MrRSS))
+# MavenRSS
 
 <p>
    <a href="README.md">English</a> | <strong>简体中文</strong>
@@ -36,93 +36,104 @@ AI 增强模式会把 MavenRSS 从“订阅阅读器”升级成“AI 阅读助�
 
 ```mermaid
 flowchart TD
-    A["新文章接入"] --> B["缓存文章正文"]
-    B --> C["执行规则引擎"]
-    C --> D{"满足 AI 增强模式 \n 前置条件?"}
-    D -->|否| E["跳过 AI 流程"]
-    D -->|是| F{"文章已有摘要?"}
-    F -->|否| G["生成 AI 摘要"]
-    F -->|是| H["保留现有摘要"]
-    G --> I{"订阅源启用 \n translate_articles?"}
-    H --> I
-    I -->|是| J["翻译文章正文"]
-    I -->|否| K["跳过翻译"]
-    J --> L["生成文章 Embedding"]
-    K --> L
-    L --> M["阶段 1: SimHash \n 摘要文本, 海明距离 ≤ 3"]
-    M -->|匹配| N["并入现有 Cluster"]
-    M -->|不匹配| O["阶段 2: sqlite-vec ANN \n 余弦距离 ≤ 0.15"]
-    O -->|匹配| N
-    O -->|不匹配| P["创建新 Cluster"]
-    N --> Q["簇状态标记为 pending_merge"]
-    P --> Q
-    Q --> R["执行融合 / 回退拷贝"]
-    R --> S["簇状态标记为 pending_embed"]
-    S --> T["生成簇级 Embedding"]
-    T --> U["簇状态标记为 complete"]
-    U --> V["收集用户反馈 \n 点击 / 深读 / 收藏"]
-    V --> W["更新用户兴趣向量"]
-    W --> X["按向量相似度召回 \n 最近完成的 Cluster"]
-    X --> Y["结合时间衰减重排序"]
-    Y --> Z["个性化 Cluster Feed"]
-    U --> AA["等待异步 AI 工作排空"]
-    AA --> AB{"需要补齐缺失日期 \n 或到达定时执行窗口?"}
-    AB -->|否| AC["结束当前 AI 周期"]
-    AB -->|是| AD["排队生成 AI 每日推荐"]
-    AD --> AE["按兴趣向量或时间顺序 \n 召回候选 Cluster"]
-    AE --> AF{"推荐专用 AI 配置可用?"}
-    AF -->|否| AG["规则重排 \n 召回分 + 新鲜度"]
-    AF -->|是| AH["阶段 1：分组锦标赛 \n 从摘要筛出候选"]
-    AH --> AI["阶段 2：全文多维打分 \n 信息密度 / 实用性 / 趣味性 / 时效性"]
-    AI --> AJ["确定 Top 10 推荐"]
-    AG --> AJ
-    AJ --> AK["写入每日推荐结果 \n 与推荐分数"]
-    AK --> AL["通过日期/列表 API 对外提供"]
-    AL --> AM["每日推荐视图展示"]
+    subgraph "数据获取层"
+        A["新文章抓取"] --> B["缓存文章内容"]
+        B --> C["应用规则过滤"]
+    end
+
+    subgraph "AI处理管道"
+        C --> D{AI增强模式<br/>前置条件满足?}
+        D -->|否| E["跳过AI管道"]
+        D -->|是| F{文章已有摘要?}
+        F -->|否| G["生成AI摘要"]
+        F -->|是| H["保留现有摘要"]
+        G --> I{Feed启用<br/>translate_articles?}
+        H --> I
+        I -->|是| J["翻译文章正文"]
+        I -->|否| K["跳过翻译"]
+        J --> L["生成文章向量嵌入"]
+        K --> L
+    end
+
+    subgraph "去重与聚类"
+        L --> M["步骤1: SimHash摘要<br/>汉明距离≤3"]
+        M -->|匹配| N["加入现有Cluster"]
+        M -->|不匹配| O["步骤2: sqlite-vec ANN<br/>余弦距离≤0.15"]
+        O -->|匹配| N
+        O -->|不匹配| P["创建新Cluster"]
+        N --> Q["标记Cluster为pending_merge"]
+        P --> Q
+        Q --> R["运行Fusion/回退复制"]
+        R --> S["标记Cluster为pending_embed"]
+        S --> T["生成Cluster嵌入"]
+        T --> U["标记Cluster为complete"]
+    end
+
+    subgraph "兴趣追踪与推荐"
+        U --> V["收集用户反馈<br/>点击/深度阅读/收藏"]
+        V --> W["更新用户兴趣向量<br/>EMA更新"]
+        W --> X["基于向量相似度<br/>召回近期完整Clusters"]
+        X --> Y["时间衰减重排序"]
+        Y --> Z["个性化Cluster Feed"]
+        U --> AA["等待异步AI任务排空"]
+        AA --> AB{需要缺失天回填<br/>或定时运行?}
+        AB -->|否| AC["结束当前AI周期"]
+        AB -->|是| AD["排队每日推荐生成"]
+        AD --> AE["召回候选Clusters<br/>兴趣向量或时间序"]
+        AE --> AF{推荐AI配置可用?}
+        AF -->|否| AG["基于规则重排序<br/>召回分+新鲜度"]
+        AF -->|是| AH["阶段1: 分组锦标赛<br/>从摘要选Top候选"]
+        AH --> AI["阶段2: 全文多因子评分<br/>密度/价值/兴趣/时效"]
+        AI --> AJ["确定Top 10推荐"]
+        AG --> AJ
+        AJ --> AK["存储每日推荐<br/>与推荐分数"]
+        AK --> AL["暴露推荐日期/列表API"]
+        AL --> AM["每日推荐视图"]
+    end
+
+    style A fill:#e3f2fd,color:#0d47a1
+    style G fill:#fff3e0,color:#e65100
+    style J fill:#fff3e0,color:#e65100
+    style L fill:#f3e5f5,color:#7b1fa2
+    style T fill:#f3e5f5,color:#7b1fa2
+    style W fill:#c8e6c9,color:#1a5e20
+    style AJ fill:#c8e6c9,color:#1a5e20
 ```
 
 ## 🚀 快速开始
 
-### 部署选项
+### 选择运行方式
 
-MavenRSS 提供三种部署方式：
+#### 方案 1：使用 Docker 运行服务端模式
 
-#### 选项 1：桌面应用（个人使用推荐）
-
-从上游仓库的 [Releases](https://github.com/WCY-dt/MrRSS/releases/latest) 页面下载适合您平台的最新安装包。
-
-#### 选项 2：网页服务器（团队/共享使用推荐）
-
-将 MavenRSS 部署为网页服务器，支持多用户访问。
-
-##### 使用 Docker（推荐）
+仓库内已经包含 `docker-compose.yml` 和服务端 Dockerfile，本地体验 Web 版最直接的方式是：
 
 ```bash
-# 使用 Docker Compose 启动
-docker-compose up -d
-
-# 或直接使用 Docker
-docker run -d -p 1234:1234 \
-  -v mavenrss-data:/app/data \
-  --name mavenrss-server \
-  ghcr.io/tdroseval/mavenrss:latest
+docker compose up -d --build
 ```
 
-在 `http://localhost:1234` 访问网页界面
+启动后访问 `http://localhost:1234`。
 
-##### 配置
+服务端模式常用环境变量：
 
-以下环境变量可用于配置：
+- `MRRSS_DEBUG`
+- `MRRSS_JWT_SECRET`
+- `MRRSS_ADMIN_USERNAME`
+- `MRRSS_ADMIN_EMAIL`
+- `MRRSS_ADMIN_PASSWORD`
+- `MRRSS_TEMPLATE_USERNAME`
+- `MRRSS_TEMPLATE_EMAIL`
+- `MRRSS_TEMPLATE_PASSWORD`
 
-- `MRRSS_JWT_SECRET`：JWT 令牌的密钥（生产环境必需）
-- `MRRSS_ADMIN_USERNAME`：管理员用户名
-- `MRRSS_ADMIN_EMAIL`：管理员邮箱
-- `MRRSS_ADMIN_PASSWORD`：管理员密码
-- `MRRSS_TEMPLATE_USERNAME`：模板用户用户名
-- `MRRSS_TEMPLATE_EMAIL`：模板用户邮箱
-- `MRRSS_TEMPLATE_PASSWORD`：模板用户密码
+如果你不想走 Compose，也可以直接构建服务端二进制：
 
-#### 选项 3：从源码构建（桌面版）
+```bash
+task build:server
+```
+
+输出位于 `build/bin/`，文件名会根据平台变成 `MavenRSS-server` 或 `MavenRSS-server.exe`。
+
+#### 方案 2：从源码构建
 
 <details>
 
@@ -130,60 +141,57 @@ docker run -d -p 1234:1234 \
 
 <div markdown="1">
 
-##### 前置要求
+### 前置要求
 
-在开始之前，请确保已安装以下环境：
+当前仓库实际围绕以下环境配置：
 
-- [Go](https://go.dev/) (1.25 或更高版本)
-- [Node.js](https://nodejs.org/) (20 LTS 或更高版本，带 npm)
-- [Wails v3](https://v3alpha.wails.io/getting-started/installation/) CLI
+- [Go](https://go.dev/) 1.25+（`go.mod` 当前为 Go 1.25.0，toolchain 1.25.6）
+- [Node.js](https://nodejs.org/) LTS + npm（`18+` 基本可用，推荐 `20/22`）
+- [Wails v3 CLI](https://v3alpha.wails.io/getting-started/installation/)
 
-**平台特定要求：**
+平台说明：
 
-- **Linux**: GTK3、WebKit2GTK 4.1、libsoup 3.0、GCC、pkg-config
-- **Windows**: MinGW-w64（用于 CGO 支持）、NSIS（用于安装包）
-- **macOS**: Xcode 命令行工具
+- **Linux**：安装 `gcc` 或 `clang`、`pkg-config`、`libgtk-3-dev`、`libwebkit2gtk-4.1-dev`、`libsoup-3.0-dev`
+- **Windows**：原生 CGO 构建建议使用 Zig 或 MinGW-w64；只有在需要打安装包时才需要 NSIS
+- **macOS**：安装 Xcode Command Line Tools
 
-详细安装说明请参见[构建要求](docs/BUILD_REQUIREMENTS.md)
+详细说明见 [构建要求](docs/BUILD_REQUIREMENTS.md)。
 
 ```bash
-# Linux 快速设置（Ubuntu 24.04+）：
+# Ubuntu 24.04+ 示例
 sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-config
 ```
 
-##### 安装步骤
+### 安装步骤
 
-1. **克隆仓库**
+1. 克隆仓库：
    ```bash
    git clone https://github.com/TdRoseval/MavenRSS.git
    cd MavenRSS
    ```
-2. **安装前端依赖**
+2. 安装后端与前端依赖：
    ```bash
+   go mod download
    cd frontend
    npm install
    cd ..
    ```
-3. **安装 Wails v3 CLI**
+3. 安装 Wails CLI：
    ```bash
    go install github.com/wailsapp/wails/v3/cmd/wails3@latest
    ```
-4. **构建应用**
+4. 构建桌面版：
    ```bash
-   # 使用 Task（推荐）
+   # 已安装 Task 时，推荐使用
    task build
 
-   # 或使用 Makefile
+   # Makefile 包装命令
    make build
 
-   # 或直接使用 wails3
-   wails3 build
+   # 直接调用 Wails，并使用仓库内配置
+   wails3 build -config ./build/config.yml
    ```
-   可执行文件将在 `build/bin` 目录下生成。
-5. **运行应用**
-   - Windows: `build/bin/MavenRSS.exe`
-   - macOS: `build/bin/MavenRSS.app`
-   - Linux: `build/bin/MavenRSS`
+5. 构建产物会输出到 `build/bin/`。
 
 </div>
 
@@ -224,54 +232,84 @@ sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev gcc pkg-
 
 <div markdown="1">
 
-### 开发模式运行
+### 以开发模式运行桌面版
 
-启动带有热重载的应用：
+仓库当前默认的开发入口是：
 
 ```bash
-# 使用 Wails v3
-wails3 dev
-
-# 或使用 Task
 task dev
 ```
 
-### 代码质量工具
+它实际执行的是 `wails3 dev -config ./build/config.yml`，并会打开调试模式 `MRRSS_DEBUG=1`。
 
-#### 使用 Make
-
-我们提供了 `Makefile` 来处理常见的开发任务（在 Linux/macOS/Windows 上都可用）：
+如果你想直接使用 Wails 命令：
 
 ```bash
-# 显示所有可用命令
+wails3 dev -config ./build/config.yml
+```
+
+### 常用构建命令
+
+```bash
+# 查看 Task 任务
+task --list
+
+# 构建桌面版
+task build
+
+# 打包安装包 / Bundle
+task package
+
+# 构建服务端二进制
+task build:server
+
+# 构建本地服务端 Docker 镜像
+task docker:build:server
+```
+
+仓库也提供了 `make` 作为常用流程包装：
+
+```bash
 make help
-
-# 运行完整检查（lint + 测试 + 构建）
+make build
+make test
 make check
-
-# 清理构建产物
-make clean
-
-# 设置开发环境
 make setup
+make clean
+```
+
+### 前端常用命令
+
+```bash
+cd frontend
+npm run dev
+npm run lint
+npm run test:unit
+npm run test:e2e
+npm run format
+```
+
+### 质量检查与发布前校验
+
+`scripts/` 目录下提供了跨平台脚本：
+
+```bash
+# Linux / macOS
+./scripts/check.sh
+./scripts/pre-release.sh
+```
+
+```powershell
+# Windows PowerShell
+.\scripts\check.ps1
+.\scripts\pre-release.ps1
 ```
 
 ### Pre-commit Hooks
 
-本项目使用 pre-commit hooks 来确保代码质量：
-
 ```bash
-# 安装 hooks
 pre-commit install
-
-# 在所有文件上运行
 pre-commit run --all-files
-```
-
-### 运行测试
-
-```bash
-make test
 ```
 
 </div>

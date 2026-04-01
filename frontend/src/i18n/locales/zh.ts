@@ -702,9 +702,9 @@ const zh: TranslationMessages = {
       tokens: 'Token',
       aiEnhancedMode: 'AI 增强模式',
       aiEnhancedModeDesc:
-        '在后台自动处理新文章。需要先启用基础 AI 能力、AI 融合和 AI 每日推荐。',
+        '在后台自动处理新文章。启用前需满足：AI 摘要已开启且提供商为 AI，翻译、AI 搜索、AI 聊天、AI 融合、AI 每日推荐均已开启，至少已配置一个可用的嵌入模型，并且相关 AI 功能具备可用配置。',
       aiEnhancedModeDisabled:
-        '请先启用基础 AI 能力（摘要、翻译、搜索、聊天）以及 AI 融合和 AI 每日推荐后再使用此模式',
+        '启用 AI 增强模式前，请先开启 AI 摘要（且提供商设为 AI）、翻译、AI 搜索、AI 聊天、AI 融合、AI 每日推荐，至少配置一个可用嵌入模型，并确保相关 AI 功能存在可用配置。',
       aiEnhancedModeRequiresFusionProfile: '请先为 AI 增强模式选择有效的融合配置',
       aiEnhancedModeRequiresRecommendationProfile: '请先为 AI 增强模式选择有效的推荐配置',
       processingLockedLabel: '处理中锁定',
@@ -733,7 +733,7 @@ const zh: TranslationMessages = {
       rpm: 'RPM (0 = 不限制)',
       tpm: 'TPM (0 = 不限制)',
       noEmbeddingModels: '尚未配置嵌入模型',
-      noEmbeddingModelsHint: '添加一个模型以启用 AI 增强模式',
+      noEmbeddingModelsHint: '请至少添加一个可用的嵌入模型后再启用 AI 增强模式',
     },
     content: {
       addHeader: '添加请求头',

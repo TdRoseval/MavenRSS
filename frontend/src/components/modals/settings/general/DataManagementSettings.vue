@@ -58,7 +58,7 @@ async function fetchMediaCacheSize() {
 async function fetchArticleCacheCount() {
   try {
     const data = await authGet('/api/articles/content-cache-info');
-    articleCacheCount.value = data.cached_articles || 0;
+    articleCacheCount.value = data.cached_articles ?? data.count ?? 0;
   } catch (error) {
     console.error('Failed to fetch article cache count:', error);
   }
@@ -103,7 +103,7 @@ async function cleanArticleContentCache() {
   try {
     const data = await authPost('/api/articles/cleanup-content');
     window.showToast(
-      `${t('setting.database.articleContentCacheCleanup')}: ${t('modal.feed.articlesRemoved', { count: data.entries_cleaned })}`,
+      `${t('setting.database.articleContentCacheCleanup')}: ${t('modal.feed.articlesRemoved', { count: data.entries_cleaned ?? data.deleted ?? 0 })}`,
       'success'
     );
     // Immediately update cache count
