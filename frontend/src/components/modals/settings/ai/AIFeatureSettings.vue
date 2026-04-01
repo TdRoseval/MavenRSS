@@ -22,6 +22,7 @@ import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 import { authDelete } from '@/shared/lib/authFetch';
 import { useAIProfiles } from '@/composables/ai/useAIProfiles';
+import { hasValidEmbeddingModelConfig } from '@/shared/lib/aiEnhancedMode';
 
 const { t } = useI18n();
 const { profiles, hasProfiles, fetchProfiles } = useAIProfiles();
@@ -50,15 +51,6 @@ onMounted(() => {
     fetchProfiles();
   }
 });
-
-function hasEmbeddingModelsConfigured(settings: SettingsData) {
-  try {
-    const models = JSON.parse(settings.ai_embedding_models || '[]');
-    return Array.isArray(models) && models.length > 0;
-  } catch (e) {
-    return false;
-  }
-}
 
 function hasValidProfile(profileID: string) {
   const normalizedProfileID = String(profileID || '').trim();
@@ -90,7 +82,7 @@ const hasValidRecommendationProfile = computed(() => {
 function hasBaseAIFeaturePrerequisites(settings: SettingsData) {
   return (
     hasProfiles.value &&
-    hasEmbeddingModelsConfigured(settings) &&
+    hasValidEmbeddingModelConfig(settings) &&
     settings.summary_enabled === true &&
     settings.summary_provider === 'ai' &&
     settings.translation_enabled === true &&

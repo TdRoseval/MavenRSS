@@ -181,6 +181,26 @@ func TestShouldProcessRequiresFusionAndRecommendationEnabled(t *testing.T) {
 	}
 }
 
+func TestShouldProcessRequiresUsableEmbeddingModelConfig(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	mustSetUserSetting(t, db, 1, "ai_embedding_models", `[{"modelname":"","baseurl":"https://embed.example.com","apikey":"embed-key"}]`)
+	if ShouldProcess(db, 1) {
+		t.Fatal("ShouldProcess() = true, want false when embedding model name is missing")
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_embedding_models", `[{"modelname":"embed-v1","baseurl":"","apikey":"embed-key"}]`)
+	if ShouldProcess(db, 1) {
+		t.Fatal("ShouldProcess() = true, want false when embedding model baseurl is missing")
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_embedding_models", `[{"modelname":"embed-v1","baseurl":"https://embed.example.com","apikey":"embed-key"}]`)
+	if !ShouldProcess(db, 1) {
+		t.Fatal("ShouldProcess() = false, want true when embedding model config is usable")
+	}
+}
+
 func TestGetUserFeatureAIConfigPrefersUserProfileAndFallsBackToUserLegacy(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 
@@ -499,10 +519,22 @@ func TestGetArticlesForAIBatchProcessingIncludesArticlesWithoutContentForTitleFa
 
 func TestGetProcessingStatusCountsEligibleAndPendingArticles(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
-	manager := NewAIEnhancedManager(db)
-	defer manager.Stop()
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
 
-	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+	mustEnableAIEnhancedProcessing(t, db, 1)
 
 	feedID := mustCreateTestFeed(t, db, 1, false)
 	completedArticleID := mustInsertBatchArticle(
@@ -547,6 +579,49 @@ func TestGetProcessingStatusCountsEligibleAndPendingArticles(t *testing.T) {
 	}
 	if status.ProgressPercent != 50 {
 		t.Fatalf("ProgressPercent = %v, want 50", status.ProgressPercent)
+	}
+}
+
+func TestGetProcessingStatusDoesNotEnableFreezeFromRawToggleAlone(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-30*time.Minute),
+		"pending-without-prerequisites",
+		false,
+	)
+
+	status := manager.GetProcessingStatus(1)
+	if status.IsEnabled {
+		t.Fatal("GetProcessingStatus().IsEnabled = true, want false when only raw toggle is enabled")
+	}
+	if status.IsConfigFrozen {
+		t.Fatal("GetProcessingStatus().IsConfigFrozen = true, want false when prerequisites are incomplete")
+	}
+	if status.PendingArticles == 0 {
+		t.Fatal("PendingArticles = 0, want pending work to remain observable for diagnostics")
 	}
 }
 
@@ -660,6 +735,7 @@ func TestGetProcessingStatusTriggersRecoveryWhenPendingButIdle(t *testing.T) {
 
 func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
 	manager := &AIEnhancedManager{
 		db:                        db,
 		taskChan:                  make(chan *AIEnhancedTask, 10),
@@ -674,9 +750,6 @@ func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 		pendingRecommendationDate: make(map[int64]string),
 		pendingRecommendationWait: make(map[int64]bool),
 	}
-
-	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
-	mustSetUserSetting(t, db, 1, "ai_recommendation_enabled", "true")
 
 	plainFeedID := mustCreateTestFeed(t, db, 1, false)
 	translatedFeedID := mustCreateTestFeed(t, db, 1, true)
@@ -767,6 +840,7 @@ func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 
 func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
 	manager := &AIEnhancedManager{
 		db:                        db,
 		taskChan:                  make(chan *AIEnhancedTask, 10),
@@ -782,7 +856,6 @@ func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {
 		pendingRecommendationWait: make(map[int64]bool),
 	}
 
-	mustSetUserSetting(t, db, 1, "ai_enhanced_mode", "true")
 	feedID := mustCreateTestFeed(t, db, 1, false)
 	_ = mustInsertBatchArticle(
 		t,

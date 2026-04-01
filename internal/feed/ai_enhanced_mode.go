@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"log"
@@ -15,6 +16,7 @@ import (
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/dedup"
+	"MavenRSS/internal/models"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
 	"MavenRSS/internal/translation"
@@ -829,9 +831,9 @@ func ShouldProcess(db *sqlite.DB, userID int64) bool {
 		return false
 	}
 
-	// Check if embedding models configured (NEW prereq)
+	// Check if at least one embedding model is usable.
 	embeddingsConfig, _ := db.GetSettingWithFallback(userID, "ai_embedding_models")
-	if embeddingsConfig == "" || embeddingsConfig == "[]" {
+	if !hasUsableEmbeddingModelConfig(embeddingsConfig) {
 		return false
 	}
 
@@ -905,6 +907,25 @@ func min(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+func hasUsableEmbeddingModelConfig(configsJSON string) bool {
+	if strings.TrimSpace(configsJSON) == "" {
+		return false
+	}
+
+	var configs []models.EmbeddingModelConfig
+	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
+		return false
+	}
+
+	for _, config := range configs {
+		if strings.TrimSpace(config.ModelName) != "" && strings.TrimSpace(config.BaseURL) != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func buildGlobalProxyURL(db *sqlite.DB, userID int64) (string, error) {
@@ -1227,8 +1248,7 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 		return status
 	}
 
-	enhancedModeStr, _ := m.db.GetSettingWithFallback(userID, "ai_enhanced_mode")
-	status.IsEnabled = enhancedModeStr == "true"
+	status.IsEnabled = ShouldProcess(m.db, userID)
 	if interestVecBlob, err := m.db.GetUserInterestVector(userID); err == nil && len(interestVecBlob) > 0 {
 		status.HasInterestVector = true
 	}

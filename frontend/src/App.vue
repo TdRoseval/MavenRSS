@@ -19,6 +19,7 @@ import { useWindowState } from './composables/core/useWindowState';
 import { useAppUpdates } from './composables/core/useAppUpdates';
 import { apiClient } from '@/shared/lib/apiClient';
 import { authFetchJson } from '@/shared/lib/authFetch';
+import { isAIEnhancedModeEffectivelyEnabled } from '@/shared/lib/aiEnhancedMode';
 import type { Feed } from './types/models';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
@@ -183,18 +184,6 @@ function handleShowUserManagement(): void {
   }
 }
 
-function isEnabled(value: unknown): boolean {
-  return value === true || value === 'true';
-}
-
-function isAIEnhancedModeEnabled(data: Record<string, unknown>): boolean {
-  return (
-    isEnabled(data.ai_enhanced_mode) &&
-    isEnabled(data.ai_fusion_enabled) &&
-    isEnabled(data.ai_recommendation_enabled)
-  );
-}
-
 onMounted(() => {
   authStore.loadFromStorage();
   installGlobalHandlers();
@@ -262,7 +251,7 @@ async function loadInitialSettings() {
     setCompactMode(isCompactModeLayout);
     setSidebarWidth(234);
     setArticleListWidth(isCompactModeLayout ? 408 : 312);
-    articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(data));
+    articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(data));
 
     window.dispatchEvent(new CustomEvent('settings-loaded'));
 

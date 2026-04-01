@@ -7,6 +7,7 @@ import { useSidebar } from '@/composables/core/useSidebar';
 import { useSettings } from '@/composables/core/useSettings';
 import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
 import { useSavedFilters } from '@/features/article/composables/useSavedFilters';
+import { isAIEnhancedModeEffectivelyEnabled } from '@/shared/lib/aiEnhancedMode';
 import SidebarCategory from './SidebarCategory.vue';
 import SavedFilterItem from './SavedFilterItem.vue';
 import SavedFilterModal from '@/components/modals/filter/SavedFilterModal.vue';
@@ -130,25 +131,13 @@ const compactMode = computed(() => {
   return settings.value.layout_mode === 'compact';
 });
 
-function isEnabled(value: unknown): boolean {
-  return value === true || value === 'true';
-}
-
-function isAIEnhancedModeEnabled(data: Record<string, unknown>): boolean {
-  return (
-    isEnabled(data.ai_enhanced_mode) &&
-    isEnabled(data.ai_fusion_enabled) &&
-    isEnabled(data.ai_recommendation_enabled)
-  );
-}
-
 // Initialize settings on mount
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     try {
       await fetchSettings();
       await fetchSavedFilters();
-      articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(settings.value));
+      articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(settings.value));
     } catch (e) {
       console.error('Error loading settings in FeedList:', e);
     }
@@ -165,7 +154,7 @@ function handleLayoutModeChange() {
   }
   fetchSettings()
     .then(() => {
-      articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(settings.value));
+      articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(settings.value));
     })
     .catch((e) => {
       console.error('Error re-fetching settings after layout mode change:', e);

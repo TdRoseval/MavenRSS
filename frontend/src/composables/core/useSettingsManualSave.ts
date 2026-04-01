@@ -9,6 +9,7 @@ import { authPost } from '@/shared/lib/authFetch';
 import { saveLanguage } from '@/i18n';
 import { useArticleStore } from '@/features/article/store';
 import { useAppStore } from '@/stores/app';
+import { hasAIEnhancedModePrerequisites } from '@/shared/lib/aiEnhancedMode';
 
 export function useSettingsManualSave(settings: Ref<SettingsData> | (() => SettingsData)) {
   const { locale, t } = useI18n();
@@ -98,18 +99,7 @@ export function useSettingsManualSave(settings: Ref<SettingsData> | (() => Setti
     }
 
     if (settingsRef.value.ai_enhanced_mode) {
-      const hasBaseAIEnhancedPrerequisites =
-        settingsRef.value.summary_enabled &&
-        settingsRef.value.summary_provider === 'ai' &&
-        settingsRef.value.translation_enabled &&
-        settingsRef.value.ai_search_enabled &&
-        settingsRef.value.ai_chat_enabled;
-
-      if (
-        !hasBaseAIEnhancedPrerequisites ||
-        !settingsRef.value.ai_fusion_enabled ||
-        !settingsRef.value.ai_recommendation_enabled
-      ) {
+      if (!hasAIEnhancedModePrerequisites(settingsRef.value)) {
         window.showToast?.(t('setting.ai.aiEnhancedModeDisabled'), 'error');
         return false;
       }

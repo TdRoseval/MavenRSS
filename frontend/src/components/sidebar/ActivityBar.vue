@@ -19,6 +19,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
 import { authFetchJson } from '@/shared/lib/authFetch';
+import { isAIEnhancedModeEffectivelyEnabled, isEnabledSetting } from '@/shared/lib/aiEnhancedMode';
 import LogoSvg from '../../../public/assets/logo.svg';
 import { useArticleStore } from '@/features/article/store';
 
@@ -118,24 +119,12 @@ const navItems = computed<NavItem[]>(() => [
 const imageGalleryEnabled = ref(false);
 const aiRecommendationEnabled = ref(false);
 
-function isEnabled(value: unknown): boolean {
-  return value === true || value === 'true';
-}
-
-function isAIEnhancedModeEnabled(data: Record<string, unknown>): boolean {
-  return (
-    isEnabled(data.ai_enhanced_mode) &&
-    isEnabled(data.ai_fusion_enabled) &&
-    isEnabled(data.ai_recommendation_enabled)
-  );
-}
-
 async function loadFeatureSettings() {
   try {
     const data = await authFetchJson<any>('/api/settings');
-    imageGalleryEnabled.value = isEnabled(data.image_gallery_enabled);
-    aiRecommendationEnabled.value = isEnabled(data.ai_recommendation_enabled);
-    articleStore.setAIEnhancedMode(isAIEnhancedModeEnabled(data));
+    imageGalleryEnabled.value = isEnabledSetting(data.image_gallery_enabled);
+    aiRecommendationEnabled.value = isEnabledSetting(data.ai_recommendation_enabled);
+    articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(data));
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
