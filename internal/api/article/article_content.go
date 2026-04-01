@@ -1,6 +1,7 @@
 package article
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -212,4 +213,118 @@ func HandleExtractAllImages(h *core.Handler, w http.ResponseWriter, r *http.Requ
 		"images":   resolvedImageURLs,
 		"feed_url": feedURL,
 	})
+}
+
+// HandleGetArticleTranslatedContent retrieves cached translated article content.
+// @Summary      Get translated article content
+// @Description  Get cached translated article content from database
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Param        id           query     int64   true  "Article ID"
+// @Param        target_lang  query     string  true  "Target language"
+// @Success      200  {object}  map[string]interface{}  "Translated content (content, provider, cached)"
+// @Failure      400  {object}  map[string]string  "Bad request"
+// @Router       /articles/translated-content [get]
+func HandleGetArticleTranslatedContent(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	articleIDStr := r.URL.Query().Get("id")
+	articleID, err := strconv.ParseInt(articleIDStr, 10, 64)
+	if err != nil {
+		response.Error(w, nil, http.StatusBadRequest)
+		return
+	}
+
+	targetLang := r.URL.Query().Get("target_lang")
+	if targetLang == "" {
+		response.Error(w, nil, http.StatusBadRequest)
+		return
+	}
+
+	content, provider, found, err := h.DB.GetArticleTranslatedContent(articleID, targetLang)
+	if err != nil {
+		log.Printf("Error getting translated content: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, map[string]interface{}{
+		"content":  content,
+		"provider": provider,
+		"cached":   found,
+	})
+}
+
+// HandleSetArticleTranslatedContent saves translated article content to database.
+// @Summary      Save translated article content
+// @Description  Save translated article content to database for caching
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Param        request  body      object  true  "Translated content request (article_id, content, target_lang, provider)"
+// @Success      200  {object}  map[string]bool  "Success status"
+// @Failure      400  {object}  map[string]string  "Bad request"
+// @Router       /articles/translated-content [post]
+func HandleSetArticleTranslatedContent(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ArticleID  int64  `json:"article_id"`
+		Content    string `json:"content"`
+		TargetLang string `json:"target_lang"`
+		Provider   string `json:"provider"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
+	if req.ArticleID == 0 || req.Content == "" || req.TargetLang == "" {
+		response.Error(w, nil, http.StatusBadRequest)
+		return
+	}
+
+	if req.Provider == "" {
+		req.Provider = "unknown"
+	}
+
+	err := h.DB.SetArticleTranslatedContent(req.ArticleID, req.Content, req.TargetLang, req.Provider)
+	if err != nil {
+		log.Printf("Error saving translated content: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, map[string]bool{"success": true})
+}
+
+// HandleClearArticleTranslatedContents clears all translated article contents.
+// @Summary      Clear translated contents
+// @Description  Clear all cached translated article contents
+// @Tags         articles
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  map[string]bool  "Success status"
+// @Router       /articles/clear-translated-contents [post]
+func HandleClearArticleTranslatedContents(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := h.DB.ClearAllArticleTranslatedContents(); err != nil {
+		log.Printf("Error clearing translated contents: %v", err)
+		response.Error(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, map[string]bool{"success": true})
 }

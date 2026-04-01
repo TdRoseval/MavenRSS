@@ -158,14 +158,15 @@ const currentArticleIndex = computed(() => {
 
 const hasPreviousArticle = computed(() => currentArticleIndex.value > 0);
 const hasNextArticle = computed(
-  () => currentArticleIndex.value >= 0 && currentArticleIndex.value < articleStore.articles.length - 1
+  () =>
+    currentArticleIndex.value >= 0 && currentArticleIndex.value < articleStore.articles.length - 1
 );
 
 // Webpage proxy URL with auth token
 const webpageProxyUrl = computed(() => {
   if (!props.article?.url) return '';
   let proxyUrl = `/api/webpage/proxy?url=${encodeURIComponent(props.article.url)}`;
-  
+
   try {
     const authStore = useAuthStore();
     if (authStore.accessToken) {
@@ -174,7 +175,7 @@ const webpageProxyUrl = computed(() => {
   } catch (e) {
     console.warn('Failed to get auth token for webpage proxy:', e);
   }
-  
+
   return proxyUrl;
 });
 

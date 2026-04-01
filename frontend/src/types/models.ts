@@ -27,10 +27,114 @@ export interface Article {
   author?: string; // Article author
   summary?: string; // Cached AI-generated summary
   freshrss_item_id?: string; // FreshRSS/Google Reader item ID
+  cluster_id?: number; // ID of the cluster this article belongs to
   // Feed reference for translation settings
   feed?: {
     translate_articles: boolean;
   };
+}
+
+export interface Cluster {
+  id: number;
+  user_id: number;
+  status: string; // 'pending_merge' | 'pending_embed' | 'complete'
+  merged_title: string;
+  display_title?: string;
+  merged_summary: string;
+  merged_content: string;
+  image_url?: string;
+  article_count: number;
+  created_at: string;
+  updated_at: string;
+  is_read: boolean;
+  is_favorite: boolean;
+  is_read_later: boolean;
+  is_hidden: boolean;
+  recommendation_archive_date?: string;
+  recommendation_score?: number;
+  is_ai_recommended?: boolean;
+  recommendation_profile_id?: number;
+  feed_titles?: string[];
+  authors?: string[];
+  articles?: Article[];
+}
+
+export interface DailyRecommendationItem {
+  recommendation_date: string;
+  recommendation_rank: number;
+  recommendation_score: number;
+  recommendation_profile_id: number;
+  latest_published_at?: string;
+  cluster: Cluster;
+}
+
+export interface DailyRecommendationResponse {
+  selected_date: string;
+  available_dates: string[];
+  recommendations: DailyRecommendationItem[];
+  total: number;
+}
+
+export interface DailyRecommendationTaskStatus {
+  is_enabled: boolean;
+  has_task: boolean;
+  recommendation_date?: string;
+  trigger?: string;
+  stage?: string;
+  is_queued: boolean;
+  is_running: boolean;
+  is_waiting_for_idle: boolean;
+  force: boolean;
+  progress_percent: number;
+  candidate_count: number;
+  selected_count: number;
+  saved_count: number;
+  started_at?: string;
+  updated_at?: string;
+  last_error_message?: string;
+  last_error_at?: string;
+}
+
+export interface DailyRecommendationRefreshResponse {
+  scheduled: boolean;
+  date: string;
+  status: DailyRecommendationTaskStatus;
+}
+
+export interface AIProcessingStatus {
+  is_enabled: boolean;
+  has_interest_vector: boolean;
+  is_config_frozen: boolean;
+  is_stale: boolean;
+  is_freeze_suspended: boolean;
+  eligible_articles: number;
+  pending_articles: number;
+  completed_articles: number;
+  pending_summary_articles: number;
+  pending_translation_articles: number;
+  pending_embedding_articles: number;
+  pending_clustering_articles: number;
+  pending_recommendation_days: number;
+  progress_percent: number;
+  queued_tasks: number;
+  active_worker_tasks: number;
+  active_async_work: number;
+  is_cluster_pipeline_busy: boolean;
+  last_progress_at?: string;
+  stalled_for_seconds?: number;
+  recent_failure_stage?: string;
+  recent_failure_message?: string;
+  recent_failure_article_id?: number;
+  recent_failure_article_title?: string;
+  recent_failure_model?: string;
+  recent_failure_endpoint?: string;
+  recent_failure_at?: string;
+  recent_failure_count?: number;
+}
+
+export interface UserAIStats {
+  ai_read_count: number;
+  ai_total_read_time: number;
 }
 
 export interface Feed {

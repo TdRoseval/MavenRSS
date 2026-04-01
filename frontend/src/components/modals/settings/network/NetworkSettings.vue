@@ -9,9 +9,11 @@ import type { SettingsData } from '@/types/settings.generated';
 import { authGet, authPost } from '@/shared/lib/authFetch';
 import { useAuthStore } from '@/stores/auth';
 
-const props = defineProps<{
+interface Props {
   settings: SettingsData;
-}>();
+}
+
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (e: 'update:settings', settings: SettingsData): void;
@@ -37,8 +39,8 @@ async function loadNetworkInfo() {
   try {
     const data = await authGet('/api/network/info');
     networkInfo.value = data;
-  } catch (error) {
-    console.error('Failed to load network info:', error);
+  } catch {
+    console.error('Failed to load network info');
   }
 }
 
@@ -55,8 +57,7 @@ async function detectNetwork() {
     } else {
       window.showToast(t('setting.network.detectionComplete'), 'success');
     }
-  } catch (error) {
-    console.error('Network detection error:', error);
+  } catch {
     errorMessage.value = t('setting.network.detectionFailed');
   } finally {
     isDetecting.value = false;

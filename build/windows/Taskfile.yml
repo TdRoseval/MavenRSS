@@ -156,17 +156,20 @@ tasks:
       - sh: '[ -n "{{.SIGN_CERTIFICATE}}" ] || [ -n "{{.SIGN_THUMBPRINT}}" ]'
         msg: "Either SIGN_CERTIFICATE or SIGN_THUMBPRINT is required. Set it in the vars section at the top of build/windows/Taskfile.yml"
   build:server:
-    summary: Builds the server version using Docker
+    summary: Builds the server version for Windows
     deps:
+      - task: common:go:mod:tidy
       - task: common:build:frontend
     cmds:
-      - docker build -f Dockerfile.server -t mavenrss-server:latest .
-      - docker create --name mavenrss-server-temp mavenrss-server:latest
-      - docker cp mavenrss-server-temp:/app/mavenrss-server {{.BIN_DIR}}/{{.APP_NAME}}-server.exe
-      - docker rm mavenrss-server-temp
-    preconditions:
-      - sh: docker info > /dev/null 2>&1
-        msg: "Docker is required for building the server version"
+      - powershell -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force '{{.BIN_DIR}}' | Out-Null; .\scripts\setup-windows-cgo.ps1 -Arch '{{.ARCH | default ARCH}}'; if ('{{.SERVER_BUILD_MODE}}' -eq 'dev') { $buildArgs = @('-tags', 'server', '-buildvcs=false', '-gcflags', 'all=-l', '-o', '{{.OUTPUT}}', './main-core.go') } else { $buildArgs = @('-tags', 'server', '-trimpath', '-buildvcs=false', '-ldflags', '-w -s', '-o', '{{.OUTPUT}}', './main-core.go') }; go build @buildArgs"
+    vars:
+      DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}-server.exe'
+      OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
+      SERVER_BUILD_MODE: '{{if eq .DEV "true"}}dev{{else}}prod{{end}}'
+    env:
+      GOOS: windows
+      CGO_ENABLED: 1
+      GOARCH: '{{.ARCH | default ARCH}}'
 
   run:server:
     summary: Runs the server version

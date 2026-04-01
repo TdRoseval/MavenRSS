@@ -7,6 +7,7 @@ import { useSidebar } from '@/composables/core/useSidebar';
 import { useSettings } from '@/composables/core/useSettings';
 import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
 import { useSavedFilters } from '@/features/article/composables/useSavedFilters';
+import { isAIEnhancedModeEffectivelyEnabled } from '@/shared/lib/aiEnhancedMode';
 import SidebarCategory from './SidebarCategory.vue';
 import SavedFilterItem from './SavedFilterItem.vue';
 import SavedFilterModal from '@/components/modals/filter/SavedFilterModal.vue';
@@ -136,6 +137,7 @@ onMounted(async () => {
     try {
       await fetchSettings();
       await fetchSavedFilters();
+      articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(settings.value));
     } catch (e) {
       console.error('Error loading settings in FeedList:', e);
     }
@@ -150,9 +152,13 @@ function handleLayoutModeChange() {
   if (!authStore.isAuthenticated) {
     return;
   }
-  fetchSettings().catch((e) => {
-    console.error('Error re-fetching settings after layout mode change:', e);
-  });
+  fetchSettings()
+    .then(() => {
+      articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(settings.value));
+    })
+    .catch((e) => {
+      console.error('Error re-fetching settings after layout mode change:', e);
+    });
 }
 
 onUnmounted(() => {
@@ -363,6 +369,7 @@ const drawerType = computed(() => {
     case 'favorites':
     case 'readLater':
     case 'imageGallery':
+    case 'dailyRecommendations':
       return 'feeds';
     default:
       return 'feeds';
@@ -588,7 +595,7 @@ function handleFilterDragEnd() {
   >
     <div
       v-if="isExpanded || isPinned"
-      class="w-[280px] min-w-[280px] max-w-[80vw] md:w-[280px] md:min-w-[280px] flex flex-col h-full flex-shrink-0 relative border-r border-border feed-drawer-width z-20"
+      class="feed-drawer-width max-w-[80vw] flex flex-col h-full flex-shrink-0 relative border-r border-border z-20"
       :class="[isPinned ? 'bg-bg-primary' : 'bg-bg-secondary shadow-2xl']"
     >
       <!-- Drawer Header -->
@@ -736,7 +743,8 @@ function handleFilterDragEnd() {
           <!-- Saved Filters Section - positioned at bottom, only show when viewing All Articles -->
           <div
             v-if="
-              articleStore.currentFilter === 'all' && (hasActiveFilters || safeSavedFilters.length > 0)
+              articleStore.currentFilter === 'all' &&
+              (hasActiveFilters || safeSavedFilters.length > 0)
             "
             class="flex-shrink-0 max-h-[50%] flex flex-col border-t border-border"
           >
@@ -822,6 +830,11 @@ function handleFilterDragEnd() {
 </template>
 
 <style scoped>
+.feed-drawer-width {
+  width: var(--sidebar-width, 234px);
+  min-width: var(--sidebar-width, 234px);
+}
+
 .categories-list {
   /* Force scrollbar to always be visible */
   scrollbar-gutter: stable;
@@ -847,8 +860,8 @@ function handleFilterDragEnd() {
 /* Responsive width for feed drawer on medium screens */
 @media (max-width: 1400px) {
   .feed-drawer-width {
-    width: 240px !important;
-    min-width: 240px !important;
+    width: min(var(--sidebar-width, 234px), 200px) !important;
+    min-width: min(var(--sidebar-width, 234px), 200px) !important;
   }
 }
 </style>

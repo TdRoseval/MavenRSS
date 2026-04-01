@@ -1,5 +1,3 @@
-import { ref, onMounted, onUnmounted } from 'vue';
-
 export function useImageOptimization() {
   const isIntersectionObserverSupported = typeof IntersectionObserver !== 'undefined';
   const loadedImages = new Set<string>();
@@ -46,6 +44,9 @@ export function useImageOptimization() {
     url: string,
     options?: { width?: number; height?: number; quality?: number }
   ): string => {
+    // Placeholder: current implementation returns original URL.
+    // Keep `options` for future image optimization logic.
+    void options;
     return url;
   };
 

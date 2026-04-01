@@ -295,7 +295,10 @@ const { t } = useI18n();
     </div>
 
     <!-- Translation Settings (only shown if global translation is enabled) -->
-    <div v-if="props.translationEnabled" class="p-3 rounded-lg bg-bg-secondary border border-border">
+    <div
+      v-if="props.translationEnabled"
+      class="p-3 rounded-lg bg-bg-secondary border border-border"
+    >
       <label class="flex items-center justify-between cursor-pointer">
         <div>
           <span class="font-semibold text-xs sm:text-sm text-text-primary">{{

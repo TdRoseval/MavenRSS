@@ -1,4 +1,4 @@
-import { ref, computed, type Ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { Article } from '@/types/models';
 import type { FilterCondition } from '@/types/filter';
 import { authFetchJson } from '@/shared/lib/authFetch';
@@ -55,15 +55,18 @@ export function useArticleFilter() {
       const articles = data.articles || [];
 
       if (append) {
-        articleStore.setFilteredArticlesFromServer([...articleStore.filteredArticlesFromServer, ...articles]);
+        articleStore.setFilteredArticlesFromServer([
+          ...articleStore.filteredArticlesFromServer,
+          ...articles,
+        ]);
       } else {
         articleStore.setFilteredArticlesFromServer(articles);
         filterPage.value = 1;
       }
 
       // Ensure filtered articles are also in the store for article detail view
-      articles.forEach((article) => {
-        const existingIndex = articleStore.articles.findIndex((a) => a.id === article.id);
+      articles.forEach((article: Article) => {
+        const existingIndex = articleStore.articles.findIndex((a: Article) => a.id === article.id);
         if (existingIndex === -1) {
           // Article not in store, add it
           articleStore.articles.push(article);

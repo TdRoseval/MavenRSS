@@ -1,7 +1,6 @@
 import { ref, computed, onUnmounted, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { authFetch, authFetchJson, authPost } from '@/shared/lib/authFetch';
-import { useArticleStore } from '@/features/article/store';
+import { authFetchJson, authPost } from '@/shared/lib/authFetch';
 import { useFeedStore } from '@/features/feed/store';
 
 export interface DiscoveredFeed {
@@ -43,8 +42,7 @@ export interface ProgressState {
 }
 
 export function useDiscoverAllFeeds() {
-  const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
   const { t } = useI18n();
 
   const isDiscovering = ref(false);

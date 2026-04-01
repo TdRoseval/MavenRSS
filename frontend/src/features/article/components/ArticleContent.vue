@@ -16,12 +16,10 @@ import { useArticleRendering } from '@/features/article/composables/useArticleRe
 import {
   extractTextWithPlaceholders,
   restorePreservedElements,
-  hasOnlyPreservedContent,
-  getTranslatableText,
 } from '@/features/article/composables/useContentTranslation';
 import { useSettings } from '@/composables/core/useSettings';
-import { proxyMediaInHtml, isMediaCacheEnabled, shouldProxyMedia } from '@/shared/lib/mediaProxy';
-import { authPost } from '@/shared/lib/authFetch';
+import { proxyMediaInHtml, shouldProxyMedia } from '@/shared/lib/mediaProxy';
+import { authPost, authFetch } from '@/shared/lib/authFetch';
 import './ArticleContent.css';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
@@ -186,7 +184,10 @@ const lastTranslatedContentHash = ref<string>(''); // Track translated content b
 const translationSkipped = ref(false);
 const forceTranslated = ref(false); // 是否是强制翻译的
 const isForceTranslating = ref(false); // 是否正在进行强制翻译
-const translationRequestId = ref(0); // 翻译请求ID，用于识别过时的翻译结果
+const translatedContentCache = ref<Map<number, { content: string; targetLang: string }>>(new Map());
+const isLoadingTranslatedContent = ref(false);
+const proseContentRef = ref<HTMLElement | null>(null);
+const articleRenderGeneration = ref(0);
 
 // Computed: whether translation is effectively enabled (global + feed setting)
 const effectiveTranslationEnabled = computed(() => {
@@ -199,6 +200,83 @@ const effectiveTranslationEnabled = computed(() => {
 async function loadSettings() {
   await loadSummarySettings();
   await loadTranslationSettings();
+}
+
+// Save translated content to database
+async function saveTranslatedContent(
+  articleId: number,
+  content: string,
+  targetLang: string,
+  provider: string = 'unknown'
+): Promise<void> {
+  try {
+    await authPost('/api/articles/translated-content', {
+      article_id: articleId,
+      content: content,
+      target_lang: targetLang,
+      provider: provider,
+    });
+  } catch (error) {
+    console.error('Error saving translated content:', error);
+  }
+}
+
+// Load translated content from database
+async function loadTranslatedContent(
+  articleId: number,
+  targetLang: string
+): Promise<string | null> {
+  // Check in-memory cache first
+  const cached = translatedContentCache.value.get(articleId);
+  if (cached && cached.targetLang === targetLang) {
+    return cached.content;
+  }
+
+  try {
+    const res = await authFetch(
+      `/api/articles/translated-content?id=${articleId}&target_lang=${targetLang}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.cached && data.content) {
+        // Cache in memory
+        translatedContentCache.value.set(articleId, {
+          content: data.content,
+          targetLang: targetLang,
+        });
+        return data.content;
+      }
+    }
+  } catch (error) {
+    console.error('Error loading translated content:', error);
+  }
+  return null;
+}
+
+function getProseContainer(): HTMLElement | null {
+  return (proseContentRef.value?.querySelector('.prose-content') as HTMLElement | null) ?? null;
+}
+
+function isStaleArticleRender(articleId: number | null, generation: number): boolean {
+  return props.article?.id !== articleId || articleRenderGeneration.value !== generation;
+}
+
+// Apply translated content directly to DOM
+function applyTranslatedContent(
+  htmlContent: string,
+  articleId: number | null,
+  generation: number
+): void {
+  if (isStaleArticleRender(articleId, generation)) return;
+
+  const proseContainer = getProseContainer();
+  if (!proseContainer) return;
+
+  proseContainer.innerHTML = htmlContent;
+
+  // Re-apply rendering enhancements
+  enhanceRendering('.prose-content');
+  reattachImageInteractions();
 }
 
 // Translate text using the API
@@ -321,13 +399,17 @@ async function generateSummary(article: Article, force: boolean = false) {
 
   const result = await generateSummaryComposable(article, displayContent.value, force);
 
+  // Update local UI state first so store sync issues can't swallow the summary.
+  summaryResult.value = result;
+
   // Update the article summary in store for caching
   if (result?.summary) {
-    articleStore.updateArticleSummary(article.id, result.summary);
+    try {
+      articleStore.updateArticleSummary(article.id, result.summary);
+    } catch (error) {
+      console.error('Error updating article summary cache:', error);
+    }
   }
-
-  // Set summary result
-  summaryResult.value = result;
 }
 
 // Check if should auto-generate summary
@@ -415,10 +497,12 @@ async function translateContentParagraphs(content: string) {
     return;
   }
 
+  const articleId = props.article?.id || null;
+  const generation = articleRenderGeneration.value;
   const contentHash = simpleHash(content);
 
   if (
-    lastTranslatedArticleId.value === props.article?.id &&
+    lastTranslatedArticleId.value === articleId &&
     lastTranslatedContentHash.value === contentHash
   ) {
     // console.log('[ArticleContent] Translation skipped: already translated');
@@ -426,14 +510,18 @@ async function translateContentParagraphs(content: string) {
   }
 
   isTranslatingContent.value = true;
-  lastTranslatedArticleId.value = props.article?.id || null;
+  lastTranslatedArticleId.value = articleId;
   lastTranslatedContentHash.value = contentHash;
 
   // Wait for content to render
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
 
   // Find all text elements in the prose content
-  const proseContainer = document.querySelector('.prose-content');
+  const proseContainer = getProseContainer();
   if (!proseContainer) {
     isTranslatingContent.value = false;
     return;
@@ -558,10 +646,8 @@ async function translateContentParagraphs(content: string) {
     }
 
     // Skip elements that only contain preserved content - 放宽条件
-    const onlyPreserved = hasOnlyPreservedContent(htmlEl);
-    const translatableText = getTranslatableText(htmlEl);
-    // console.log(`[AutoTranslation] Processing element ${htmlEl.tagName}, onlyPreserved=${onlyPreserved}, translatableText="${translatableText}", length=${translatableText.length}`);
-    
+    // console.log(`[AutoTranslation] Processing element ${htmlEl.tagName}`);
+
     // Extract text with placeholders for inline elements (formulas, code, images) and hyperlinks
     const {
       text: textWithPlaceholders,
@@ -585,15 +671,19 @@ async function translateContentParagraphs(content: string) {
     // Always use force: true for individual paragraphs
     // This ensures each paragraph gets translated, even if language detection is uncertain
     const translation = await translateText(textWithPlaceholders, true);
-    
+    if (isStaleArticleRender(articleId, generation)) {
+      isTranslatingContent.value = false;
+      return;
+    }
+
     // Skip if translation was already added by another concurrent translation
     if (htmlEl.querySelector('.translation-text') || htmlEl.closest('.translation-text')) {
       continue;
     }
-    
+
     const translatedText = translation.text;
     // console.log(`[AutoTranslation] Original="${textWithPlaceholders.substring(0, 50)}...", Translated="${translatedText.substring(0, 50)}..."`);
-    
+
     // 放宽条件：即使译文和原文相同（可能因为语言检测问题），也尝试显示译文
     if (!translatedText) {
       // console.log(`[AutoTranslation] Skipping empty translation result`);
@@ -638,6 +728,10 @@ async function translateContentParagraphs(content: string) {
 
   // Re-apply rendering enhancements to translation elements (for math formulas)
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
   proseContainer.querySelectorAll('.translation-text').forEach((el) => {
     renderMathFormulas(el as HTMLElement);
     highlightCodeBlocks(el as HTMLElement);
@@ -646,6 +740,16 @@ async function translateContentParagraphs(content: string) {
   // Re-attach ALL event listeners after translation modifies the DOM
   // This includes unwrapping images from links, attaching image handlers, and link handlers
   await reattachImageInteractions();
+
+  // Save the translated HTML content to database for future use
+  if (proseContainer && articleId !== null) {
+    await saveTranslatedContent(
+      articleId,
+      proseContainer.innerHTML,
+      targetLanguage.value,
+      translationSettings.value.provider || 'unknown'
+    );
+  }
 
   isTranslatingContent.value = false;
 }
@@ -727,6 +831,8 @@ watch(
   () => props.article?.id,
   async (newId, oldId) => {
     if (newId !== oldId) {
+      articleRenderGeneration.value++;
+
       // Cancel any ongoing summary generation for the previous article
       if (oldId !== undefined) {
         cancelSummaryGeneration(oldId);
@@ -738,30 +844,50 @@ watch(
       fullArticleContent.value = ''; // Reset full article content when switching articles
       forceTranslated.value = false; // Reset force translated flag
       isForceTranslating.value = false; // Reset force translating flag
+      isLoadingTranslatedContent.value = false;
 
       if (props.article) {
         // Check if article has a cached summary first
         if (props.article.summary && props.article.summary.trim() !== '') {
-          // Load the cached summary by calling API to get HTML
-          // Don't use on-the-fly summarization, let backend convert cached markdown to HTML
+          // Use the cached summary directly without API call
           const result = await generateSummaryComposable(props.article, '', false);
-
-          // Set summary result
           if (result) {
             summaryResult.value = result;
           }
         } else if (shouldAutoGenerateSummary()) {
           // Only auto-generate if no cached summary exists
-          // But wait for full content if both conditions are met:
-          // 1. Summary uses AI auto trigger OR local algorithm
-          // 2. AND auto-show all content is enabled
           if (!shouldWaitForFullContentBeforeSummary.value) {
             setTimeout(() => generateSummary(props.article), 100);
           }
         }
 
-        // Translate title
-        if (translationEnabled.value) {
+        // Try to load cached translated content first
+        if (translationEnabled.value && targetLanguage.value) {
+          const articleId = props.article.id;
+          const generation = articleRenderGeneration.value;
+          isLoadingTranslatedContent.value = true;
+          const cachedContent = await loadTranslatedContent(articleId, targetLanguage.value);
+
+          if (isStaleArticleRender(articleId, generation)) {
+            isLoadingTranslatedContent.value = false;
+            return;
+          }
+
+          if (cachedContent) {
+            // Apply cached content directly after DOM is ready
+            await nextTick();
+            applyTranslatedContent(cachedContent, articleId, generation);
+            if (!isStaleArticleRender(articleId, generation)) {
+              lastTranslatedArticleId.value = articleId;
+              lastTranslatedContentHash.value = simpleHash(displayContent.value || '');
+            }
+          } else {
+            // No cached content, translate title and content as usual
+            translateTitle(props.article);
+          }
+          isLoadingTranslatedContent.value = false;
+        } else if (translationEnabled.value) {
+          // Translate title only
           translateTitle(props.article);
         }
       }
@@ -807,7 +933,12 @@ watch(
     // });
 
     const shouldTrigger =
-      newContent && newArticleId && (articleChanged || contentJustLoaded || translationJustEnabled || (isFirstRun && newTranslationEnabled));
+      newContent &&
+      newArticleId &&
+      (articleChanged ||
+        contentJustLoaded ||
+        translationJustEnabled ||
+        (isFirstRun && newTranslationEnabled));
 
     if (shouldTrigger) {
       // Wait for DOM to update with the new content
@@ -947,29 +1078,29 @@ watch(
 // Force translate all content (title + all text blocks)
 async function forceTranslateAll() {
   if (!props.article || !translationEnabled.value) return;
-  
+
   // console.log('[ArticleContent] Starting force translate all');
-  
+
   // 设置正在进行强制翻译的标志
   isForceTranslating.value = true;
-  
+
   // Mark as force translated
   forceTranslated.value = true;
-  
+
   // Reset translation tracking to force retranslation
   lastTranslatedArticleId.value = null;
   lastTranslatedContentHash.value = '';
-  
+
   // Clear existing translations in DOM
-  const proseContainer = document.querySelector('.prose-content');
+  const proseContainer = getProseContainer();
   if (proseContainer) {
     const existingTranslations = proseContainer.querySelectorAll('.translation-text');
     existingTranslations.forEach((el) => el.remove());
   }
-  
+
   // First request with preemptive=true to clear all other queued requests
   let firstRequest = true;
-  
+
   try {
     // Force translate title (ignore feed setting and cache)
     if (props.article.title) {
@@ -982,13 +1113,13 @@ async function forceTranslateAll() {
         isTranslatingTitle.value = false;
       }
     }
-    
+
     // Force translate content (ignore feed setting and cache, translate everything)
     const contentToTranslate = fullArticleContent.value || props.articleContent;
     if (contentToTranslate) {
       await forceTranslateContentParagraphs(contentToTranslate, firstRequest);
     }
-    
+
     window.showToast(t('article.action.forceTranslateSuccess'), 'success');
   } finally {
     // 确保始终清除强制翻译标志
@@ -999,38 +1130,44 @@ async function forceTranslateAll() {
 // Force translate content paragraphs with no restrictions
 async function forceTranslateContentParagraphs(content: string, firstRequest: boolean = false) {
   // console.log('[ArticleContent] forceTranslateContentParagraphs called, firstRequest:', firstRequest);
-  
+
   if (!translationEnabled.value || !content) {
     return;
   }
-  
+
   // Do NOT check feed translation setting - force translation regardless
-  
+
+  const articleId = props.article?.id || null;
+  const generation = articleRenderGeneration.value;
   isTranslatingContent.value = true;
-  lastTranslatedArticleId.value = props.article?.id || null;
+  lastTranslatedArticleId.value = articleId;
   lastTranslatedContentHash.value = simpleHash(content);
-  
+
   // Wait for content to render
   await nextTick();
-  
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
+
   // Find all text elements in the prose content
-  const proseContainer = document.querySelector('.prose-content');
+  const proseContainer = getProseContainer();
   if (!proseContainer) {
     isTranslatingContent.value = false;
     return;
   }
-  
+
   // Clear existing translations in DOM again - double-check to prevent duplicate translations
   const existingTranslations = proseContainer.querySelectorAll('.translation-text');
   existingTranslations.forEach((el) => el.remove());
-  
+
   // Check if content is plain text (no HTML tags) and wrap it in <p> tags
   const hasHTMLTags = /<[^>]+>/.test(proseContainer.innerHTML);
   if (!hasHTMLTags && proseContainer.textContent && proseContainer.textContent.trim().length > 0) {
     const textContent = proseContainer.innerHTML;
     proseContainer.innerHTML = `<p>${textContent}</p>`;
   }
-  
+
   // Find all translatable elements - use standard tags
   const textTags = [
     'P',
@@ -1047,13 +1184,13 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
     'DT',
     'DD',
   ];
-  
+
   // Track which elements we've already translated to avoid duplicates
   const translatedElements = new Set<HTMLElement>();
-  
+
   // Get all elements and sort them by depth
   const allElements = Array.from(proseContainer.querySelectorAll(textTags.join(',')));
-  
+
   // Sort by depth (shallowest first)
   allElements.sort((a, b) => {
     const getDepth = (el: Element): number => {
@@ -1067,36 +1204,36 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
     };
     return getDepth(a) - getDepth(b);
   });
-  
+
   // Helper function to check if an element can contain nested translatable content
   const canContainNestedTranslatableElements = (el: HTMLElement): boolean => {
     const nestableTags = ['LI', 'BLOCKQUOTE', 'DD', 'DT', 'TD', 'TH'];
     return nestableTags.includes(el.tagName);
   };
-  
+
   // Helper function to get nested translatable children
   const getNestedTranslatableChildren = (el: HTMLElement): Element[] => {
     return Array.from(el.children).filter((child) => textTags.includes(child.tagName));
   };
-  
+
   for (const el of allElements) {
     const htmlEl = el as HTMLElement;
-    
+
     // 如果强制翻译被中断（例如用户快速切换文章等），则立即停止
     if (!isForceTranslating.value) {
       // console.log('[ArticleContent] forceTranslateContentParagraphs stopping: isForceTranslating became false');
       break;
     }
-    
+
     // Skip if inside a translation element
     if (htmlEl.closest('.translation-text')) continue;
-    
+
     // Skip if already has translation inside
     if (htmlEl.querySelector('.translation-text')) continue;
-    
+
     // Skip if we've already translated this element
     if (translatedElements.has(htmlEl)) continue;
-    
+
     // Skip if this element's parent or any ancestor was already translated
     let hasTranslatedAncestor = false;
     let ancestor = htmlEl.parentElement;
@@ -1115,7 +1252,7 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
       ancestor = ancestor.parentElement;
     }
     if (hasTranslatedAncestor) continue;
-    
+
     // Skip elements that are entirely technical content
     if (
       htmlEl.closest('pre') ||
@@ -1127,45 +1264,47 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
     ) {
       continue;
     }
-    
+
     // Skip elements that only contain preserved content - 放宽条件
-    const onlyPreserved = hasOnlyPreservedContent(htmlEl);
-    const translatableText = getTranslatableText(htmlEl);
-    // console.log(`[Translation] Processing element ${htmlEl.tagName}, onlyPreserved=${onlyPreserved}, translatableText="${translatableText}", length=${translatableText.length}`);
-    
+    // console.log(`[Translation] Processing element ${htmlEl.tagName}`);
+
     // Extract text with placeholders
     const {
       text: textWithPlaceholders,
       preservedElements,
       hyperlinks,
     } = extractTextWithPlaceholders(htmlEl);
-    
+
     // Only skip completely empty text
     if (!textWithPlaceholders || textWithPlaceholders.trim().length === 0) {
       // console.log(`[Translation] Skipping empty text`);
       continue;
     }
-    
+
     // Always use force: true
     // Use preemptive flag only on first request
     const translation = await translateText(textWithPlaceholders, true, firstRequest);
     firstRequest = false;
-    
+    if (isStaleArticleRender(articleId, generation)) {
+      isTranslatingContent.value = false;
+      return;
+    }
+
     const translatedText = translation.text;
     // console.log(`[Translation] Original="${textWithPlaceholders.substring(0, 50)}...", Translated="${translatedText.substring(0, 50)}..."`);
-    
+
     // 放宽条件：即使译文和原文相同（可能因为语言检测问题），也尝试显示译文
     if (!translatedText) {
       // console.log(`[Translation] Skipping empty translation result`);
       continue;
     }
-    
+
     // Restore preserved elements and hyperlinks
     const translatedHTML = restorePreservedElements(translatedText, preservedElements, hyperlinks);
-    
+
     // Determine how to insert translation
     const tagName = htmlEl.tagName;
-    
+
     if (
       tagName === 'LI' ||
       tagName === 'TD' ||
@@ -1188,20 +1327,34 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
       translationEl.innerHTML = translatedHTML;
       htmlEl.parentNode?.insertBefore(translationEl, htmlEl.nextSibling);
     }
-    
+
     translatedElements.add(htmlEl);
   }
-  
+
   // Re-apply rendering enhancements
   await nextTick();
+  if (isStaleArticleRender(articleId, generation)) {
+    isTranslatingContent.value = false;
+    return;
+  }
   proseContainer.querySelectorAll('.translation-text').forEach((el) => {
     renderMathFormulas(el as HTMLElement);
     highlightCodeBlocks(el as HTMLElement);
   });
-  
+
   // Re-attach event listeners
   await reattachImageInteractions();
-  
+
+  // Save the translated HTML content to database for future use
+  if (proseContainer && articleId !== null) {
+    await saveTranslatedContent(
+      articleId,
+      proseContainer.innerHTML,
+      targetLanguage.value,
+      translationSettings.value.provider || 'unknown'
+    );
+  }
+
   isTranslatingContent.value = false;
 }
 
@@ -1228,6 +1381,7 @@ defineExpose({
 
 <template>
   <div
+    ref="proseContentRef"
     class="flex-1 overflow-y-scroll bg-bg-primary p-3 sm:p-6 scroll-smooth"
     @click="handleContainerClick"
   >

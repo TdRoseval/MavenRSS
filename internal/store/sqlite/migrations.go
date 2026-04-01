@@ -6,29 +6,125 @@ import (
 	"strings"
 )
 
-// runMigrations applies database migrations for existing databases.
-// This ensures all columns and tables exist as the schema evolves.
+func tableExists(db *sql.DB, tableName string) bool {
+	var name string
+	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, tableName).Scan(&name); err != nil {
+		return false
+	}
+	return name == tableName
+}
+
+func columnExists(db *sql.DB, tableName, columnName string) bool {
+	rows, err := db.Query(`PRAGMA table_info(` + tableName + `)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return false
+		}
+		if name == columnName {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ensureChatSchema(db *sql.DB) {
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS chat_sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL DEFAULT 0,
+		article_id INTEGER NOT NULL,
+		title TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+	)`)
+	if columnExists(db, "chat_sessions", "user_id") {
+		_, _ = db.Exec(`UPDATE chat_sessions SET user_id = (
+			SELECT articles.user_id FROM articles WHERE articles.id = chat_sessions.article_id
+		) WHERE user_id = 0`)
+	} else {
+		_, _ = db.Exec(`ALTER TABLE chat_sessions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0`)
+		_, _ = db.Exec(`UPDATE chat_sessions SET user_id = (
+			SELECT articles.user_id FROM articles WHERE articles.id = chat_sessions.article_id
+		) WHERE user_id = 0`)
+	}
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS chat_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id INTEGER NOT NULL,
+		role TEXT NOT NULL,
+		content TEXT NOT NULL,
+		thinking TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_article_id ON chat_sessions(article_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)`)
+}
+
+func ensureDailyRecommendationSchema(db *sql.DB) {
+	if !tableExists(db, "clusters") {
+		return
+	}
+
+	if !columnExists(db, "clusters", "recommendation_archive_date") {
+		_, _ = db.Exec(`ALTER TABLE clusters ADD COLUMN recommendation_archive_date TEXT DEFAULT ''`)
+	}
+	if !columnExists(db, "clusters", "recommendation_score") {
+		_, _ = db.Exec(`ALTER TABLE clusters ADD COLUMN recommendation_score REAL DEFAULT 0`)
+	}
+	if !columnExists(db, "clusters", "is_ai_recommended") {
+		_, _ = db.Exec(`ALTER TABLE clusters ADD COLUMN is_ai_recommended BOOLEAN DEFAULT 0`)
+	}
+	if !columnExists(db, "clusters", "recommendation_profile_id") {
+		_, _ = db.Exec(`ALTER TABLE clusters ADD COLUMN recommendation_profile_id INTEGER DEFAULT 0`)
+	}
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS daily_recommendations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		cluster_id INTEGER NOT NULL,
+		recommendation_date TEXT NOT NULL,
+		recommendation_score REAL DEFAULT 0,
+		recommendation_rank INTEGER DEFAULT 0,
+		recommendation_profile_id INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
+		UNIQUE(user_id, recommendation_date, cluster_id)
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_ai_recommended ON clusters(user_id, is_ai_recommended)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_archive_date ON clusters(user_id, recommendation_archive_date DESC)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_daily_recommendations_user_date ON daily_recommendations(user_id, recommendation_date DESC)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_daily_recommendations_cluster ON daily_recommendations(cluster_id)`)
+}
+
 func runMigrations(db *sql.DB) error {
-	// Migration: Add content and is_hidden columns if they don't exist
-	// SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we ignore errors if columns already exist
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN content TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN is_hidden BOOLEAN DEFAULT 0`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN last_error TEXT DEFAULT ''`)
 
-	// Migration: Add is_read_later column for read later feature
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN is_read_later BOOLEAN DEFAULT 0`)
 
-	// Migration: Add audio_url column for podcast support
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN audio_url TEXT DEFAULT ''`)
 
-	// Migration: Add video_url column for YouTube video support
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN video_url TEXT DEFAULT ''`)
 
-	// Migration: Fix articles.user_id - update articles to have correct user_id from their feeds
-	// This is needed because articles were created without user_id set correctly
 	_, _ = db.Exec(`UPDATE articles SET user_id = (SELECT feeds.user_id FROM feeds WHERE feeds.id = articles.feed_id) WHERE articles.user_id = 0`)
 
-	// Migration: Add XPath support fields to feeds table
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN type TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN xpath_item TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN xpath_item_title TEXT DEFAULT ''`)
@@ -41,11 +137,8 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN xpath_item_categories TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN xpath_item_uid TEXT DEFAULT ''`)
 
-	// Migration: Add summary column for caching AI-generated summaries
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN summary TEXT DEFAULT ''`)
 
-	// Migration: Add article_contents table for caching article content
-	// This uses a separate table to keep the articles table lightweight
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS article_contents (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		article_id INTEGER NOT NULL UNIQUE,
@@ -55,29 +148,20 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id)`)
 
-	// Migration: Add chat_sessions and chat_messages tables for AI chat feature
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS chat_sessions (
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS translation_cache (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		article_id INTEGER NOT NULL,
-		title TEXT NOT NULL,
+		source_text_hash TEXT NOT NULL,
+		source_text TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		translated_text TEXT NOT NULL,
+		provider TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+		UNIQUE(source_text_hash, target_lang, provider)
 	)`)
-	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS chat_messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		session_id INTEGER NOT NULL,
-		role TEXT NOT NULL,
-		content TEXT NOT NULL,
-		thinking TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
-	)`)
-	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_article_id ON chat_sessions(article_id)`)
-	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC)`)
-	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider)`)
 
-	// Migration: Add newsletter/email support fields to feeds table
+	ensureChatSchema(db)
+
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN email_address TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN email_imap_server TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN email_imap_port INTEGER DEFAULT 993`)
@@ -86,15 +170,12 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN email_folder TEXT DEFAULT 'INBOX'`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN email_last_uid INTEGER DEFAULT 0`)
 
-	// Migration: Add FreshRSS integration fields
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN is_freshrss_source BOOLEAN DEFAULT 0`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN freshrss_stream_id TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN freshrss_item_id TEXT DEFAULT ''`)
 
-	// Migration: Add author field to articles table
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN author TEXT DEFAULT ''`)
 
-	// Migration: Add saved_filters table for custom filter persistence
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS saved_filters (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
@@ -105,7 +186,6 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_saved_filters_position ON saved_filters(position)`)
 
-	// Migration: Add tags table for feed tagging feature
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS tags (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
@@ -114,7 +194,6 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_tags_position ON tags(position)`)
 
-	// Migration: Add feed_tags junction table for many-to-many relationship
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS feed_tags (
 		feed_id INTEGER NOT NULL,
 		tag_id INTEGER NOT NULL,
@@ -125,7 +204,6 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_feed_tags_feed_id ON feed_tags(feed_id)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_feed_tags_tag_id ON feed_tags(tag_id)`)
 
-	// Migration: Add ai_profiles table for multiple AI configuration support
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ai_profiles (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
@@ -139,41 +217,115 @@ func runMigrations(db *sql.DB) error {
 	)`)
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_is_default ON ai_profiles(is_default)`)
 
-	// Migration: Add use_global_proxy column to ai_profiles table
 	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN use_global_proxy BOOLEAN DEFAULT 1`)
 
-	// Migration: Update user_quota table with new AI token and concurrency columns
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_tokens INTEGER DEFAULT 1000000`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_concurrency INTEGER DEFAULT 5`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN used_ai_tokens INTEGER DEFAULT 0`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_feed_fetch_concurrency INTEGER DEFAULT 3`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_db_query_concurrency INTEGER DEFAULT 5`)
 
-	// Migration: Add more concurrency limit columns
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_media_cache_concurrency INTEGER DEFAULT 5`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_rss_discovery_concurrency INTEGER DEFAULT 8`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_rss_path_check_concurrency INTEGER DEFAULT 5`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_translation_concurrency INTEGER DEFAULT 3`)
 
-	// Migration: Add translate_articles column to feeds table
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN translate_articles BOOLEAN DEFAULT 0`)
 
-	// Migration: Add etag and last_modified columns to feeds table for 304 caching
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN etag TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN last_modified TEXT DEFAULT ''`)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS article_translated_contents (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL UNIQUE,
+		content TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_article_translated_contents_article_id ON article_translated_contents(article_id)`)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ai_article_stage_skips (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		article_id INTEGER NOT NULL,
+		stage TEXT NOT NULL,
+		reason TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
+		UNIQUE(article_id, stage)
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_article_stage ON ai_article_stage_skips(article_id, stage)`)
+
+	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
+		article_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS clusters (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending_merge',
+		merged_title TEXT DEFAULT '',
+		merged_summary TEXT DEFAULT '',
+		merged_content TEXT DEFAULT '',
+		article_count INTEGER DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		is_read BOOLEAN DEFAULT 0,
+		is_favorite BOOLEAN DEFAULT 0,
+		is_read_later BOOLEAN DEFAULT 0,
+		is_hidden BOOLEAN DEFAULT 0,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	)`)
+
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN cluster_id INTEGER DEFAULT NULL`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_64 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b1 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b2 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b3 INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b4 INTEGER DEFAULT 0`)
+
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_cluster_id ON articles(cluster_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b1 ON articles(user_id, simhash_b1)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b2 ON articles(user_id, simhash_b2)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b3 ON articles(user_id, simhash_b3)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_simhash_b4 ON articles(user_id, simhash_b4)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_id ON clusters(user_id)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_status ON clusters(status)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_updated_at ON clusters(updated_at DESC)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_status ON clusters(user_id, status)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_favorite ON clusters(user_id, is_favorite)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_clusters_user_read ON clusters(user_id, is_read)`)
+
+	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS cluster_embeddings USING vec0(
+		cluster_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
+
+	ensureDailyRecommendationSchema(db)
+
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN interest_vector BLOB DEFAULT NULL`)
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_read_count INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_total_read_time INTEGER DEFAULT 0`)
+
+	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS user_interest_embeddings USING vec0(
+		user_id INTEGER PRIMARY KEY,
+		interest_embedding float[1024]
+	)`)
 
 	return nil
 }
 
-// migrateUniqueIDOnArticles adds unique_id column and generates values for existing articles.
-// This replaces URL-based deduplication with title+feed_id+published_date based deduplication.
 func migrateUniqueIDOnArticles(db *sql.DB) error {
-	// Migration: Add unique_id column to articles table for better deduplication
 	_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN unique_id TEXT UNIQUE`)
 
-	// Migration: Migrate existing articles to generate unique_id
-	// For existing articles, generate unique_id from title+feed_id+published_date (date only, not full timestamp)
-	// If url was UNIQUE before, keep it but unique_id is now the primary deduplication key
 	_, err := db.Exec(`
 		UPDATE articles
 		SET unique_id = LOWER(HEX(MD5(title || '|' || feed_id || '|' || COALESCE(strftime('%Y-%m-%d', published_at), ''))))
@@ -183,8 +335,6 @@ func migrateUniqueIDOnArticles(db *sql.DB) error {
 		log.Printf("Warning: Failed to migrate unique_id: %v", err)
 	}
 
-	// Backfill published_at for articles that have NULL values
-	// Set to current time as fallback (article creation time is unknown)
 	result, err := db.Exec(`
 		UPDATE articles
 		SET published_at = datetime('now')
@@ -202,16 +352,10 @@ func migrateUniqueIDOnArticles(db *sql.DB) error {
 	return nil
 }
 
-// migrateDropUniqueConstraintOnArticles drops the UNIQUE constraint on url column from articles table.
-// This allows multiple articles with the same URL (e.g., from different feeds).
 func migrateDropUniqueConstraintOnArticles(db *sql.DB) error {
-	// Migration: Drop the UNIQUE constraint on url column if it exists
-	// SQLite doesn't support DROP CONSTRAINT directly, so we need to recreate the table
-	// Check if we need to migrate by checking if url is still UNIQUE
 	var tableInfo string
 	_ = db.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='articles'").Scan(&tableInfo)
 	if strings.Contains(tableInfo, "url TEXT UNIQUE") {
-		// Need to recreate table without UNIQUE constraint on url
 		_, err := db.Exec(`
 			CREATE TABLE articles_new (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,7 +377,6 @@ func migrateDropUniqueConstraintOnArticles(db *sql.DB) error {
 			)
 		`)
 		if err == nil {
-			// Copy data from old table to new table
 			_, _ = db.Exec(`
 				INSERT INTO articles_new (id, feed_id, title, url, image_url, audio_url, video_url, translated_title, published_at, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id)
 				SELECT id, feed_id, title, url, image_url, audio_url, video_url, translated_title, published_at, is_read, is_favorite, is_hidden, is_read_later,
@@ -241,11 +384,17 @@ func migrateDropUniqueConstraintOnArticles(db *sql.DB) error {
 					LOWER(HEX(MD5(title || '|' || feed_id || '|' || COALESCE(strftime('%Y-%m-%d', published_at), '')))) as unique_id
 				FROM articles
 			`)
-			// Drop old table and rename new table
 			_, _ = db.Exec(`DROP TABLE articles`)
 			_, _ = db.Exec(`ALTER TABLE articles_new RENAME TO articles`)
-			// Recreate indexes
+			_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN cluster_id INTEGER DEFAULT NULL`)
+			_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_64 INTEGER DEFAULT 0`)
+			_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b1 INTEGER DEFAULT 0`)
+			_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b2 INTEGER DEFAULT 0`)
+			_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b3 INTEGER DEFAULT 0`)
+			_, _ = db.Exec(`ALTER TABLE articles ADD COLUMN simhash_b4 INTEGER DEFAULT 0`)
 			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id)`)
+			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_unique_id ON articles(unique_id)`)
+			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_cluster_id ON articles(cluster_id)`)
 			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC)`)
 			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_is_read ON articles(is_read)`)
 			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_is_favorite ON articles(is_favorite)`)
@@ -261,10 +410,7 @@ func migrateDropUniqueConstraintOnArticles(db *sql.DB) error {
 	return nil
 }
 
-// migrateDropUniqueConstraintOnFeeds drops the UNIQUE constraint on url column from feeds table.
-// This allows FreshRSS and local feeds with the same URL to coexist.
 func migrateDropUniqueConstraintOnFeeds(db *sql.DB) error {
-	// Migration: Drop the UNIQUE constraint on feeds.url column to allow FreshRSS and local feeds with same URL
 	var feedsTableInfo string
 	_ = db.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='feeds'").Scan(&feedsTableInfo)
 	if strings.Contains(feedsTableInfo, "url TEXT UNIQUE") {
@@ -314,7 +460,6 @@ func migrateDropUniqueConstraintOnFeeds(db *sql.DB) error {
 			)
 		`)
 		if err == nil {
-			// Copy data from old table to new table
 			_, err = db.Exec(`
 				INSERT INTO feeds_new (
 					id, title, url, link, description, category, image_url, position, last_updated, last_error,
@@ -364,17 +509,14 @@ func migrateDropUniqueConstraintOnFeeds(db *sql.DB) error {
 			if err != nil {
 				log.Printf("Error copying feeds data: %v", err)
 			}
-			// Drop old table and rename new table
 			_, _ = db.Exec(`DROP TABLE feeds`)
 			_, _ = db.Exec(`ALTER TABLE feeds_new RENAME TO feeds`)
-			// Recreate indexes
 			_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_feeds_category ON feeds(category)`)
 			log.Printf("Migration completed: UNIQUE constraint dropped from feeds.url")
 		} else {
 			log.Printf("Error creating feeds_new table: %v", err)
 		}
 	} else {
-		// Migration: Add translate_articles column if it doesn't exist
 		_, _ = db.Exec(`ALTER TABLE feeds ADD COLUMN translate_articles BOOLEAN DEFAULT 0`)
 		log.Printf("Migration: Added translate_articles column to feeds table")
 	}

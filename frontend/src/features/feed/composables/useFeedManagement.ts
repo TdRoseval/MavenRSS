@@ -11,7 +11,7 @@ import { useFeedStore } from '@/features/feed/store';
 export function useFeedManagement() {
   const { t } = useI18n();
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
 
   /**
    * Import OPML file using dialog (desktop) or file upload (server mode)

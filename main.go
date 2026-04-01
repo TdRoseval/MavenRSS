@@ -21,12 +21,12 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"MavenRSS/internal/ai"
-	"MavenRSS/internal/store/sqlite"
-	"MavenRSS/internal/feed"
 	handlers "MavenRSS/internal/api/core"
+	"MavenRSS/internal/feed"
 	"MavenRSS/internal/monitor"
 	"MavenRSS/internal/network"
 	"MavenRSS/internal/routes"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/translation"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
@@ -150,6 +150,20 @@ func main() {
 		log.Printf("Error initializing database schema: %v", err)
 		log.Fatal(err)
 	}
+	startupCheck, err := db.StartupCheck()
+	if err != nil {
+		log.Printf("Error running sqlite startup self-check: %v", err)
+		log.Fatal(err)
+	}
+	log.Printf(
+		"SQLite self-check passed: driver=%s sqlite=%s vec=%s journal_mode=%s foreign_keys=%t busy_timeout=%d",
+		startupCheck.DriverName,
+		startupCheck.SQLiteVersion,
+		startupCheck.VecVersion,
+		startupCheck.JournalMode,
+		startupCheck.ForeignKeysEnabled,
+		startupCheck.BusyTimeout,
+	)
 	log.Println("Database initialized successfully")
 
 	// Initialize AI profile provider

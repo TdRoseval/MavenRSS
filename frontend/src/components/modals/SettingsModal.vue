@@ -36,10 +36,8 @@ import { useSettings } from '@/composables/core/useSettings';
 import { useFeedManagement } from '@/features/feed/composables/useFeedManagement';
 import { useModalClose, LARGE_MODAL_Z_INDEX } from '@/composables/ui/useModalClose';
 import { useSettingsManualSave } from '@/composables/core/useSettingsManualSave';
-import { useFeedStore } from '@/features/feed/store';
 import { useAppStore } from '@/stores/app';
 
-const feedStore = useFeedStore();
 const appStore = useAppStore();
 const { t } = useI18n();
 
@@ -150,8 +148,8 @@ function handleCancel() {
                 isSaving ? 'opacity-50 cursor-not-allowed' : '',
               ]"
               :disabled="!hasChanges || isSaving"
-              @click="handleSave"
               :title="t('setting.save')"
+              @click="handleSave"
             >
               <PhCheck :size="18" :weight="'bold'" />
               <span class="ml-1">{{ t('setting.save') }}</span>
@@ -163,8 +161,8 @@ function handleCancel() {
                 isSaving ? 'opacity-50 cursor-not-allowed' : '',
               ]"
               :disabled="!hasChanges || isSaving"
-              @click="handleCancel"
               :title="t('setting.cancel')"
+              @click="handleCancel"
             >
               <PhX :size="18" :weight="'bold'" />
               <span class="ml-1">{{ t('setting.cancel') }}</span>

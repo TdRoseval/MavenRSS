@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/rsshub"
 	"MavenRSS/internal/rules"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/utils"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
@@ -53,6 +53,7 @@ type Fetcher struct {
 	postProcessWg     sync.WaitGroup
 	articleSink       chan []*models.Article // Global sink for article writes (Eco mode)
 	writerWg          sync.WaitGroup         // WaitGroup for article writer loop
+	aiEnhancedManager *AIEnhancedManager     // AI enhanced mode task manager
 }
 
 func NewFetcher(db *sqlite.DB) *Fetcher {
@@ -94,6 +95,9 @@ func NewFetcher(db *sqlite.DB) *Fetcher {
 	// Initialize cleanup manager
 	fetcher.cleanupManager = NewCleanupManager(fetcher)
 	fetcher.cleanupManager.Start()
+
+	// Initialize AI enhanced mode manager
+	fetcher.aiEnhancedManager = NewAIEnhancedManager(db)
 
 	// Start article writer loop
 	fetcher.startArticleWriter()
@@ -166,7 +170,7 @@ func (f *Fetcher) articleWriterLoop() {
 				for i, a := range articles {
 					awcs[i] = &ArticleWithContent{Article: a}
 				}
-				
+
 				// Get feed title and user ID (assuming all articles in batch for same feed have same user)
 				var feedTitle string
 				var userID int64
@@ -256,6 +260,41 @@ func (f *Fetcher) processPostTask(task *PostProcessTask) {
 			}
 		}
 	}
+
+	// Check if AI enhanced mode should process these articles
+	if ShouldProcess(f.db, task.UserID) && f.aiEnhancedManager != nil {
+		// Get feed to check translate_articles option
+		feed, err := f.db.GetFeedByIDForUser(task.UserID, task.FeedID)
+		if err != nil {
+			log.Printf("Error getting feed for AI enhanced mode: %v", err)
+			return
+		}
+
+		// For each article, add AI enhanced task
+		for _, awc := range task.ArticlesWithContent {
+			if awc.Article != nil && awc.Article.ID > 0 {
+				// Check if article already has a summary
+				hasSummary := false
+				if awc.Article.Summary != "" && awc.Article.Summary != "<no content>" {
+					hasSummary = true
+				}
+
+				// Add AI enhanced task
+				aiTask := &AIEnhancedTask{
+					ArticleID:         awc.Article.ID,
+					UserID:            task.UserID,
+					FeedID:            task.FeedID,
+					ArticleTitle:      awc.Article.Title,
+					NeedsSummary:      !hasSummary,
+					NeedsTranslation:  true,
+					TranslateArticles: feed != nil && feed.TranslateArticles,
+					NeedsEmbedding:    true,
+					NeedsDedup:        true,
+				}
+				f.aiEnhancedManager.AddTask(aiTask)
+			}
+		}
+	}
 }
 
 // GetIntelligentRefreshCalculator returns the refresh calculator
@@ -281,14 +320,14 @@ func (f *Fetcher) StopRefreshForUser(userID int64) {
 // Stop stops the fetcher and cleans up all resources
 func (f *Fetcher) Stop() {
 	log.Println("Stopping fetcher...")
-	
+
 	// Stop post-processing workers by closing the channel
 	// This is the clean way to stop workers - they'll finish
 	// all pending tasks first before exiting
 	close(f.postProcessChan)
 	f.postProcessWg.Wait()
 	log.Println("Post-processing workers stopped")
-	
+
 	// Stop article writer loop
 	close(f.articleSink)
 	f.writerWg.Wait()
@@ -300,12 +339,20 @@ func (f *Fetcher) Stop() {
 	if f.cleanupManager != nil {
 		f.cleanupManager.Stop()
 	}
+	if f.aiEnhancedManager != nil {
+		f.aiEnhancedManager.Stop()
+	}
 	log.Println("Fetcher stopped")
 }
 
 // GetCleanupManager returns the cleanup manager
 func (f *Fetcher) GetCleanupManager() *CleanupManager {
 	return f.cleanupManager
+}
+
+// GetAIEnhancedManager returns the AI enhanced mode manager
+func (f *Fetcher) GetAIEnhancedManager() *AIEnhancedManager {
+	return f.aiEnhancedManager
 }
 
 // transformRSSHubURL converts rsshub:// route to full URL
@@ -695,7 +742,7 @@ func (f *Fetcher) fetchFeedWithContext(ctx context.Context, feed models.Feed) er
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-			
+
 			// In Eco mode, we skip immediate post-processing here
 			// The writer loop handles sending to postProcessChan after saving
 		} else {
@@ -802,7 +849,7 @@ func (f *Fetcher) cacheArticleContents(articlesWithContent []*ArticleWithContent
 			// Fallback to recalculating if unique_id is not available
 			articleID, err = f.db.GetArticleIDByUniqueID(awc.Article.UserID, awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
 		}
-		
+
 		if err != nil {
 			// Article might not exist yet (race condition) or other error
 			utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)

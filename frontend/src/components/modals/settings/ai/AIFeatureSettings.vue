@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhRobot,
@@ -7,6 +7,8 @@ import {
   PhTrash,
   PhBroom,
   PhMagnifyingGlass,
+  PhRocket,
+  PhSparkle,
 } from '@phosphor-icons/vue';
 import {
   TipBox,
@@ -19,8 +21,11 @@ import AIProfileSelector from './AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
 import { authDelete } from '@/shared/lib/authFetch';
+import { useAIProfiles } from '@/composables/ai/useAIProfiles';
+import { hasValidEmbeddingModelConfig } from '@/shared/lib/aiEnhancedMode';
 
 const { t } = useI18n();
+const { profiles, hasProfiles, fetchProfiles } = useAIProfiles();
 
 interface Props {
   settings: SettingsData;
@@ -33,13 +38,101 @@ const emit = defineEmits<{
 }>();
 
 function updateSetting(key: keyof SettingsData, value: any) {
-  emit('update:settings', {
+  emit('update:settings', normalizeFeatureSettings({
     ...props.settings,
     [key]: value,
-  });
+  }));
 }
 
 const isDeleting = ref(false);
+
+onMounted(() => {
+  if (!hasProfiles.value) {
+    fetchProfiles();
+  }
+});
+
+function hasValidProfile(profileID: string) {
+  const normalizedProfileID = String(profileID || '').trim();
+  if (normalizedProfileID === '') {
+    return false;
+  }
+
+  return profiles.value.some((profile) => String(profile.id) === normalizedProfileID);
+}
+
+const hasValidFusionProfile = computed(() => {
+  const profileID = String(props.settings.ai_fusion_profile_id || '').trim();
+  if (profileID === '') {
+    return false;
+  }
+
+  return hasValidProfile(profileID);
+});
+
+const hasValidRecommendationProfile = computed(() => {
+  const profileID = String(props.settings.ai_recommendation_profile_id || '').trim();
+  if (profileID === '') {
+    return false;
+  }
+
+  return hasValidProfile(profileID);
+});
+
+function hasBaseAIFeaturePrerequisites(settings: SettingsData) {
+  return (
+    hasProfiles.value &&
+    hasValidEmbeddingModelConfig(settings) &&
+    settings.summary_enabled === true &&
+    settings.summary_provider === 'ai' &&
+    settings.translation_enabled === true &&
+    settings.ai_search_enabled === true &&
+    settings.ai_chat_enabled === true
+  );
+}
+
+function canEnableRecommendation(settings: SettingsData) {
+  return hasBaseAIFeaturePrerequisites(settings) && settings.ai_fusion_enabled === true;
+}
+
+function canEnableAIEnhancedMode(settings: SettingsData) {
+  return (
+    hasBaseAIFeaturePrerequisites(settings) &&
+    settings.ai_fusion_enabled === true &&
+    settings.ai_recommendation_enabled === true
+  );
+}
+
+function normalizeFeatureSettings(settings: SettingsData): SettingsData {
+  const nextSettings = { ...settings };
+
+  if (!canEnableRecommendation(nextSettings) || !hasValidProfile(nextSettings.ai_fusion_profile_id)) {
+    nextSettings.ai_recommendation_enabled = false;
+  }
+
+  if (
+    !canEnableAIEnhancedMode(nextSettings) ||
+    !hasValidProfile(nextSettings.ai_fusion_profile_id) ||
+    !hasValidProfile(nextSettings.ai_recommendation_profile_id)
+  ) {
+    nextSettings.ai_enhanced_mode = false;
+  }
+
+  return nextSettings;
+}
+
+const canConfigureFusion = computed(() => hasBaseAIFeaturePrerequisites(props.settings));
+
+const canConfigureRecommendation = computed(() => canEnableRecommendation(props.settings));
+
+const canConfigureAIEnhancedMode = computed(() => canEnableAIEnhancedMode(props.settings));
+
+const isAIEnhancedModeAvailable = computed(
+  () =>
+    canConfigureAIEnhancedMode.value &&
+    hasValidFusionProfile.value &&
+    hasValidRecommendationProfile.value
+);
 
 async function clearAllChatSessions() {
   const confirmed = await window.showConfirm({
@@ -64,7 +157,6 @@ async function clearAllChatSessions() {
 
 <template>
   <SettingGroup :icon="PhRobot" :title="t('setting.ai.aiFeatures')">
-    <!-- AI Search -->
     <TipBox type="info" :title="t('setting.ai.isBeta')" />
     <SettingWithToggle
       :icon="PhMagnifyingGlass"
@@ -87,7 +179,6 @@ async function clearAllChatSessions() {
       </SubSettingItem>
     </NestedSettingsContainer>
 
-    <!-- AI Chat -->
     <SettingWithToggle
       :icon="PhChatCircleText"
       :title="t('setting.ai.aiChatEnabled')"
@@ -124,6 +215,90 @@ async function clearAllChatSessions() {
         </button>
       </SubSettingItem>
     </NestedSettingsContainer>
+
+    <TipBox v-if="!canConfigureFusion" type="warning" :title="t('setting.ai.aiFusionDisabled')" />
+    <TipBox
+      v-else-if="props.settings.ai_fusion_enabled && !hasValidFusionProfile"
+      type="warning"
+      :title="t('setting.ai.aiFusionRequiresProfile')"
+    />
+    <SettingWithToggle
+      :icon="PhRobot"
+      :title="t('setting.ai.aiFusionEnabled')"
+      :description="t('setting.ai.aiFusionEnabledDesc')"
+      :model-value="props.settings.ai_fusion_enabled"
+      :disabled="!canConfigureFusion"
+      @update:model-value="updateSetting('ai_fusion_enabled', $event)"
+    />
+
+    <NestedSettingsContainer v-if="props.settings.ai_fusion_enabled">
+      <SubSettingItem
+        :icon="PhRobot"
+        :title="t('setting.ai.selectFusionProfile')"
+        :description="t('setting.ai.selectFusionProfileDesc')"
+      >
+        <AIProfileSelector
+          :model-value="props.settings.ai_fusion_profile_id"
+          @update:model-value="updateSetting('ai_fusion_profile_id', $event)"
+        />
+      </SubSettingItem>
+    </NestedSettingsContainer>
+
+    <TipBox
+      v-if="!canConfigureRecommendation"
+      type="warning"
+      :title="t('setting.ai.aiRecommendationDisabled')"
+    />
+    <TipBox
+      v-else-if="props.settings.ai_recommendation_enabled && !hasValidRecommendationProfile"
+      type="warning"
+      :title="t('setting.ai.aiRecommendationRequiresProfile')"
+    />
+    <SettingWithToggle
+      :icon="PhSparkle"
+      :title="t('setting.ai.aiRecommendationEnabled')"
+      :description="t('setting.ai.aiRecommendationEnabledDesc')"
+      :model-value="props.settings.ai_recommendation_enabled"
+      :disabled="!canConfigureRecommendation"
+      @update:model-value="updateSetting('ai_recommendation_enabled', $event)"
+    />
+
+    <NestedSettingsContainer v-if="props.settings.ai_recommendation_enabled">
+      <SubSettingItem
+        :icon="PhRobot"
+        :title="t('setting.ai.selectRecommendationProfile')"
+        :description="t('setting.ai.selectRecommendationProfileDesc')"
+      >
+        <AIProfileSelector
+          :model-value="props.settings.ai_recommendation_profile_id"
+          @update:model-value="updateSetting('ai_recommendation_profile_id', $event)"
+        />
+      </SubSettingItem>
+    </NestedSettingsContainer>
+
+    <TipBox
+      v-if="!canConfigureAIEnhancedMode"
+      type="warning"
+      :title="t('setting.ai.aiEnhancedModeDisabled')"
+    />
+    <TipBox
+      v-else-if="!hasValidFusionProfile"
+      type="warning"
+      :title="t('setting.ai.aiEnhancedModeRequiresFusionProfile')"
+    />
+    <TipBox
+      v-else-if="!hasValidRecommendationProfile"
+      type="warning"
+      :title="t('setting.ai.aiEnhancedModeRequiresRecommendationProfile')"
+    />
+    <SettingWithToggle
+      :icon="PhRocket"
+      :title="t('setting.ai.aiEnhancedMode')"
+      :description="t('setting.ai.aiEnhancedModeDesc')"
+      :model-value="isAIEnhancedModeAvailable ? props.settings.ai_enhanced_mode : false"
+      :disabled="!isAIEnhancedModeAvailable"
+      @update:model-value="updateSetting('ai_enhanced_mode', $event)"
+    />
   </SettingGroup>
 </template>
 

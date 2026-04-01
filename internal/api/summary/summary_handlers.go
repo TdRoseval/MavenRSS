@@ -2,6 +2,7 @@ package summary
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,9 +16,11 @@ import (
 
 // isAILimitReached checks if the AI usage limit is reached for a specific user
 func isAILimitReached(h *core.Handler, userID int64) bool {
-	usageStr, err := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
-	if err != nil {
-		return false
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
 	}
 	usage, _ := strconv.ParseInt(usageStr, 10, 64)
 
@@ -45,7 +48,12 @@ func isAILimitReached(h *core.Handler, userID int64) bool {
 
 // addAIUsage adds tokens to the AI usage counter for a specific user
 func addAIUsage(h *core.Handler, userID int64, tokens int64) {
-	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
+	}
 	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
 	newUsage := currentUsage + tokens
 	if userID > 0 {
@@ -75,10 +83,10 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
-		ArticleID     int64  `json:"article_id"`
-		Length        string `json:"length"`            // "short", "medium", "long"
-		Content       string `json:"content,omitempty"` // Optional: use provided content instead of fetching from DB
-		HighPriority  bool   `json:"high_priority"`     // Whether this request should be prioritized
+		ArticleID    int64  `json:"article_id"`
+		Length       string `json:"length"`            // "short", "medium", "long"
+		Content      string `json:"content,omitempty"` // Optional: use provided content instead of fetching from DB
+		HighPriority bool   `json:"high_priority"`     // Whether this request should be prioritized
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -105,12 +113,12 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	if req.Content == "" {
 		article, err := h.DB.GetArticleByID(req.ArticleID)
 		if err == nil && article.Summary != "" && article.Summary != "<no content>" {
-			// Article has a cached summary, convert it to HTML and return
+			// Article has a cached summary, convert it to HTML and return immediately
 			htmlSummary := textutil.ConvertMarkdownToHTML(article.Summary)
 			response.JSON(w, map[string]interface{}{
 				"summary":        article.Summary,
 				"html":           htmlSummary,
-				"sentence_count": 0, // We don't store this in DB
+				"sentence_count": 0,
 				"is_too_short":   false,
 				"cached":         true,
 			})
@@ -162,45 +170,30 @@ func HandleSummarizeArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 				h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal, userID)
 			}
 
-			// Try to get AI config from ProfileProvider first
-			var apiKey, endpoint, model string
+			// Resolve user-scoped AI config
+			var cfg *ai.ClientConfig
 			var useGlobalProxy bool = true
 			if h.AIProfileProvider != nil {
-				cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureSummary)
-				if err == nil && cfg != nil {
-					apiKey = cfg.APIKey
-					endpoint = cfg.Endpoint
-					model = cfg.Model
-					useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureSummary)
-					log.Printf("Using AI profile for summarization (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
+				cfg, err = h.AIProfileProvider.GetConfigForFeatureForUser(userID, ai.FeatureSummary)
+				if err != nil {
+					log.Printf("Failed to resolve user AI config for summarization: %v", err)
 				}
+				useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeatureForUser(userID, ai.FeatureSummary)
+			}
+			if cfg == nil {
+				response.Error(w, fmt.Errorf("AI summary is not configured for the current user"), http.StatusBadRequest)
+				return
 			}
 
-			// Fallback to global settings if ProfileProvider not available or no profile configured
-			if apiKey == "" && endpoint == "" {
-				apiKey, _ = h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
-				endpoint, _ = h.DB.GetSettingWithFallback(userID, "ai_endpoint")
-				model, _ = h.DB.GetSettingWithFallback(userID, "ai_model")
-				// Use global proxy by default for global settings
-				useGlobalProxy = true
-				log.Printf("Using global AI settings for summarization (API key: %s)", func() string {
-					if apiKey != "" {
-						return "configured"
-					}
-					return "not configured (using keyless provider)"
-				}())
-			}
-
-			systemPrompt, _ := h.DB.GetSettingWithFallback(userID, "ai_summary_prompt")
-			customHeaders, _ := h.DB.GetSettingWithFallback(userID, "ai_custom_headers")
+			systemPrompt, _ := h.DB.GetSettingForUser(userID, "ai_summary_prompt")
 			language, _ := h.DB.GetSettingWithFallback(userID, "language")
 
-			aiSummarizer := summary.NewAISummarizerWithDB(apiKey, endpoint, model, h.DB, useGlobalProxy)
+			aiSummarizer := summary.NewAISummarizerWithDB(cfg.APIKey, cfg.Endpoint, cfg.Model, h.DB, useGlobalProxy)
 			if systemPrompt != "" {
 				aiSummarizer.SetSystemPrompt(systemPrompt)
 			}
-			if customHeaders != "" {
-				aiSummarizer.SetCustomHeaders(customHeaders)
+			if cfg.CustomHeaders != "" {
+				aiSummarizer.SetCustomHeaders(cfg.CustomHeaders)
 			}
 			if language != "" {
 				aiSummarizer.SetLanguage(language)

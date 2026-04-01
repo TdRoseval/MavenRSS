@@ -22,12 +22,17 @@ RUN wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERS
     rm zig-linux-x86_64-${ZIG_VERSION}.tar.xz
 
 # Install Linux development dependencies
-RUN apt-get update && apt-get install -y \
+RUN dpkg --add-architecture arm64 && \
+    apt-get update && apt-get install -y \
+    gcc \
+    pkg-config \
+    file \
     libgtk-3-dev \
     libwebkit2gtk-4.1-dev \
     libsoup-3.0-dev \
-    gcc \
-    pkg-config \
+    libgtk-3-dev:arm64 \
+    libwebkit2gtk-4.1-dev:arm64 \
+    libsoup-3.0-dev:arm64 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install NSIS for Windows installer creation

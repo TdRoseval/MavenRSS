@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"fmt"
 )
 
 // initSchema initializes the database schema by creating all tables and indexes.
@@ -19,6 +20,9 @@ func initSchema(db *sql.DB) error {
 		status TEXT NOT NULL DEFAULT 'pending',
 		inherited_from INTEGER,
 		has_inherited BOOLEAN DEFAULT 0,
+		interest_vector BLOB DEFAULT NULL,
+		ai_read_count INTEGER DEFAULT 0,
+		ai_total_read_time INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(inherited_from) REFERENCES users(id)
@@ -84,6 +88,7 @@ func initSchema(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER NOT NULL,
 		feed_id INTEGER,
+		cluster_id INTEGER DEFAULT NULL,
 		title TEXT,
 		url TEXT,
 		image_url TEXT,
@@ -96,13 +101,75 @@ func initSchema(db *sql.DB) error {
 		is_hidden BOOLEAN DEFAULT 0,
 		is_read_later BOOLEAN DEFAULT 0,
 		summary TEXT DEFAULT '',
+		simhash_64 INTEGER DEFAULT 0,
+		simhash_b1 INTEGER DEFAULT 0,
+		simhash_b2 INTEGER DEFAULT 0,
+		simhash_b3 INTEGER DEFAULT 0,
+		simhash_b4 INTEGER DEFAULT 0,
 		unique_id TEXT,
 		UNIQUE(user_id, unique_id),
 		FOREIGN KEY(feed_id) REFERENCES feeds(id),
 		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 
-	-- Translation cache table to avoid redundant API calls
+	-- Article clusters table for AI-powered deduplication and fusion
+	CREATE TABLE IF NOT EXISTS clusters (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending_merge',
+		merged_title TEXT DEFAULT '',
+		merged_summary TEXT DEFAULT '',
+		merged_content TEXT DEFAULT '',
+		article_count INTEGER DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		is_read BOOLEAN DEFAULT 0,
+		is_favorite BOOLEAN DEFAULT 0,
+		is_read_later BOOLEAN DEFAULT 0,
+		is_hidden BOOLEAN DEFAULT 0,
+		recommendation_archive_date TEXT DEFAULT '',
+		recommendation_score REAL DEFAULT 0,
+		is_ai_recommended BOOLEAN DEFAULT 0,
+		recommendation_profile_id INTEGER DEFAULT 0,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS daily_recommendations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		cluster_id INTEGER NOT NULL,
+		recommendation_date TEXT NOT NULL,
+		recommendation_score REAL DEFAULT 0,
+		recommendation_rank INTEGER DEFAULT 0,
+		recommendation_profile_id INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
+		UNIQUE(user_id, recommendation_date, cluster_id)
+	);
+	CREATE TABLE IF NOT EXISTS article_contents (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL UNIQUE,
+		content TEXT NOT NULL,
+		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS ai_article_stage_skips (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		article_id INTEGER NOT NULL,
+		stage TEXT NOT NULL,
+		reason TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
+		UNIQUE(article_id, stage)
+	);
+
+
+	-- Translation cache table
 	CREATE TABLE IF NOT EXISTS translation_cache (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		source_text_hash TEXT NOT NULL,
@@ -114,16 +181,7 @@ func initSchema(db *sql.DB) error {
 		UNIQUE(source_text_hash, target_lang, provider)
 	);
 
-	-- Article content cache table to store full article content
-	CREATE TABLE IF NOT EXISTS article_contents (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		article_id INTEGER NOT NULL UNIQUE,
-		content TEXT NOT NULL,
-		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
-	);
-
-	-- Chat sessions table to store AI chat conversations per article
+	-- Chat sessions table for AI chat feature
 	CREATE TABLE IF NOT EXISTS chat_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER NOT NULL,
@@ -131,8 +189,8 @@ func initSchema(db *sql.DB) error {
 		title TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
-		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
 	);
 
 	-- Chat messages table to store individual messages in chat sessions
@@ -203,71 +261,107 @@ func initSchema(db *sql.DB) error {
 		UNIQUE(user_id, key)
 	);
 
-	-- Create indexes for better query performance
-	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-	CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-	CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
-	CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id);
-	CREATE INDEX IF NOT EXISTS idx_articles_user_id ON articles(user_id);
-	CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_articles_is_read ON articles(is_read);
-	CREATE INDEX IF NOT EXISTS idx_articles_is_favorite ON articles(is_favorite);
-	CREATE INDEX IF NOT EXISTS idx_articles_is_hidden ON articles(is_hidden);
-	CREATE INDEX IF NOT EXISTS idx_articles_is_read_later ON articles(is_read_later);
-	CREATE INDEX IF NOT EXISTS idx_feeds_user_id ON feeds(user_id);
-	CREATE INDEX IF NOT EXISTS idx_feeds_category ON feeds(category);
-	CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
-	CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(refresh_token);
-	CREATE INDEX IF NOT EXISTS idx_saved_filters_user_id ON saved_filters(user_id);
-	CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
-	CREATE INDEX IF NOT EXISTS idx_ai_profiles_user_id ON ai_profiles(user_id);
-	CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
+`
+_, err := db.Exec(query)
+if err != nil {
+return err
+}
 
-	-- Composite indexes for common query patterns
-	CREATE INDEX IF NOT EXISTS idx_articles_feed_published ON articles(feed_id, published_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_articles_user_published ON articles(user_id, published_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_articles_read_published ON articles(is_read, published_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_articles_fav_published ON articles(is_favorite, published_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_articles_readlater_published ON articles(is_read_later, published_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_articles_user_read_published ON articles(user_id, is_read, published_at DESC);
+if err := runMigrations(db); err != nil {
+return err
+}
 
-	-- Covering index for category queries (hidden + published_at)
-	-- Optimizes queries with: WHERE is_hidden = 0 ORDER BY published_at DESC
-	CREATE INDEX IF NOT EXISTS idx_articles_hidden_published ON articles(is_hidden, published_at DESC);
+indexesQuery := `
+-- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id);
+CREATE INDEX IF NOT EXISTS idx_articles_user_id ON articles(user_id);
+CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_is_read ON articles(is_read);
+CREATE INDEX IF NOT EXISTS idx_articles_is_favorite ON articles(is_favorite);
+CREATE INDEX IF NOT EXISTS idx_articles_is_hidden ON articles(is_hidden);
+CREATE INDEX IF NOT EXISTS idx_articles_is_read_later ON articles(is_read_later);
+CREATE INDEX IF NOT EXISTS idx_feeds_user_id ON feeds(user_id);
+CREATE INDEX IF NOT EXISTS idx_feeds_category ON feeds(category);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(refresh_token);
+CREATE INDEX IF NOT EXISTS idx_saved_filters_user_id ON saved_filters(user_id);
+CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_profiles_user_id ON ai_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_articles_feed_published ON articles(feed_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_user_published ON articles(user_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_read_published ON articles(is_read, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_fav_published ON articles(is_favorite, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_readlater_published ON articles(is_read_later, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_user_read_published ON articles(user_id, is_read, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_hidden_published ON articles(is_hidden, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_unread_hidden_published ON articles(is_read, is_hidden, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_feed_hidden_published ON articles(feed_id, is_hidden, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_feed_read_published ON articles(feed_id, is_read, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_unique_id ON articles(unique_id);
+CREATE INDEX IF NOT EXISTS idx_articles_cluster_id ON articles(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_articles_simhash_b1 ON articles(user_id, simhash_b1);
+CREATE INDEX IF NOT EXISTS idx_articles_simhash_b2 ON articles(user_id, simhash_b2);
+CREATE INDEX IF NOT EXISTS idx_articles_simhash_b3 ON articles(user_id, simhash_b3);
+CREATE INDEX IF NOT EXISTS idx_articles_simhash_b4 ON articles(user_id, simhash_b4);
+CREATE INDEX IF NOT EXISTS idx_clusters_user_id ON clusters(user_id);
+CREATE INDEX IF NOT EXISTS idx_clusters_status ON clusters(status);
+CREATE INDEX IF NOT EXISTS idx_clusters_updated_at ON clusters(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_clusters_user_status ON clusters(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_clusters_user_favorite ON clusters(user_id, is_favorite);
+CREATE INDEX IF NOT EXISTS idx_clusters_user_read ON clusters(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_clusters_user_ai_recommended ON clusters(user_id, is_ai_recommended);
+CREATE INDEX IF NOT EXISTS idx_clusters_archive_date ON clusters(user_id, recommendation_archive_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_recommendations_user_date ON daily_recommendations(user_id, recommendation_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_recommendations_cluster ON daily_recommendations(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
+CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id);
+CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage);
+CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_article_stage ON ai_article_stage_skips(article_id, stage);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_article_id ON chat_sessions(article_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
+`
 
-	-- Composite index for common unread articles with hide_from_timeline filter
-	CREATE INDEX IF NOT EXISTS idx_articles_unread_hidden_published ON articles(is_read, is_hidden, published_at DESC);
+_, err = db.Exec(indexesQuery)
+if err != nil {
+return err
+}
 
-	-- Composite index for feed + hidden + published (for per-feed queries)
-	CREATE INDEX IF NOT EXISTS idx_articles_feed_hidden_published ON articles(feed_id, is_hidden, published_at DESC);
+return nil
+}
 
-	-- Composite index for unread per feed
-	CREATE INDEX IF NOT EXISTS idx_articles_feed_read_published ON articles(feed_id, is_read, published_at DESC);
-
-	-- Unique ID index for deduplication (critical for import performance)
-	CREATE INDEX IF NOT EXISTS idx_articles_unique_id ON articles(unique_id);
-
-	-- Translation cache index
-	CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
-
-	-- Article content cache index
-	CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id);
-
-	-- Chat sessions and messages indexes
-	CREATE INDEX IF NOT EXISTS idx_chat_sessions_article_id ON chat_sessions(article_id);
-	CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
-	`
-	_, err := db.Exec(query)
+// initVecSchema creates the sqlite-vec virtual tables for embedding storage.
+// This is called separately because vec0 virtual tables use different syntax.
+func initVecSchema(db *sql.DB) error {
+	_, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
+		article_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
 	if err != nil {
-		return err
+		return fmt.Errorf("create article_embeddings vec0 table: %w", err)
 	}
 
-	// Then run migrations to ensure all columns exist
-	// This must happen AFTER creating tables
-	if err := runMigrations(db); err != nil {
-		return err
+	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS cluster_embeddings USING vec0(
+		cluster_id INTEGER PRIMARY KEY,
+		title_embedding float[1024],
+		summary_embedding float[1024]
+	)`)
+	if err != nil {
+		return fmt.Errorf("create cluster_embeddings vec0 table: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS user_interest_embeddings USING vec0(
+		user_id INTEGER PRIMARY KEY,
+		interest_embedding float[1024]
+	)`)
+	if err != nil {
+		return fmt.Errorf("create user_interest_embeddings vec0 table: %w", err)
 	}
 
 	return nil

@@ -2,8 +2,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Feed } from '@/types/models';
 import { checkServerMode } from '@/shared/lib/serverMode';
-import { authFetchJson, authPost, authFetch } from '@/shared/lib/authFetch';
-import { useArticleStore } from '@/features/article/store';
+import { authFetchJson, authFetch } from '@/shared/lib/authFetch';
 import { useFeedStore } from '@/features/feed/store';
 
 export type FeedType = 'url' | 'script' | 'xpath' | 'email';
@@ -12,8 +11,7 @@ export type RefreshMode = 'global' | 'fixed' | 'intelligent' | 'custom' | 'never
 
 export function useFeedForm(feed?: Feed) {
   const { t } = useI18n();
-  const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
 
   // Check if image gallery feature is enabled
   const imageGalleryEnabled = ref(false);

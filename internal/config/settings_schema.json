@@ -745,6 +745,48 @@
       "category": "ai",
       "encrypted": false,
       "frontend_key": "aiSearchProfileId"
+    },
+    "ai_enhanced_mode": {
+      "type": "bool",
+      "default": false,
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiEnhancedMode"
+    },
+    "ai_fusion_enabled": {
+      "type": "bool",
+      "default": false,
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiFusionEnabled"
+    },
+    "ai_embedding_models": {
+      "type": "string",
+      "default": "[]",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiEmbeddingModels"
+    },
+    "ai_recommendation_enabled": {
+      "type": "bool",
+      "default": false,
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiRecommendationEnabled"
+    },
+    "ai_recommendation_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiRecommendationProfileId"
+    },
+    "ai_fusion_profile_id": {
+      "type": "string",
+      "default": "",
+      "category": "ai",
+      "encrypted": false,
+      "frontend_key": "aiFusionProfileId"
     }
   }
 }

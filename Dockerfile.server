@@ -1,66 +1,59 @@
-# Dockerfile for building MavenRSS server version
-# This creates a minimal server binary without GUI dependencies
+FROM golang:1.25-bookworm AS builder
 
-# Build stage
-FROM golang:1.25-alpine AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+ARG BINARY_NAME=mavenrss-server
 
-# Install git and Node.js (needed for frontend build)
-RUN apk add --no-cache git nodejs npm
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_OPTIONS="--max-old-space-size=2048 --no-warnings"
 
-# Set working directory
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+RUN apt-get install -y --no-install-recommends nodejs
+
 WORKDIR /app
 
-# Copy go mod files
 COPY go.mod go.sum ./
-
-# Download dependencies
+COPY third_party/sqlite-vec-go-bindings ./third_party/sqlite-vec-go-bindings
 RUN go mod download
 
-# Copy frontend package files first for better caching
 COPY frontend/package*.json ./frontend/
-
-# Install frontend dependencies
 RUN cd frontend && npm install
 
-# Copy source code
 COPY . .
 
-# Set Node.js memory limit and build frontend
-RUN cd frontend && NODE_OPTIONS="--max-old-space-size=2048  --no-warnings" npm run build
+RUN cd frontend && npm run build
 
-# Build the server version
-RUN CGO_ENABLED=0 GOOS=linux go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o mavenrss-server ./main-core.go
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o /out/${BINARY_NAME} ./main-core.go
 
-# Runtime stage - minimal alpine image
-FROM alpine:latest
+FROM debian:bookworm-slim
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
-RUN adduser -D -s /bin/sh mavenrss
+RUN useradd --create-home --shell /usr/sbin/nologin mavenrss
 
-# Create data directory with proper permissions
-RUN mkdir -p /app/data && chown -R mavenrss:mavenrss /app/data
-
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /app/mavenrss-server .
+RUN mkdir -p /app/data && chown -R mavenrss:mavenrss /app
 
-# Change ownership
-RUN chown mavenrss:mavenrss mavenrss-server
+COPY --from=builder /out/mavenrss-server ./mavenrss-server
 
-# Switch to non-root user
 USER mavenrss
 
-# Expose port
 EXPOSE 1234
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:1234/api/version || exit 1
 
-# Run the server
 CMD ["./mavenrss-server", "-host", "0.0.0.0", "-port", "1234"]

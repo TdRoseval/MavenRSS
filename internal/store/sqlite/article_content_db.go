@@ -1,6 +1,10 @@
 package sqlite
 
-import "database/sql"
+import (
+	"database/sql"
+
+	"MavenRSS/internal/utils/textutil"
+)
 
 // ArticleContent represents a cached article content entry
 type ArticleContent struct {
@@ -25,12 +29,14 @@ func (db *DB) GetArticleContent(articleID int64) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
+	content = textutil.NormalizeArticleContent(content)
 	return content, true, nil
 }
 
 // SetArticleContent stores or updates content for an article
 func (db *DB) SetArticleContent(articleID int64, content string) error {
 	db.WaitForReady()
+	content = textutil.NormalizeArticleContent(content)
 	_, err := db.Exec(
 		`INSERT OR REPLACE INTO article_contents (article_id, content, fetched_at)
 		 VALUES (?, ?, CURRENT_TIMESTAMP)`,

@@ -2,13 +2,19 @@ package settings
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
-	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/feed"
+	"MavenRSS/internal/middleware"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/store/sqlite"
 )
 
 func setupHandlerWithDB(t *testing.T) *core.Handler {
@@ -87,5 +93,84 @@ func TestHandleSettings_POST(t *testing.T) {
 	}
 	if dec != "deadbeef" {
 		t.Fatalf("expected deepl_api_key decrypted to be deadbeef, got %s", dec)
+	}
+}
+
+func TestHandleSettings_POSTRejectsFrozenAISettings(t *testing.T) {
+	db, err := sqlite.NewDB(":memory:")
+	if err != nil {
+		t.Fatalf("NewDB error: %v", err)
+	}
+	if err := db.Init(); err != nil {
+		t.Fatalf("db Init error: %v", err)
+	}
+
+	fetcher := feed.NewFetcher(db)
+	defer fetcher.Stop()
+
+	h := core.NewHandler(db, fetcher, nil, nil)
+
+	if err := db.SetSettingForUser(1, "ai_enhanced_mode", "true"); err != nil {
+		t.Fatalf("SetSettingForUser(ai_enhanced_mode) error: %v", err)
+	}
+
+	feedID, err := db.AddFeedForUser(1, &models.Feed{
+		Title:           "Test Feed",
+		URL:             "https://example.com/feed",
+		Type:            "rss",
+		RefreshInterval: 60,
+	})
+	if err != nil {
+		t.Fatalf("AddFeedForUser error: %v", err)
+	}
+
+	if _, err := db.Exec(
+		`INSERT INTO articles (user_id, feed_id, title, url, published_at, summary, unique_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		1,
+		feedID,
+		"Pending Article",
+		"https://example.com/articles/pending",
+		time.Now(),
+		"summary content",
+		"pending-article",
+	); err != nil {
+		t.Fatalf("insert article error: %v", err)
+	}
+
+	payload := map[string]string{
+		"ai_embedding_models": `[{"modelname":"embed-v1"}]`,
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(
+		context.WithValue(
+			req.Context(),
+			middleware.UserContextKey,
+			&auth.Claims{UserID: 1, Username: "tester", Role: "user"},
+		),
+	)
+
+	w := httptest.NewRecorder()
+	HandleSettings(h, w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict, got %d", resp.StatusCode)
+	}
+
+	var data struct {
+		Success bool `json:"success"`
+		Error   struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if data.Error.Message == "" {
+		t.Fatal("expected conflict error message, got empty string")
 	}
 }

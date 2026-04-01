@@ -29,8 +29,12 @@
   "dependencies": {
     "@eslint/js": "^9.39.2",
     "@phosphor-icons/vue": "^2.2.1",
+    "@types/dompurify": "^3.0.5",
+    "@types/marked": "^5.0.2",
+    "dompurify": "^3.3.3",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.28",
+    "marked": "^17.0.5",
     "pinia": "^3.0.4",
     "tailwindcss": "^3.4.17",
     "vue": "^3.5.28",

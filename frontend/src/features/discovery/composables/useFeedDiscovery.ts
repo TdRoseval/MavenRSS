@@ -2,7 +2,7 @@ import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Feed } from '@/types/models';
 import type { DiscoveredFeed, ProgressCounts, ProgressState } from '@/types/discovery';
-import { authFetch, authPost, authFetchJson } from '@/shared/lib/authFetch';
+import { authFetch, authPost } from '@/shared/lib/authFetch';
 
 export function useFeedDiscovery(feed: Feed) {
   const { t } = useI18n();

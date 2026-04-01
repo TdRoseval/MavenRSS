@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import type { SavedFilter } from '@/types/filter';
 import type { FilterCondition } from '@/types/filter';
-import { authFetchJson, authPost, authFetch } from '@/shared/lib/authFetch';
+import { authFetchJson, authPost } from '@/shared/lib/authFetch';
 import { useAuthStore } from '@/stores/auth';
 
 export function useSavedFilters() {

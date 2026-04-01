@@ -91,6 +91,9 @@ const { activeFilters, resetFilterState, fetchFilteredArticles, loadMoreFiltered
 
 // AI Search enabled from settings
 const isAISearchEnabled = computed(() => settings.value.ai_search_enabled);
+const sidebarToggleLabel = computed(() =>
+  props.isSidebarOpen ? t('sidebar.activity.collapseFeedList') : t('sidebar.activity.expandFeedList')
+);
 
 // AI search active state
 const isAISearchActive = computed(() => articleStore.aiSearchResults.length > 0);
@@ -106,7 +109,8 @@ const filteredArticles = computed(() => {
     return articleStore.aiSearchResults;
   }
 
-  let articles = activeFilters.value.length > 0 ? filteredArticlesFromServer.value : articleStore.articles;
+  let articles =
+    activeFilters.value.length > 0 ? filteredArticlesFromServer.value : articleStore.articles;
 
   // Only apply filter if showOnlyUnread is enabled
   // Using a simpler filter that avoids Set.has() calls when possible
@@ -952,7 +956,12 @@ function cardModalRetryLoadContent(): void {
               </div>
             </Transition>
           </div>
-          <button class="md:hidden text-xl sm:text-2xl p-1" @click="emit('toggleSidebar')">
+          <button
+            class="md:hidden text-xl sm:text-2xl p-1"
+            :title="sidebarToggleLabel"
+            :aria-label="sidebarToggleLabel"
+            @click="emit('toggleSidebar')"
+          >
             <PhList :size="18" class="sm:w-5 sm:h-5" />
           </button>
         </div>
@@ -969,7 +978,10 @@ function cardModalRetryLoadContent(): void {
     <div ref="listRef" class="flex-1 overflow-y-scroll article-list-scroll" @scroll="handleScroll">
       <div
         v-if="
-          filteredArticles.length === 0 && !articleStore.isLoading && !isFilterLoading && !isAISearchActive
+          filteredArticles.length === 0 &&
+          !articleStore.isLoading &&
+          !isFilterLoading &&
+          !isAISearchActive
         "
         class="p-4 sm:p-5 text-center text-text-secondary text-sm sm:text-base"
       >

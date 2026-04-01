@@ -16,6 +16,7 @@ interface SummaryResult {
   html?: string;
   sentence_count: number;
   is_too_short: boolean;
+  cached?: boolean;
   limit_reached?: boolean;
   used_fallback?: boolean;
   thinking?: string;
@@ -58,6 +59,19 @@ export function useArticleSummary() {
   ): Promise<SummaryResult | null> {
     if (!summarySettings.value.enabled) {
       return null;
+    }
+
+    // If not forcing, check if article already has a cached summary
+    if (!force && article.summary && article.summary.trim() !== '') {
+      // Directly use the cached summary from article object
+      const htmlSummary = article.summary;
+      return {
+        summary: article.summary,
+        html: htmlSummary,
+        sentence_count: 0,
+        is_too_short: false,
+        cached: true,
+      };
     }
 
     // If forcing regeneration, clear cache first

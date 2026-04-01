@@ -1,22 +1,25 @@
 import { ref, onBeforeUnmount } from 'vue';
 
+const DEFAULT_SIDEBAR_WIDTH = 234;
+const DEFAULT_ARTICLE_LIST_WIDTH = 312;
+
+const sidebarWidth = ref<number>(DEFAULT_SIDEBAR_WIDTH);
+const articleListWidth = ref<number>(DEFAULT_ARTICLE_LIST_WIDTH);
+const isResizingSidebar = ref<boolean>(false);
+const isResizingArticleList = ref<boolean>(false);
+const compactMode = ref<boolean>(false);
+const userManuallyResized = ref<boolean>(false);
+const initialMouseX = ref<number>(0);
+const initialArticleListWidth = ref<number>(DEFAULT_ARTICLE_LIST_WIDTH);
+
 export function useResizablePanels() {
-  const sidebarWidth = ref<number>(256);
-  const articleListWidth = ref<number>(400);
-  const isResizingSidebar = ref<boolean>(false);
-  const isResizingArticleList = ref<boolean>(false);
-  const compactMode = ref<boolean>(false);
-
-  // Track if user has manually resized the article list
-  const userManuallyResized = ref<boolean>(false);
-
-  // Track initial mouse position when starting resize
-  const initialMouseX = ref<number>(0);
-  const initialArticleListWidth = ref<number>(400);
-
   // Set compact mode state (doesn't change width by itself)
   function setCompactMode(enabled: boolean): void {
     compactMode.value = enabled;
+  }
+
+  function setSidebarWidth(width: number): void {
+    sidebarWidth.value = width;
   }
 
   // Set article list width (called when settings are loaded or user changes compact mode)
@@ -38,7 +41,7 @@ export function useResizablePanels() {
   function handleResizeSidebar(): void {
     if (!isResizingSidebar.value) return;
     const newWidth = (window.event as MouseEvent).clientX;
-    if (newWidth >= 180 && newWidth <= 450) {
+    if (newWidth >= 120 && newWidth <= 320) {
       sidebarWidth.value = newWidth;
     }
   }
@@ -69,9 +72,9 @@ export function useResizablePanels() {
     // Calculate the delta from the initial position and apply to initial width
     const deltaX = currentMouseX - initialMouseX.value;
     const newWidth = initialArticleListWidth.value + deltaX;
-    // In compact mode, allow wider range (300-800), in normal mode (250-600)
-    const minWidth = compactMode.value ? 300 : 280;
-    const maxWidth = compactMode.value ? 800 : 600;
+    // Keep detail pane roomy on desktop while still allowing manual expansion.
+    const minWidth = compactMode.value ? 220 : 180;
+    const maxWidth = compactMode.value ? 520 : 420;
     if (newWidth >= minWidth && newWidth <= maxWidth) {
       articleListWidth.value = newWidth;
       // Mark that user has manually resized
@@ -100,6 +103,7 @@ export function useResizablePanels() {
     articleListWidth,
     startResizeSidebar,
     startResizeArticleList,
+    setSidebarWidth,
     setCompactMode,
     setArticleListWidth,
   };

@@ -14,7 +14,7 @@ import { useAppStore } from '@/stores/app';
 export function useSettingsAutoSave(settings: Ref<SettingsData> | (() => SettingsData)) {
   const { locale } = useI18n();
   const articleStore = useArticleStore();
-const appStore = useAppStore();
+  const appStore = useAppStore();
 
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   let isInitialLoad = true;

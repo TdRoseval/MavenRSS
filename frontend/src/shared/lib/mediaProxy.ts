@@ -2,8 +2,6 @@
  * Media proxy utilities for handling anti-hotlinking and caching
  */
 
-import { useAuthStore } from '@/stores/auth';
-
 let mediaCacheEnabledCache: boolean | null = null;
 let mediaCachePromise: Promise<boolean> | null = null;
 let mediaProxyFallbackCache: boolean | null = null;
@@ -20,6 +18,7 @@ export function encodeURLSafe(str: string): string {
   try {
     str = decodeURIComponent(str);
   } catch {
+    // Do nothing
   }
   const bytes = new TextEncoder().encode(str);
   const binaryString = String.fromCharCode(...bytes);
@@ -57,7 +56,13 @@ export function decodeURLSafe(str: string): string {
  * @param feedId Optional feed ID for feed-specific proxy settings
  * @returns Proxied URL
  */
-export function getProxiedMediaUrl(url: string, referer?: string, forceCache?: boolean, feedId?: number, token?: string): string {
+export function getProxiedMediaUrl(
+  url: string,
+  referer?: string,
+  forceCache?: boolean,
+  feedId?: number,
+  token?: string
+): string {
   if (!url) return '';
 
   if (url.startsWith('data:') || url.startsWith('blob:')) {
@@ -154,7 +159,7 @@ export async function shouldProxyMedia(): Promise<boolean> {
     await isMediaCacheEnabled();
   }
   const result = mediaCacheEnabledCache === true || mediaProxyFallbackCache === true;
-  // console.log('[MediaProxy] shouldProxyMedia:', result, 
+  // console.log('[MediaProxy] shouldProxyMedia:', result,
   //   '(cache:', mediaCacheEnabledCache, ', fallback:', mediaProxyFallbackCache, ')');
   return result;
 }
@@ -182,6 +187,9 @@ export function proxyIframesInHtml(html: string, feedId?: number, token?: string
   const iframeRegex = /<iframe([^>]+)src\s*=\s*(['"]?)([^"'\s>]+)\2([^>]*)>/gi;
 
   return html.replace(iframeRegex, (match, beforeAttr, quote, src, afterAttr) => {
+    // Keep capture groups for alignment; currently only `quote`/`src` are used.
+    void beforeAttr;
+    void afterAttr;
     // Skip data URLs, blob URLs, and already proxied URLs
     if (src.startsWith('data:') || src.startsWith('blob:') || src.includes('/api/')) {
       return match;
@@ -193,7 +201,7 @@ export function proxyIframesInHtml(html: string, feedId?: number, token?: string
     // Create proxied URL using the webpage proxy endpoint
     const urlB64 = encodeURLSafe(decodedSrc);
     let proxiedUrl = `/api/webpage/proxy?url_b64=${urlB64}`;
-    
+
     // Add feed_id if provided
     if (feedId) {
       proxiedUrl += `&feed_id=${feedId}`;
@@ -206,14 +214,21 @@ export function proxyIframesInHtml(html: string, feedId?: number, token?: string
 
     // Replace the src attribute with the proxied URL
     const newSrc = `src=${quote}${proxiedUrl}${quote}`;
-    const srcRegex = new RegExp(`src\\s*=\\s*${quote}${src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${quote}`, 'i');
-    
+    const srcRegex = new RegExp(
+      `src\\s*=\\s*${quote}${src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${quote}`,
+      'i'
+    );
+
     let newMatch = match.replace(srcRegex, newSrc);
 
     // Remove 'web-share' from allow attribute if present to avoid browser warnings
     if (newMatch.includes('allow=')) {
       newMatch = newMatch.replace(/allow=(['"])(.*?)\1/i, (m, q, content) => {
-        const newContent = content.replace(/\bweb-share\b/g, '').trim().replace(/\s+/g, ' ');
+        void m; // unused capture
+        const newContent = content
+          .replace(/\bweb-share\b/g, '')
+          .trim()
+          .replace(/\s+/g, ' ');
         return `allow=${q}${newContent}${q}`;
       });
     }
@@ -231,7 +246,12 @@ export function proxyIframesInHtml(html: string, feedId?: number, token?: string
  * @returns HTML with proxied image URLs
  * @note Unquoted src attributes are supported but must not contain spaces (per HTML spec)
  */
-export function proxyImagesInHtml(html: string, referer?: string, token?: string, feedId?: number): string {
+export function proxyImagesInHtml(
+  html: string,
+  referer?: string,
+  token?: string,
+  feedId?: number
+): string {
   if (!html) return html;
 
   // console.log('[MediaProxy] proxyImagesInHtml called, referer:', referer);
@@ -256,7 +276,12 @@ export function proxyImagesInHtml(html: string, referer?: string, token?: string
  * @param feedId Optional feed ID for feed-specific proxy settings
  * @returns HTML with proxied image and iframe URLs
  */
-export function proxyMediaInHtml(html: string, referer?: string, token?: string, feedId?: number): string {
+export function proxyMediaInHtml(
+  html: string,
+  referer?: string,
+  token?: string,
+  feedId?: number
+): string {
   if (!html) return html;
 
   // First proxy images
@@ -333,7 +358,13 @@ function convertLazyImages(html: string): string {
  * @param feedId Optional feed ID for feed-specific proxy settings
  * @returns HTML with proxied attribute
  */
-function proxyImgAttribute(html: string, attrName: string, referer?: string, token?: string, feedId?: number): string {
+function proxyImgAttribute(
+  html: string,
+  attrName: string,
+  referer?: string,
+  token?: string,
+  feedId?: number
+): string {
   // Enhanced regex to handle img attributes with better pattern matching
   // Handles double quotes, single quotes, and unquoted values
   // Note: Unquoted values cannot contain spaces per HTML specification

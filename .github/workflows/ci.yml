@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  runtime-smoke:
+    name: Runtime Smoke ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            arch: amd64
+          - os: windows-latest
+            platform: windows
+            arch: amd64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc pkg-config file curl
+
+      - name: Install Windows build dependencies
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          choco install zig -y
+
+      - name: Install Wails CLI
+        shell: bash
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Configure Windows CGO toolchain
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: .\scripts\setup-windows-cgo.ps1 -Arch ${{ matrix.arch }}
+
+      - name: Verify SQLite startup checks
+        shell: bash
+        env:
+          CGO_ENABLED: 1
+        run: |
+          go test -v ./internal/store/sqlite -run 'TestStartupCheck|TestMemoryDatabaseCompatibility|TestLegacyPragmaCompatibility'
+
+      - name: Build Linux server binary
+        if: matrix.platform == 'linux'
+        env:
+          CGO_ENABLED: 1
+          ARCH: ${{ matrix.arch }}
+        run: |
+          task linux:build:server ARCH=${{ matrix.arch }}
+          test -f build/bin/MavenRSS-server
+          file build/bin/MavenRSS-server
+
+      - name: Build Windows server binary
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: 1
+          ARCH: ${{ matrix.arch }}
+        run: |
+          task windows:build:server ARCH=${{ matrix.arch }}
+          if (-not (Test-Path "build/bin/MavenRSS-server.exe")) {
+            throw "Server binary not created"
+          }
+
+      - name: Verify Linux runtime smoke
+        if: matrix.platform == 'linux'
+        run: |
+          chmod +x ./scripts/verify-server-runtime.sh
+          ./scripts/verify-server-runtime.sh build/bin/MavenRSS-server 18123 "${{ runner.temp }}/mavenrss-runtime"
+
+      - name: Verify Windows runtime smoke
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          .\scripts\verify-server-runtime.ps1 -BinaryPath "build/bin/MavenRSS-server.exe" -Port 18123 -WorkDir "${{ runner.temp }}/mavenrss-runtime"
+
+      - name: Upload runtime diagnostics
+        if: failure() && (matrix.platform == 'linux' || matrix.platform == 'windows')
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-diagnostics-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/mavenrss-runtime
+          if-no-files-found: ignore

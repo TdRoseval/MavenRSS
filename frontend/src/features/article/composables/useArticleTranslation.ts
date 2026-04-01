@@ -14,7 +14,7 @@ interface TranslationSettings {
 export function useArticleTranslation() {
   const { t } = useI18n();
   const articleStore = useArticleStore();
-const feedStore = useFeedStore();
+  const feedStore = useFeedStore();
   const translationSettings = ref<TranslationSettings>({
     enabled: false,
     targetLang: 'en',

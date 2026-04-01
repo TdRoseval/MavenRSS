@@ -19,15 +19,15 @@ import (
 	"time"
 
 	"MavenRSS/internal/ai"
-	"MavenRSS/internal/auth"
-	"MavenRSS/internal/crypto"
-	"MavenRSS/internal/store/sqlite"
-	"MavenRSS/internal/feed"
 	auth_handlers "MavenRSS/internal/api/auth"
 	handlers "MavenRSS/internal/api/core"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/crypto"
+	"MavenRSS/internal/feed"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/network"
 	"MavenRSS/internal/routes"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/translation"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
@@ -265,6 +265,20 @@ func main() {
 		log.Printf("Error initializing database schema: %v", err)
 		log.Fatal(err)
 	}
+	startupCheck, err := db.StartupCheck()
+	if err != nil {
+		log.Printf("Error running sqlite startup self-check: %v", err)
+		log.Fatal(err)
+	}
+	log.Printf(
+		"SQLite self-check passed: driver=%s sqlite=%s vec=%s journal_mode=%s foreign_keys=%t busy_timeout=%d",
+		startupCheck.DriverName,
+		startupCheck.SQLiteVersion,
+		startupCheck.VecVersion,
+		startupCheck.JournalMode,
+		startupCheck.ForeignKeysEnabled,
+		startupCheck.BusyTimeout,
+	)
 	log.Println("Database initialized successfully")
 
 	jwtSecret := os.Getenv("MRRSS_JWT_SECRET")
@@ -312,18 +326,18 @@ func main() {
 			userID, err := db.CreateUser(adminUser)
 			if err == nil {
 				adminQuota := &models.UserQuota{
-					UserID:                   userID,
-					MaxFeeds:                 10000,
-					MaxArticles:              10000000,
-					MaxAITokens:              1000000000,
-					MaxAIConcurrency:         10,
-					MaxFeedFetchConcurrency:  20,
-					MaxDBQueryConcurrency:    10,
-					MaxMediaCacheConcurrency: 5,
+					UserID:                     userID,
+					MaxFeeds:                   10000,
+					MaxArticles:                10000000,
+					MaxAITokens:                1000000000,
+					MaxAIConcurrency:           10,
+					MaxFeedFetchConcurrency:    20,
+					MaxDBQueryConcurrency:      10,
+					MaxMediaCacheConcurrency:   5,
 					MaxRSSDiscoveryConcurrency: 5,
 					MaxRSSPathCheckConcurrency: 3,
-					MaxTranslationConcurrency: 5,
-					MaxStorageMB:             10000,
+					MaxTranslationConcurrency:  5,
+					MaxStorageMB:               10000,
 				}
 				db.CreateUserQuota(adminQuota)
 				log.Printf("Admin user created: %s (password: %s)", adminUsername, adminPassword)
@@ -358,18 +372,18 @@ func main() {
 			userID, err := db.CreateUser(templateUser)
 			if err == nil {
 				templateQuota := &models.UserQuota{
-					UserID:                   userID,
-					MaxFeeds:                 1000,
-					MaxArticles:              1000000,
-					MaxAITokens:              100000000,
-					MaxAIConcurrency:         5,
-					MaxFeedFetchConcurrency:  10,
-					MaxDBQueryConcurrency:    5,
-					MaxMediaCacheConcurrency: 3,
+					UserID:                     userID,
+					MaxFeeds:                   1000,
+					MaxArticles:                1000000,
+					MaxAITokens:                100000000,
+					MaxAIConcurrency:           5,
+					MaxFeedFetchConcurrency:    10,
+					MaxDBQueryConcurrency:      5,
+					MaxMediaCacheConcurrency:   3,
 					MaxRSSDiscoveryConcurrency: 3,
 					MaxRSSPathCheckConcurrency: 2,
-					MaxTranslationConcurrency: 3,
-					MaxStorageMB:             5000,
+					MaxTranslationConcurrency:  3,
+					MaxStorageMB:               5000,
 				}
 				db.CreateUserQuota(templateQuota)
 				log.Printf("Template user created: %s (password: %s)", templateUsername, templatePassword)

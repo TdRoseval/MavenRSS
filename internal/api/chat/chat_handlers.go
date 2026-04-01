@@ -38,9 +38,11 @@ type ChatResponse struct {
 
 // isAILimitReached checks if the AI usage limit is reached for a specific user
 func isAILimitReached(h *core.Handler, userID int64) bool {
-	usageStr, err := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
-	if err != nil {
-		return false
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
 	}
 	usage, _ := strconv.ParseInt(usageStr, 10, 64)
 
@@ -68,7 +70,12 @@ func isAILimitReached(h *core.Handler, userID int64) bool {
 
 // addAIUsage adds tokens to the AI usage counter for a specific user
 func addAIUsage(h *core.Handler, userID int64, tokens int64) {
-	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
+	}
 	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
 	newUsage := currentUsage + tokens
 	if userID > 0 {
@@ -76,6 +83,22 @@ func addAIUsage(h *core.Handler, userID int64, tokens int64) {
 	} else {
 		h.DB.SetSetting("ai_usage_tokens", strconv.FormatInt(newUsage, 10))
 	}
+}
+
+func getUserChatConfig(h *core.Handler, userID int64) (*ai.ClientConfig, bool, error) {
+	if h.AIProfileProvider == nil {
+		return nil, true, fmt.Errorf("AI profile provider is not available")
+	}
+
+	cfg, err := h.AIProfileProvider.GetConfigForFeatureForUser(userID, ai.FeatureChat)
+	if err != nil {
+		return nil, true, err
+	}
+	if cfg == nil {
+		return nil, true, fmt.Errorf("AI chat is not configured for the current user")
+	}
+
+	return cfg, h.AIProfileProvider.UseGlobalProxyForFeatureForUser(userID, ai.FeatureChat), nil
 }
 
 func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
@@ -111,6 +134,16 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			response.Error(w, fmt.Errorf("failed to create chat session: %w", err), http.StatusInternalServerError)
 			return
 		}
+	} else {
+		session, err := h.DB.GetChatSessionForUser(userID, sessionID)
+		if err != nil {
+			response.Error(w, fmt.Errorf("failed to get chat session: %w", err), http.StatusInternalServerError)
+			return
+		}
+		if session == nil {
+			response.Error(w, fmt.Errorf("session not found"), http.StatusNotFound)
+			return
+		}
 	}
 
 	// Save user message (last message in the list is the new user message)
@@ -138,33 +171,12 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.AITracker.WaitForRateLimit()
+	h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal, userID)
 
-	var apiKey, endpoint, model string
-	var useGlobalProxy bool = true
-	if h.AIProfileProvider != nil {
-		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureChat)
-		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "") {
-			apiKey = cfg.APIKey
-			endpoint = cfg.Endpoint
-			model = cfg.Model
-			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureChat)
-			log.Printf("Using AI profile for chat (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
-		}
-	}
-
-	if endpoint == "" {
-		endpoint, _ = h.DB.GetSettingWithFallback(userID, "ai_endpoint")
-		model, _ = h.DB.GetSettingWithFallback(userID, "ai_model")
-		apiKey, _ = h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
-
-		if endpoint == "" {
-			endpoint = "https://api.openai.com/v1/chat/completions"
-		}
-		if model == "" {
-			model = "gpt-4o-mini"
-		}
-		log.Printf("Using AI settings for chat (endpoint: %s, model: %s)", endpoint, model)
+	cfg, useGlobalProxy, err := getUserChatConfig(h, userID)
+	if err != nil {
+		response.Error(w, err, http.StatusBadRequest)
+		return
 	}
 
 	optimizedMessages := optimizeChatContext(req.Messages, req.ArticleTitle, req.ArticleURL, req.ArticleContent, req.IsFirstMessage)
@@ -185,10 +197,11 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientConfig := ai.ClientConfig{
-		APIKey:   apiKey,
-		Endpoint: endpoint,
-		Model:    model,
-		Timeout:  60 * time.Second,
+		APIKey:        cfg.APIKey,
+		Endpoint:      cfg.Endpoint,
+		Model:         cfg.Model,
+		CustomHeaders: cfg.CustomHeaders,
+		Timeout:       60 * time.Second,
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
 
@@ -222,13 +235,13 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	// Return response with session ID
 	type ChatResponseWithSession struct {
-		Response   string `json:"response"`
-		HTML       string `json:"html,omitempty"`
-		SessionID  int64  `json:"session_id"`
+		Response  string `json:"response"`
+		HTML      string `json:"html,omitempty"`
+		SessionID int64  `json:"session_id"`
 	}
 	response.JSON(w, ChatResponseWithSession{
-		Response: respContent,
-		HTML:     htmlResponse,
+		Response:  respContent,
+		HTML:      htmlResponse,
 		SessionID: sessionID,
 	})
 }
@@ -319,6 +332,16 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			response.Error(w, fmt.Errorf("failed to create chat session: %w", err), http.StatusInternalServerError)
 			return
 		}
+	} else {
+		session, err := h.DB.GetChatSessionForUser(userID, sessionID)
+		if err != nil {
+			response.Error(w, fmt.Errorf("failed to get chat session: %w", err), http.StatusInternalServerError)
+			return
+		}
+		if session == nil {
+			response.Error(w, fmt.Errorf("session not found"), http.StatusNotFound)
+			return
+		}
 	}
 
 	// Save user message (last message in the list is the new user message)
@@ -352,33 +375,12 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	h.AITracker.WaitForRateLimit()
+	h.AITracker.WaitForRateLimitWithPriority(ai.PriorityNormal, userID)
 
-	var apiKey, endpoint, model string
-	var useGlobalProxy bool = true
-	if h.AIProfileProvider != nil {
-		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureChat)
-		if err == nil && cfg != nil && (cfg.APIKey != "" || cfg.Endpoint != "") {
-			apiKey = cfg.APIKey
-			endpoint = cfg.Endpoint
-			model = cfg.Model
-			useGlobalProxy = h.AIProfileProvider.UseGlobalProxyForFeature(ai.FeatureChat)
-			log.Printf("Using AI profile for chat stream (endpoint: %s, model: %s, useGlobalProxy: %v)", endpoint, model, useGlobalProxy)
-		}
-	}
-
-	if endpoint == "" {
-		endpoint, _ = h.DB.GetSettingWithFallback(userID, "ai_endpoint")
-		model, _ = h.DB.GetSettingWithFallback(userID, "ai_model")
-		apiKey, _ = h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
-
-		if endpoint == "" {
-			endpoint = "https://api.openai.com/v1/chat/completions"
-		}
-		if model == "" {
-			model = "gpt-4o-mini"
-		}
-		log.Printf("Using AI settings for chat stream (endpoint: %s, model: %s)", endpoint, model)
+	cfg, useGlobalProxy, err := getUserChatConfig(h, userID)
+	if err != nil {
+		response.Error(w, err, http.StatusBadRequest)
+		return
 	}
 
 	optimizedMessages := optimizeChatContext(req.Messages, req.ArticleTitle, req.ArticleURL, req.ArticleContent, req.IsFirstMessage)
@@ -399,10 +401,11 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 
 	clientConfig := ai.ClientConfig{
-		APIKey:   apiKey,
-		Endpoint: endpoint,
-		Model:    model,
-		Timeout:  300 * time.Second,
+		APIKey:        cfg.APIKey,
+		Endpoint:      cfg.Endpoint,
+		Model:         cfg.Model,
+		CustomHeaders: cfg.CustomHeaders,
+		Timeout:       300 * time.Second,
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
 
@@ -493,10 +496,10 @@ sendComplete:
 
 	// Send completion event with full content, HTML, and session ID
 	completeEvent := map[string]interface{}{
-		"done":     true,
-		"response": respContent,
-		"html":     htmlResponse,
-		"thinking": thinking,
+		"done":       true,
+		"response":   respContent,
+		"html":       htmlResponse,
+		"thinking":   thinking,
 		"session_id": sessionID,
 	}
 	if data, err := json.Marshal(completeEvent); err == nil {

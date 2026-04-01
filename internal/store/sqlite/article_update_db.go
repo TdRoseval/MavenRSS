@@ -21,6 +21,17 @@ func (db *DB) UpdateArticleSummary(id int64, summary string) error {
 	return err
 }
 
+// UpdateArticleEmbeddings upserts title and summary embeddings into the vec0 virtual table.
+// titleEmb and summaryEmb should be serialized float32 BLOBs from sqlite_vec.SerializeFloat32().
+func (db *DB) UpdateArticleEmbeddings(articleID int64, titleEmb, summaryEmb []byte) error {
+	db.WaitForReady()
+	_, err := db.Exec(
+		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+		articleID, titleEmb, summaryEmb,
+	)
+	return err
+}
+
 // ClearAllTranslations clears all translated titles from articles.
 func (db *DB) ClearAllTranslations() error {
 	db.WaitForReady()

@@ -1,75 +1,64 @@
-# Dockerfile for building MavenRSS server version
-# This creates a minimal server binary without GUI dependencies
+FROM golang:1.25-bookworm AS builder
 
-# Build stage
-FROM golang:1.25-alpine AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+ARG BINARY_NAME=mavenrss-server
 
-# Use China Alpine mirror
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-
-# Install git and Node.js (needed for frontend build)
-RUN apk add --no-cache git nodejs npm
-
-# Set working directory
-WORKDIR /app
-
-# Set Go proxy for China network
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_OPTIONS="--max-old-space-size=2048 --no-warnings"
 ENV GOPROXY=https://goproxy.cn,direct
 
-# Copy go mod files
-COPY go.mod go.sum ./
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
 
-# Download dependencies with verbose output
-RUN go mod download -x
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy frontend package files first for better caching
-COPY frontend/package*.json ./frontend/
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+RUN apt-get install -y --no-install-recommends nodejs
 
-# Set npm registry and install frontend dependencies
-RUN cd frontend && npm config set registry https://registry.npmmirror.com && npm install
-
-# Copy source code
-COPY . .
-
-# Set Node.js memory limit and build frontend
-RUN cd frontend && NODE_OPTIONS="--max-old-space-size=2048  --no-warnings" npm run build
-
-# Build the server version
-RUN CGO_ENABLED=0 GOOS=linux go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o mavenrss-server ./main-core.go
-
-# Runtime stage - minimal alpine image
-FROM alpine:latest
-
-# Use China Alpine mirror
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
-
-# Create a non-root user
-RUN adduser -D -s /bin/sh mavenrss
-
-# Create data directory with proper permissions
-RUN mkdir -p /app/data && chown -R mavenrss:mavenrss /app/data
-
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /app/mavenrss-server .
+COPY go.mod go.sum ./
+COPY third_party/sqlite-vec-go-bindings ./third_party/sqlite-vec-go-bindings
+RUN go mod download
 
-# Change ownership
-RUN chown mavenrss:mavenrss mavenrss-server
+COPY frontend/package*.json ./frontend/
+RUN cd frontend && npm config set registry https://registry.npmmirror.com && npm install
 
-# Switch to non-root user
+COPY . .
+
+RUN cd frontend && npm run build
+
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -tags server -trimpath -buildvcs=false -ldflags="-w -s" -o /out/${BINARY_NAME} ./main-core.go
+
+FROM debian:bookworm-slim
+
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /usr/sbin/nologin mavenrss
+
+WORKDIR /app
+
+RUN mkdir -p /app/data && chown -R mavenrss:mavenrss /app
+
+COPY --from=builder /out/mavenrss-server ./mavenrss-server
+
 USER mavenrss
 
-# Expose port
 EXPOSE 1234
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:1234/api/version || exit 1
 
-# Run the server
 CMD ["./mavenrss-server", "-host", "0.0.0.0", "-port", "1234"]

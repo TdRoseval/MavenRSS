@@ -2,6 +2,7 @@ package translation
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -29,9 +30,11 @@ type TestCustomTranslationResponse struct {
 
 // isAILimitReached checks if the AI usage limit is reached for a specific user
 func isAILimitReached(h *core.Handler, userID int64) bool {
-	usageStr, err := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
-	if err != nil {
-		return false
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
 	}
 	usage, _ := strconv.ParseInt(usageStr, 10, 64)
 
@@ -59,7 +62,12 @@ func isAILimitReached(h *core.Handler, userID int64) bool {
 
 // addAIUsage adds tokens to the AI usage counter for a specific user
 func addAIUsage(h *core.Handler, userID int64, tokens int64) {
-	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
+	}
 	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
 	newUsage := currentUsage + tokens
 	if userID > 0 {
@@ -72,47 +80,31 @@ func addAIUsage(h *core.Handler, userID int64, tokens int64) {
 // Helper to get AI translator with user-specific settings
 func getAITranslatorForUser(h *core.Handler, userID int64) (*translation.AITranslator, error) {
 	log.Printf("[getAITranslatorForUser] Starting for user %d", userID)
-	// First, try to use AI profile provider if available
-	if h.AIProfileProvider != nil {
-		log.Printf("[getAITranslatorForUser] AIProfileProvider available, trying to get config for translation feature")
-		cfg, err := h.AIProfileProvider.GetConfigForFeature(ai.FeatureTranslation)
-		if err == nil && cfg != nil {
-			log.Printf("[getAITranslatorForUser] Got AI profile config, endpoint: %s, model: %s", cfg.Endpoint, cfg.Model)
-			// Get system prompt from settings
-			systemPrompt, _ := h.DB.GetSettingWithFallback(userID, "ai_translation_prompt")
-			translator := translation.NewAITranslatorWithDB(cfg.APIKey, cfg.Endpoint, cfg.Model, h.DB)
-			if systemPrompt != "" {
-				log.Printf("[getAITranslatorForUser] Setting system prompt")
-				translator.SetSystemPrompt(systemPrompt)
-			}
-			if cfg.CustomHeaders != "" {
-				log.Printf("[getAITranslatorForUser] Setting custom headers")
-				translator.SetCustomHeaders(cfg.CustomHeaders)
-			}
-			return translator, nil
-		} else {
-			log.Printf("[getAITranslatorForUser] No AI profile config found (err: %v, cfg: %v), falling back to legacy settings", err, cfg)
-		}
-	} else {
-		log.Printf("[getAITranslatorForUser] AIProfileProvider not available, falling back to legacy settings")
+	if h.AIProfileProvider == nil {
+		return nil, fmt.Errorf("AI profile provider is not available")
 	}
 
-	// Fallback to legacy settings
-	apiKey, _ := h.DB.GetEncryptedSettingWithFallback(userID, "ai_api_key")
-	endpoint, _ := h.DB.GetSettingWithFallback(userID, "ai_endpoint")
-	model, _ := h.DB.GetSettingWithFallback(userID, "ai_model")
-	systemPrompt, _ := h.DB.GetSettingWithFallback(userID, "ai_translation_prompt")
-	customHeaders, _ := h.DB.GetSettingWithFallback(userID, "ai_custom_headers")
+	log.Printf("[getAITranslatorForUser] AIProfileProvider available, resolving user-scoped config")
+	cfg, err := h.AIProfileProvider.GetConfigForFeatureForUser(userID, ai.FeatureTranslation)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, fmt.Errorf("AI translation is not configured for the current user")
+	}
 
-	log.Printf("[getAITranslatorForUser] Legacy settings - endpoint: %s, model: %s, has API key: %v", endpoint, model, apiKey != "")
-	translator := translation.NewAITranslatorWithDB(apiKey, endpoint, model, h.DB)
+	systemPrompt, _ := h.DB.GetSettingForUser(userID, "ai_translation_prompt")
+	useGlobalProxy := h.AIProfileProvider.UseGlobalProxyForFeatureForUser(userID, ai.FeatureTranslation)
+
+	log.Printf("[getAITranslatorForUser] Using user AI config - endpoint: %s, model: %s, has API key: %v", cfg.Endpoint, cfg.Model, cfg.APIKey != "")
+	translator := translation.NewAITranslatorWithDB(cfg.APIKey, cfg.Endpoint, cfg.Model, h.DB, useGlobalProxy)
 	if systemPrompt != "" {
-		log.Printf("[getAITranslatorForUser] Setting system prompt from legacy settings")
+		log.Printf("[getAITranslatorForUser] Setting system prompt from user settings")
 		translator.SetSystemPrompt(systemPrompt)
 	}
-	if customHeaders != "" {
-		log.Printf("[getAITranslatorForUser] Setting custom headers from legacy settings")
-		translator.SetCustomHeaders(customHeaders)
+	if cfg.CustomHeaders != "" {
+		log.Printf("[getAITranslatorForUser] Setting custom headers from user config")
+		translator.SetCustomHeaders(cfg.CustomHeaders)
 	}
 	return translator, nil
 }
@@ -137,13 +129,13 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	userID, _ := core.GetUserIDFromRequest(r)
 
 	var req struct {
-		ArticleID         int64  `json:"article_id"`
-		Title             string `json:"title"`
-		TargetLang        string `json:"target_language"`
-		HighPriority      bool   `json:"high_priority"`      // Whether this request should be prioritized
-		Force             bool   `json:"force"`              // Force re-translation even if exists
-		SkipPersistence   bool   `json:"skip_persistence"`   // Skip saving translation to DB
-		Preemptive        bool   `json:"preemptive"`         // Preempt all other queued requests
+		ArticleID       int64  `json:"article_id"`
+		Title           string `json:"title"`
+		TargetLang      string `json:"target_language"`
+		HighPriority    bool   `json:"high_priority"`    // Whether this request should be prioritized
+		Force           bool   `json:"force"`            // Force re-translation even if exists
+		SkipPersistence bool   `json:"skip_persistence"` // Skip saving translation to DB
+		Preemptive      bool   `json:"preemptive"`       // Preempt all other queued requests
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -184,7 +176,7 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 
 	// Log detection result for debugging
 	detectedLang := detector.DetectLanguage(req.Title)
-	log.Printf("[Translate] Article %d: title='%s', targetLang='%s', detectedLang='%s', shouldTranslate=%v", 
+	log.Printf("[Translate] Article %d: title='%s', targetLang='%s', detectedLang='%s', shouldTranslate=%v",
 		req.ArticleID, req.Title, req.TargetLang, detectedLang, shouldTranslate)
 
 	if !shouldTranslate {
@@ -251,7 +243,7 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 				}
 			}
 		}
-		
+
 		// If even the fallback fails, return error
 		if translateErr != nil {
 			log.Printf("Translation failed even with fallback: %v", translateErr)
@@ -261,7 +253,7 @@ func HandleTranslateArticle(h *core.Handler, w http.ResponseWriter, r *http.Requ
 	} else {
 		// Non-AI provider, use original logic with h.Translator
 		translatedTitle, translateErr = translation.TranslateMarkdownPreservingStructure(req.Title, h.Translator, req.TargetLang)
-		
+
 		// If translation fails, return error
 		if translateErr != nil {
 			log.Printf("Translation failed for provider %s: %v", provider, translateErr)
@@ -352,7 +344,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 		TargetLang   string `json:"target_language"`
 		Force        bool   `json:"force"`
 		HighPriority bool   `json:"high_priority"` // Whether this request should be prioritized
-		Preemptive   bool   `json:"preemptive"`     // Preempt all other queued requests
+		Preemptive   bool   `json:"preemptive"`    // Preempt all other queued requests
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -447,7 +439,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 				}
 			}
 		}
-		
+
 		// If even the fallback fails, return error
 		if err != nil {
 			log.Printf("[TranslateText] Translation failed even with fallback: %v", err)
@@ -458,7 +450,7 @@ func HandleTranslateText(h *core.Handler, w http.ResponseWriter, r *http.Request
 		// Non-AI provider, use original logic with h.Translator
 		log.Printf("[TranslateText] Using non-AI provider: %s", provider)
 		translatedText, err = translation.TranslateMarkdownPreservingStructure(req.Text, h.Translator, req.TargetLang)
-		
+
 		// If translation fails, return error
 		if err != nil {
 			log.Printf("[TranslateText] Translation failed for provider %s: %v", provider, err)
@@ -506,7 +498,15 @@ func HandleResetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.AITracker.ResetUsage(); err != nil {
+	userID, _ := core.GetUserIDFromRequest(r)
+
+	var err error
+	if userID > 0 {
+		err = h.DB.SetSettingForUser(userID, "ai_usage_tokens", "0")
+	} else {
+		err = h.DB.SetSetting("ai_usage_tokens", "0")
+	}
+	if err != nil {
 		log.Printf("Error resetting AI usage: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -531,7 +531,12 @@ func HandleGetAIUsage(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := core.GetUserIDFromRequest(r)
 
-	usageStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_tokens")
+	usageStr := ""
+	if userID > 0 {
+		usageStr, _ = h.DB.GetSettingForUser(userID, "ai_usage_tokens")
+	} else {
+		usageStr, _ = h.DB.GetSetting("ai_usage_tokens")
+	}
 	usage, _ := strconv.ParseInt(usageStr, 10, 64)
 
 	userLimitStr, _ := h.DB.GetSettingWithFallback(userID, "ai_usage_limit")

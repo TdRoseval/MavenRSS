@@ -26,6 +26,62 @@ func isSensitiveSetting(key string) bool {
 	return false
 }
 
+func isFrozenAISetting(key string) bool {
+	if strings.HasPrefix(key, "ai_") {
+		return true
+	}
+
+	switch key {
+	case "summary_enabled",
+		"summary_provider",
+		"summary_length",
+		"translation_enabled",
+		"target_language":
+		return true
+	default:
+		return false
+	}
+}
+
+func isEncryptedSetting(key string) bool {
+	for _, def := range AllSettings {
+		if def.Key == key {
+			return def.Encrypted
+		}
+	}
+
+	return false
+}
+
+func getCurrentSettingValue(h *core.Handler, userID int64, key string) (string, error) {
+	if isEncryptedSetting(key) {
+		if userID > 0 {
+			return h.DB.GetEncryptedSettingWithFallback(userID, key)
+		}
+		return h.DB.GetEncryptedSetting(key)
+	}
+
+	if userID > 0 {
+		return h.DB.GetSettingWithFallback(userID, key)
+	}
+	return h.DB.GetSetting(key)
+}
+
+func hasFrozenAISettingChanges(h *core.Handler, userID int64, settings map[string]string) bool {
+	for key, nextValue := range settings {
+		if !isFrozenAISetting(key) {
+			continue
+		}
+
+		currentValue, err := getCurrentSettingValue(h, userID, key)
+		if err != nil || currentValue != nextValue {
+			return true
+		}
+	}
+
+	return false
+}
+
 // isAdmin checks if the user is an admin
 func isAdmin(r *http.Request) bool {
 	claims, ok := middleware.GetUserFromContext(r.Context())
@@ -141,19 +197,19 @@ func SaveSettingsForUser(h *core.Handler, userID int64, settings map[string]stri
 		if hardLimitStr == "" {
 			hardLimitStr, _ = h.DB.GetSetting("ai_usage_hard_limit")
 		}
-		
+
 		// Parse hard limit (0 means no limit)
 		var hardLimit int64 = 0
 		if hardLimitStr != "" {
 			fmt.Sscanf(hardLimitStr, "%d", &hardLimit)
 		}
-		
+
 		// Parse user limit
 		var userLimit int64 = 0
 		if userLimitStr != "" {
 			fmt.Sscanf(userLimitStr, "%d", &userLimit)
 		}
-		
+
 		// Only enforce hard limit if it's set (not 0)
 		if hardLimit > 0 {
 			// Check if user is trying to set 0 (unlimited) or exceeding hard limit
@@ -217,6 +273,13 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if ok && hasFrozenAISettingChanges(h, userID, req) && h.Fetcher != nil {
+			if manager := h.Fetcher.GetAIEnhancedManager(); manager != nil && manager.IsConfigFrozen(userID) {
+				response.Error(w, fmt.Errorf("AI-related settings are temporarily locked while background processing is running"), http.StatusConflict)
+				return
+			}
+		}
+
 		// Check if we're disabling FreshRSS
 		if newEnabled, okFresh := req["freshrss_enabled"]; okFresh {
 			var oldEnabled string
@@ -231,6 +294,26 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 				if err := h.DB.CleanupFreshRSSData(); err != nil {
 					log.Printf("[HandleSettings] Failed to cleanup FreshRSS data: %v", err)
 				}
+			}
+		}
+
+		// Check if AI Enhanced Mode is being toggled ON
+		if newEnhanced, okEnhanced := req["ai_enhanced_mode"]; okEnhanced && newEnhanced == "true" && ok {
+			var oldEnhanced string
+			oldEnhanced, _ = h.DB.GetSettingForUser(userID, "ai_enhanced_mode")
+			if oldEnhanced == "" {
+				oldEnhanced, _ = h.DB.GetSetting("ai_enhanced_mode")
+			}
+			if oldEnhanced != "true" {
+				// AI Enhanced Mode just toggled ON - trigger batch processing after save
+				defer func() {
+					if h.Fetcher != nil {
+						if manager := h.Fetcher.GetAIEnhancedManager(); manager != nil {
+							log.Printf("[HandleSettings] AI Enhanced Mode activated for user %d, starting batch processing", userID)
+							manager.BatchProcessExistingArticles(userID)
+						}
+					}
+				}()
 			}
 		}
 

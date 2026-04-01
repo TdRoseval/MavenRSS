@@ -33,6 +33,14 @@ func registerArticleRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	registerProtectedRoute(mux, "/api/articles/content", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleGetArticleContent(h, w, r) })
 	registerProtectedRoute(mux, "/api/articles/fetch-full", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleFetchFullArticle(h, w, r) })
 	registerProtectedRoute(mux, "/api/articles/extract-images", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleExtractAllImages(h, w, r) })
+	registerProtectedRoute(mux, "/api/articles/translated-content", authMiddleware, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			article.HandleSetArticleTranslatedContent(h, w, r)
+			return
+		}
+		article.HandleGetArticleTranslatedContent(h, w, r)
+	})
+	registerProtectedRoute(mux, "/api/articles/clear-translated-contents", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleClearArticleTranslatedContents(h, w, r) })
 
 	// Article statistics
 	registerProtectedRoute(mux, "/api/articles/unread-counts", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleGetUnreadCounts(h, w, r) })

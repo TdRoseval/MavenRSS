@@ -9,16 +9,16 @@ import {
   PhPlus,
   PhGear,
   PhTextOutdent,
-  PhSidebar,
   PhUsers,
   PhSignOut,
+  PhSparkle,
 } from '@phosphor-icons/vue';
 import { useAuthStore } from '@/stores/auth';
-import { computed } from 'vue';
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useArticleFilter } from '@/features/article/composables/useArticleFilter';
 import { authFetchJson } from '@/shared/lib/authFetch';
+import { isAIEnhancedModeEffectivelyEnabled, isEnabledSetting } from '@/shared/lib/aiEnhancedMode';
 import LogoSvg from '../../../public/assets/logo.svg';
 import { useArticleStore } from '@/features/article/store';
 
@@ -56,7 +56,6 @@ const emit = defineEmits<{
   settings: [];
   'toggle-feed-drawer': [];
   ready: [{ expanded: boolean; pinned: boolean }];
-  'toggle-activity-bar': [];
   'open-user-management': [];
 }>();
 
@@ -65,10 +64,16 @@ interface NavItem {
   icon: any;
   label: string;
   activeIcon?: any;
-  filterType: 'all' | 'unread' | 'favorites' | 'readLater' | 'imageGallery';
+  filterType:
+    | 'all'
+    | 'unread'
+    | 'favorites'
+    | 'readLater'
+    | 'imageGallery'
+    | 'dailyRecommendations';
 }
 
-const navItems: NavItem[] = [
+const navItems = computed<NavItem[]>(() => [
   {
     id: 'all',
     icon: PhListDashes,
@@ -100,14 +105,25 @@ const navItems: NavItem[] = [
     label: t('sidebar.activity.imageGallery'),
     filterType: 'imageGallery',
   },
-];
+  {
+    id: 'dailyRecommendations',
+    icon: PhSparkle,
+    activeIcon: PhSparkle,
+    label: t('sidebar.activity.dailyRecommendations'),
+    filterType: 'dailyRecommendations',
+  },
+]);
 
 const imageGalleryEnabled = ref(false);
+const dailyRecommendationsVisible = ref(false);
 
-async function loadImageGallerySetting() {
+async function loadFeatureSettings() {
   try {
     const data = await authFetchJson<any>('/api/settings');
-    imageGalleryEnabled.value = data.image_gallery_enabled === 'true';
+    imageGalleryEnabled.value = isEnabledSetting(data.image_gallery_enabled);
+    const aiEnhancedModeEnabled = isAIEnhancedModeEffectivelyEnabled(data);
+    dailyRecommendationsVisible.value = aiEnhancedModeEnabled;
+    articleStore.setAIEnhancedMode(aiEnhancedModeEnabled);
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -133,7 +149,7 @@ function loadDrawerState() {
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
-    await loadImageGallerySetting();
+    await loadFeatureSettings();
   }
   loadDrawerState();
 
@@ -142,11 +158,38 @@ onMounted(async () => {
     pinned: isFeedListPinned.value,
   });
 
-  window.addEventListener('image-gallery-setting-changed', (e: Event) => {
-    const customEvent = e as CustomEvent;
-    imageGalleryEnabled.value = customEvent.detail.enabled;
-  });
+  window.addEventListener('image-gallery-setting-changed', handleImageGallerySettingChanged);
+  window.addEventListener('ai-recommendation-setting-changed', handleAIRecommendationSettingChanged);
+  window.addEventListener('settings-updated', handleSettingsUpdated);
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('image-gallery-setting-changed', handleImageGallerySettingChanged);
+  window.removeEventListener(
+    'ai-recommendation-setting-changed',
+    handleAIRecommendationSettingChanged
+  );
+  window.removeEventListener('settings-updated', handleSettingsUpdated);
+});
+
+function handleImageGallerySettingChanged(e: Event) {
+  const customEvent = e as CustomEvent<{ enabled: boolean }>;
+  imageGalleryEnabled.value = customEvent.detail.enabled;
+}
+
+function handleAIRecommendationSettingChanged(e: Event) {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
+  loadFeatureSettings();
+}
+
+function handleSettingsUpdated() {
+  if (!authStore.isAuthenticated) {
+    return;
+  }
+  loadFeatureSettings();
+}
 
 function handleNavClick(item: NavItem) {
   clearAllFilters();
@@ -179,6 +222,16 @@ function handleFeedListStateChange(expanded: boolean, pinned?: boolean) {
     isFeedListPinned.value = pinned;
   }
   saveDrawerState();
+}
+
+function isVisible(item: NavItem) {
+  if (item.id === 'imageGallery') {
+    return imageGalleryEnabled.value;
+  }
+  if (item.id === 'dailyRecommendations') {
+    return dailyRecommendationsVisible.value;
+  }
+  return true;
 }
 
 defineExpose({
@@ -214,7 +267,7 @@ defineExpose({
         <TransitionGroup name="nav-item">
           <button
             v-for="item in navItems"
-            v-show="item.id !== 'imageGallery' || imageGalleryEnabled"
+            v-show="isVisible(item)"
             :key="item.id"
             :class="[
               'relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent',
@@ -226,7 +279,9 @@ defineExpose({
           >
             <component
               :is="
-                articleStore.currentFilter === item.filterType ? item.activeIcon || item.icon : item.icon
+                articleStore.currentFilter === item.filterType
+                  ? item.activeIcon || item.icon
+                  : item.icon
               "
               :size="24"
               :weight="articleStore.currentFilter === item.filterType ? 'fill' : 'regular'"
@@ -249,79 +304,73 @@ defineExpose({
 
       <div class="flex flex-col items-center gap-1 mt-auto w-full">
         <button
-          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-          style="width: 44px; height: 44px"
-          :title="t('sidebar.activity.addFeed')"
-          @click="emit('add-feed')"
-        >
-          <PhPlus :size="24" weight="regular" class="transition-all" />
-        </button>
-
-        <button
-          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-          style="width: 44px; height: 44px"
+          class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
           :title="
             isFeedListExpanded
               ? t('sidebar.activity.collapseFeedList')
               : t('sidebar.activity.expandFeedList')
           "
-          @click="toggleFeedList"
+          @click="emit('toggle-feed-drawer')"
         >
-          <PhSidebar :size="24" :weight="isFeedListExpanded ? 'fill' : 'regular'" />
+          <PhTextOutdent :size="24" />
         </button>
 
         <button
-          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-          style="width: 44px; height: 44px"
-          :title="t('setting.tab.settings')"
-          @click="emit('settings')"
+          class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
+          :title="t('sidebar.activity.addFeed')"
+          @click="emit('add-feed')"
         >
-          <PhGear :size="24" weight="regular" class="transition-all" />
+          <PhPlus :size="24" />
         </button>
 
         <button
           v-if="isAdmin"
-          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-          style="width: 44px; height: 44px"
+          class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
           :title="t('admin.title')"
           @click="emit('open-user-management')"
         >
-          <PhUsers :size="24" weight="regular" class="transition-all" />
+          <PhUsers :size="24" />
         </button>
 
         <button
-          type="button"
-          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-          style="width: 44px; height: 44px"
+          class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
+          :title="t('setting.tab.settings')"
+          @click="emit('settings')"
+        >
+          <PhGear :size="24" />
+        </button>
+
+        <button
+          class="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-red-500 transition-colors"
           :title="t('admin.logout')"
           @click="showLogoutConfirm = true"
         >
-          <PhSignOut :size="24" weight="regular" class="transition-all" />
-        </button>
-
-        <div class="w-8 h-px bg-border my-2"></div>
-
-        <button
-          v-if="false && !isMobile"
-          class="relative flex items-center justify-center text-text-secondary flex-shrink-0 transition-all hover:text-accent"
-          style="width: 44px; height: 44px"
-          :title="t('sidebar.activity.collapseActivityBar')"
-          @click="emit('toggle-activity-bar')"
-        >
-          <PhTextOutdent :size="24" weight="regular" class="transition-all" />
+          <PhSignOut :size="24" />
         </button>
       </div>
+
     </div>
   </Transition>
 
   <Teleport to="body">
-    <div v-if="showLogoutConfirm" class="logout-modal-overlay" @click="cancelLogout">
-      <div class="logout-modal" @click.stop>
-        <h3>{{ t('admin.logout') }}</h3>
-        <p>{{ t('admin.confirmLogout') }}</p>
-        <div class="logout-modal-buttons">
-          <button class="btn-cancel" @click="cancelLogout">{{ t('admin.cancel') }}</button>
-          <button class="btn-confirm" @click="handleLogoutConfirm">{{ t('admin.logout') }}</button>
+    <div
+      v-if="showLogoutConfirm"
+      class="fixed inset-0 z-[160] flex items-center justify-center bg-black/50 px-4"
+    >
+      <div class="w-full max-w-sm rounded-xl border border-border bg-bg-primary p-5 shadow-xl">
+        <h3 class="text-base font-semibold text-text-primary mb-2">
+          {{ t('admin.logout') }}
+        </h3>
+        <p class="text-sm text-text-secondary mb-5">
+          {{ t('admin.confirmLogout') }}
+        </p>
+        <div class="flex justify-end gap-3">
+          <button class="btn-secondary" @click="cancelLogout">
+            {{ t('common.cancel') }}
+          </button>
+          <button class="btn-danger" @click="handleLogoutConfirm">
+            {{ t('common.confirm') }}
+          </button>
         </div>
       </div>
     </div>
@@ -330,174 +379,4 @@ defineExpose({
 
 <style scoped>
 @reference "../../style.css";
-
-.activity-bar-slide-enter-active {
-  transition:
-    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.2s ease;
-  will-change: transform, opacity;
-}
-
-.activity-bar-slide-leave-active {
-  transition:
-    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.18s ease;
-  will-change: transform, opacity;
-}
-
-.activity-bar-slide-enter-from {
-  opacity: 0;
-  transform: translateX(-12px);
-}
-
-.activity-bar-slide-leave-to {
-  opacity: 0;
-  transform: translateX(-12px);
-}
-
-.activity-bar-slide-enter-to,
-.activity-bar-slide-leave-from {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.smart-activity-bar {
-  width: 56px;
-  min-width: 56px;
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  z-index: 15;
-  backface-visibility: hidden;
-  -webkit-font-smoothing: antialiased;
-}
-
-@media (max-width: 767px) {
-  .smart-activity-bar {
-    z-index: 60;
-  }
-}
-
-.nav-items-container {
-  transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.nav-item-enter-active,
-.nav-item-leave-active {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: opacity, transform;
-}
-
-.nav-item-enter-from {
-  opacity: 0;
-  transform: scale(0.9) translateY(-10px);
-}
-
-.nav-item-leave-to {
-  opacity: 0;
-  transform: scale(0.9) translateY(10px);
-}
-
-.nav-item-move {
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform;
-}
-
-.smart-activity-bar button .ph,
-.smart-activity-bar button svg {
-  transition:
-    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    color 0.2s ease;
-  will-change: transform;
-}
-
-.smart-activity-bar button {
-  transition:
-    color 0.2s ease,
-    background-color 0.2s ease;
-  will-change: color, background-color;
-}
-
-@media (max-width: 1400px) {
-  .smart-activity-bar {
-    width: 48px;
-    min-width: 48px;
-  }
-
-  button[style*='width: 44px'] {
-    width: 40px !important;
-    height: 40px !important;
-  }
-}
-
-@media (max-width: 767px) {
-  .smart-activity-bar {
-    width: 44px;
-    min-width: 44px;
-  }
-
-  button[style*='width: 44px'] {
-    width: 36px !important;
-    height: 36px !important;
-  }
-}
-</style>
-
-<style>
-.logout-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.logout-modal {
-  background: white;
-  padding: 24px;
-  border-radius: 8px;
-  min-width: 300px;
-  text-align: center;
-}
-
-.logout-modal h3 {
-  margin: 0 0 16px;
-  color: #333;
-}
-
-.logout-modal p {
-  margin: 0 0 24px;
-  color: #666;
-}
-
-.logout-modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-
-.btn-cancel,
-.btn-confirm {
-  padding: 8px 24px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  border: none;
-}
-
-.btn-cancel {
-  background: #f1f5f9;
-  color: #333;
-}
-
-.btn-confirm {
-  background: #dc3545;
-  color: white;
-}
 </style>

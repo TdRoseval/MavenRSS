@@ -199,12 +199,14 @@ func (cm *CleanupManager) getTargetSize() float64 {
 
 // layeredCleanup executes cleanup in layers until target size is reached
 // Cleanup order:
-// 1. Old article contents
-// 2. Medium article contents
-// 3. Old article metadata
-// 4. New article contents
-// 5. Latest article contents
-// 6. Medium article metadata
+// 1. Expired read clusters
+// 2. Expired unread clusters
+// 3. Old unclustered article contents
+// 4. Medium unclustered article contents
+// 5. Old unclustered article metadata
+// 6. New unclustered article contents
+// 7. Latest unclustered article contents
+// 8. Medium unclustered article metadata
 // Note: New and latest article metadata are never cleaned
 func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 	totalRemoved := int64(0)
@@ -218,74 +220,98 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	log.Printf("Current size: %.2f MB, Target: %.2f MB", currentSizeMB, targetSizeMB)
 
-	// Layer 1: Old article contents (7+ days old)
+	// Layer 1: Expired read clusters (30+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(7, 0)
+		count, err := cm.fetcher.db.CleanupExpiredReadClusters(0, 30)
 		if err != nil {
 			log.Printf("Layer 1 error: %v", err)
 		} else {
-			log.Printf("Layer 1: Removed %d old article contents", count)
+			log.Printf("Layer 1: Removed %d expired read clusters", count)
 			totalRemoved += count
 			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}
 	}
 
-	// Layer 2: Medium article contents (3+ days old)
+	// Layer 2: Expired unread clusters (60+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(3, 0)
+		count, err := cm.fetcher.db.CleanupExpiredUnreadClusters(0, 60)
 		if err != nil {
 			log.Printf("Layer 2 error: %v", err)
 		} else {
-			log.Printf("Layer 2: Removed %d medium article contents", count)
+			log.Printf("Layer 2: Removed %d expired unread clusters", count)
 			totalRemoved += count
 			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}
 	}
 
-	// Layer 3: Old article metadata (read, 30+ days old)
+	// Layer 3: Old article contents (7+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupOldReadArticles(30, 0)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(7, 0)
 		if err != nil {
 			log.Printf("Layer 3 error: %v", err)
 		} else {
-			log.Printf("Layer 3: Removed %d old article metadata", count)
+			log.Printf("Layer 3: Removed %d old article contents", count)
 			totalRemoved += count
 			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}
 	}
 
-	// Layer 4: New article contents (1+ days old)
+	// Layer 4: Medium article contents (3+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(1, 0)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(3, 0)
 		if err != nil {
 			log.Printf("Layer 4 error: %v", err)
 		} else {
-			log.Printf("Layer 4: Removed %d new article contents", count)
+			log.Printf("Layer 4: Removed %d medium article contents", count)
 			totalRemoved += count
 			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}
 	}
 
-	// Layer 5: Only cleanup article contents by size instead of deleting all
+	// Layer 5: Old article metadata (read, 30+ days old)
+	if currentSizeMB > targetSizeMB {
+		count, err := cm.fetcher.db.CleanupOldReadArticles(30, 0)
+		if err != nil {
+			log.Printf("Layer 5 error: %v", err)
+		} else {
+			log.Printf("Layer 5: Removed %d old article metadata", count)
+			totalRemoved += count
+			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+		}
+	}
+
+	// Layer 6: New article contents (1+ days old)
+	if currentSizeMB > targetSizeMB {
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(1, 0)
+		if err != nil {
+			log.Printf("Layer 6 error: %v", err)
+		} else {
+			log.Printf("Layer 6: Removed %d new article contents", count)
+			totalRemoved += count
+			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+		}
+	}
+
+	// Layer 7: Only cleanup article contents by size instead of deleting all
 	// This is a safer approach that doesn't delete everything
 	if currentSizeMB > targetSizeMB {
 		count, err := cm.fetcher.db.CleanupArticleContentsBySize(0)
 		if err != nil {
-			log.Printf("Layer 5 error: %v", err)
+			log.Printf("Layer 7 error: %v", err)
 		} else {
-			log.Printf("Layer 5: Removed %d article contents by size", count)
+			log.Printf("Layer 7: Removed %d article contents by size", count)
 			totalRemoved += count
 			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}
 	}
 
-	// Layer 6: Medium article metadata (unread, 60+ days old, not favorite/read-later)
+	// Layer 8: Medium article metadata (unread, 60+ days old, not favorite/read-later)
 	if currentSizeMB > targetSizeMB {
 		count, err := cm.fetcher.db.CleanupOldUnreadArticles(60, 0)
 		if err != nil {
-			log.Printf("Layer 6 error: %v", err)
+			log.Printf("Layer 8 error: %v", err)
 		} else {
-			log.Printf("Layer 6: Removed %d medium article metadata", count)
+			log.Printf("Layer 8: Removed %d medium article metadata", count)
 			totalRemoved += count
 			_, _ = cm.fetcher.db.GetDatabaseSizeMB()
 		}

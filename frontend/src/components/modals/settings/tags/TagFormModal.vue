@@ -6,6 +6,7 @@ import { PhCheck } from '@phosphor-icons/vue';
 import BaseModal from '@/shared/ui/BaseModal.vue';
 import ModalFooter from '@/shared/ui/ModalFooter.vue';
 import { useFeedStore } from '@/features/feed/store';
+import { getFeedDisplayIconUrl } from '@/shared/lib/feedIcon';
 
 interface Props {
   editingTag: Tag | null;
@@ -58,15 +59,6 @@ const feedsForTag = computed(() => {
   if (!props.editingTag) return [];
   return feedStore.feeds.filter((f) => f.tags?.some((t) => t.id === props.editingTag!.id));
 });
-
-function getFavicon(url: string): string {
-  try {
-    const hostname = new URL(url).hostname;
-    return `https://api.iowen.cn/favicon/${hostname}.png`;
-  } catch {
-    return '';
-  }
-}
 
 function saveTag() {
   const name = newTagName.value.trim();
@@ -142,7 +134,7 @@ const saveButtonText = computed(() => {
           >
             <!-- Favicon -->
             <img
-              :src="getFavicon(feed.url)"
+              :src="getFeedDisplayIconUrl(feed)"
               class="w-4 h-4 flex-shrink-0 object-contain"
               @error="
                 (e: Event) => {

@@ -77,6 +77,7 @@ func RegisterAPIRoutesWithConfig(mux *http.ServeMux, h *core.Handler, cfg Config
 	// Register all route groups
 	registerFeedRoutes(mux, h, cfg)
 	registerArticleRoutes(mux, h, cfg)
+	registerClusterRoutes(mux, h, cfg)
 	registerAIRoutes(mux, h, cfg)
 	registerSettingsRoutes(mux, h, cfg)
 	registerOtherRoutes(mux, h, cfg)

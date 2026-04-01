@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import type { SettingsData } from '@/types/settings';
-import { useSettingsAutoSave } from '@/composables/core/useSettingsAutoSave';
 import { useI18n } from 'vue-i18n';
 import { TipBox } from '@/components/settings';
 import ObsidianSettings from './ObsidianSettings.vue';
@@ -13,19 +11,12 @@ interface Props {
   settings: SettingsData;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const { t } = useI18n();
 
 const emit = defineEmits<{
   'update:settings': [settings: SettingsData];
 }>();
-
-// Create a computed ref that returns the settings object
-// This ensures reactivity while allowing modifications
-const settingsRef = computed(() => props.settings);
-
-// Note: Auto-save has been removed. Settings are now saved manually via the Save button in SettingsModal.
-// useSettingsAutoSave(settingsRef);
 
 // Handler for settings updates from child components
 function handleUpdateSettings(updatedSettings: SettingsData) {

@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhList, PhTextT, PhTextTSlash, PhEye, PhEyeSlash } from '@phosphor-icons/vue';
 
 interface Props {
   showTextOverlay: boolean;
   showOnlyUnread: boolean;
+  isSidebarOpen?: boolean;
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  isSidebarOpen: false,
+});
 
 const emit = defineEmits<{
   toggleSidebar: [];
@@ -16,6 +20,9 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const sidebarToggleLabel = computed(() =>
+  props.isSidebarOpen ? t('sidebar.activity.collapseFeedList') : t('sidebar.activity.expandFeedList')
+);
 </script>
 
 <template>
@@ -25,7 +32,8 @@ const { t } = useI18n();
     <!-- Sidebar toggle button (mobile only) -->
     <button
       class="p-2 rounded-lg hover:bg-bg-tertiary text-text-primary transition-colors md:hidden"
-      :title="t('shortcut.toggle.sidebar')"
+      :title="sidebarToggleLabel"
+      :aria-label="sidebarToggleLabel"
       @click="emit('toggleSidebar')"
     >
       <PhList :size="24" />

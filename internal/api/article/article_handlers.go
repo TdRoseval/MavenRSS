@@ -369,3 +369,29 @@ func HandleRefreshArticle(h *core.Handler, w http.ResponseWriter, r *http.Reques
 
 	response.JSON(w, map[string]bool{"success": true})
 }
+
+// HandleRefresh triggers a refresh of all feeds.
+func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+	// Trigger refresh via fetcher
+	if h.Fetcher != nil {
+		go h.Fetcher.FetchAll(r.Context())
+	}
+	response.JSON(w, map[string]string{"message": "refresh started"})
+}
+
+// HandleStopRefresh stops the current refresh operation.
+func HandleStopRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, nil, http.StatusMethodNotAllowed)
+		return
+	}
+	// Stop refresh via fetcher - use StopRefreshForUser with userID 0 for global stop
+	if h.Fetcher != nil {
+		h.Fetcher.StopRefreshForUser(0)
+	}
+	response.JSON(w, map[string]string{"message": "refresh stopped"})
+}

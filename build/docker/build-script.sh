@@ -34,14 +34,21 @@ case "$PLATFORM" in
       export GOARCH=amd64
       export CC="$CC x86_64-linux-gnu"
       export CXX="$CXX x86_64-linux-gnu"
+      export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+      export PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
     elif [ "$ARCH" = "arm64" ]; then
       export GOOS=linux
       export GOARCH=arm64
       export CC="$CC aarch64-linux-gnu"
       export CXX="$CXX aarch64-linux-gnu"
+      export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+      export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+    else
+      echo "Unsupported Linux architecture: $ARCH"
+      exit 1
     fi
     export CGO_ENABLED=1
-    export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
+    export PKG_CONFIG_SYSROOT_DIR=/
     go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o bin/${APP_NAME}-${PLATFORM}-${ARCH} .
     ;;
 

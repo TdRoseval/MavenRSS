@@ -4,8 +4,6 @@ import (
 	"fmt"
 
 	"MavenRSS/internal/config"
-
-	_ "modernc.org/sqlite"
 )
 
 // Init initializes the database schema and settings.
@@ -15,14 +13,16 @@ func (db *DB) Init() error {
 	db.once.Do(func() {
 		defer close(db.ready)
 
-		if err = db.Ping(); err != nil {
+		if _, err = db.StartupCheck(); err != nil {
 			return
 		}
 
-		// Enable foreign key constraints
-		_, _ = db.Exec(`PRAGMA foreign_keys = ON`)
-
 		if err = initSchema(db.DB); err != nil {
+			return
+		}
+
+		// Initialize vec0 virtual tables for vector embeddings (sqlite-vec)
+		if err = initVecSchema(db.DB); err != nil {
 			return
 		}
 

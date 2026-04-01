@@ -5,16 +5,16 @@
 import { ref, type Ref, computed, isRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SettingsData } from '@/types/settings';
-import { settingsDefaults } from '@/config/defaults';
 import { authPost } from '@/shared/lib/authFetch';
 import { saveLanguage } from '@/i18n';
 import { useArticleStore } from '@/features/article/store';
 import { useAppStore } from '@/stores/app';
+import { hasAIEnhancedModePrerequisites } from '@/shared/lib/aiEnhancedMode';
 
 export function useSettingsManualSave(settings: Ref<SettingsData> | (() => SettingsData)) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const articleStore = useArticleStore();
-const appStore = useAppStore();
+  const appStore = useAppStore();
   const isSaving = ref(false);
   const hasChanges = ref(false);
 
@@ -79,7 +79,10 @@ const appStore = useAppStore();
         const originalValue = originalSettings[key];
 
         if (currentValue !== originalValue) {
-          payload[key] = typeof currentValue === 'boolean' ? currentValue.toString() : String(currentValue ?? '');
+          payload[key] =
+            typeof currentValue === 'boolean'
+              ? currentValue.toString()
+              : String(currentValue ?? '');
         }
       }
     }
@@ -93,6 +96,23 @@ const appStore = useAppStore();
   async function saveSettings(): Promise<boolean> {
     if (!hasChanges.value) {
       return true; // No changes to save
+    }
+
+    if (settingsRef.value.ai_enhanced_mode) {
+      if (!hasAIEnhancedModePrerequisites(settingsRef.value)) {
+        window.showToast?.(t('setting.ai.aiEnhancedModeDisabled'), 'error');
+        return false;
+      }
+
+      if (String(settingsRef.value.ai_fusion_profile_id ?? '').trim() === '') {
+        window.showToast?.(t('setting.ai.aiEnhancedModeRequiresFusionProfile'), 'error');
+        return false;
+      }
+
+      if (String(settingsRef.value.ai_recommendation_profile_id ?? '').trim() === '') {
+        window.showToast?.(t('setting.ai.aiEnhancedModeRequiresRecommendationProfile'), 'error');
+        return false;
+      }
     }
 
     isSaving.value = true;
@@ -118,12 +138,11 @@ const appStore = useAppStore();
 
       // Handle translation settings change
       const translationChanged =
-        originalSettings && (
-          originalSettings.translation_enabled !== settingsRef.value.translation_enabled ||
+        originalSettings &&
+        (originalSettings.translation_enabled !== settingsRef.value.translation_enabled ||
           originalSettings.translation_provider !== settingsRef.value.translation_provider ||
           (settingsRef.value.translation_enabled &&
-            originalSettings.target_language !== settingsRef.value.target_language)
-        );
+            originalSettings.target_language !== settingsRef.value.target_language));
 
       if (translationChanged) {
         await authPost('/api/articles/clear-translations');
@@ -166,6 +185,14 @@ const appStore = useAppStore();
       );
 
       window.dispatchEvent(
+        new CustomEvent('ai-recommendation-setting-changed', {
+          detail: {
+            enabled: settingsRef.value.ai_recommendation_enabled,
+          },
+        })
+      );
+
+      window.dispatchEvent(
         new CustomEvent('auto-show-all-content-changed', {
           detail: {
             value: settingsRef.value.auto_show_all_content,
@@ -185,12 +212,11 @@ const appStore = useAppStore();
 
       // Check if summary settings changed
       if (
-        originalSettings && (
-          originalSettings.summary_enabled !== settingsRef.value.summary_enabled ||
+        originalSettings &&
+        (originalSettings.summary_enabled !== settingsRef.value.summary_enabled ||
           originalSettings.summary_provider !== settingsRef.value.summary_provider ||
           originalSettings.summary_trigger_mode !== settingsRef.value.summary_trigger_mode ||
-          originalSettings.summary_length !== settingsRef.value.summary_length
-        )
+          originalSettings.summary_length !== settingsRef.value.summary_length)
       ) {
         window.dispatchEvent(
           new CustomEvent('summary-settings-changed', {

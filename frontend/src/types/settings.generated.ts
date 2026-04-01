@@ -9,8 +9,14 @@ export interface SettingsData {
   ai_chat_enabled: boolean;
   ai_chat_profile_id: string;
   ai_custom_headers: string;
+  ai_embedding_models: string;
   ai_endpoint: string;
+  ai_enhanced_mode: boolean;
+  ai_fusion_enabled: boolean;
+  ai_fusion_profile_id: string;
   ai_model: string;
+  ai_recommendation_enabled: boolean;
+  ai_recommendation_profile_id: string;
   ai_search_enabled: boolean;
   ai_search_profile_id: string;
   ai_summary_profile_id: string;

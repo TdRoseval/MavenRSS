@@ -21,6 +21,10 @@ type User struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 	InheritedFrom     *int64    `json:"inherited_from,omitempty"`
 	HasInherited      bool      `json:"has_inherited"`
+	// AI interest tracking
+	InterestVector  []byte `json:"-"`
+	AIReadCount     int64  `json:"ai_read_count"`
+	AITotalReadTime int64  `json:"ai_total_read_time"`
 }
 
 type UserQuota struct {

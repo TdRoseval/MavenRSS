@@ -53,8 +53,8 @@ func registerOtherRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	// Media
 	registerProtectedRoute(mux, "/api/media/proxy", authMiddleware, func(w http.ResponseWriter, r *http.Request) { media.HandleMediaProxy(h, w, r) })
 	registerProtectedRoute(mux, "/api/media/cleanup", authMiddleware, func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheCleanup(h, w, r) })
-	// Media cache info is public for display in settings
-	registerPublicRoute(mux, "/api/media/info", func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheInfo(h, w, r) })
+	// Media cache info
+	registerProtectedRoute(mux, "/api/media/info", authMiddleware, func(w http.ResponseWriter, r *http.Request) { media.HandleMediaCacheInfo(h, w, r) })
 	registerProtectedRoute(mux, "/api/webpage/proxy", authMiddleware, func(w http.ResponseWriter, r *http.Request) { media.HandleWebpageProxy(h, w, r) })
 	registerProtectedRoute(mux, "/api/webpage/resource", authMiddleware, func(w http.ResponseWriter, r *http.Request) { media.HandleWebpageResource(h, w, r) })
 

@@ -9,6 +9,7 @@ import {
 } from '@phosphor-icons/vue';
 import type { Feed } from '@/types/models';
 import { useI18n } from 'vue-i18n';
+import { getFeedDisplayIconUrl } from '@/shared/lib/feedIcon';
 
 const { t } = useI18n();
 
@@ -73,15 +74,6 @@ function getFriendlyErrorMessage(error: string): string {
 
   // Return original error if no specific message found
   return error;
-}
-
-function getFavicon(url: string): string {
-  try {
-    const hostname = new URL(url).hostname;
-    return `https://api.iowen.cn/favicon/${hostname}.png`;
-  } catch {
-    return '';
-  }
 }
 
 function isRSSHubFeed(feed: Feed): boolean {
@@ -173,7 +165,7 @@ function handleClickWithLongPressCheck(event: Event) {
 
     <div class="w-4 h-4 flex items-center justify-center shrink-0">
       <img
-        :src="feed.image_url || getFavicon(feed.url)"
+        :src="getFeedDisplayIconUrl(feed)"
         class="w-full h-full object-contain"
         @error="($event.target as HTMLElement).style.display = 'none'"
       />

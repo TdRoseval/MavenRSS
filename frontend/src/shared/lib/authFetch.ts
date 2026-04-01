@@ -5,7 +5,7 @@ let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshTokens(): Promise<boolean> {
   const authStore = useAuthStore();
-  
+
   if (!authStore.refreshToken) {
     return false;
   }
@@ -58,13 +58,13 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 
   if (response.status === 401 && authStore.refreshToken) {
     const refreshed = await tryRefreshToken();
-    
+
     if (refreshed) {
       const newHeaders = new Headers(options.headers);
       if (authStore.accessToken) {
         newHeaders.set('Authorization', `Bearer ${authStore.accessToken}`);
       }
-      
+
       return fetch(url, {
         ...options,
         headers: newHeaders,

@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,9 +9,22 @@ import (
 	"path/filepath"
 	"testing"
 
-	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/auth"
+	"MavenRSS/internal/middleware"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/store/sqlite"
 )
+
+func withMediaTestUser(r *http.Request, userID int64) *http.Request {
+	claims := &auth.Claims{
+		UserID:   userID,
+		Username: "tester",
+		Role:     "user",
+	}
+	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
+	return r.WithContext(ctx)
+}
 
 func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 	tmp := t.TempDir()
@@ -25,6 +39,15 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 	}
 	if err := db.Init(); err != nil {
 		t.Fatalf("db Init failed: %v", err)
+	}
+	if _, err := db.CreateUser(&models.User{
+		Username:     "user2",
+		Email:        "user2@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	}); err != nil {
+		t.Fatalf("CreateUser user2 failed: %v", err)
 	}
 
 	h := core.NewHandler(db, nil, nil, nil)
@@ -44,20 +67,34 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		t.Fatalf("Failed to create cache dir: %v", err)
 	}
-
-	// Create some test cache files
-	testData := []byte("test image data")
-	file1 := filepath.Join(cacheDir, "abc123.jpg")
-	file2 := filepath.Join(cacheDir, "def456.png")
-	if err := os.WriteFile(file1, testData, 0644); err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
+	user1CacheDir := filepath.Join(cacheDir, "user_1")
+	user2CacheDir := filepath.Join(cacheDir, "user_2")
+	if err := os.MkdirAll(user1CacheDir, 0755); err != nil {
+		t.Fatalf("Failed to create user1 cache dir: %v", err)
 	}
-	if err := os.WriteFile(file2, testData, 0644); err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
+	if err := os.MkdirAll(user2CacheDir, 0755); err != nil {
+		t.Fatalf("Failed to create user2 cache dir: %v", err)
 	}
 
-	// Call info (GET) - should show cache size > 0
-	req := httptest.NewRequest(http.MethodGet, "/media/info", nil)
+	// Create some test cache files for two users
+	testDataUser1 := []byte("test image data")
+	testDataUser2 := []byte("user2-only-cache")
+	file1 := filepath.Join(user1CacheDir, "abc123.jpg")
+	file2 := filepath.Join(user1CacheDir, "def456.png")
+	file3 := filepath.Join(user2CacheDir, "ghi789.webp")
+	if err := os.WriteFile(file1, testDataUser1, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	if err := os.WriteFile(file2, testDataUser1, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	if err := os.WriteFile(file3, testDataUser2, 0644); err != nil {
+		t.Fatalf("Failed to create user2 test file: %v", err)
+	}
+	expectedUser1SizeMB := float64(len(testDataUser1)*2) / (1024 * 1024)
+
+	// Call info (GET) as user 1 - should only show user 1 cache size
+	req := withMediaTestUser(httptest.NewRequest(http.MethodGet, "/media/info", nil), 1)
 	rr := httptest.NewRecorder()
 	HandleMediaCacheInfo(h, rr, req)
 	if rr.Code != http.StatusOK {
@@ -72,13 +109,13 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 	if !ok {
 		t.Fatalf("info missing cache_size_mb")
 	}
-	if cacheSizeMB <= 0 {
-		t.Errorf("Expected cache size > 0, got %f", cacheSizeMB)
+	if cacheSizeMB != expectedUser1SizeMB {
+		t.Errorf("Expected user 1 cache size %f MB, got %f", expectedUser1SizeMB, cacheSizeMB)
 	}
 
 	// Test 1: Cleanup without ?all=true parameter (automatic cleanup)
 	// Should respect max_age_days setting and not clean new files
-	req2 := httptest.NewRequest(http.MethodPost, "/media/cleanup", nil)
+	req2 := withMediaTestUser(httptest.NewRequest(http.MethodPost, "/media/cleanup", nil), 1)
 	rr2 := httptest.NewRecorder()
 	HandleMediaCacheCleanup(h, rr2, req2)
 	if rr2.Code != http.StatusOK {
@@ -98,7 +135,7 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 
 	// Test 2: Cleanup with ?all=true parameter (manual cleanup)
 	// Should clean all files regardless of age
-	req3 := httptest.NewRequest(http.MethodPost, "/media/cleanup?all=true", nil)
+	req3 := withMediaTestUser(httptest.NewRequest(http.MethodPost, "/media/cleanup?all=true", nil), 1)
 	rr3 := httptest.NewRecorder()
 	HandleMediaCacheCleanup(h, rr3, req3)
 	if rr3.Code != http.StatusOK {
@@ -116,8 +153,8 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 		t.Errorf("Expected 2 files cleaned with ?all=true, got %d", filesCleaned2)
 	}
 
-	// Test 3: Verify cache is now empty
-	req4 := httptest.NewRequest(http.MethodGet, "/media/info", nil)
+	// Test 3: Verify user 1 cache is now empty
+	req4 := withMediaTestUser(httptest.NewRequest(http.MethodGet, "/media/info", nil), 1)
 	rr4 := httptest.NewRecorder()
 	HandleMediaCacheInfo(h, rr4, req4)
 	if rr4.Code != http.StatusOK {
@@ -129,5 +166,21 @@ func TestHandleMediaCacheInfoAndCleanup(t *testing.T) {
 	}
 	if info2["cache_size_mb"] != 0 {
 		t.Errorf("Expected cache size 0 after cleanup, got %f", info2["cache_size_mb"])
+	}
+
+	// Test 4: Verify user 2 cache is untouched
+	req5 := withMediaTestUser(httptest.NewRequest(http.MethodGet, "/media/info", nil), 2)
+	rr5 := httptest.NewRecorder()
+	HandleMediaCacheInfo(h, rr5, req5)
+	if rr5.Code != http.StatusOK {
+		t.Fatalf("expected 200 for user2 info, got %d", rr5.Code)
+	}
+	var info3 map[string]float64
+	if err := json.NewDecoder(rr5.Body).Decode(&info3); err != nil {
+		t.Fatalf("decode user2 info failed: %v", err)
+	}
+	expectedUser2SizeMB := float64(len(testDataUser2)) / (1024 * 1024)
+	if info3["cache_size_mb"] != expectedUser2SizeMB {
+		t.Errorf("Expected user 2 cache size %f MB, got %f", expectedUser2SizeMB, info3["cache_size_mb"])
 	}
 }
