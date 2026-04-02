@@ -1,6 +1,7 @@
 package feed
 
 import (
+	"bytes"
 	"context"
 	"strconv"
 	"strings"
@@ -455,8 +456,8 @@ func TestGetArticlesForAIBatchProcessingFiltersCompletedAndScope(t *testing.T) {
 	if !got[incompleteRecent] {
 		t.Fatalf("missing incomplete recent article %d in batch candidates", incompleteRecent)
 	}
-	if got[completeFavorite] {
-		t.Fatalf("complete favorite article %d should be skipped", completeFavorite)
+	if !got[completeFavorite] {
+		t.Fatalf("complete favorite article %d should remain in batch candidates for favorite cluster repair", completeFavorite)
 	}
 	if got[completeRecent] {
 		t.Fatalf("complete recent article %d should be skipped", completeRecent)
@@ -678,6 +679,84 @@ func TestBatchProcessExistingArticlesSchedulesClusterPipelineWithoutRequeueingCo
 
 	if len(manager.taskChan) != 0 {
 		t.Fatalf("unexpected queued article tasks: got %d, want 0", len(manager.taskChan))
+	}
+}
+
+func TestQueueExistingArticlesForProcessingRepairsFavoriteClusterForCompletedFavoriteArticle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, true, time.Now().Add(-7*24*time.Hour), "favorite-repair", true)
+	clusterID := mustAttachCompleteCluster(t, db, 1, articleID, "complete")
+
+	if err := db.SetClusterFavorite(clusterID, false); err != nil {
+		t.Fatalf("SetClusterFavorite(false) error: %v", err)
+	}
+
+	manager := &AIEnhancedManager{
+		db:       db,
+		taskChan: make(chan *AIEnhancedTask, 10),
+	}
+
+	queued, err := manager.queueExistingArticlesForProcessing(1)
+	if err != nil {
+		t.Fatalf("queueExistingArticlesForProcessing error: %v", err)
+	}
+	if queued != 0 {
+		t.Fatalf("queued = %d, want 0 for completed favorite article", queued)
+	}
+	if len(manager.taskChan) != 0 {
+		t.Fatalf("unexpected queued article tasks: got %d, want 0", len(manager.taskChan))
+	}
+
+	cluster, err := db.GetClusterByID(clusterID)
+	if err != nil {
+		t.Fatalf("GetClusterByID error: %v", err)
+	}
+	if cluster == nil || !cluster.IsFavorite {
+		t.Fatalf("cluster favorite state = %v, want true after repair", cluster != nil && cluster.IsFavorite)
+	}
+}
+
+func TestRunClusterPipelineOnceInitializesInterestVectorFromFavoriteClusters(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	clusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error: %v", err)
+	}
+	if err := db.SetClusterFavorite(clusterID, true); err != nil {
+		t.Fatalf("SetClusterFavorite error: %v", err)
+	}
+
+	unitBlob := mustUnitEmbeddingBlob(t)
+	if err := db.UpdateClusterEmbeddings(clusterID, unitBlob, unitBlob); err != nil {
+		t.Fatalf("UpdateClusterEmbeddings error: %v", err)
+	}
+
+	manager := &AIEnhancedManager{
+		db: db,
+		resolveFusionConfig: func(userID int64) (*dedup.FusionConfig, error) {
+			return &dedup.FusionConfig{}, nil
+		},
+		runFusion: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			return nil
+		},
+		runEmbedding: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			return nil
+		},
+	}
+
+	if err := manager.runClusterPipelineOnce(1); err != nil {
+		t.Fatalf("runClusterPipelineOnce error: %v", err)
+	}
+
+	interestBlob, err := db.GetUserInterestVector(1)
+	if err != nil {
+		t.Fatalf("GetUserInterestVector error: %v", err)
+	}
+	if !bytes.Equal(interestBlob, unitBlob) {
+		t.Fatalf("interest vector blob mismatch after initialization")
 	}
 }
 
@@ -1159,7 +1238,7 @@ func mustInsertBatchArticle(t *testing.T, db *sqlite.DB, userID, feedID int64, i
 	return articleID
 }
 
-func mustAttachCompleteCluster(t *testing.T, db *sqlite.DB, userID, articleID int64, status string) {
+func mustAttachCompleteCluster(t *testing.T, db *sqlite.DB, userID, articleID int64, status string) int64 {
 	t.Helper()
 	clusterID, err := db.CreateCluster(userID, status)
 	if err != nil {
@@ -1180,6 +1259,8 @@ func mustAttachCompleteCluster(t *testing.T, db *sqlite.DB, userID, articleID in
 	if err := db.UpdateClusterEmbeddings(clusterID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
 		t.Fatalf("UpdateClusterEmbeddings error: %v", err)
 	}
+
+	return clusterID
 }
 
 func mustEmbeddingBlob(t *testing.T) []byte {
@@ -1187,6 +1268,18 @@ func mustEmbeddingBlob(t *testing.T) []byte {
 	blob, err := sqlite_vec.SerializeFloat32(make([]float32, 1024))
 	if err != nil {
 		t.Fatalf("SerializeFloat32 error: %v", err)
+	}
+	return blob
+}
+
+func mustUnitEmbeddingBlob(t *testing.T) []byte {
+	t.Helper()
+
+	vec := make([]float32, 1024)
+	vec[0] = 1
+	blob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		t.Fatalf("SerializeFloat32 unit vector error: %v", err)
 	}
 	return blob
 }

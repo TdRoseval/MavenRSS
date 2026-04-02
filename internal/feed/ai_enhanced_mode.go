@@ -16,6 +16,7 @@ import (
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/dedup"
+	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
@@ -396,6 +397,50 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
 		return fmt.Errorf("run embedding: %w", err)
 	}
+	if err := m.initializeInterestVectorFromFavoriteClustersIfMissing(userID); err != nil {
+		return fmt.Errorf("initialize interest vector from favorite clusters: %w", err)
+	}
+
+	return nil
+}
+
+func (m *AIEnhancedManager) initializeInterestVectorFromFavoriteClustersIfMissing(userID int64) error {
+	if userID <= 0 {
+		return nil
+	}
+
+	vecBlob, err := m.db.GetUserInterestVector(userID)
+	if err != nil {
+		return fmt.Errorf("get user interest vector: %w", err)
+	}
+	if len(vecBlob) > 0 {
+		return nil
+	}
+
+	favoriteBlobs, err := m.db.GetFavoriteClusterSummaryEmbeddings(userID)
+	if err != nil {
+		return fmt.Errorf("get favorite cluster summary embeddings: %w", err)
+	}
+	if len(favoriteBlobs) == 0 {
+		return nil
+	}
+
+	initVec, err := interest.InitFromFavorites(favoriteBlobs)
+	if err != nil {
+		return fmt.Errorf("build interest vector from favorite clusters: %w", err)
+	}
+	if len(initVec) == 0 {
+		return nil
+	}
+
+	serialized, err := interest.SerializeVector(initVec)
+	if err != nil {
+		return fmt.Errorf("serialize interest vector: %w", err)
+	}
+
+	if err := m.db.UpdateUserInterestVector(userID, serialized); err != nil {
+		return fmt.Errorf("persist interest vector: %w", err)
+	}
 
 	return nil
 }
@@ -772,6 +817,15 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 		if !needsSummary && !needsTranslation && !needsEmbedding && !needsDedup {
 			if needsClusterRun {
 				clusterRunNeeded = true
+			} else if article.Article.IsFavorite && article.HasCluster && article.ClusterComplete && article.Article.ClusterID > 0 {
+				if err := m.db.SetClusterFavorite(article.Article.ClusterID, true); err != nil {
+					log.Printf(
+						"Failed to resync favorite cluster %d from completed favorite article %d: %v",
+						article.Article.ClusterID,
+						article.Article.ID,
+						err,
+					)
+				}
 			}
 			continue
 		}

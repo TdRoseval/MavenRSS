@@ -71,17 +71,20 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			OR (a.is_favorite = 0 AND a.published_at >= datetime('now', '-2 days'))
 		)
 		AND (
-			((TRIM(COALESCE(a.summary, '')) = '' OR COALESCE(a.summary, '') = '<no content>') AND skip_summary.article_id IS NULL)
-			OR (COALESCE(f.translate_articles, 0) = 1 AND atc.article_id IS NULL AND skip_translation.article_id IS NULL)
-			OR ae.article_id IS NULL
-			OR c.id IS NULL
-			OR NOT (
-				c.status = 'complete'
-				AND (
-					ce.cluster_id IS NOT NULL
-					OR (
-						TRIM(COALESCE(c.merged_title, '')) = ''
-						AND TRIM(COALESCE(c.merged_summary, '')) = ''
+			a.is_favorite = 1
+			OR (
+				((TRIM(COALESCE(a.summary, '')) = '' OR COALESCE(a.summary, '') = '<no content>') AND skip_summary.article_id IS NULL)
+				OR (COALESCE(f.translate_articles, 0) = 1 AND atc.article_id IS NULL AND skip_translation.article_id IS NULL)
+				OR ae.article_id IS NULL
+				OR c.id IS NULL
+				OR NOT (
+					c.status = 'complete'
+					AND (
+						ce.cluster_id IS NOT NULL
+						OR (
+							TRIM(COALESCE(c.merged_title, '')) = ''
+							AND TRIM(COALESCE(c.merged_summary, '')) = ''
+						)
 					)
 				)
 			)
