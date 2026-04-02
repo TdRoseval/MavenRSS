@@ -79,13 +79,6 @@ function closeRecentFailureModal() {
   showRecentFailureModal.value = false;
 }
 
-function getFailurePreview(message?: string) {
-  if (!message) {
-    return '';
-  }
-  return message.length > 120 ? `${message.slice(0, 120)}...` : message;
-}
-
 function getFailureStageLabel(stage?: string) {
   switch (stage) {
     case 'summary':
@@ -514,39 +507,6 @@ watch(
                   })
                 }}
               </div>
-              <div
-                v-if="clusterStore.aiProcessingStatus?.recent_failure_model"
-                class="mt-1 leading-6"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureModel', {
-                    model: clusterStore.aiProcessingStatus?.recent_failure_model,
-                  })
-                }}
-              </div>
-              <div
-                v-if="clusterStore.aiProcessingStatus?.recent_failure_endpoint"
-                class="mt-1 break-all leading-6"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureEndpoint', {
-                    endpoint: clusterStore.aiProcessingStatus?.recent_failure_endpoint,
-                  })
-                }}
-              </div>
-              <div class="mt-2 rounded-lg bg-white/70 p-3 text-xs leading-5 text-amber-900">
-                {{ getFailurePreview(clusterStore.aiProcessingStatus?.recent_failure_message) }}
-              </div>
-              <div
-                v-if="(clusterStore.aiProcessingStatus?.recent_failure_count ?? 0) > 1"
-                class="mt-2 text-xs leading-5 text-amber-900"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureCount', {
-                    count: clusterStore.aiProcessingStatus?.recent_failure_count ?? 0,
-                  })
-                }}
-              </div>
             </div>
           </div>
         </div>
@@ -582,37 +542,10 @@ watch(
             </div>
 
             <div class="max-h-[70vh] space-y-3 overflow-y-auto px-5 py-4 text-sm text-text-primary">
-              <div v-if="clusterStore.aiProcessingStatus?.recent_failure_article_title">
-                {{
-                  t('article.cluster.processingRecentFailureArticle', {
-                    title: clusterStore.aiProcessingStatus?.recent_failure_article_title,
-                  })
-                }}
-              </div>
               <div v-if="clusterStore.aiProcessingStatus?.recent_failure_model">
                 {{
                   t('article.cluster.processingRecentFailureModel', {
                     model: clusterStore.aiProcessingStatus?.recent_failure_model,
-                  })
-                }}
-              </div>
-              <div
-                v-if="clusterStore.aiProcessingStatus?.recent_failure_endpoint"
-                class="break-all"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureEndpoint', {
-                    endpoint: clusterStore.aiProcessingStatus?.recent_failure_endpoint,
-                  })
-                }}
-              </div>
-              <div
-                v-if="(clusterStore.aiProcessingStatus?.recent_failure_count ?? 0) > 1"
-                class="text-text-secondary"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureCount', {
-                    count: clusterStore.aiProcessingStatus?.recent_failure_count ?? 0,
                   })
                 }}
               </div>
