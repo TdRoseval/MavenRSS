@@ -1001,9 +1001,11 @@ func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithSta
 		}
 	}
 
+	userIsRunning := poolTaskCount > 0 || queueTaskCount > 0 || len(filteredErrors) > 0
+
 	return ProgressWithStats{
 		Progress: Progress{
-			IsRunning: tm.progress.IsRunning,
+			IsRunning: userIsRunning,
 			Errors:    filteredErrors,
 		},
 		PoolTaskCount:     poolTaskCount,
