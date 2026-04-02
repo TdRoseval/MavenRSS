@@ -137,6 +137,8 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	candidates = pruneFavoriteRecallCandidates(candidates, req.Filter, nil)
+
 	if len(candidates) == 0 {
 		clusters, _ := h.DB.GetRecentClustersChronological(
 			userID,
