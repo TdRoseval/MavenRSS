@@ -168,6 +168,20 @@ func initSchema(db *sql.DB) error {
 		UNIQUE(article_id, stage)
 	);
 
+	CREATE TABLE IF NOT EXISTS system_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		kind TEXT NOT NULL,
+		title TEXT NOT NULL,
+		body TEXT NOT NULL,
+		metadata_json TEXT DEFAULT '',
+		is_read BOOLEAN DEFAULT 0,
+		read_at DATETIME DEFAULT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+
 
 	-- Translation cache table
 	CREATE TABLE IF NOT EXISTS translation_cache (
@@ -262,16 +276,16 @@ func initSchema(db *sql.DB) error {
 	);
 
 `
-_, err := db.Exec(query)
-if err != nil {
-return err
-}
+	_, err := db.Exec(query)
+	if err != nil {
+		return err
+	}
 
-if err := runMigrations(db); err != nil {
-return err
-}
+	if err := runMigrations(db); err != nil {
+		return err
+	}
 
-indexesQuery := `
+	indexesQuery := `
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -322,17 +336,20 @@ CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(sou
 CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id);
 CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage);
 CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_article_stage ON ai_article_stage_skips(article_id, stage);
+CREATE INDEX IF NOT EXISTS idx_system_messages_user_updated ON system_messages(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_messages_user_unread ON system_messages(user_id, is_read, updated_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_system_messages_user_kind ON system_messages(user_id, kind);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_article_id ON chat_sessions(article_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
 `
 
-_, err = db.Exec(indexesQuery)
-if err != nil {
-return err
-}
+	_, err = db.Exec(indexesQuery)
+	if err != nil {
+		return err
+	}
 
-return nil
+	return nil
 }
 
 // initVecSchema creates the sqlite-vec virtual tables for embedding storage.

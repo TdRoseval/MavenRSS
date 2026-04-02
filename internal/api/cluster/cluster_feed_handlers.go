@@ -44,10 +44,14 @@ func HandleAIProcessingStatus(h *core.Handler, w http.ResponseWriter, r *http.Re
 
 	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
 		response.JSON(w, map[string]any{
-			"is_enabled":          false,
-			"has_interest_vector": false,
-			"is_config_frozen":    false,
-			"progress_percent":    100,
+			"is_enabled":                          false,
+			"has_interest_vector":                 false,
+			"is_config_frozen":                    false,
+			"progress_percent":                    100,
+			"embedding_health_blocked":            false,
+			"embedding_health_sample_size":        0,
+			"embedding_health_unnormalized_count": 0,
+			"embedding_health_unnormalized_ratio": 0,
 		})
 		return
 	}
@@ -389,9 +393,10 @@ func HandleRefreshDailyRecommendations(h *core.Handler, w http.ResponseWriter, r
 		http.Error(w, "Failed to refresh daily recommendations", http.StatusInternalServerError)
 		return
 	}
+	scheduled := status.HasTask || status.IsQueued || status.IsRunning
 
 	response.JSON(w, map[string]any{
-		"scheduled": true,
+		"scheduled": scheduled,
 		"date":      status.RecommendationDate,
 		"status":    status,
 	})

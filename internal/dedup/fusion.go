@@ -9,11 +9,10 @@ import (
 	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
+	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/summary"
-
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
 
 // FusionResult represents the JSON output from LLM fusion.
@@ -231,7 +230,7 @@ func genEmbedding(ctx context.Context, text string, cfg *FusionConfig) ([]byte, 
 	if len(emb) == 0 {
 		return nil, nil
 	}
-	return sqlite_vec.SerializeFloat32(emb)
+	return interest.NormalizeAndSerialize(emb)
 }
 
 func extractJSON(text string) string {

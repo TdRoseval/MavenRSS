@@ -12,6 +12,7 @@ import {
   PhUsers,
   PhSignOut,
   PhSparkle,
+  PhBell,
 } from '@phosphor-icons/vue';
 import { useAuthStore } from '@/stores/auth';
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
@@ -21,9 +22,11 @@ import { authFetchJson } from '@/shared/lib/authFetch';
 import { isAIEnhancedModeEffectivelyEnabled, isEnabledSetting } from '@/shared/lib/aiEnhancedMode';
 import LogoSvg from '../../../public/assets/logo.svg';
 import { useArticleStore } from '@/features/article/store';
+import { useSystemMessageStore } from '@/stores/systemMessages';
 
 const articleStore = useArticleStore();
 const authStore = useAuthStore();
+const systemMessageStore = useSystemMessageStore();
 const { t } = useI18n();
 const { clearAllFilters } = useArticleFilter();
 
@@ -149,7 +152,7 @@ function loadDrawerState() {
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
-    await loadFeatureSettings();
+    await Promise.all([loadFeatureSettings(), systemMessageStore.fetchUnreadCount()]);
   }
   loadDrawerState();
 
@@ -195,6 +198,10 @@ function handleNavClick(item: NavItem) {
   clearAllFilters();
   articleStore.setFilter(item.filterType);
   emit('select-filter', item.filterType);
+}
+
+function openNotifications() {
+  void systemMessageStore.openCenter();
 }
 
 function toggleFeedList() {
@@ -330,6 +337,20 @@ defineExpose({
           @click="emit('open-user-management')"
         >
           <PhUsers :size="24" />
+        </button>
+
+        <button
+          class="relative w-11 h-11 flex items-center justify-center text-text-secondary hover:text-accent transition-colors"
+          :title="t('sidebar.activity.notifications')"
+          @click="openNotifications"
+        >
+          <PhBell :size="24" />
+          <span
+            v-if="systemMessageStore.unreadCount > 0"
+            class="absolute top-1.5 right-1.5 min-w-[16px] h-[16px] px-1 text-[10px] font-semibold flex items-center justify-center rounded-full text-white bg-red-500"
+          >
+            {{ systemMessageStore.unreadCount > 99 ? '99+' : systemMessageStore.unreadCount }}
+          </span>
         </button>
 
         <button

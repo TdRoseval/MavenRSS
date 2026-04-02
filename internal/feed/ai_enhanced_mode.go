@@ -24,7 +24,6 @@ import (
 	"MavenRSS/internal/utils/httputil"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
 
 // AIEnhancedTask represents a task for AI enhanced mode processing
@@ -63,6 +62,8 @@ type AIEnhancedManager struct {
 	queuedTasksByUser          map[int64]int
 	activeWorkerTasksByUser    map[int64]int64
 	activeAsyncWorkByUser      map[int64]int64
+	embeddingHealthByUser      map[int64]EmbeddingHealthStatus
+	embeddingHealthCheckedAt   map[int64]time.Time
 	recentFailureByUser        map[int64]AIProcessingFailure
 	recoveryInProgress         map[int64]bool
 	lastRecoveryAttemptByUser  map[int64]time.Time
@@ -91,34 +92,38 @@ const (
 )
 
 type AIProcessingStatus struct {
-	IsEnabled                  bool    `json:"is_enabled"`
-	HasInterestVector          bool    `json:"has_interest_vector"`
-	IsConfigFrozen             bool    `json:"is_config_frozen"`
-	IsStale                    bool    `json:"is_stale"`
-	IsFreezeSuspended          bool    `json:"is_freeze_suspended"`
-	EligibleArticles           int     `json:"eligible_articles"`
-	PendingArticles            int     `json:"pending_articles"`
-	CompletedArticles          int     `json:"completed_articles"`
-	PendingSummaryArticles     int     `json:"pending_summary_articles"`
-	PendingTranslationArticles int     `json:"pending_translation_articles"`
-	PendingEmbeddingArticles   int     `json:"pending_embedding_articles"`
-	PendingClusteringArticles  int     `json:"pending_clustering_articles"`
-	PendingRecommendationDays  int     `json:"pending_recommendation_days"`
-	ProgressPercent            float64 `json:"progress_percent"`
-	QueuedTasks                int     `json:"queued_tasks"`
-	ActiveWorkerTasks          int64   `json:"active_worker_tasks"`
-	ActiveAsyncWork            int64   `json:"active_async_work"`
-	IsClusterPipelineBusy      bool    `json:"is_cluster_pipeline_busy"`
-	LastProgressAt             string  `json:"last_progress_at,omitempty"`
-	StalledForSeconds          int64   `json:"stalled_for_seconds,omitempty"`
-	RecentFailureStage         string  `json:"recent_failure_stage,omitempty"`
-	RecentFailureMessage       string  `json:"recent_failure_message,omitempty"`
-	RecentFailureArticleID     int64   `json:"recent_failure_article_id,omitempty"`
-	RecentFailureArticleTitle  string  `json:"recent_failure_article_title,omitempty"`
-	RecentFailureModel         string  `json:"recent_failure_model,omitempty"`
-	RecentFailureEndpoint      string  `json:"recent_failure_endpoint,omitempty"`
-	RecentFailureAt            string  `json:"recent_failure_at,omitempty"`
-	RecentFailureCount         int     `json:"recent_failure_count,omitempty"`
+	IsEnabled                        bool    `json:"is_enabled"`
+	HasInterestVector                bool    `json:"has_interest_vector"`
+	IsConfigFrozen                   bool    `json:"is_config_frozen"`
+	IsStale                          bool    `json:"is_stale"`
+	IsFreezeSuspended                bool    `json:"is_freeze_suspended"`
+	EligibleArticles                 int     `json:"eligible_articles"`
+	PendingArticles                  int     `json:"pending_articles"`
+	CompletedArticles                int     `json:"completed_articles"`
+	PendingSummaryArticles           int     `json:"pending_summary_articles"`
+	PendingTranslationArticles       int     `json:"pending_translation_articles"`
+	PendingEmbeddingArticles         int     `json:"pending_embedding_articles"`
+	PendingClusteringArticles        int     `json:"pending_clustering_articles"`
+	PendingRecommendationDays        int     `json:"pending_recommendation_days"`
+	ProgressPercent                  float64 `json:"progress_percent"`
+	QueuedTasks                      int     `json:"queued_tasks"`
+	ActiveWorkerTasks                int64   `json:"active_worker_tasks"`
+	ActiveAsyncWork                  int64   `json:"active_async_work"`
+	IsClusterPipelineBusy            bool    `json:"is_cluster_pipeline_busy"`
+	LastProgressAt                   string  `json:"last_progress_at,omitempty"`
+	StalledForSeconds                int64   `json:"stalled_for_seconds,omitempty"`
+	RecentFailureStage               string  `json:"recent_failure_stage,omitempty"`
+	RecentFailureMessage             string  `json:"recent_failure_message,omitempty"`
+	RecentFailureArticleID           int64   `json:"recent_failure_article_id,omitempty"`
+	RecentFailureArticleTitle        string  `json:"recent_failure_article_title,omitempty"`
+	RecentFailureModel               string  `json:"recent_failure_model,omitempty"`
+	RecentFailureEndpoint            string  `json:"recent_failure_endpoint,omitempty"`
+	RecentFailureAt                  string  `json:"recent_failure_at,omitempty"`
+	RecentFailureCount               int     `json:"recent_failure_count,omitempty"`
+	EmbeddingHealthBlocked           bool    `json:"embedding_health_blocked"`
+	EmbeddingHealthSampleSize        int     `json:"embedding_health_sample_size"`
+	EmbeddingHealthUnnormalizedCount int     `json:"embedding_health_unnormalized_count"`
+	EmbeddingHealthUnnormalizedRatio float64 `json:"embedding_health_unnormalized_ratio"`
 }
 
 // NewAIEnhancedManager creates a new AI enhanced mode manager
@@ -141,6 +146,8 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		queuedTasksByUser:          make(map[int64]int),
 		activeWorkerTasksByUser:    make(map[int64]int64),
 		activeAsyncWorkByUser:      make(map[int64]int64),
+		embeddingHealthByUser:      make(map[int64]EmbeddingHealthStatus),
+		embeddingHealthCheckedAt:   make(map[int64]time.Time),
 		recentFailureByUser:        make(map[int64]AIProcessingFailure),
 		recoveryInProgress:         make(map[int64]bool),
 		lastRecoveryAttemptByUser:  make(map[int64]time.Time),
@@ -305,7 +312,7 @@ func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, co
 				if article.Title != "" {
 					if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
 						if len(titleEmb) > 0 {
-							titleEmbBlob, _ = sqlite_vec.SerializeFloat32(titleEmb)
+							titleEmbBlob, _ = interest.NormalizeAndSerialize(titleEmb)
 						}
 					} else {
 						log.Printf("Failed to generate title embedding for article %d: %v", task.ArticleID, err)
@@ -315,7 +322,7 @@ func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, co
 				if summaryText != "" {
 					if sumEmb, err := ai.GenerateEmbeddings(ctx, summaryText, configsJSON, globalProxyURL); err == nil {
 						if len(sumEmb) > 0 {
-							summaryEmbBlob, _ = sqlite_vec.SerializeFloat32(sumEmb)
+							summaryEmbBlob, _ = interest.NormalizeAndSerialize(sumEmb)
 						}
 					} else {
 						log.Printf("Failed to generate summary embedding for article %d: %v", task.ArticleID, err)
@@ -383,6 +390,21 @@ func (m *AIEnhancedManager) runClusterPipeline(userID int64) {
 }
 
 func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeClusterPipeline)
+	if err != nil {
+		return fmt.Errorf("embedding health gate: %w", err)
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping cluster pipeline for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return nil
+	}
+
 	cfg, err := m.resolveFusionConfig(userID)
 	if err != nil {
 		return err
@@ -396,6 +418,9 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	}
 	if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
 		return fmt.Errorf("run embedding: %w", err)
+	}
+	if m.db == nil {
+		return nil
 	}
 	if err := m.initializeInterestVectorFromFavoriteClustersIfMissing(userID); err != nil {
 		return fmt.Errorf("initialize interest vector from favorite clusters: %w", err)
@@ -788,6 +813,21 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (int, error) {
 	log.Printf("Starting batch AI processing for user %d...", userID)
 
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeBatchQueue)
+	if err != nil {
+		return 0, fmt.Errorf("embedding health gate: %w", err)
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping batch AI processing for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return 0, nil
+	}
+
 	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
 	if targetLang == "" {
 		targetLang = "zh"
@@ -863,6 +903,26 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 
 // AddTask adds a task to the AI enhanced mode queue
 func (m *AIEnhancedManager) AddTask(task *AIEnhancedTask) {
+	if task == nil || task.UserID <= 0 {
+		return
+	}
+
+	health, allowed, err := m.guardEmbeddingHealth(task.UserID, blockedScopeNewArticleQueue)
+	if err != nil {
+		log.Printf("Embedding health gate failed for article %d: %v", task.ArticleID, err)
+		return
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping AI enhanced task for article %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			task.ArticleID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return
+	}
+
 	select {
 	case m.taskChan <- task:
 		m.incrementQueuedTask(task.UserID)
@@ -1275,6 +1335,9 @@ func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProc
 	if userID <= 0 || !status.IsEnabled || status.PendingArticles == 0 {
 		return
 	}
+	if status.EmbeddingHealthBlocked {
+		return
+	}
 	if status.QueuedTasks > 0 || status.ActiveWorkerTasks > 0 || status.ActiveAsyncWork > 0 || status.IsClusterPipelineBusy {
 		return
 	}
@@ -1309,6 +1372,14 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 	status.IsEnabled = ShouldProcess(m.db, userID)
 	if interestVecBlob, err := m.db.GetUserInterestVector(userID); err == nil && len(interestVecBlob) > 0 {
 		status.HasInterestVector = true
+	}
+	if health, err := m.getEmbeddingHealthStatus(userID, false); err != nil {
+		log.Printf("failed to get embedding health status for user %d: %v", userID, err)
+	} else {
+		status.EmbeddingHealthBlocked = !health.IsHealthy
+		status.EmbeddingHealthSampleSize = health.SampleSize
+		status.EmbeddingHealthUnnormalizedCount = health.UnnormalizedCount
+		status.EmbeddingHealthUnnormalizedRatio = health.UnnormalizedRatio
 	}
 
 	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")

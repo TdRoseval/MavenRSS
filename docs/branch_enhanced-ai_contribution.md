@@ -37,7 +37,7 @@ flowchart TD
     subgraph "去重与聚类"
         L --> M["步骤1: SimHash摘要<br/>汉明距离≤3"]
         M -->|匹配| N["加入现有Cluster"]
-        M -->|不匹配| O["步骤2: sqlite-vec ANN<br/>余弦距离≤0.15"]
+        M -->|不匹配| O["步骤2: 摘要向量扩簇<br/>归一化平方欧氏距离≤0.4"]
         O -->|匹配| N
         O -->|不匹配| P["创建新Cluster"]
         N --> Q["标记Cluster为pending_merge"]
@@ -156,7 +156,7 @@ graph LR
 #### 组件: `internal/dedup/pipeline`
 
 **变更说明**:
-- 实现两阶段去重: SimHash字面去重 + 向量语义去重
+- 实现两阶段去重: SimHash候选预筛 + 基于摘要向量中心的语义入簇
 - 使用鸽巢原理(Pigeonhole Principle)加速SimHash候选检索
 - 自动将相似文章合并到同一Cluster
 
@@ -164,8 +164,7 @@ graph LR
 ```go
 const (
     SimHashThreshold = 3          // SimHash汉明距离阈值
-    SemanticThreshold = 0.15     // 语义余弦距离阈值 (1-0.85)
-    SemanticTopK = 5             // 向量检索Top-K
+    SemanticDistanceThreshold = 0.4 // 归一化平方欧氏距离阈值
 )
 ```
 
@@ -173,7 +172,7 @@ const (
 1. `ProcessArticle()` - 主入口
 2. `ComputeSimHash64()` - 计算SimHash
 3. `FindSimHashCandidates()` - 通过bands检索候选
-4. `semanticSearch()` - 向量语义检索
+4. `semanticSearch()` - 基于摘要向量的候选簇中心比较
 5. `joinCluster()` / `createStandaloneCluster()` - 分配到聚类
 
 #### 组件: `internal/interest/interest`
@@ -393,7 +392,7 @@ async function loadTranslatedContent(
 
 ### 🔍 两阶段去重算法
 - **SimHash**: 快速字面去重,汉明距离≤3
-- **向量语义**: 深度语义去重,余弦距离≤0.15
+- **摘要向量语义**: 深度语义去重,归一化平方欧氏距离≤0.4
 - **鸽巢原理**: 4个bands加速候选检索
 
 ### 📊 两阶段推荐评分

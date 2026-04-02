@@ -14,8 +14,8 @@ type ClusterWithScore struct {
 	Distance float64
 }
 
-// GetClustersByVectorSimilarity retrieves clusters ranked by cosine similarity
-// between the user's interest vector and each cluster's summary_embedding.
+// GetClustersByVectorSimilarity retrieves clusters ranked by sqlite-vec's default
+// squared L2 distance between normalized user interest vectors and cluster summary embeddings.
 // It filters by user, excludes already-seen IDs, filters by recency (maxAgeDays),
 // and returns at most topK results.
 func (db *DB) GetClustersByVectorSimilarity(

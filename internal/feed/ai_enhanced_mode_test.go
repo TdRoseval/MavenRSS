@@ -1265,7 +1265,9 @@ func mustAttachCompleteCluster(t *testing.T, db *sqlite.DB, userID, articleID in
 
 func mustEmbeddingBlob(t *testing.T) []byte {
 	t.Helper()
-	blob, err := sqlite_vec.SerializeFloat32(make([]float32, 1024))
+	vec := make([]float32, 1024)
+	vec[0] = 1
+	blob, err := sqlite_vec.SerializeFloat32(vec)
 	if err != nil {
 		t.Fatalf("SerializeFloat32 error: %v", err)
 	}

@@ -5,6 +5,7 @@ import ClusterList from './ClusterList.vue';
 import ClusterDetail from './ClusterDetail.vue';
 import { useArticleStore } from '@/features/article/store';
 import { useClusterStore } from '@/stores/cluster';
+import { useSystemMessageStore } from '@/stores/systemMessages';
 import { useResizablePanels } from '@/composables/ui/useResizablePanels';
 
 interface Props {
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const articleStore = useArticleStore();
 const clusterStore = useClusterStore();
+const systemMessageStore = useSystemMessageStore();
 const { startResizeArticleList } = useResizablePanels();
 const isMobile = ref(window.innerWidth < 768);
 const mobileView = ref<'list' | 'detail'>('list');
@@ -137,6 +139,10 @@ function getRecommendationTaskDescription() {
   return t('article.cluster.dailyRecommendationTaskAutomaticDescription');
 }
 
+function openNotifications() {
+  void systemMessageStore.openCenter();
+}
+
 onMounted(() => {
   window.addEventListener('resize', handleResize);
   clusterStore
@@ -242,6 +248,35 @@ watch(
 
 <template>
   <div class="flex h-full w-full overflow-hidden relative">
+    <div
+      v-if="clusterStore.aiProcessingStatus?.embedding_health_blocked"
+      class="absolute left-4 right-4 top-4 z-30 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 shadow-sm backdrop-blur"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-amber-950">
+            {{ t('notifications.healthBlockedTitle') }}
+          </div>
+          <p class="mt-1 text-sm leading-6 text-amber-900">
+            {{
+              t('notifications.healthBlockedSummary', {
+                sample: clusterStore.aiProcessingStatus?.embedding_health_sample_size ?? 0,
+                count: clusterStore.aiProcessingStatus?.embedding_health_unnormalized_count ?? 0,
+                ratio: ((clusterStore.aiProcessingStatus?.embedding_health_unnormalized_ratio ?? 0) * 100).toFixed(1),
+              })
+            }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 transition hover:bg-amber-100"
+          @click="openNotifications"
+        >
+          {{ t('notifications.openCenter') }}
+        </button>
+      </div>
+    </div>
+
     <template v-if="isDailyRecommendationMode && clusterStore.shouldBlockDailyRecommendationView">
       <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
         <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">

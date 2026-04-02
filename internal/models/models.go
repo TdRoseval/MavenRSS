@@ -153,3 +153,24 @@ type Cluster struct {
 	Authors                   []string  `json:"authors,omitempty"`
 	Articles                  []Article `json:"articles,omitempty"`
 }
+
+type SystemMessage struct {
+	ID           int64      `json:"id"`
+	UserID       int64      `json:"user_id"`
+	Kind         string     `json:"kind"`
+	Title        string     `json:"title"`
+	Body         string     `json:"body"`
+	MetadataJSON string     `json:"metadata_json,omitempty"`
+	IsRead       bool       `json:"is_read"`
+	ReadAt       *time.Time `json:"read_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type SystemMessageListResponse struct {
+	Messages []SystemMessage `json:"messages"`
+}
+
+type SystemMessageUnreadCountResponse struct {
+	UnreadCount int `json:"unread_count"`
+}

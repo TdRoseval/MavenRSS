@@ -372,6 +372,25 @@ const zh: TranslationMessages = {
       isInDevelopment: '该功能涉及到第三方工具，可能不稳定且存在问题。',
     },
   },
+  notifications: {
+    title: '系统通知',
+    subtitle: '{count} 条未读消息',
+    emptyTitle: '暂无系统通知',
+    emptyDescription: '后台 AI 和系统告警会显示在这里，方便后续追踪与处理。',
+    markAllRead: '全部设为已读',
+    details: '通知详情',
+    kind: '类型',
+    updatedAt: '更新时间',
+    sampleSize: '抽样数量',
+    unnormalizedCount: '未归一化数量',
+    unnormalizedRatio: '未归一化比例',
+    blockedScope: '触发范围',
+    body: '消息内容',
+    openCenter: '打开通知中心',
+    healthBlockedTitle: 'AI 任务流已被拦截',
+    healthBlockedSummary:
+      '抽样 {sample} 条摘要向量，发现 {count} 条未归一化，占比 {ratio}%。请先查看通知中心，再继续触发 AI 任务。',
+  },
   modal: {
     common: {
       unsavedChangesMessage: '您有未保存的更改。要放弃这些更改吗？',
@@ -1211,6 +1230,7 @@ const zh: TranslationMessages = {
       imageGallery: '图片模式',
       immediateTasks: '即时任务',
       lastGlobalRefresh: '最后更新时间',
+      notifications: '系统通知',
       queuedTasks: '排队任务',
       readLater: '稍后阅读',
       unreadArticles: '未读文章',

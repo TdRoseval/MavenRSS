@@ -45,53 +45,62 @@ flowchart TD
         H --> I
         I -->|Yes| J["Translate Article Body"]
         I -->|No| K["Skip Translation"]
-        J --> L["Generate Article Embeddings"]
+        J --> L["Generate + Normalize<br/>Article Embeddings"]
         K --> L
     end
 
     subgraph "Deduplication & Clustering"
-        L --> M["Step 1: SimHash summary<br/>Hamming distance ≤ 3"]
-        M -->|Match| N["Join Existing Cluster"]
-        M -->|No match| O["Step 2: sqlite-vec ANN<br/>cosine distance ≤ 0.15"]
-        O -->|Match| N
-        O -->|No match| P["Create New Cluster"]
-        N --> Q["Mark Cluster as pending_merge"]
-        P --> Q
-        Q --> R["Run Fusion / Fallback Copy"]
-        R --> S["Mark Cluster as pending_embed"]
-        S --> T["Generate Cluster Embeddings"]
-        T --> U["Mark Cluster as complete"]
+        L --> M{Embedding Health Gate<br/>summary vectors healthy?}
+        M -->|No| N["Block AI task flow<br/>Upsert system message"]
+        M -->|Yes| O["Step 1: SimHash summary<br/>collect Hamming distance ≤ 3 candidates"]
+        O -->|Candidates| P["Rank candidate articles by normalized<br/>squared L2 on summary vectors"]
+        P -->|Nearest article found| Q["Join nearest article's cluster"]
+        P -->|No valid summary candidate| R["Step 2: Summary-vector recall<br/>article distance ≤ 0.4"]
+        O -->|No candidates| R
+        R -->|Cluster candidates| S["Build temporary cluster centers<br/>mean all cluster summary vectors + L2 normalize"]
+        S --> T["Join nearest centroid cluster"]
+        R -->|No candidates| U["Create New Cluster"]
+        Q --> V["Mark Cluster as pending_merge"]
+        T --> V
+        U --> V
+        V --> W["Run Fusion / Fallback Copy"]
+        W --> X["Mark Cluster as pending_embed"]
+        X --> Y["Generate + Normalize<br/>Cluster Embeddings"]
+        Y --> Z["Mark Cluster as complete"]
     end
 
     subgraph "Interest Tracking & Recommendation"
-        U --> V["Collect User Feedback<br/>clicks / deep reads / favorites"]
-        V --> W["Update User Interest Vector<br/>EMA update"]
-        W --> X["Recall Recent Complete Clusters<br/>by Vector Similarity"]
-        X --> Y["Rerank with Time Decay"]
-        Y --> Z["Personalized Cluster Feed"]
-        U --> AA["Wait for Async AI Work to Drain"]
-        AA --> AB{Need missing-day<br/>backfill or scheduled run?}
-        AB -->|No| AC["End current AI cycle"]
-        AB -->|Yes| AD["Queue Daily Recommendation Generation"]
-        AD --> AE["Recall Candidate Clusters<br/>by interest vector or chronology"]
-        AE --> AF{Recommendation AI<br/>profile available?}
-        AF -->|No| AG["Rule-based rerank<br/>recall score + freshness"]
-        AF -->|Yes| AH["Stage 1: Grouped Tournament<br/>pick top candidates from summaries"]
-        AH --> AI["Stage 2: Full-text multi-factor scoring<br/>density / value / interest / timeliness"]
-        AI --> AJ["Finalize Top 10 Recommendations"]
-        AG --> AJ
-        AJ --> AK["Store daily recommendations<br/>and recommendation scores"]
-        AK --> AL["Expose recommendation dates/list API"]
-        AL --> AM["Daily Recommendation View"]
+        Z --> AA["Collect User Feedback<br/>clicks / deep reads / favorites"]
+        AA --> AB["Update User Interest Vector<br/>EMA + L2 normalize"]
+        AB --> AC["Recall Recent Complete Clusters<br/>by vector similarity"]
+        AC --> AD["Rerank with Time Decay"]
+        AD --> AE["Personalized Cluster Feed"]
+        N --> AF["System Notification Center"]
+        Z --> AG["Wait for Async AI Work to Drain"]
+        AG --> AH{Need missing-day backfill,<br/>scheduled run, or manual refresh?}
+        AH -->|No| AI["End current AI cycle"]
+        AH -->|Yes| AJ{Embedding Health Gate<br/>allow recommendation flow?}
+        AJ -->|No| AF
+        AJ -->|Yes| AK["Queue Daily Recommendation Generation"]
+        AK --> AL["Recall Candidate Clusters<br/>by interest vector or chronology"]
+        AL --> AM{Recommendation AI<br/>profile available?}
+        AM -->|No| AN["Rule-based rerank<br/>recall score + freshness"]
+        AM -->|Yes| AO["Stage 1: Grouped Tournament<br/>pick top candidates from summaries"]
+        AO --> AP["Stage 2: Full-text multi-factor scoring<br/>density / value / interest / timeliness"]
+        AP --> AQ["Finalize Top 10 Recommendations"]
+        AN --> AQ
+        AQ --> AR["Store daily recommendations<br/>and recommendation scores"]
+        AR --> AS["Expose recommendation dates/list API"]
+        AS --> AT["Daily Recommendation View"]
     end
 
     style A fill:#e3f2fd,color:#0d47a1
     style G fill:#fff3e0,color:#e65100
     style J fill:#fff3e0,color:#e65100
     style L fill:#f3e5f5,color:#7b1fa2
-    style T fill:#f3e5f5,color:#7b1fa2
-    style W fill:#c8e6c9,color:#1a5e20
-    style AJ fill:#c8e6c9,color:#1a5e20
+    style Y fill:#f3e5f5,color:#7b1fa2
+    style AB fill:#c8e6c9,color:#1a5e20
+    style AQ fill:#c8e6c9,color:#1a5e20
 ```
 
 ## 🚀 Quick Start

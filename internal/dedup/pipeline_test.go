@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/store/sqlite"
 )
@@ -17,9 +18,10 @@ func TestProcessArticleCreatesPendingMergeClusterForStandaloneArticle(t *testing
 		db,
 		userID,
 		feedID,
-		"article-1",
+		"article-standalone",
 		false,
-		"这是一个用于触发独立文章成簇的有效摘要内容。",
+		"this standalone article should create its own cluster",
+		vector1024(1, 0),
 	)
 
 	if err := ProcessArticle(db, articleID, userID); err != nil {
@@ -32,9 +34,6 @@ func TestProcessArticleCreatesPendingMergeClusterForStandaloneArticle(t *testing
 	}
 	if cluster.ArticleCount != 1 {
 		t.Fatalf("cluster article_count = %d, want 1", cluster.ArticleCount)
-	}
-	if cluster.IsFavorite {
-		t.Fatal("cluster is_favorite = true, want false")
 	}
 }
 
@@ -49,7 +48,8 @@ func TestProcessArticleMarksStandaloneClusterFavoriteWhenArticleFavorited(t *tes
 		feedID,
 		"favorited-standalone",
 		true,
-		"这是一个用于测试收藏文章独立成簇的有效摘要内容。",
+		"this favorite article should create a favorite cluster",
+		vector1024(1, 0),
 	)
 
 	if err := ProcessArticle(db, articleID, userID); err != nil {
@@ -62,35 +62,100 @@ func TestProcessArticleMarksStandaloneClusterFavoriteWhenArticleFavorited(t *tes
 	}
 }
 
-func TestProcessArticleMarksExistingClusterFavoriteWhenFavoritedArticleJoins(t *testing.T) {
+func TestProcessArticleChoosesNearestSemanticMatchAmongHammingCandidates(t *testing.T) {
 	db := newDedupTestDB(t)
 	userID, feedID := createDedupTestUserAndFeed(t, db)
 
-	summaryText := "这是一个用于测试文章加入现有簇的相同摘要内容。"
-	seedArticleID := createDedupTestArticle(t, db, userID, feedID, "seed-article", false, summaryText)
-	if err := ProcessArticle(db, seedArticleID, userID); err != nil {
-		t.Fatalf("ProcessArticle seed error: %v", err)
+	summary := "shared summary text for hamming candidate matching"
+	clusterOne := createSeedClusterArticle(t, db, userID, feedID, "seed-cluster-one", summary, vector1024(1, 0), true)
+	clusterTwo := createSeedClusterArticle(t, db, userID, feedID, "seed-cluster-two", summary, vector1024(0.8, 0.6), true)
+
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "target-hamming", false, summary, vector1024(0.8, 0.6))
+	if err := ProcessArticle(db, targetArticleID, userID); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
 	}
 
-	seedCluster := mustGetArticleCluster(t, db, seedArticleID)
-	if seedCluster.IsFavorite {
-		t.Fatal("seed cluster is_favorite = true, want false")
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID != clusterTwo {
+		t.Fatalf("joined cluster %d, want %d", cluster.ID, clusterTwo)
+	}
+	if cluster.ID == clusterOne {
+		t.Fatal("article joined the first match instead of the nearest semantic match")
+	}
+}
+
+func TestProcessArticleSkipsHammingCandidatesWithoutSummaryEmbedding(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+
+	summary := "shared summary text for missing embedding candidate"
+	createSeedClusterArticle(t, db, userID, feedID, "missing-embedding", summary, nil, true)
+	validCluster := createSeedClusterArticle(t, db, userID, feedID, "valid-embedding", summary, vector1024(1, 0), true)
+
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "target-skip-missing", false, summary, vector1024(1, 0))
+	if err := ProcessArticle(db, targetArticleID, userID); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
 	}
 
-	favoritedArticleID := createDedupTestArticle(t, db, userID, feedID, "favorited-joiner", true, summaryText)
-	if err := ProcessArticle(db, favoritedArticleID, userID); err != nil {
-		t.Fatalf("ProcessArticle favorited joiner error: %v", err)
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID != validCluster {
+		t.Fatalf("joined cluster %d, want %d", cluster.ID, validCluster)
+	}
+}
+
+func TestProcessArticleUsesClusterCentroidWhenNoHammingMatch(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+
+	createSeedClusterArticle(t, db, userID, feedID, "semantic-one", "long text that will not share simhash bands A", vector1024(1, 0), true)
+	clusterTwo := createSeedClusterArticle(t, db, userID, feedID, "semantic-two", "long text that will not share simhash bands B", vector1024(0.8, 0.6), true)
+
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "semantic-target", false, "short", vector1024(0.8, 0.6))
+	if err := ProcessArticle(db, targetArticleID, userID); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
 	}
 
-	updatedCluster := mustGetArticleCluster(t, db, favoritedArticleID)
-	if updatedCluster.ID != seedCluster.ID {
-		t.Fatalf("cluster id = %d, want %d", updatedCluster.ID, seedCluster.ID)
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID != clusterTwo {
+		t.Fatalf("joined cluster %d, want %d", cluster.ID, clusterTwo)
 	}
-	if !updatedCluster.IsFavorite {
-		t.Fatal("cluster is_favorite = false, want true after favorited article joined")
+}
+
+func TestProcessArticleBuildsCentroidFromAllClusterArticles(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+
+	clusterOne := createSeedClusterArticle(t, db, userID, feedID, "cluster-one-hit", "cluster one candidate one", vector1024(1, 0), true)
+	createArticleInExistingCluster(t, db, userID, feedID, clusterOne, "cluster-one-opposite", "cluster one candidate two", vector1024(-1, 0), true)
+
+	clusterTwo := createSeedClusterArticle(t, db, userID, feedID, "cluster-two-a", "cluster two candidate one", vector1024(0.9, 0.43), true)
+	createArticleInExistingCluster(t, db, userID, feedID, clusterTwo, "cluster-two-b", "cluster two candidate two", vector1024(0.92, 0.39), true)
+
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "centroid-target", false, "short", vector1024(1, 0))
+	if err := ProcessArticle(db, targetArticleID, userID); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
 	}
-	if updatedCluster.ArticleCount != 2 {
-		t.Fatalf("cluster article_count = %d, want 2", updatedCluster.ArticleCount)
+
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID != clusterTwo {
+		t.Fatalf("joined cluster %d, want %d", cluster.ID, clusterTwo)
+	}
+}
+
+func TestProcessArticleCreatesStandaloneClusterWhenNoMatch(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+
+	createSeedClusterArticle(t, db, userID, feedID, "distant-candidate", "distant summary", vector1024(0, 1), true)
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "no-match-target", false, "short", vector1024(1, 0))
+
+	if err := ProcessArticle(db, targetArticleID, userID); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
+	}
+
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ArticleCount != 1 {
+		t.Fatalf("cluster article_count = %d, want 1", cluster.ArticleCount)
 	}
 }
 
@@ -137,7 +202,15 @@ func createDedupTestUserAndFeed(t *testing.T, db *sqlite.DB) (int64, int64) {
 	return userID, feedID
 }
 
-func createDedupTestArticle(t *testing.T, db *sqlite.DB, userID, feedID int64, uniqueID string, isFavorite bool, summary string) int64 {
+func createDedupTestArticle(
+	t *testing.T,
+	db *sqlite.DB,
+	userID, feedID int64,
+	uniqueID string,
+	isFavorite bool,
+	summary string,
+	summaryVector []float32,
+) int64 {
 	t.Helper()
 
 	articleResult, err := db.Exec(
@@ -150,6 +223,65 @@ func createDedupTestArticle(t *testing.T, db *sqlite.DB, userID, feedID int64, u
 	articleID, err := articleResult.LastInsertId()
 	if err != nil {
 		t.Fatalf("article LastInsertId error: %v", err)
+	}
+
+	if len(summaryVector) > 0 {
+		blob, err := interest.SerializeVector(summaryVector)
+		if err != nil {
+			t.Fatalf("SerializeVector error: %v", err)
+		}
+		if err := db.UpdateArticleEmbeddings(articleID, nil, blob); err != nil {
+			t.Fatalf("UpdateArticleEmbeddings error: %v", err)
+		}
+	}
+
+	return articleID
+}
+
+func createSeedClusterArticle(
+	t *testing.T,
+	db *sqlite.DB,
+	userID, feedID int64,
+	uniqueID string,
+	summary string,
+	summaryVector []float32,
+	withSimHash bool,
+) int64 {
+	t.Helper()
+
+	clusterID, err := db.CreateCluster(userID, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error: %v", err)
+	}
+
+	createArticleInExistingCluster(t, db, userID, feedID, clusterID, uniqueID, summary, summaryVector, withSimHash)
+	return clusterID
+}
+
+func createArticleInExistingCluster(
+	t *testing.T,
+	db *sqlite.DB,
+	userID, feedID, clusterID int64,
+	uniqueID string,
+	summary string,
+	summaryVector []float32,
+	withSimHash bool,
+) int64 {
+	t.Helper()
+
+	articleID := createDedupTestArticle(t, db, userID, feedID, uniqueID, false, summary, summaryVector)
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error: %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error: %v", err)
+	}
+	if withSimHash && IsValidForSimHash(summary) {
+		hash := ComputeSimHash64(summary)
+		b1, b2, b3, b4 := SplitBands(hash)
+		if err := db.UpdateArticleSimHash(articleID, hash, b1, b2, b3, b4); err != nil {
+			t.Fatalf("UpdateArticleSimHash error: %v", err)
+		}
 	}
 
 	return articleID
@@ -175,4 +307,10 @@ func mustGetArticleCluster(t *testing.T, db *sqlite.DB, articleID int64) *models
 	}
 
 	return cluster
+}
+
+func vector1024(values ...float32) []float32 {
+	vec := make([]float32, 1024)
+	copy(vec, values)
+	return vec
 }

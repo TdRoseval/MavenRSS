@@ -381,6 +381,25 @@ const en: TranslationMessages = {
         'This feature involves a third-party tool, which may be unstable and have issues.',
     },
   },
+  notifications: {
+    title: 'System Notifications',
+    subtitle: '{count} unread messages',
+    emptyTitle: 'No system notifications',
+    emptyDescription: 'Background AI and system alerts will appear here when something needs attention.',
+    markAllRead: 'Mark all read',
+    details: 'Notification Details',
+    kind: 'Type',
+    updatedAt: 'Updated',
+    sampleSize: 'Sample size',
+    unnormalizedCount: 'Unnormalized',
+    unnormalizedRatio: 'Unnormalized ratio',
+    blockedScope: 'Triggered by',
+    body: 'Message',
+    openCenter: 'Open notification center',
+    healthBlockedTitle: 'AI task flow is currently blocked',
+    healthBlockedSummary:
+      'Sampled {sample} summary vectors and found {count} unnormalized vectors ({ratio}%). Check the notification center for details before rerunning AI tasks.',
+  },
   modal: {
     common: {
       unsavedChangesMessage: 'You have unsaved changes. Do you want to discard them?',
@@ -1250,6 +1269,7 @@ const en: TranslationMessages = {
       imageGallery: 'Image Gallery',
       immediateTasks: 'Immediate Tasks',
       lastGlobalRefresh: 'Last Update',
+      notifications: 'Notifications',
       queuedTasks: 'Queued Tasks',
       readLater: 'Read Later',
       unreadArticles: 'Unread Articles',

@@ -130,6 +130,31 @@ export interface AIProcessingStatus {
   recent_failure_endpoint?: string;
   recent_failure_at?: string;
   recent_failure_count?: number;
+  embedding_health_blocked: boolean;
+  embedding_health_sample_size: number;
+  embedding_health_unnormalized_count: number;
+  embedding_health_unnormalized_ratio: number;
+}
+
+export interface SystemMessage {
+  id: number;
+  user_id: number;
+  kind: string;
+  title: string;
+  body: string;
+  metadata_json?: string;
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SystemMessageListResponse {
+  messages: SystemMessage[];
+}
+
+export interface SystemMessageUnreadCountResponse {
+  unread_count: number;
 }
 
 export interface UserAIStats {

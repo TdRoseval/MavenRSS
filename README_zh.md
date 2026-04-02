@@ -45,53 +45,62 @@ flowchart TD
         H --> I
         I -->|是| J["翻译文章正文"]
         I -->|否| K["跳过翻译"]
-        J --> L["生成文章向量嵌入"]
+        J --> L["生成并归一化<br/>文章 embedding"]
         K --> L
     end
 
     subgraph "去重与聚类"
-        L --> M["步骤1: SimHash摘要<br/>汉明距离≤3"]
-        M -->|匹配| N["加入现有Cluster"]
-        M -->|不匹配| O["步骤2: sqlite-vec ANN<br/>余弦距离≤0.15"]
-        O -->|匹配| N
-        O -->|不匹配| P["创建新Cluster"]
-        N --> Q["标记Cluster为pending_merge"]
-        P --> Q
-        Q --> R["运行Fusion/回退复制"]
-        R --> S["标记Cluster为pending_embed"]
-        S --> T["生成Cluster嵌入"]
-        T --> U["标记Cluster为complete"]
+        L --> M{embedding 健康门禁<br/>摘要向量是否合格?}
+        M -->|否| N["阻断 AI 任务流<br/>写入/更新系统通知"]
+        M -->|是| O["步骤1: SimHash 摘要<br/>收集汉明距离 ≤ 3 候选文章"]
+        O -->|有候选| P["按摘要向量的归一化平方欧氏距离<br/>对候选文章排序"]
+        P -->|找到最近文章| Q["加入该文章所在的簇"]
+        P -->|没有有效摘要候选| R["步骤2: 摘要向量扩簇<br/>文章级距离 ≤ 0.4"]
+        O -->|无候选| R
+        R -->|有候选簇| S["按簇汇总全部文章摘要向量均值<br/>再做 L2 归一化"]
+        S --> T["加入语义最近的簇"]
+        R -->|无候选| U["当前文章独立成簇"]
+        Q --> V["标记 Cluster 为 pending_merge"]
+        T --> V
+        U --> V
+        V --> W["运行 Fusion / 回退复制"]
+        W --> X["标记 Cluster 为 pending_embed"]
+        X --> Y["生成并归一化<br/>Cluster embedding"]
+        Y --> Z["标记 Cluster 为 complete"]
     end
 
     subgraph "兴趣追踪与推荐"
-        U --> V["收集用户反馈<br/>点击/深度阅读/收藏"]
-        V --> W["更新用户兴趣向量<br/>EMA更新"]
-        W --> X["基于向量相似度<br/>召回近期完整Clusters"]
-        X --> Y["时间衰减重排序"]
-        Y --> Z["个性化Cluster Feed"]
-        U --> AA["等待异步AI任务排空"]
-        AA --> AB{需要缺失天回填<br/>或定时运行?}
-        AB -->|否| AC["结束当前AI周期"]
-        AB -->|是| AD["排队每日推荐生成"]
-        AD --> AE["召回候选Clusters<br/>兴趣向量或时间序"]
-        AE --> AF{推荐AI配置可用?}
-        AF -->|否| AG["基于规则重排序<br/>召回分+新鲜度"]
-        AF -->|是| AH["阶段1: 分组锦标赛<br/>从摘要选Top候选"]
-        AH --> AI["阶段2: 全文多因子评分<br/>密度/价值/兴趣/时效"]
-        AI --> AJ["确定Top 10推荐"]
-        AG --> AJ
-        AJ --> AK["存储每日推荐<br/>与推荐分数"]
-        AK --> AL["暴露推荐日期/列表API"]
-        AL --> AM["每日推荐视图"]
+        Z --> AA["收集用户反馈<br/>点击/深度阅读/收藏"]
+        AA --> AB["更新用户兴趣向量<br/>EMA + L2 归一化"]
+        AB --> AC["基于向量相似度<br/>召回近期完整簇"]
+        AC --> AD["时间衰减重排序"]
+        AD --> AE["个性化 Cluster Feed"]
+        N --> AF["系统通知中心"]
+        Z --> AG["等待异步 AI 任务排空"]
+        AG --> AH{是否需要<br/>回填、定时或手动刷新?}
+        AH -->|否| AI["结束当前 AI 周期"]
+        AH -->|是| AJ{embedding 健康门禁<br/>是否允许推荐流转?}
+        AJ -->|否| AF
+        AJ -->|是| AK["排队每日推荐生成"]
+        AK --> AL["召回候选簇<br/>兴趣向量或时间序"]
+        AL --> AM{推荐 AI 配置可用?}
+        AM -->|否| AN["基于规则重排序<br/>召回分 + 新鲜度"]
+        AM -->|是| AO["阶段1: 分组锦标赛<br/>从摘要中选出候选"]
+        AO --> AP["阶段2: 全文多维度评分<br/>密度 / 价值 / 兴趣 / 时效"]
+        AP --> AQ["确定 Top 10 推荐"]
+        AN --> AQ
+        AQ --> AR["存储每日推荐<br/>和推荐分数"]
+        AR --> AS["对外提供推荐日期 / 列表 API"]
+        AS --> AT["每日推荐视图"]
     end
 
     style A fill:#e3f2fd,color:#0d47a1
     style G fill:#fff3e0,color:#e65100
     style J fill:#fff3e0,color:#e65100
     style L fill:#f3e5f5,color:#7b1fa2
-    style T fill:#f3e5f5,color:#7b1fa2
-    style W fill:#c8e6c9,color:#1a5e20
-    style AJ fill:#c8e6c9,color:#1a5e20
+    style Y fill:#f3e5f5,color:#7b1fa2
+    style AB fill:#c8e6c9,color:#1a5e20
+    style AQ fill:#c8e6c9,color:#1a5e20
 ```
 
 ## 🚀 快速开始

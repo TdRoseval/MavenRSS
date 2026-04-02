@@ -24,6 +24,7 @@ import type { Feed } from './types/models';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
 import { useAppStore } from '@/stores/app';
+import { useSystemMessageStore } from '@/stores/systemMessages';
 
 const AddFeedModal = defineAsyncComponent(
   () => import('@/features/feed/components/AddFeedModal.vue')
@@ -42,11 +43,18 @@ const ContextMenu = defineAsyncComponent(() => import('@/shared/ui/ContextMenu.v
 const ConfirmDialog = defineAsyncComponent(() => import('@/shared/ui/ConfirmDialog.vue'));
 const InputDialog = defineAsyncComponent(() => import('@/shared/ui/InputDialog.vue'));
 const MultiSelectDialog = defineAsyncComponent(() => import('@/shared/ui/MultiSelectDialog.vue'));
+const SystemMessageCenterModal = defineAsyncComponent(
+  () => import('@/components/system/SystemMessageCenterModal.vue')
+);
+const SystemMessageDetailModal = defineAsyncComponent(
+  () => import('@/components/system/SystemMessageDetailModal.vue')
+);
 
 const articleStore = useArticleStore();
 const feedStore = useFeedStore();
 const appStore = useAppStore();
 const authStore = useAuthStore();
+const systemMessageStore = useSystemMessageStore();
 const { t, locale } = useI18n();
 
 const isAdmin = computed(() => authStore.user?.role === 'admin');
@@ -199,6 +207,7 @@ onMounted(() => {
   window.addEventListener('show-user-management', handleShowUserManagement);
 
   if (authStore.isAuthenticated) {
+    systemMessageStore.startPolling();
     loadInitialSettings();
 
     setTimeout(() => {
@@ -239,6 +248,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('show-user-management', handleShowUserManagement);
   feedStore.stopPollProgress();
   feedStore.stopFreshRSSStatusPolling();
+  systemMessageStore.stopPolling();
 });
 
 async function loadInitialSettings() {
@@ -292,6 +302,7 @@ function onFeedUpdated(): void {
 }
 
 function onLogin(): void {
+  systemMessageStore.startPolling();
   loadInitialSettings();
   feedStore.fetchFeeds();
   articleStore.fetchArticles();
@@ -473,6 +484,16 @@ function onLogin(): void {
         @confirm="multiSelectDialog.onConfirm"
         @cancel="multiSelectDialog.onCancel"
         @close="multiSelectDialog = null"
+      />
+
+      <SystemMessageCenterModal
+        v-if="systemMessageStore.isCenterOpen"
+        @close="systemMessageStore.closeCenter()"
+      />
+
+      <SystemMessageDetailModal
+        v-if="systemMessageStore.activeMessage"
+        @close="systemMessageStore.closeDetail()"
       />
 
       <div class="toast-container">

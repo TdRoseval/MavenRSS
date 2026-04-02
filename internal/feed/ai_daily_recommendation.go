@@ -120,6 +120,22 @@ func (m *AIEnhancedManager) scheduleDailyRecommendationsForAllUsers() {
 }
 
 func (m *AIEnhancedManager) tryScheduleDailyRecommendation(userID int64, now time.Time) {
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationAuto)
+	if err != nil {
+		log.Printf("embedding health gate failed for daily recommendation scheduler user %d: %v", userID, err)
+		return
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping scheduled daily recommendations for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return
+	}
+
 	targetDate := now.AddDate(0, 0, -1).Format("2006-01-02")
 	shouldQueue, forceRegenerate, err := m.shouldQueueDailyRecommendations(userID, targetDate)
 	if err != nil {
@@ -195,6 +211,22 @@ func (m *AIEnhancedManager) requestMissingRecommendationBackfill(userID int64) {
 	if userID <= 0 {
 		return
 	}
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationAuto)
+	if err != nil {
+		log.Printf("embedding health gate failed for daily recommendation backfill user %d: %v", userID, err)
+		return
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping daily recommendation backfill for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return
+	}
+
 	targetDate := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	shouldQueue, forceRegenerate, err := m.shouldQueueDailyRecommendations(userID, targetDate)
 	if err != nil {
@@ -246,6 +278,20 @@ func (m *AIEnhancedManager) QueueDailyRecommendations(userID int64, recommendati
 	if userID <= 0 {
 		return false, nil
 	}
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationQueue)
+	if err != nil {
+		return false, fmt.Errorf("embedding health gate: %w", err)
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping queued daily recommendations for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return false, nil
+	}
 	if recommendationDate == "" {
 		recommendationDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	}
@@ -268,6 +314,20 @@ func (m *AIEnhancedManager) QueueDailyRecommendations(userID int64, recommendati
 func (m *AIEnhancedManager) ForceDailyRecommendations(userID int64, recommendationDate string, waitForIdle bool) (DailyRecommendationTaskStatus, error) {
 	if userID <= 0 {
 		return DailyRecommendationTaskStatus{}, nil
+	}
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationForce)
+	if err != nil {
+		return DailyRecommendationTaskStatus{}, fmt.Errorf("embedding health gate: %w", err)
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping forced daily recommendations for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
+		return m.GetDailyRecommendationTaskStatus(userID), nil
 	}
 	if recommendationDate == "" {
 		recommendationDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
@@ -495,6 +555,20 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 
 func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommendationDate string, force bool) error {
 	if !ShouldProcess(m.db, userID) {
+		return nil
+	}
+	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationRun)
+	if err != nil {
+		return fmt.Errorf("embedding health gate: %w", err)
+	}
+	if !allowed {
+		log.Printf(
+			"Skipping recommendation generation for user %d due to unhealthy summary embeddings (sample=%d, unnormalized=%d, ratio=%.2f)",
+			userID,
+			health.SampleSize,
+			health.UnnormalizedCount,
+			health.UnnormalizedRatio,
+		)
 		return nil
 	}
 	if recommendationDate == "" {

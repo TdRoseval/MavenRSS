@@ -241,6 +241,7 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 // UpdateClusterEmbeddings stores embeddings for a cluster.
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
+	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
 	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
 	_, err := db.Exec(
 		`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
