@@ -1,0 +1,193 @@
+package feed
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"MavenRSS/internal/dedup"
+	"MavenRSS/internal/interest"
+	"MavenRSS/internal/models"
+	"MavenRSS/internal/store/sqlite"
+
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+)
+
+func TestStartClusterRenormalizationReturnsBusyWhenUserHasQueuedWork(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	manager.incrementQueuedTask(1)
+
+	scheduled, reason, err := manager.StartClusterRenormalization(1)
+	if err != nil {
+		t.Fatalf("StartClusterRenormalization error = %v", err)
+	}
+	if scheduled {
+		t.Fatal("scheduled = true, want false when user already has queued AI work")
+	}
+	if reason != "busy" {
+		t.Fatalf("reason = %q, want busy", reason)
+	}
+}
+
+func TestStartClusterRenormalizationResetsStateAndRequeuesArticles(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	firstArticleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-2*time.Hour), "renorm-1", true)
+	secondArticleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "renorm-2", true)
+
+	oldClusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(firstArticleID, oldClusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID first error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(secondArticleID, oldClusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID second error = %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(oldClusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error = %v", err)
+	}
+	if err := db.UpdateClusterMergedContent(oldClusterID, "old title", "old summary", "old content"); err != nil {
+		t.Fatalf("UpdateClusterMergedContent error = %v", err)
+	}
+
+	rawBlob := mustSerializeRawEmbeddingBlob(t, 2)
+	if _, err := db.Exec(
+		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+		firstArticleID, rawBlob, rawBlob,
+	); err != nil {
+		t.Fatalf("insert first embedding error = %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+		secondArticleID, rawBlob, rawBlob,
+	); err != nil {
+		t.Fatalf("insert second embedding error = %v", err)
+	}
+	if err := db.UpdateClusterEmbeddings(oldClusterID, mustUnitEmbeddingBlob(t), mustUnitEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateClusterEmbeddings error = %v", err)
+	}
+	if err := db.SaveDailyRecommendations(1, "2026-04-02", []models.DailyRecommendation{{
+		UserID:             1,
+		ClusterID:          oldClusterID,
+		RecommendationDate: "2026-04-02",
+		RecommendationRank: 1,
+	}}); err != nil {
+		t.Fatalf("SaveDailyRecommendations error = %v", err)
+	}
+	if err := db.UpdateUserInterestVector(1, mustUnitEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateUserInterestVector error = %v", err)
+	}
+	if err := db.SetAIArticleStageSkip(1, firstArticleID, "summary", "old skip"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip error = %v", err)
+	}
+
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+	manager.resolveFusionConfig = func(userID int64) (*dedup.FusionConfig, error) {
+		return &dedup.FusionConfig{}, nil
+	}
+	manager.runFusion = func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+		return nil
+	}
+	manager.runEmbedding = func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+		return nil
+	}
+
+	scheduled, reason, err := manager.StartClusterRenormalization(1)
+	if err != nil {
+		t.Fatalf("StartClusterRenormalization error = %v", err)
+	}
+	if !scheduled {
+		t.Fatalf("scheduled = false, want true (reason=%q)", reason)
+	}
+
+	waitForCondition(t, 12*time.Second, func() bool {
+		return !manager.isRenormalizationRunning(1)
+	})
+
+	var oldClusterCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM clusters WHERE id = ?`, oldClusterID).Scan(&oldClusterCount); err != nil {
+		t.Fatalf("old cluster count error = %v", err)
+	}
+	if oldClusterCount != 0 {
+		t.Fatalf("old cluster should be deleted, got %d rows", oldClusterCount)
+	}
+
+	var newClusteredArticles int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE id IN (?, ?) AND cluster_id IS NOT NULL`, firstArticleID, secondArticleID).Scan(&newClusteredArticles); err != nil {
+		t.Fatalf("clustered article count error = %v", err)
+	}
+	if newClusteredArticles != 2 {
+		t.Fatalf("clustered article count = %d, want 2", newClusteredArticles)
+	}
+
+	var skipCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ai_article_stage_skips WHERE user_id = ?`, 1).Scan(&skipCount); err != nil {
+		t.Fatalf("skip count error = %v", err)
+	}
+	if skipCount != 0 {
+		t.Fatalf("skipCount = %d, want 0", skipCount)
+	}
+
+	vecBlob, err := db.GetUserInterestVector(1)
+	if err != nil {
+		t.Fatalf("GetUserInterestVector error = %v", err)
+	}
+	if len(vecBlob) != 0 {
+		t.Fatal("interest vector should be cleared during renormalization")
+	}
+
+	var recommendationCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM daily_recommendations WHERE user_id = ?`, 1).Scan(&recommendationCount); err != nil {
+		t.Fatalf("recommendation count error = %v", err)
+	}
+	if recommendationCount != 0 {
+		t.Fatalf("recommendationCount = %d, want 0 after reset with no rebuilt recommendations", recommendationCount)
+	}
+
+	var normalizedBlob []byte
+	if err := db.QueryRow(`SELECT summary_embedding FROM article_embeddings WHERE article_id = ?`, firstArticleID).Scan(&normalizedBlob); err != nil {
+		t.Fatalf("query normalized summary embedding error = %v", err)
+	}
+	vec, err := interest.DeserializeVector(normalizedBlob)
+	if err != nil {
+		t.Fatalf("DeserializeVector error = %v", err)
+	}
+	if !interest.IsNormalized(vec, 1e-3) {
+		t.Fatal("summary embedding should be normalized after renormalization")
+	}
+}
+
+func waitForCondition(t *testing.T, timeout time.Duration, check func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if check() {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("condition not met before timeout")
+}
+
+func mustSerializeRawEmbeddingBlob(t *testing.T, leadingValue float32) []byte {
+	t.Helper()
+
+	vec := make([]float32, 1024)
+	vec[0] = leadingValue
+	blob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		t.Fatalf("SerializeFloat32 raw embedding error = %v", err)
+	}
+	return blob
+}

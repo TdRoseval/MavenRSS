@@ -120,6 +120,10 @@ func (m *AIEnhancedManager) scheduleDailyRecommendationsForAllUsers() {
 }
 
 func (m *AIEnhancedManager) tryScheduleDailyRecommendation(userID int64, now time.Time) {
+	if m.isRenormalizationRunning(userID) {
+		log.Printf("Skipping scheduled daily recommendations for user %d because cluster renormalization is running", userID)
+		return
+	}
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationAuto)
 	if err != nil {
 		log.Printf("embedding health gate failed for daily recommendation scheduler user %d: %v", userID, err)
@@ -211,6 +215,10 @@ func (m *AIEnhancedManager) requestMissingRecommendationBackfill(userID int64) {
 	if userID <= 0 {
 		return
 	}
+	if m.isRenormalizationRunning(userID) {
+		log.Printf("Skipping daily recommendation backfill for user %d because cluster renormalization is running", userID)
+		return
+	}
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationAuto)
 	if err != nil {
 		log.Printf("embedding health gate failed for daily recommendation backfill user %d: %v", userID, err)
@@ -278,6 +286,10 @@ func (m *AIEnhancedManager) QueueDailyRecommendations(userID int64, recommendati
 	if userID <= 0 {
 		return false, nil
 	}
+	if m.isRenormalizationRunning(userID) {
+		log.Printf("Skipping queued daily recommendations for user %d because cluster renormalization is running", userID)
+		return false, nil
+	}
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationQueue)
 	if err != nil {
 		return false, fmt.Errorf("embedding health gate: %w", err)
@@ -314,6 +326,10 @@ func (m *AIEnhancedManager) QueueDailyRecommendations(userID int64, recommendati
 func (m *AIEnhancedManager) ForceDailyRecommendations(userID int64, recommendationDate string, waitForIdle bool) (DailyRecommendationTaskStatus, error) {
 	if userID <= 0 {
 		return DailyRecommendationTaskStatus{}, nil
+	}
+	if m.isRenormalizationRunning(userID) {
+		log.Printf("Skipping forced daily recommendations for user %d because cluster renormalization is running", userID)
+		return m.GetDailyRecommendationTaskStatus(userID), nil
 	}
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeDailyRecommendationForce)
 	if err != nil {

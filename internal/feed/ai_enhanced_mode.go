@@ -28,16 +28,17 @@ import (
 
 // AIEnhancedTask represents a task for AI enhanced mode processing
 type AIEnhancedTask struct {
-	ArticleID         int64
-	UserID            int64
-	FeedID            int64
-	ArticleTitle      string
-	NeedsSummary      bool
-	NeedsTranslation  bool
-	TranslateArticles bool
-	NeedsEmbedding    bool
-	NeedsDedup        bool
-	NeedsClusterRun   bool
+	ArticleID                 int64
+	UserID                    int64
+	FeedID                    int64
+	ArticleTitle              string
+	NeedsSummary              bool
+	NeedsTranslation          bool
+	TranslateArticles         bool
+	NeedsEmbedding            bool
+	NeedsDedup                bool
+	NeedsClusterRun           bool
+	ForceTitleSummaryFallback bool
 }
 
 type AIProcessingFailure struct {
@@ -67,6 +68,7 @@ type AIEnhancedManager struct {
 	recentFailureByUser        map[int64]AIProcessingFailure
 	recoveryInProgress         map[int64]bool
 	lastRecoveryAttemptByUser  map[int64]time.Time
+	renormalizationRunning     map[int64]bool
 	clusterMu                  sync.Mutex
 	clusterPipelineRunning     map[int64]bool
 	clusterPipelineQueued      map[int64]bool
@@ -151,6 +153,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		recentFailureByUser:        make(map[int64]AIProcessingFailure),
 		recoveryInProgress:         make(map[int64]bool),
 		lastRecoveryAttemptByUser:  make(map[int64]time.Time),
+		renormalizationRunning:     make(map[int64]bool),
 		clusterPipelineRunning:     make(map[int64]bool),
 		clusterPipelineQueued:      make(map[int64]bool),
 		recommendationRunning:      make(map[int64]bool),
@@ -513,16 +516,19 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	// Check if AI usage limit is reached
 	if m.isAILimitReached(task.UserID) {
 		log.Printf("AI usage limit reached for user %d, skipping summary", task.UserID)
+		m.fallbackArticleSummaryToTitle(task, "ai usage limit reached")
 		return
 	}
 
 	config, err := getUserFeatureAIConfig(m.db, task.UserID, ai.FeatureSummary)
 	if err != nil {
 		log.Printf("Error resolving AI summary config for user %d: %v", task.UserID, err)
+		m.fallbackArticleSummaryToTitle(task, "summary config unavailable")
 		return
 	}
 	if !hasConfiguredAPIKey(config) {
 		log.Printf("No user-level AI summary config available for user %d, skipping summary", task.UserID)
+		m.fallbackArticleSummaryToTitle(task, "summary config missing api key")
 		return
 	}
 
@@ -553,9 +559,11 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	if err != nil {
 		m.recordTaskFailure(task.UserID, "summary", task, config.Model, config.Endpoint, err)
 		if m.skipArticleStageIfNonRecoverable(task, "summary", err) {
+			m.fallbackArticleSummaryToTitle(task, "non-recoverable summary failure")
 			return
 		}
 		log.Printf("Error generating AI summary for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
+		m.fallbackArticleSummaryToTitle(task, "summary generation failed")
 		return
 	}
 
@@ -587,6 +595,34 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	} else {
 		log.Printf("Successfully cached AI summary for article %d", task.ArticleID)
 	}
+}
+
+func (m *AIEnhancedManager) fallbackArticleSummaryToTitle(task *AIEnhancedTask, reason string) {
+	if task == nil || !task.ForceTitleSummaryFallback || task.ArticleID <= 0 {
+		return
+	}
+
+	title := strings.TrimSpace(task.ArticleTitle)
+	if title == "" {
+		article, err := m.db.GetArticleByID(task.ArticleID)
+		if err != nil {
+			log.Printf("Failed to load article title for summary fallback on article %d: %v", task.ArticleID, err)
+			return
+		}
+		if article != nil {
+			title = strings.TrimSpace(article.Title)
+		}
+	}
+	if title == "" {
+		return
+	}
+
+	if err := m.db.UpdateArticleSummary(task.ArticleID, title); err != nil {
+		log.Printf("Failed to fallback summary to title for article %d: %v", task.ArticleID, err)
+		return
+	}
+	task.NeedsSummary = false
+	log.Printf("Using article title as summary fallback for article %d (%s)", task.ArticleID, reason)
 }
 
 // generateAITranslation generates and saves AI translation for an article
@@ -812,6 +848,10 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 
 func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (int, error) {
 	log.Printf("Starting batch AI processing for user %d...", userID)
+	if m.isRenormalizationRunning(userID) {
+		log.Printf("Skipping batch AI processing for user %d because cluster renormalization is running", userID)
+		return 0, nil
+	}
 
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeBatchQueue)
 	if err != nil {
@@ -904,6 +944,10 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 // AddTask adds a task to the AI enhanced mode queue
 func (m *AIEnhancedManager) AddTask(task *AIEnhancedTask) {
 	if task == nil || task.UserID <= 0 {
+		return
+	}
+	if m.isRenormalizationRunning(task.UserID) {
+		log.Printf("Skipping AI enhanced task for article %d because cluster renormalization is running", task.ArticleID)
 		return
 	}
 
@@ -1335,6 +1379,9 @@ func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProc
 	if userID <= 0 || !status.IsEnabled || status.PendingArticles == 0 {
 		return
 	}
+	if m.isRenormalizationRunning(userID) {
+		return
+	}
 	if status.EmbeddingHealthBlocked {
 		return
 	}
@@ -1398,6 +1445,7 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 	status.PendingRecommendationDays = m.getPendingRecommendationDays(userID)
 
 	status.QueuedTasks, status.ActiveWorkerTasks, status.ActiveAsyncWork = m.getUserTaskCounts(userID)
+	isRenormalizing := m.isRenormalizationRunning(userID)
 
 	m.clusterMu.Lock()
 	status.IsClusterPipelineBusy = m.clusterPipelineRunning[userID]
@@ -1419,7 +1467,8 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 		status.QueuedTasks > 0 ||
 		status.ActiveWorkerTasks > 0 ||
 		status.ActiveAsyncWork > 0 ||
-		status.IsClusterPipelineBusy)
+		status.IsClusterPipelineBusy ||
+		isRenormalizing)
 
 	recentFailure := m.getRecentFailure(userID)
 	if !recentFailure.OccurredAt.IsZero() {

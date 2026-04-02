@@ -150,7 +150,7 @@ func (c *Client) RequestWithThinking(systemPrompt, userPrompt string) (ResponseR
 		SystemPrompt: systemPrompt,
 		UserPrompt:   userPrompt,
 		Temperature:  0.3,
-		MaxTokens:    2048,
+		MaxTokens:    8192,
 	}
 
 	return c.RequestWithConfig(config)
@@ -162,7 +162,7 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 		Model:       c.config.Model,
 		Messages:    messages,
 		Temperature: 0.3,
-		MaxTokens:   2048,
+		MaxTokens:   8192,
 	}
 
 	return c.RequestWithConfig(config)

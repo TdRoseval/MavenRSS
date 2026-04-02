@@ -174,3 +174,9 @@ type SystemMessageListResponse struct {
 type SystemMessageUnreadCountResponse struct {
 	UnreadCount int `json:"unread_count"`
 }
+
+type ClusterRenormalizeResponse struct {
+	Scheduled bool   `json:"scheduled"`
+	Reason    string `json:"reason,omitempty"`
+	Message   string `json:"message,omitempty"`
+}

@@ -157,6 +157,12 @@ export interface SystemMessageUnreadCountResponse {
   unread_count: number;
 }
 
+export interface ClusterRenormalizeResponse {
+  scheduled: boolean;
+  reason?: 'busy' | 'disabled';
+  message?: string;
+}
+
 export interface UserAIStats {
   ai_read_count: number;
   ai_total_read_time: number;

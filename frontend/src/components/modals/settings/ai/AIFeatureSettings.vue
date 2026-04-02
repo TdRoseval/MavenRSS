@@ -20,7 +20,8 @@ import {
 import AIProfileSelector from './AIProfileSelector.vue';
 import '@/components/settings/styles.css';
 import type { SettingsData } from '@/types/settings';
-import { authDelete } from '@/shared/lib/authFetch';
+import type { ClusterRenormalizeResponse } from '@/types/models';
+import { authDelete, authPost } from '@/shared/lib/authFetch';
 import { useAIProfiles } from '@/composables/ai/useAIProfiles';
 import { hasValidEmbeddingModelConfig } from '@/shared/lib/aiEnhancedMode';
 
@@ -45,6 +46,7 @@ function updateSetting(key: keyof SettingsData, value: any) {
 }
 
 const isDeleting = ref(false);
+const isReclusterNormalizing = ref(false);
 
 onMounted(() => {
   if (!hasProfiles.value) {
@@ -151,6 +153,36 @@ async function clearAllChatSessions() {
     window.showToast(t('setting.ai.clearAllChatsFailed'), 'error');
   } finally {
     isDeleting.value = false;
+  }
+}
+
+async function reclusterNormalizeArticles() {
+  const confirmed = await window.showConfirm({
+    title: t('setting.ai.reclusterNormalizeTitle'),
+    message: t('setting.ai.reclusterNormalizeConfirm'),
+    isDanger: true,
+  });
+  if (!confirmed) return;
+
+  isReclusterNormalizing.value = true;
+  try {
+    const data = await authPost<ClusterRenormalizeResponse>('/api/clusters/recluster-normalize');
+    if (data.scheduled) {
+      window.showToast(t('setting.ai.reclusterNormalizeStarted'), 'success');
+      return;
+    }
+
+    if (data.reason === 'busy') {
+      window.showToast(t('setting.ai.reclusterNormalizeBusy'), 'warning');
+      return;
+    }
+
+    window.showToast(t('setting.ai.reclusterNormalizeDisabled'), 'warning');
+  } catch (error) {
+    console.error('Failed to start article cluster renormalization:', error);
+    window.showToast(t('setting.ai.reclusterNormalizeFailed'), 'error');
+  } finally {
+    isReclusterNormalizing.value = false;
   }
 }
 </script>
@@ -299,6 +331,28 @@ async function clearAllChatSessions() {
       :disabled="!isAIEnhancedModeAvailable"
       @update:model-value="updateSetting('ai_enhanced_mode', $event)"
     />
+
+    <NestedSettingsContainer v-if="props.settings.ai_enhanced_mode">
+      <SubSettingItem
+        :icon="PhBroom"
+        :title="t('setting.ai.reclusterNormalizeTitle')"
+        :description="t('setting.ai.reclusterNormalizeDesc')"
+      >
+        <button
+          type="button"
+          :disabled="isReclusterNormalizing"
+          class="btn-secondary text-red-500 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 dark:border-red-400"
+          @click="reclusterNormalizeArticles"
+        >
+          <PhBroom :size="16" class="sm:w-5 sm:h-5" />
+          {{
+            isReclusterNormalizing
+              ? t('setting.ai.reclusterNormalizeStarting')
+              : t('setting.ai.reclusterNormalizeButton')
+          }}
+        </button>
+      </SubSettingItem>
+    </NestedSettingsContainer>
   </SettingGroup>
 </template>
 

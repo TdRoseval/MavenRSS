@@ -402,6 +402,36 @@ func HandleRefreshDailyRecommendations(h *core.Handler, w http.ResponseWriter, r
 	})
 }
 
+func HandleClusterRenormalization(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
+		http.Error(w, "AI enhanced mode unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	scheduled, reason, err := h.Fetcher.GetAIEnhancedManager().StartClusterRenormalization(userID)
+	if err != nil {
+		log.Printf("Error starting cluster renormalization: %v", err)
+		http.Error(w, "Failed to start cluster renormalization", http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, models.ClusterRenormalizeResponse{
+		Scheduled: scheduled,
+		Reason:    reason,
+	})
+}
+
 func HandleClusterClick(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

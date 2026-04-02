@@ -726,6 +726,17 @@ const zh: TranslationMessages = {
         '启用 AI 增强模式前，请先开启 AI 摘要（且提供商设为 AI）、翻译、AI 搜索、AI 聊天、AI 融合、AI 每日推荐，至少配置一个可用嵌入模型，并确保相关 AI 功能存在可用配置。',
       aiEnhancedModeRequiresFusionProfile: '请先为 AI 增强模式选择有效的融合配置',
       aiEnhancedModeRequiresRecommendationProfile: '请先为 AI 增强模式选择有效的推荐配置',
+      reclusterNormalizeTitle: '文章簇重整化',
+      reclusterNormalizeDesc:
+        '删除当前文章簇与 AI 每日推荐，清空文章 cluster_id 与用户兴趣向量，归一化历史文章 embedding，并基于现有文章重新建簇，不会删除文章本身。',
+      reclusterNormalizeButton: '文章簇重整化',
+      reclusterNormalizeStarting: '启动中...',
+      reclusterNormalizeConfirm:
+        '该操作会删除当前全部文章簇和 AI 每日推荐结果，清空文章 cluster_id 与用户兴趣向量，归一化历史文章 embedding，并基于现有文章重新建簇。已有文章、摘要和翻译会保留不删。确定继续吗？',
+      reclusterNormalizeStarted: '文章簇重整化任务已启动',
+      reclusterNormalizeBusy: '当前仍有 AI 后台任务在运行，请等待现有任务完成后再试。',
+      reclusterNormalizeDisabled: 'AI 增强模式当前不可用，无法启动文章簇重整化。',
+      reclusterNormalizeFailed: '启动文章簇重整化失败',
       processingLockedLabel: '处理中锁定',
       processingLockedTitle: 'AI 设置已暂时冻结',
       processingLockedDescription:

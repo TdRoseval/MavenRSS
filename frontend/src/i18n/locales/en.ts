@@ -744,6 +744,19 @@ const en: TranslationMessages = {
         'Select a valid fusion profile before enabling AI Enhanced Mode',
       aiEnhancedModeRequiresRecommendationProfile:
         'Select a valid recommendation profile before enabling AI Enhanced Mode',
+      reclusterNormalizeTitle: 'Article Cluster Renormalization',
+      reclusterNormalizeDesc:
+        'Delete existing clusters and daily recommendations, clear cluster links and the interest vector, normalize historical article embeddings, and rebuild clusters from current articles without deleting the articles themselves.',
+      reclusterNormalizeButton: 'Article Cluster Renormalization',
+      reclusterNormalizeStarting: 'Starting...',
+      reclusterNormalizeConfirm:
+        'This will delete all existing article clusters and AI daily recommendations, clear article cluster links and your interest vector, normalize historical article embeddings, and then rebuild clusters from the remaining articles. Existing articles, summaries, and translations will be kept. Do you want to continue?',
+      reclusterNormalizeStarted: 'Article cluster renormalization has started',
+      reclusterNormalizeBusy:
+        'AI background work is still running. Please wait for the current tasks to finish and try again.',
+      reclusterNormalizeDisabled:
+        'AI Enhanced Mode is not currently available, so article cluster renormalization cannot be started.',
+      reclusterNormalizeFailed: 'Failed to start article cluster renormalization',
       processingLockedLabel: 'Processing Lock',
       processingLockedTitle: 'AI settings are temporarily frozen',
       processingLockedDescription:
