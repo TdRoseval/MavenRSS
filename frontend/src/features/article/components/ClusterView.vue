@@ -28,6 +28,7 @@ const { startResizeArticleList } = useResizablePanels();
 const isMobile = ref(window.innerWidth < 768);
 const mobileView = ref<'list' | 'detail'>('list');
 const showRecentFailureModal = ref(false);
+const isForceRenormalizing = ref(false);
 const isDailyRecommendationMode = computed(
   () => articleStore.currentFilter === 'dailyRecommendations'
 );
@@ -141,6 +142,39 @@ function getRecommendationTaskDescription() {
 
 function openNotifications() {
   void systemMessageStore.openCenter();
+}
+
+async function forceReclusterNormalizeFromProcessingPanel() {
+  const confirmed = await window.showConfirm({
+    title: t('article.cluster.processingForceReclusterTitle'),
+    message: t('article.cluster.processingForceReclusterConfirm'),
+    isDanger: true,
+  });
+  if (!confirmed) {
+    return;
+  }
+
+  isForceRenormalizing.value = true;
+  try {
+    const result = await clusterStore.forceStartClusterRenormalization();
+    if (result.scheduled) {
+      window.showToast(t('setting.ai.reclusterNormalizeStarted'), 'success');
+      await loadClusterData();
+      return;
+    }
+
+    if (result.reason === 'busy') {
+      window.showToast(t('setting.ai.reclusterNormalizeBusy'), 'warning');
+      return;
+    }
+
+    window.showToast(t('setting.ai.reclusterNormalizeDisabled'), 'warning');
+  } catch (error) {
+    console.error('Failed to force-start cluster renormalization:', error);
+    window.showToast(t('setting.ai.reclusterNormalizeFailed'), 'error');
+  } finally {
+    isForceRenormalizing.value = false;
+  }
 }
 
 onMounted(() => {
@@ -407,6 +441,26 @@ watch(
           </h3>
           <p class="mt-2 text-sm leading-6 text-text-secondary">
             {{ t('article.cluster.processingDescription') }}
+          </p>
+          <div class="mt-4">
+            <button
+              type="button"
+              class="inline-flex items-center rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isForceRenormalizing || clusterStore.aiProcessingStatus?.is_renormalization_running"
+              @click="forceReclusterNormalizeFromProcessingPanel"
+            >
+              {{
+                isForceRenormalizing
+                  ? t('setting.ai.reclusterNormalizeStarting')
+                  : t('article.cluster.processingForceReclusterButton')
+              }}
+            </button>
+          </div>
+          <p
+            v-if="clusterStore.aiProcessingStatus?.is_renormalization_running"
+            class="mt-2 rounded-xl border border-border/70 bg-bg-primary px-3 py-2 text-xs leading-5 text-text-secondary"
+          >
+            {{ t('article.cluster.processingRenormalizationNotice') }}
           </p>
 
           <div class="mt-6">

@@ -760,7 +760,7 @@ func TestRunClusterPipelineOnceInitializesInterestVectorFromFavoriteClusters(t *
 	}
 }
 
-func TestGetProcessingStatusTriggersRecoveryWhenPendingButIdle(t *testing.T) {
+func TestGetProcessingStatusDoesNotTriggerRecoveryWhenPendingButIdle(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	mustEnableAIEnhancedProcessing(t, db, 1)
 
@@ -799,6 +799,47 @@ func TestGetProcessingStatusTriggersRecoveryWhenPendingButIdle(t *testing.T) {
 		t.Fatal("IsConfigFrozen = false, want true while pending work exists before recovery")
 	}
 
+	queued, _, _ := manager.getUserTaskCounts(1)
+	if queued != 0 || len(manager.taskChan) != 0 {
+		t.Fatalf("expected status read to stay side-effect free, queued=%d len(taskChan)=%d", queued, len(manager.taskChan))
+	}
+}
+
+func TestRecoverPendingWorkForKnownUsersQueuesRecoveryWhenPendingButIdle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-4*time.Hour),
+		"recoverable-pending-article",
+		false,
+	)
+
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		clusterFusionRunning:      make(map[int64]bool),
+		clusterEmbeddingRunning:   make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	manager.recoverPendingWorkForKnownUsers("test")
+
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		queued, _, _ := manager.getUserTaskCounts(1)
@@ -809,6 +850,82 @@ func TestGetProcessingStatusTriggersRecoveryWhenPendingButIdle(t *testing.T) {
 			t.Fatalf("expected recovery to queue AI work, queued=%d len(taskChan)=%d", queued, len(manager.taskChan))
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestRecoverPendingWorkForKnownUsersSchedulesClusterRecoveryWhenOnlyClusterWorkRemains(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-4*time.Hour),
+		"recoverable-pending-cluster",
+		true,
+	)
+	clusterID, err := db.CreateCluster(1, "pending_embed")
+	if err != nil {
+		t.Fatalf("CreateCluster error: %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error: %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error: %v", err)
+	}
+	if err := db.UpdateClusterMergedContent(clusterID, "merged title", "merged summary", "merged content"); err != nil {
+		t.Fatalf("UpdateClusterMergedContent error: %v", err)
+	}
+	if err := db.UpdateArticleEmbeddings(articleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings error: %v", err)
+	}
+
+	started := make(chan struct{}, 1)
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		clusterFusionRunning:      make(map[int64]bool),
+		clusterEmbeddingRunning:   make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+		resolveFusionConfig: func(userID int64) (*dedup.FusionConfig, error) {
+			return &dedup.FusionConfig{}, nil
+		},
+		runFusion: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+		runEmbedding: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			return nil
+		},
+	}
+
+	manager.recoverPendingWorkForKnownUsers("test")
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected recovery to schedule cluster pipeline when only cluster work remains")
+	}
+
+	if len(manager.taskChan) != 0 {
+		t.Fatalf("unexpected queued article tasks: got %d, want 0", len(manager.taskChan))
 	}
 }
 
@@ -905,6 +1022,12 @@ func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 	if status.PendingClusteringArticles != 1 {
 		t.Fatalf("PendingClusteringArticles = %d, want 1", status.PendingClusteringArticles)
 	}
+	if status.PendingMergeClusters != 1 {
+		t.Fatalf("PendingMergeClusters = %d, want 1", status.PendingMergeClusters)
+	}
+	if status.PendingEmbedClusters != 0 {
+		t.Fatalf("PendingEmbedClusters = %d, want 0", status.PendingEmbedClusters)
+	}
 	if status.PendingRecommendationDays != 1 {
 		t.Fatalf("PendingRecommendationDays = %d, want 1", status.PendingRecommendationDays)
 	}
@@ -915,6 +1038,84 @@ func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 			status.PendingArticles,
 		)
 	}
+}
+
+func TestGetProcessingStatusUsesFullArticleScopeDuringRenormalization(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		renormalizationRunning:    map[int64]bool{1: true},
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		clusterFusionRunning:      make(map[int64]bool),
+		clusterEmbeddingRunning:   make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	oldArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-10*24*time.Hour),
+		"old-renorm-article",
+		true,
+	)
+	if err := db.UpdateArticleEmbeddings(oldArticleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings old article error: %v", err)
+	}
+	recentArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-2*time.Hour),
+		"recent-renorm-article",
+		true,
+	)
+	_ = mustAttachCompleteCluster(t, db, 1, recentArticleID, "complete")
+
+	status := manager.GetProcessingStatus(1)
+
+	if !status.IsRenormalizationRunning {
+		t.Fatal("IsRenormalizationRunning = false, want true")
+	}
+	if status.EligibleArticles != 2 {
+		t.Fatalf("EligibleArticles = %d, want 2 during renormalization full-scope progress", status.EligibleArticles)
+	}
+	if status.PendingArticles != 1 {
+		t.Fatalf("PendingArticles = %d, want 1 for old article missing clustering state", status.PendingArticles)
+	}
+	if status.CompletedArticles != 1 {
+		t.Fatalf("CompletedArticles = %d, want 1", status.CompletedArticles)
+	}
+	if status.PendingClusteringArticles != 1 {
+		t.Fatalf("PendingClusteringArticles = %d, want 1", status.PendingClusteringArticles)
+	}
+	if status.RenormalizationTotalArticles != 2 {
+		t.Fatalf("RenormalizationTotalArticles = %d, want 2", status.RenormalizationTotalArticles)
+	}
+	if status.RenormalizationPendingArticles != 1 {
+		t.Fatalf("RenormalizationPendingArticles = %d, want 1", status.RenormalizationPendingArticles)
+	}
+	if status.RenormalizationCompletedArticles != 1 {
+		t.Fatalf("RenormalizationCompletedArticles = %d, want 1", status.RenormalizationCompletedArticles)
+	}
+
+	_ = oldArticleID
 }
 
 func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {

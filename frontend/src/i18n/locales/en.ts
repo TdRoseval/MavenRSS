@@ -134,6 +134,12 @@ const en: TranslationMessages = {
       processingTitle: 'Clusters are still being prepared',
       processingDescription:
         'Background AI jobs are still summarizing, clustering, and fusing articles. The cluster list will appear automatically when processing finishes.',
+      processingForceReclusterButton: 'Force Recluster Normalize',
+      processingForceReclusterTitle: 'Start cluster renormalization now?',
+      processingForceReclusterConfirm:
+        'This will interrupt the current cluster generation flow, stop daily recommendation generation for this round, and immediately switch to article cluster renormalization.',
+      processingRenormalizationNotice:
+        'Article cluster renormalization is running. The counts below cover all articles for the current user, not just the recent AI batch window.',
       processingProgress: 'Current progress',
       processingEligible: 'Eligible',
       processingCompleted: 'Completed',

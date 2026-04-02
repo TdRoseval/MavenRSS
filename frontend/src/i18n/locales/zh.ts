@@ -129,6 +129,12 @@ const zh: TranslationMessages = {
       processingLabel: 'AI 处理中',
       processingTitle: '文章簇仍在后台生成中',
       processingDescription: '后台 AI 正在继续完成摘要、聚类和融合。处理结束后，这里会自动切换为正常的文章簇列表。',
+      processingForceReclusterButton: '文章簇重整化',
+      processingForceReclusterTitle: '立即切换到文章簇重整化？',
+      processingForceReclusterConfirm:
+        '这会中止当前这一轮文章簇生成流程，并停止本轮 AI 每日推荐生成，然后立即切换到文章簇重整化任务。',
+      processingRenormalizationNotice:
+        '文章簇重整化正在运行中。下方统计按当前用户的全部文章计算，不再只看最近 AI 批处理窗口。',
       processingProgress: '当前进度',
       processingEligible: '纳入处理',
       processingCompleted: '已完成',

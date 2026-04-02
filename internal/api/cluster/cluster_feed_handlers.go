@@ -419,7 +419,22 @@ func HandleClusterRenormalization(h *core.Handler, w http.ResponseWriter, r *htt
 		return
 	}
 
-	scheduled, reason, err := h.Fetcher.GetAIEnhancedManager().StartClusterRenormalization(userID)
+	var req struct {
+		Force bool `json:"force"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	manager := h.Fetcher.GetAIEnhancedManager()
+	var (
+		scheduled bool
+		reason    string
+		err       error
+	)
+	if req.Force {
+		scheduled, reason, err = manager.ForceStartClusterRenormalization(userID)
+	} else {
+		scheduled, reason, err = manager.StartClusterRenormalization(userID)
+	}
 	if err != nil {
 		log.Printf("Error starting cluster renormalization: %v", err)
 		http.Error(w, "Failed to start cluster renormalization", http.StatusInternalServerError)

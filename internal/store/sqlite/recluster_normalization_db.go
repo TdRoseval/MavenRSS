@@ -199,7 +199,8 @@ func (db *DB) GetArticlesForAIReclusterNormalization(userID int64, targetLang st
 			article.Article.ClusterID = clusterID.Int64
 		}
 		article.HasCluster = false
-		article.ClusterComplete = false
+		article.ClusterNeedsPostProcess = false
+		article.ClusterNeedsEmbeddingRepair = false
 		articles = append(articles, article)
 	}
 

@@ -37,7 +37,7 @@ export interface Article {
 export interface Cluster {
   id: number;
   user_id: number;
-  status: string; // 'pending_merge' | 'pending_embed' | 'complete'
+  status: string; // 'pending_merge' | 'merging' | 'pending_embed' | 'complete'
   merged_title: string;
   display_title?: string;
   merged_summary: string;
@@ -104,6 +104,7 @@ export interface DailyRecommendationRefreshResponse {
 export interface AIProcessingStatus {
   is_enabled: boolean;
   has_interest_vector: boolean;
+  is_renormalization_running?: boolean;
   is_config_frozen: boolean;
   is_stale: boolean;
   is_freeze_suspended: boolean;
@@ -120,6 +121,14 @@ export interface AIProcessingStatus {
   active_worker_tasks: number;
   active_async_work: number;
   is_cluster_pipeline_busy: boolean;
+  is_cluster_fusion_running?: boolean;
+  is_cluster_embedding_running?: boolean;
+  pending_merge_clusters?: number;
+  pending_embed_clusters?: number;
+  cluster_phase?: string;
+  renormalization_total_articles?: number;
+  renormalization_pending_articles?: number;
+  renormalization_completed_articles?: number;
   last_progress_at?: string;
   stalled_for_seconds?: number;
   recent_failure_stage?: string;

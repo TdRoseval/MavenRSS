@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"MavenRSS/internal/ai"
@@ -354,6 +353,7 @@ func (m *AIEnhancedManager) ForceDailyRecommendations(userID int64, recommendati
 }
 
 func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommendationDate string, waitForIdle bool, force bool, trigger string) {
+	version := m.currentUserOperationVersion(userID)
 	m.recommendationMu.Lock()
 	defer m.recommendationMu.Unlock()
 
@@ -372,6 +372,12 @@ func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommen
 	if m.pendingRecommendationMode == nil {
 		m.pendingRecommendationMode = make(map[int64]string)
 	}
+	if m.pendingRecommendationVer == nil {
+		m.pendingRecommendationVer = make(map[int64]int64)
+	}
+	if m.recommendationRunningVer == nil {
+		m.recommendationRunningVer = make(map[int64]int64)
+	}
 	if m.recommendationStatusByUser == nil {
 		m.recommendationStatusByUser = make(map[int64]DailyRecommendationTaskStatus)
 	}
@@ -383,13 +389,15 @@ func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommen
 		if trigger != "" {
 			m.pendingRecommendationMode[userID] = trigger
 		}
+		m.pendingRecommendationVer[userID] = version
 		return
 	}
-	if waitForIdle && atomic.LoadInt64(&m.activeAsyncWork) > 0 {
+	if waitForIdle && m.hasUserRecommendationBlockingWork(userID) {
 		m.pendingRecommendationDate[userID] = recommendationDate
 		m.pendingRecommendationWait[userID] = true
 		m.pendingRecommendationForce[userID] = m.pendingRecommendationForce[userID] || force
 		m.pendingRecommendationMode[userID] = trigger
+		m.pendingRecommendationVer[userID] = version
 		m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
 			status.HasTask = true
 			status.RecommendationDate = recommendationDate
@@ -410,6 +418,7 @@ func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommen
 		return
 	}
 	m.recommendationRunning[userID] = true
+	m.recommendationRunningVer[userID] = version
 	m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
 		status.HasTask = true
 		status.RecommendationDate = recommendationDate
@@ -426,37 +435,42 @@ func (m *AIEnhancedManager) queueRecommendationGeneration(userID int64, recommen
 		status.LastErrorMessage = ""
 		status.LastErrorAt = ""
 	})
-	go m.runRecommendationLoop(userID, recommendationDate, force, trigger)
+	go m.runRecommendationLoop(userID, recommendationDate, force, trigger, version)
 }
 
 func (m *AIEnhancedManager) onAsyncWorkDrained() {
 	m.recommendationMu.Lock()
 	pending := make([]struct {
-		userID int64
-		date   string
-		force  bool
-		mode   string
+		userID  int64
+		date    string
+		force   bool
+		mode    string
+		version int64
 	}, 0)
 	for userID, recommendationDate := range m.pendingRecommendationDate {
-		if !m.pendingRecommendationWait[userID] || m.recommendationRunning[userID] {
+		if !m.pendingRecommendationWait[userID] || m.recommendationRunning[userID] || m.hasUserRecommendationBlockingWork(userID) {
 			continue
 		}
 		pending = append(pending, struct {
-			userID int64
-			date   string
-			force  bool
-			mode   string
+			userID  int64
+			date    string
+			force   bool
+			mode    string
+			version int64
 		}{
-			userID: userID,
-			date:   recommendationDate,
-			force:  m.pendingRecommendationForce[userID],
-			mode:   m.pendingRecommendationMode[userID],
+			userID:  userID,
+			date:    recommendationDate,
+			force:   m.pendingRecommendationForce[userID],
+			mode:    m.pendingRecommendationMode[userID],
+			version: m.pendingRecommendationVer[userID],
 		})
 		delete(m.pendingRecommendationDate, userID)
 		delete(m.pendingRecommendationWait, userID)
 		delete(m.pendingRecommendationForce, userID)
 		delete(m.pendingRecommendationMode, userID)
+		delete(m.pendingRecommendationVer, userID)
 		m.recommendationRunning[userID] = true
+		m.recommendationRunningVer[userID] = pending[len(pending)-1].version
 		m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
 			status.HasTask = true
 			status.RecommendationDate = recommendationDate
@@ -478,12 +492,20 @@ func (m *AIEnhancedManager) onAsyncWorkDrained() {
 	m.recommendationMu.Unlock()
 
 	for _, item := range pending {
-		go m.runRecommendationLoop(item.userID, item.date, item.force, item.mode)
+		go m.runRecommendationLoop(item.userID, item.date, item.force, item.mode, item.version)
 	}
 }
 
-func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDate string, force bool, trigger string) {
+func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDate string, force bool, trigger string, version int64) {
 	for {
+		if !m.isUserOperationCurrent(userID, version) {
+			m.recommendationMu.Lock()
+			delete(m.recommendationRunning, userID)
+			delete(m.recommendationRunningVer, userID)
+			delete(m.recommendationStatusByUser, userID)
+			m.recommendationMu.Unlock()
+			return
+		}
 		m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
 			status.HasTask = true
 			status.RecommendationDate = recommendationDate
@@ -503,7 +525,12 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 			status.LastErrorAt = ""
 		})
 
-		runErr := m.generateDailyRecommendations(userID, recommendationDate, force)
+		runErr := m.generateDailyRecommendations(userID, recommendationDate, force, version)
+		if runErr != nil {
+			if !m.isUserOperationCurrent(userID, version) {
+				runErr = nil
+			}
+		}
 		if runErr != nil {
 			m.recordTaskFailure(userID, "recommendation", nil, "", "", runErr)
 			log.Printf("generate daily recommendations for user %d on %s error: %v", userID, recommendationDate, runErr)
@@ -514,9 +541,14 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 		waitForIdle := m.pendingRecommendationWait[userID]
 		nextForce := m.pendingRecommendationForce[userID]
 		nextMode := m.pendingRecommendationMode[userID]
+		nextVersion := m.pendingRecommendationVer[userID]
 		if hasNext {
-			if waitForIdle && atomic.LoadInt64(&m.activeAsyncWork) > 0 {
+			if nextVersion == 0 {
+				nextVersion = m.currentUserOperationVersion(userID)
+			}
+			if waitForIdle && m.hasUserRecommendationBlockingWork(userID) {
 				m.recommendationRunning[userID] = false
+				delete(m.recommendationRunningVer, userID)
 				m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
 					status.HasTask = true
 					status.RecommendationDate = nextDate
@@ -543,13 +575,17 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 			delete(m.pendingRecommendationWait, userID)
 			delete(m.pendingRecommendationForce, userID)
 			delete(m.pendingRecommendationMode, userID)
+			delete(m.pendingRecommendationVer, userID)
 			recommendationDate = nextDate
 			force = nextForce
 			trigger = nextMode
+			version = nextVersion
+			m.recommendationRunningVer[userID] = version
 			m.recommendationMu.Unlock()
 			continue
 		}
 		delete(m.recommendationRunning, userID)
+		delete(m.recommendationRunningVer, userID)
 		if runErr != nil {
 			m.setRecommendationTaskStatusLocked(userID, func(status *DailyRecommendationTaskStatus) {
 				status.HasTask = false
@@ -569,7 +605,10 @@ func (m *AIEnhancedManager) runRecommendationLoop(userID int64, recommendationDa
 	}
 }
 
-func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommendationDate string, force bool) error {
+func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommendationDate string, force bool, version int64) error {
+	if !m.isUserOperationCurrent(userID, version) {
+		return nil
+	}
 	if !ShouldProcess(m.db, userID) {
 		return nil
 	}
@@ -617,6 +656,9 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 	if err != nil {
 		return err
 	}
+	if !m.isUserOperationCurrent(userID, version) {
+		return nil
+	}
 	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
 		status.Stage = recommendationStageRanking
 		status.ProgressPercent = 35
@@ -635,6 +677,9 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 	config, profileID, hasAIConfig, err := m.getRecommendationAIConfig(userID)
 	if err != nil {
 		return err
+	}
+	if !m.isUserOperationCurrent(userID, version) {
+		return nil
 	}
 
 	m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
@@ -670,6 +715,9 @@ func (m *AIEnhancedManager) generateDailyRecommendations(userID int64, recommend
 		status.SavedCount = len(recommendations)
 	})
 
+	if !m.isUserOperationCurrent(userID, version) {
+		return nil
+	}
 	return m.db.SaveDailyRecommendations(userID, recommendationDate, recommendations)
 }
 

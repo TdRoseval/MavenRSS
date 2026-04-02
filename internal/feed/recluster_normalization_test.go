@@ -34,6 +34,63 @@ func TestStartClusterRenormalizationReturnsBusyWhenUserHasQueuedWork(t *testing.
 	}
 }
 
+func TestInterruptUserWorkForRenormalizationPurgesQueuedTasksAndRecommendations(t *testing.T) {
+	manager := &AIEnhancedManager{
+		taskChan:                 make(chan *AIEnhancedTask, 8),
+		queuedTasksByUser:        make(map[int64]int),
+		activeWorkerTasksByUser:  make(map[int64]int64),
+		activeAsyncWorkByUser:    make(map[int64]int64),
+		userOperationVersion:     make(map[int64]int64),
+		clusterPipelineRunning:   make(map[int64]bool),
+		clusterPipelineQueued:    make(map[int64]bool),
+		clusterPipelineVersion:   make(map[int64]int64),
+		clusterPipelineQueuedVer: make(map[int64]int64),
+		clusterFusionRunning:     make(map[int64]bool),
+		clusterEmbeddingRunning:  make(map[int64]bool),
+		recommendationRunning:    make(map[int64]bool),
+		recommendationRunningVer: make(map[int64]int64),
+		recommendationStatusByUser: map[int64]DailyRecommendationTaskStatus{
+			1: {HasTask: true, Stage: "queued"},
+		},
+		pendingRecommendationDate:  map[int64]string{1: "2026-04-02"},
+		pendingRecommendationWait:  map[int64]bool{1: true},
+		pendingRecommendationForce: map[int64]bool{1: true},
+		pendingRecommendationMode:  map[int64]string{1: "manual"},
+		pendingRecommendationVer:   map[int64]int64{1: 3},
+	}
+	manager.taskChan <- &AIEnhancedTask{ArticleID: 1, UserID: 1}
+	manager.incrementQueuedTask(1)
+	manager.taskChan <- &AIEnhancedTask{ArticleID: 2, UserID: 2}
+	manager.incrementQueuedTask(2)
+
+	removed := manager.interruptUserWorkForRenormalization(1)
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1", removed)
+	}
+	if got, _, _ := manager.getUserTaskCounts(1); got != 0 {
+		t.Fatalf("queued count for user 1 = %d, want 0", got)
+	}
+	if got, _, _ := manager.getUserTaskCounts(2); got != 1 {
+		t.Fatalf("queued count for user 2 = %d, want 1", got)
+	}
+	if len(manager.taskChan) != 1 {
+		t.Fatalf("remaining queued tasks = %d, want 1", len(manager.taskChan))
+	}
+	remaining := <-manager.taskChan
+	if remaining == nil || remaining.UserID != 2 {
+		t.Fatalf("remaining task user = %v, want 2", remaining)
+	}
+	if manager.currentUserOperationVersion(1) != 1 {
+		t.Fatalf("operation version = %d, want 1", manager.currentUserOperationVersion(1))
+	}
+	if manager.pendingRecommendationDate[1] != "" {
+		t.Fatalf("pending recommendation date = %q, want empty", manager.pendingRecommendationDate[1])
+	}
+	if _, ok := manager.recommendationStatusByUser[1]; ok {
+		t.Fatal("recommendation status should be cleared for interrupted user")
+	}
+}
+
 func TestStartClusterRenormalizationResetsStateAndRequeuesArticles(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	mustEnableAIEnhancedProcessing(t, db, 1)
@@ -96,9 +153,33 @@ func TestStartClusterRenormalizationResetsStateAndRequeuesArticles(t *testing.T)
 		return &dedup.FusionConfig{}, nil
 	}
 	manager.runFusion = func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+		clusters, err := db.GetClustersByStatus(userID, "pending_merge")
+		if err != nil {
+			return err
+		}
+		for _, cluster := range clusters {
+			if err := db.UpdateClusterMergedContent(cluster.ID, "merged title", "merged summary", "merged content"); err != nil {
+				return err
+			}
+			if err := db.UpdateClusterStatus(cluster.ID, "pending_embed"); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	manager.runEmbedding = func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+		clusters, err := db.GetClustersByStatus(userID, "pending_embed")
+		if err != nil {
+			return err
+		}
+		for _, cluster := range clusters {
+			if err := db.UpdateClusterEmbeddings(cluster.ID, mustUnitEmbeddingBlob(t), mustUnitEmbeddingBlob(t)); err != nil {
+				return err
+			}
+			if err := db.UpdateClusterStatus(cluster.ID, "complete"); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 

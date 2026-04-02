@@ -15,6 +15,8 @@ const (
 	SimHashThreshold = 3
 	// SemanticDistanceThreshold is the maximum normalized squared L2 distance for article-level recall.
 	SemanticDistanceThreshold = 0.4
+	// SemanticSearchTopK limits ANN recall breadth before centroid reranking.
+	SemanticSearchTopK = 200
 )
 
 // ProcessArticle runs the cluster assignment pipeline for a single article.
@@ -69,6 +71,49 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 }
 
 func semanticSearch(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32) (int64, error) {
+	clusterIDs, err := semanticCandidateClusterIDs(db, articleID, userID, currentSummaryVec)
+	if err != nil {
+		log.Printf("Semantic ANN candidate recall failed for article %d, falling back to full scan: %v", articleID, err)
+		return semanticSearchFullScan(db, articleID, userID, currentSummaryVec)
+	}
+	if len(clusterIDs) == 0 {
+		return 0, nil
+	}
+
+	return selectBestClusterByCentroid(db, userID, clusterIDs, currentSummaryVec)
+}
+
+func semanticCandidateClusterIDs(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32) ([]int64, error) {
+	queryBlob, err := interest.SerializeVector(currentSummaryVec)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates, err := db.FindSemanticCandidates(userID, queryBlob, SemanticSearchTopK)
+	if err != nil {
+		return nil, err
+	}
+
+	clusterSet := make(map[int64]struct{})
+	for _, candidate := range candidates {
+		if candidate.ArticleID == articleID || candidate.ClusterID <= 0 {
+			continue
+		}
+		if candidate.Distance > SemanticDistanceThreshold {
+			continue
+		}
+		clusterSet[candidate.ClusterID] = struct{}{}
+	}
+
+	clusterIDs := make([]int64, 0, len(clusterSet))
+	for clusterID := range clusterSet {
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	sort.Slice(clusterIDs, func(i, j int) bool { return clusterIDs[i] < clusterIDs[j] })
+	return clusterIDs, nil
+}
+
+func semanticSearchFullScan(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32) (int64, error) {
 	candidates, err := db.ListClusteredArticleSummaryEmbeddings(userID)
 	if err != nil {
 		return 0, err
@@ -104,6 +149,10 @@ func semanticSearch(db *sqlite.DB, articleID, userID int64, currentSummaryVec []
 	}
 	sort.Slice(clusterIDs, func(i, j int) bool { return clusterIDs[i] < clusterIDs[j] })
 
+	return selectBestClusterByCentroid(db, userID, clusterIDs, currentSummaryVec)
+}
+
+func selectBestClusterByCentroid(db *sqlite.DB, userID int64, clusterIDs []int64, currentSummaryVec []float32) (int64, error) {
 	clusterEmbeddings, err := db.ListClusterSummaryEmbeddingsByClusterIDs(userID, clusterIDs)
 	if err != nil {
 		return 0, err

@@ -32,6 +32,7 @@ type AIEnhancedTask struct {
 	UserID                    int64
 	FeedID                    int64
 	ArticleTitle              string
+	OperationVersion          int64
 	NeedsSummary              bool
 	NeedsTranslation          bool
 	TranslateArticles         bool
@@ -63,22 +64,30 @@ type AIEnhancedManager struct {
 	queuedTasksByUser          map[int64]int
 	activeWorkerTasksByUser    map[int64]int64
 	activeAsyncWorkByUser      map[int64]int64
+	userOperationVersion       map[int64]int64
 	embeddingHealthByUser      map[int64]EmbeddingHealthStatus
 	embeddingHealthCheckedAt   map[int64]time.Time
 	recentFailureByUser        map[int64]AIProcessingFailure
 	recoveryInProgress         map[int64]bool
 	lastRecoveryAttemptByUser  map[int64]time.Time
 	renormalizationRunning     map[int64]bool
+	taskQueueMu                sync.Mutex
 	clusterMu                  sync.Mutex
 	clusterPipelineRunning     map[int64]bool
 	clusterPipelineQueued      map[int64]bool
+	clusterPipelineVersion     map[int64]int64
+	clusterPipelineQueuedVer   map[int64]int64
+	clusterFusionRunning       map[int64]bool
+	clusterEmbeddingRunning    map[int64]bool
 	recommendationMu           sync.Mutex
 	recommendationRunning      map[int64]bool
+	recommendationRunningVer   map[int64]int64
 	recommendationStatusByUser map[int64]DailyRecommendationTaskStatus
 	pendingRecommendationDate  map[int64]string
 	pendingRecommendationWait  map[int64]bool
 	pendingRecommendationForce map[int64]bool
 	pendingRecommendationMode  map[int64]string
+	pendingRecommendationVer   map[int64]int64
 	activeAsyncWork            int64
 	stopChan                   chan struct{}
 	resolveFusionConfig        func(userID int64) (*dedup.FusionConfig, error)
@@ -96,6 +105,7 @@ const (
 type AIProcessingStatus struct {
 	IsEnabled                        bool    `json:"is_enabled"`
 	HasInterestVector                bool    `json:"has_interest_vector"`
+	IsRenormalizationRunning         bool    `json:"is_renormalization_running"`
 	IsConfigFrozen                   bool    `json:"is_config_frozen"`
 	IsStale                          bool    `json:"is_stale"`
 	IsFreezeSuspended                bool    `json:"is_freeze_suspended"`
@@ -112,6 +122,14 @@ type AIProcessingStatus struct {
 	ActiveWorkerTasks                int64   `json:"active_worker_tasks"`
 	ActiveAsyncWork                  int64   `json:"active_async_work"`
 	IsClusterPipelineBusy            bool    `json:"is_cluster_pipeline_busy"`
+	IsClusterFusionRunning           bool    `json:"is_cluster_fusion_running"`
+	IsClusterEmbeddingRunning        bool    `json:"is_cluster_embedding_running"`
+	PendingMergeClusters             int     `json:"pending_merge_clusters"`
+	PendingEmbedClusters             int     `json:"pending_embed_clusters"`
+	ClusterPhase                     string  `json:"cluster_phase,omitempty"`
+	RenormalizationTotalArticles     int     `json:"renormalization_total_articles,omitempty"`
+	RenormalizationPendingArticles   int     `json:"renormalization_pending_articles,omitempty"`
+	RenormalizationCompletedArticles int     `json:"renormalization_completed_articles,omitempty"`
 	LastProgressAt                   string  `json:"last_progress_at,omitempty"`
 	StalledForSeconds                int64   `json:"stalled_for_seconds,omitempty"`
 	RecentFailureStage               string  `json:"recent_failure_stage,omitempty"`
@@ -148,6 +166,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		queuedTasksByUser:          make(map[int64]int),
 		activeWorkerTasksByUser:    make(map[int64]int64),
 		activeAsyncWorkByUser:      make(map[int64]int64),
+		userOperationVersion:       make(map[int64]int64),
 		embeddingHealthByUser:      make(map[int64]EmbeddingHealthStatus),
 		embeddingHealthCheckedAt:   make(map[int64]time.Time),
 		recentFailureByUser:        make(map[int64]AIProcessingFailure),
@@ -156,12 +175,18 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		renormalizationRunning:     make(map[int64]bool),
 		clusterPipelineRunning:     make(map[int64]bool),
 		clusterPipelineQueued:      make(map[int64]bool),
+		clusterPipelineVersion:     make(map[int64]int64),
+		clusterPipelineQueuedVer:   make(map[int64]int64),
+		clusterFusionRunning:       make(map[int64]bool),
+		clusterEmbeddingRunning:    make(map[int64]bool),
 		recommendationRunning:      make(map[int64]bool),
+		recommendationRunningVer:   make(map[int64]int64),
 		recommendationStatusByUser: make(map[int64]DailyRecommendationTaskStatus),
 		pendingRecommendationDate:  make(map[int64]string),
 		pendingRecommendationWait:  make(map[int64]bool),
 		pendingRecommendationForce: make(map[int64]bool),
 		pendingRecommendationMode:  make(map[int64]string),
+		pendingRecommendationVer:   make(map[int64]int64),
 		stopChan:                   make(chan struct{}),
 	}
 	manager.resolveFusionConfig = manager.buildFusionConfig
@@ -204,6 +229,11 @@ func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 	defer atomic.AddInt64(&m.activeWorkerTasks, -1)
 	defer m.decrementActiveWorkerTask(task.UserID)
 
+	if !m.isTaskOperationCurrent(task) {
+		log.Printf("Skipping stale AI enhanced task for article %d user %d", task.ArticleID, task.UserID)
+		return
+	}
+
 	log.Printf("AI enhanced worker %d processing article %d for user %d", workerID, task.ArticleID, task.UserID)
 
 	needsContent := task.NeedsSummary || (task.NeedsTranslation && task.TranslateArticles) || task.NeedsEmbedding
@@ -228,6 +258,11 @@ func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 		}
 	}
 
+	if !m.isTaskOperationCurrent(task) {
+		log.Printf("Stopping stale AI enhanced task for article %d user %d after content load", task.ArticleID, task.UserID)
+		return
+	}
+
 	if task.NeedsSummary {
 		m.generateAISummary(task, content)
 	}
@@ -239,6 +274,64 @@ func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 	if task.NeedsEmbedding || task.NeedsDedup || task.NeedsClusterRun {
 		m.advanceArticlePipelineAsync(task, content)
 	}
+}
+
+func (m *AIEnhancedManager) currentUserOperationVersion(userID int64) int64 {
+	if userID <= 0 {
+		return 0
+	}
+
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+
+	return m.userOperationVersion[userID]
+}
+
+func (m *AIEnhancedManager) nextUserOperationVersion(userID int64) int64 {
+	if userID <= 0 {
+		return 0
+	}
+
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+
+	if m.userOperationVersion == nil {
+		m.userOperationVersion = make(map[int64]int64)
+	}
+	next := m.userOperationVersion[userID] + 1
+	m.userOperationVersion[userID] = next
+	return next
+}
+
+func (m *AIEnhancedManager) stampTaskOperationVersion(task *AIEnhancedTask) int64 {
+	if task == nil || task.UserID <= 0 {
+		return 0
+	}
+	if task.OperationVersion == 0 {
+		task.OperationVersion = m.currentUserOperationVersion(task.UserID)
+	}
+	return task.OperationVersion
+}
+
+func (m *AIEnhancedManager) isUserOperationCurrent(userID, version int64) bool {
+	if userID <= 0 {
+		return false
+	}
+	if version == 0 {
+		return true
+	}
+	return m.currentUserOperationVersion(userID) == version
+}
+
+func (m *AIEnhancedManager) isTaskOperationCurrent(task *AIEnhancedTask) bool {
+	if task == nil {
+		return false
+	}
+	version := task.OperationVersion
+	if version == 0 {
+		version = m.stampTaskOperationVersion(task)
+	}
+	return m.isUserOperationCurrent(task.UserID, version)
 }
 
 func (m *AIEnhancedManager) ensureArticleContentFallbackFromTitle(task *AIEnhancedTask) (string, error) {
@@ -281,6 +374,7 @@ func (m *AIEnhancedManager) ensureArticleContentFallbackFromTitle(task *AIEnhanc
 func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, content string) {
 	atomic.AddInt64(&m.activeAsyncWork, 1)
 	m.incrementActiveAsyncWork(task.UserID)
+	version := m.stampTaskOperationVersion(task)
 	go func() {
 		defer func() {
 			m.decrementActiveAsyncWork(task.UserID)
@@ -289,10 +383,18 @@ func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, co
 			}
 		}()
 		time.Sleep(2 * time.Second)
+		if !m.isUserOperationCurrent(task.UserID, version) {
+			log.Printf("Skipping stale async article pipeline for article %d user %d", task.ArticleID, task.UserID)
+			return
+		}
 
 		article, err := m.db.GetArticleByID(task.ArticleID)
 		if err != nil || article == nil {
 			log.Printf("Failed to fetch article %d for AI enhanced pipeline: %v", task.ArticleID, err)
+			return
+		}
+		if !m.isUserOperationCurrent(task.UserID, version) {
+			log.Printf("Stopping stale async article pipeline for article %d user %d", task.ArticleID, task.UserID)
 			return
 		}
 
@@ -333,6 +435,10 @@ func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, co
 				}
 
 				if len(titleEmbBlob) > 0 || len(summaryEmbBlob) > 0 {
+					if !m.isUserOperationCurrent(task.UserID, version) {
+						log.Printf("Discarding stale embeddings for article %d user %d", task.ArticleID, task.UserID)
+						return
+					}
 					if err := m.db.UpdateArticleEmbeddings(task.ArticleID, titleEmbBlob, summaryEmbBlob); err != nil {
 						log.Printf("Failed to update article %d embeddings: %v", task.ArticleID, err)
 					} else {
@@ -344,51 +450,301 @@ func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, co
 
 		clusterScheduled := false
 		if task.NeedsDedup {
+			if !m.isUserOperationCurrent(task.UserID, version) {
+				log.Printf("Skipping stale dedup for article %d user %d", task.ArticleID, task.UserID)
+				return
+			}
 			if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
 				log.Printf("Dedup pipeline failed for article %d: %v", task.ArticleID, err)
 			} else {
 				log.Printf("Dedup pipeline completed for article %d", task.ArticleID)
-				m.scheduleClusterPipeline(task.UserID)
 				clusterScheduled = true
 			}
 		}
 
 		if task.NeedsClusterRun && !clusterScheduled {
+			if m.isUserOperationCurrent(task.UserID, version) {
+				m.scheduleClusterPipeline(task.UserID)
+			}
+			return
+		}
+
+		if clusterScheduled && m.isUserOperationCurrent(task.UserID, version) {
 			m.scheduleClusterPipeline(task.UserID)
 		}
 	}()
 }
 
 func (m *AIEnhancedManager) scheduleClusterPipeline(userID int64) {
+	m.scheduleClusterPipelineForVersion(userID, m.currentUserOperationVersion(userID))
+}
+
+func (m *AIEnhancedManager) scheduleClusterPipelineForVersion(userID, version int64) {
+	if userID <= 0 {
+		return
+	}
+
 	m.clusterMu.Lock()
+	if m.clusterPipelineRunning == nil {
+		m.clusterPipelineRunning = make(map[int64]bool)
+	}
+	if m.clusterPipelineQueued == nil {
+		m.clusterPipelineQueued = make(map[int64]bool)
+	}
+	if m.clusterPipelineVersion == nil {
+		m.clusterPipelineVersion = make(map[int64]int64)
+	}
+	if m.clusterPipelineQueuedVer == nil {
+		m.clusterPipelineQueuedVer = make(map[int64]int64)
+	}
 	if m.clusterPipelineRunning[userID] {
 		m.clusterPipelineQueued[userID] = true
+		if version > m.clusterPipelineQueuedVer[userID] {
+			m.clusterPipelineQueuedVer[userID] = version
+		}
 		m.clusterMu.Unlock()
 		return
 	}
 	m.clusterPipelineRunning[userID] = true
+	m.clusterPipelineVersion[userID] = version
 	m.clusterMu.Unlock()
 
-	go m.runClusterPipeline(userID)
+	go m.runClusterPipeline(userID, version)
 }
 
-func (m *AIEnhancedManager) runClusterPipeline(userID int64) {
+func (m *AIEnhancedManager) runClusterPipeline(userID, version int64) {
 	for {
-		if err := m.runClusterPipelineOnce(userID); err != nil {
-			m.recordTaskFailure(userID, "clustering", nil, "", "", err)
-			log.Printf("Cluster pipeline failed for user %d: %v", userID, err)
+		shouldRun := false
+		if m.isUserOperationCurrent(userID, version) {
+			var err error
+			shouldRun, err = m.waitForClusterPipelineBarrier(userID)
+			if err != nil {
+				m.recordTaskFailure(userID, "clustering", nil, "", "", err)
+				log.Printf("Cluster pipeline wait failed for user %d: %v", userID, err)
+				shouldRun = false
+			}
+		} else {
+			log.Printf("Stopping stale cluster pipeline for user %d", userID)
+		}
+
+		if shouldRun && m.isUserOperationCurrent(userID, version) {
+			if err := m.runClusterPipelineOnce(userID); err != nil {
+				m.recordTaskFailure(userID, "clustering", nil, "", "", err)
+				log.Printf("Cluster pipeline failed for user %d: %v", userID, err)
+			}
 		}
 
 		m.clusterMu.Lock()
+		nextVersion := m.clusterPipelineQueuedVer[userID]
 		if m.clusterPipelineQueued[userID] {
+			if nextVersion < version {
+				nextVersion = version
+			}
 			m.clusterPipelineQueued[userID] = false
+			delete(m.clusterPipelineQueuedVer, userID)
+			m.clusterPipelineVersion[userID] = nextVersion
 			m.clusterMu.Unlock()
+			version = nextVersion
 			continue
 		}
 		delete(m.clusterPipelineRunning, userID)
 		delete(m.clusterPipelineQueued, userID)
+		delete(m.clusterPipelineVersion, userID)
+		delete(m.clusterPipelineQueuedVer, userID)
+		delete(m.clusterFusionRunning, userID)
+		delete(m.clusterEmbeddingRunning, userID)
 		m.clusterMu.Unlock()
+		if m.db != nil {
+			if clusterProgress, err := m.db.GetClusterProcessingProgress(userID); err == nil &&
+				clusterProgress.PendingMergeClusters == 0 &&
+				clusterProgress.PendingEmbedClusters == 0 {
+				m.requestMissingRecommendationBackfill(userID)
+			}
+		}
+		m.onAsyncWorkDrained()
 		return
+	}
+}
+
+func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, error) {
+	if userID <= 0 {
+		return false, nil
+	}
+	if m.db == nil {
+		return true, nil
+	}
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		hasWork, barrierReached, err := m.clusterPipelineBarrierState(userID)
+		if err != nil {
+			return false, err
+		}
+		if !hasWork {
+			return false, nil
+		}
+		if barrierReached {
+			return true, nil
+		}
+
+		select {
+		case <-m.stopChan:
+			return false, fmt.Errorf("ai enhanced manager stopped")
+		case <-ticker.C:
+		}
+	}
+}
+
+func (m *AIEnhancedManager) clusterPipelineBarrierState(userID int64) (bool, bool, error) {
+	if userID <= 0 {
+		return false, false, nil
+	}
+	if m.db == nil {
+		return true, true, nil
+	}
+
+	clusterProgress, err := m.db.GetClusterProcessingProgress(userID)
+	if err != nil {
+		return false, false, fmt.Errorf("get cluster processing progress: %w", err)
+	}
+
+	hasPendingClusterWork := clusterProgress.PendingMergeClusters > 0 || clusterProgress.PendingEmbedClusters > 0
+	if !hasPendingClusterWork {
+		return false, false, nil
+	}
+
+	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
+	if targetLang == "" {
+		targetLang = "zh"
+	}
+	progress, err := m.db.GetAIProcessingProgress(userID, targetLang)
+	if err != nil {
+		return false, false, fmt.Errorf("get ai processing progress: %w", err)
+	}
+
+	queued, activeWorker, activeAsync := m.getUserTaskCounts(userID)
+	barrierReached := queued == 0 &&
+		activeWorker == 0 &&
+		activeAsync == 0 &&
+		progress.PendingSummaryArticles == 0 &&
+		progress.PendingTranslationArticles == 0 &&
+		progress.PendingEmbeddingArticles == 0 &&
+		progress.PendingClusteringArticles == 0
+
+	return true, barrierReached, nil
+}
+
+func (m *AIEnhancedManager) setClusterStageRunning(userID int64, stage string, running bool) {
+	if userID <= 0 {
+		return
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	if m.clusterFusionRunning == nil {
+		m.clusterFusionRunning = make(map[int64]bool)
+	}
+	if m.clusterEmbeddingRunning == nil {
+		m.clusterEmbeddingRunning = make(map[int64]bool)
+	}
+
+	switch stage {
+	case "fusion":
+		if running {
+			m.clusterFusionRunning[userID] = true
+			return
+		}
+		delete(m.clusterFusionRunning, userID)
+	case "embedding":
+		if running {
+			m.clusterEmbeddingRunning[userID] = true
+			return
+		}
+		delete(m.clusterEmbeddingRunning, userID)
+	}
+}
+
+func (m *AIEnhancedManager) getClusterStageState(userID int64) (bool, bool, bool, string) {
+	if userID <= 0 {
+		return false, false, false, ""
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	pipelineRunning := m.clusterPipelineRunning[userID] || m.clusterPipelineQueued[userID]
+	fusionRunning := m.clusterFusionRunning[userID]
+	embeddingRunning := m.clusterEmbeddingRunning[userID]
+
+	phase := ""
+	switch {
+	case fusionRunning:
+		phase = "fusion"
+	case embeddingRunning:
+		phase = "embedding"
+	case pipelineRunning:
+		phase = "waiting"
+	}
+
+	return pipelineRunning, fusionRunning, embeddingRunning, phase
+}
+
+func (m *AIEnhancedManager) hasUserRecommendationBlockingWork(userID int64) bool {
+	queued, activeWorker, activeAsync := m.getUserTaskCounts(userID)
+	if queued > 0 || activeWorker > 0 || activeAsync > 0 {
+		return true
+	}
+
+	m.clusterMu.Lock()
+	clusterBusy := m.clusterPipelineRunning[userID] ||
+		m.clusterPipelineQueued[userID] ||
+		m.clusterFusionRunning[userID] ||
+		m.clusterEmbeddingRunning[userID]
+	m.clusterMu.Unlock()
+	if clusterBusy {
+		return true
+	}
+
+	return m.userHasPendingClusterWork(userID)
+}
+
+func (m *AIEnhancedManager) userHasPendingClusterWork(userID int64) bool {
+	if userID <= 0 || m.db == nil {
+		return false
+	}
+
+	clusterProgress, err := m.db.GetClusterProcessingProgress(userID)
+	if err != nil {
+		return false
+	}
+	return clusterProgress.PendingMergeClusters > 0 || clusterProgress.PendingEmbedClusters > 0
+}
+
+func (m *AIEnhancedManager) determineClusterPhase(status *AIProcessingStatus) {
+	if status == nil {
+		return
+	}
+	if status.IsClusterFusionRunning {
+		status.ClusterPhase = "fusion"
+		return
+	}
+	if status.IsClusterEmbeddingRunning {
+		status.ClusterPhase = "embedding"
+		return
+	}
+	if status.PendingMergeClusters > 0 {
+		status.ClusterPhase = "pending_merge"
+		return
+	}
+	if status.PendingEmbedClusters > 0 {
+		status.ClusterPhase = "pending_embed"
+		return
+	}
+	if status.IsClusterPipelineBusy {
+		status.ClusterPhase = "waiting"
 	}
 }
 
@@ -416,12 +772,19 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
+	m.setClusterStageRunning(userID, "fusion", true)
 	if err := m.runFusion(ctx, m.db, userID, cfg); err != nil {
+		m.setClusterStageRunning(userID, "fusion", false)
 		return fmt.Errorf("run fusion: %w", err)
 	}
+	m.setClusterStageRunning(userID, "fusion", false)
+
+	m.setClusterStageRunning(userID, "embedding", true)
 	if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
+		m.setClusterStageRunning(userID, "embedding", false)
 		return fmt.Errorf("run embedding: %w", err)
 	}
+	m.setClusterStageRunning(userID, "embedding", false)
 	if m.db == nil {
 		return nil
 	}
@@ -513,6 +876,9 @@ func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig
 
 // generateAISummary generates and saves AI summary for an article
 func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content string) {
+	if !m.isTaskOperationCurrent(task) {
+		return
+	}
 	// Check if AI usage limit is reached
 	if m.isAILimitReached(task.UserID) {
 		log.Printf("AI usage limit reached for user %d, skipping summary", task.UserID)
@@ -589,6 +955,11 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	totalTokens := inputTokens + outputTokens
 	m.addAIUsage(task.UserID, totalTokens)
 
+	if !m.isTaskOperationCurrent(task) {
+		log.Printf("Discarding stale AI summary for article %d user %d", task.ArticleID, task.UserID)
+		return
+	}
+
 	// Cache the summary in the database
 	if err := m.db.UpdateArticleSummary(task.ArticleID, result.Summary); err != nil {
 		log.Printf("Failed to cache summary for article %d: %v", task.ArticleID, err)
@@ -627,6 +998,9 @@ func (m *AIEnhancedManager) fallbackArticleSummaryToTitle(task *AIEnhancedTask, 
 
 // generateAITranslation generates and saves AI translation for an article
 func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content string) {
+	if !m.isTaskOperationCurrent(task) {
+		return
+	}
 	// Check if AI usage limit is reached
 	if m.isAILimitReached(task.UserID) {
 		log.Printf("AI usage limit reached for user %d, skipping translation", task.UserID)
@@ -687,6 +1061,11 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	outputTokens := ai.EstimateTokens(translatedContent)
 	totalTokens := inputTokens + outputTokens
 	m.addAIUsage(task.UserID, totalTokens)
+
+	if !m.isTaskOperationCurrent(task) {
+		log.Printf("Discarding stale AI translation for article %d user %d", task.ArticleID, task.UserID)
+		return
+	}
 
 	// Cache the translation in the database
 	if err := m.db.SetArticleTranslatedContent(task.ArticleID, translatedContent, targetLang, "ai"); err != nil {
@@ -831,6 +1210,64 @@ func (m *AIEnhancedManager) addAIUsage(userID int64, tokens int64) {
 	}
 }
 
+func (m *AIEnhancedManager) tryEnqueueTask(task *AIEnhancedTask) bool {
+	if task == nil || task.UserID <= 0 {
+		return false
+	}
+
+	m.stampTaskOperationVersion(task)
+
+	m.taskQueueMu.Lock()
+	defer m.taskQueueMu.Unlock()
+
+	select {
+	case m.taskChan <- task:
+		m.incrementQueuedTask(task.UserID)
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *AIEnhancedManager) purgeQueuedTasksForUser(userID int64) int {
+	if userID <= 0 {
+		return 0
+	}
+
+	m.taskQueueMu.Lock()
+	defer m.taskQueueMu.Unlock()
+
+	buffered := len(m.taskChan)
+	if buffered == 0 {
+		return 0
+	}
+
+	kept := make([]*AIEnhancedTask, 0, buffered)
+	removed := 0
+	for i := 0; i < buffered; i++ {
+		select {
+		case task := <-m.taskChan:
+			if task == nil {
+				continue
+			}
+			if task.UserID == userID {
+				m.decrementQueuedTask(userID)
+				removed++
+				continue
+			}
+			kept = append(kept, task)
+		default:
+			i = buffered
+		}
+	}
+
+	for _, task := range kept {
+		m.taskChan <- task
+	}
+
+	return removed
+}
+
 // BatchProcessExistingArticles scans existing articles for a user and queues them for AI processing.
 // This is triggered when AI Enhanced Mode is first activated.
 // It processes: all favorited articles + unfavorited articles from the last 2 days.
@@ -877,8 +1314,18 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 	if err != nil {
 		return 0, err
 	}
+	clusterProgress, err := m.db.GetClusterProcessingProgress(userID)
+	if err != nil {
+		return 0, err
+	}
+	hasPendingClusterWork := clusterProgress.PendingMergeClusters > 0 || clusterProgress.PendingEmbedClusters > 0
 
 	if len(articles) == 0 {
+		if hasPendingClusterWork {
+			log.Printf("No article-stage work for user %d, scheduling pending cluster post-processing", userID)
+			m.scheduleClusterPipeline(userID)
+			return 0, nil
+		}
 		log.Printf("No articles to batch process for user %d", userID)
 		return 0, nil
 	}
@@ -892,12 +1339,20 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 		needsTranslation := article.TranslateArticles && !article.HasTranslation
 		needsEmbedding := !article.HasArticleEmbedding
 		needsDedup := !article.HasCluster
-		needsClusterRun := article.HasCluster && !article.ClusterComplete
+		needsClusterRun := article.HasCluster && article.ClusterNeedsPostProcess
+
+		if article.ClusterNeedsEmbeddingRepair && article.Article.ClusterID > 0 {
+			if err := m.db.UpdateClusterStatus(article.Article.ClusterID, "pending_embed"); err != nil {
+				log.Printf("Failed to mark cluster %d for embedding repair: %v", article.Article.ClusterID, err)
+			} else {
+				needsClusterRun = true
+			}
+		}
 
 		if !needsSummary && !needsTranslation && !needsEmbedding && !needsDedup {
 			if needsClusterRun {
 				clusterRunNeeded = true
-			} else if article.Article.IsFavorite && article.HasCluster && article.ClusterComplete && article.Article.ClusterID > 0 {
+			} else if article.Article.IsFavorite && article.HasCluster && article.Article.ClusterID > 0 {
 				if err := m.db.SetClusterFavorite(article.Article.ClusterID, true); err != nil {
 					log.Printf(
 						"Failed to resync favorite cluster %d from completed favorite article %d: %v",
@@ -923,20 +1378,18 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 			NeedsClusterRun:   needsClusterRun,
 		}
 
-		select {
-		case m.taskChan <- task:
-			m.incrementQueuedTask(userID)
-			queued++
-		default:
+		if !m.tryEnqueueTask(task) {
 			log.Printf("AI enhanced task queue full during batch processing, queued %d/%d articles", queued, len(articles))
 			return queued, nil
 		}
+		queued++
 	}
 
 	if clusterRunNeeded {
 		m.scheduleClusterPipeline(userID)
+	} else if hasPendingClusterWork {
+		m.scheduleClusterPipeline(userID)
 	}
-	m.requestMissingRecommendationBackfill(userID)
 
 	return queued, nil
 }
@@ -968,12 +1421,16 @@ func (m *AIEnhancedManager) AddTask(task *AIEnhancedTask) {
 	}
 
 	select {
-	case m.taskChan <- task:
-		m.incrementQueuedTask(task.UserID)
-		log.Printf("Added AI enhanced task for article %d", task.ArticleID)
+	case <-m.stopChan:
+		return
 	default:
-		log.Printf("AI enhanced task queue full, dropped task for article %d", task.ArticleID)
 	}
+
+	if m.tryEnqueueTask(task) {
+		log.Printf("Added AI enhanced task for article %d", task.ArticleID)
+		return
+	}
+	log.Printf("AI enhanced task queue full, dropped task for article %d", task.ArticleID)
 }
 
 // Stop stops the AI enhanced mode manager and cleans up resources
@@ -1157,7 +1614,8 @@ func (m *AIEnhancedManager) recoverPendingWorkForKnownUsers(reason string) {
 			continue
 		}
 
-		_ = m.GetProcessingStatus(userID)
+		status := m.GetProcessingStatus(userID)
+		m.recoverPendingWorkIfIdle(userID, status, reason)
 	}
 }
 
@@ -1376,7 +1834,8 @@ func (m *AIEnhancedManager) finishRecoveryAttempt(userID int64) {
 }
 
 func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProcessingStatus, reason string) {
-	if userID <= 0 || !status.IsEnabled || status.PendingArticles == 0 {
+	hasPendingClusterWork := status.PendingMergeClusters > 0 || status.PendingEmbedClusters > 0
+	if userID <= 0 || !status.IsEnabled || (status.PendingArticles == 0 && !hasPendingClusterWork) {
 		return
 	}
 	if m.isRenormalizationRunning(userID) {
@@ -1385,7 +1844,8 @@ func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProc
 	if status.EmbeddingHealthBlocked {
 		return
 	}
-	if status.QueuedTasks > 0 || status.ActiveWorkerTasks > 0 || status.ActiveAsyncWork > 0 || status.IsClusterPipelineBusy {
+	pipelineRunning, _, _, _ := m.getClusterStageState(userID)
+	if status.QueuedTasks > 0 || status.ActiveWorkerTasks > 0 || status.ActiveAsyncWork > 0 || pipelineRunning {
 		return
 	}
 	if !ShouldProcess(m.db, userID) {
@@ -1430,7 +1890,16 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 	}
 
 	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
-	progress, err := m.db.GetAIProcessingProgress(userID, targetLang)
+	isRenormalizing := m.isRenormalizationRunning(userID)
+	status.IsRenormalizationRunning = isRenormalizing
+
+	var progress sqlite.AIProcessingProgress
+	var err error
+	if isRenormalizing {
+		progress, err = m.db.GetAIReclusterNormalizationProgress(userID, targetLang)
+	} else {
+		progress, err = m.db.GetAIProcessingProgress(userID, targetLang)
+	}
 	if err != nil {
 		log.Printf("failed to get AI processing progress for user %d: %v", userID, err)
 	} else {
@@ -1441,15 +1910,30 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 		status.PendingTranslationArticles = progress.PendingTranslationArticles
 		status.PendingEmbeddingArticles = progress.PendingEmbeddingArticles
 		status.PendingClusteringArticles = progress.PendingClusteringArticles
+		if isRenormalizing {
+			status.RenormalizationTotalArticles = progress.EligibleArticles
+			status.RenormalizationPendingArticles = progress.PendingArticles
+			status.RenormalizationCompletedArticles = progress.CompletedArticles
+		}
+	}
+	clusterProgress, err := m.db.GetClusterProcessingProgress(userID)
+	if err != nil {
+		log.Printf("failed to get cluster processing progress for user %d: %v", userID, err)
+	} else {
+		status.PendingMergeClusters = clusterProgress.PendingMergeClusters
+		status.PendingEmbedClusters = clusterProgress.PendingEmbedClusters
 	}
 	status.PendingRecommendationDays = m.getPendingRecommendationDays(userID)
 
 	status.QueuedTasks, status.ActiveWorkerTasks, status.ActiveAsyncWork = m.getUserTaskCounts(userID)
-	isRenormalizing := m.isRenormalizationRunning(userID)
 
-	m.clusterMu.Lock()
-	status.IsClusterPipelineBusy = m.clusterPipelineRunning[userID]
-	m.clusterMu.Unlock()
+	pipelineBusy, fusionRunning, embeddingRunning, phase := m.getClusterStageState(userID)
+	status.IsClusterPipelineBusy = pipelineBusy || status.PendingMergeClusters > 0 || status.PendingEmbedClusters > 0
+	status.IsClusterFusionRunning = fusionRunning
+	status.IsClusterEmbeddingRunning = embeddingRunning
+	if phase != "" {
+		status.ClusterPhase = phase
+	}
 
 	if status.EligibleArticles > 0 {
 		status.ProgressPercent = (float64(status.CompletedArticles) / float64(status.EligibleArticles)) * 100
@@ -1459,7 +1943,10 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 		if status.ProgressPercent > 100 {
 			status.ProgressPercent = 100
 		}
-	} else if status.PendingArticles == 0 {
+		if status.ProgressPercent == 100 && (status.PendingMergeClusters > 0 || status.PendingEmbedClusters > 0) {
+			status.ProgressPercent = 99
+		}
+	} else if status.PendingArticles == 0 && status.PendingMergeClusters == 0 && status.PendingEmbedClusters == 0 {
 		status.ProgressPercent = 100
 	}
 
@@ -1467,6 +1954,8 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 		status.QueuedTasks > 0 ||
 		status.ActiveWorkerTasks > 0 ||
 		status.ActiveAsyncWork > 0 ||
+		status.PendingMergeClusters > 0 ||
+		status.PendingEmbedClusters > 0 ||
 		status.IsClusterPipelineBusy ||
 		isRenormalizing)
 
@@ -1482,8 +1971,8 @@ func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus
 		status.RecentFailureCount = recentFailure.Count
 	}
 
+	m.determineClusterPhase(&status)
 	m.updateFreezeSuspensionState(userID, &status)
-	m.recoverPendingWorkIfIdle(userID, status, "status_poll")
 
 	return status
 }
@@ -1519,6 +2008,8 @@ func (m *AIEnhancedManager) buildProcessingSnapshot(status AIProcessingStatus) s
 		strconv.Itoa(status.PendingTranslationArticles),
 		strconv.Itoa(status.PendingEmbeddingArticles),
 		strconv.Itoa(status.PendingClusteringArticles),
+		strconv.Itoa(status.PendingMergeClusters),
+		strconv.Itoa(status.PendingEmbedClusters),
 		strconv.Itoa(status.PendingRecommendationDays),
 	}
 	return strings.Join(parts, "|")
@@ -1529,7 +2020,7 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 		return
 	}
 
-	if status.PendingArticles == 0 {
+	if status.PendingArticles == 0 && status.PendingMergeClusters == 0 && status.PendingEmbedClusters == 0 {
 		_ = m.db.SetSettingForUser(userID, aiProcessingSnapshotSettingKey, "")
 		_ = m.db.SetSettingForUser(userID, aiProcessingLastProgressAtSettingKey, "")
 		_ = m.db.SetSettingForUser(userID, aiProcessingFreezeSuspendedSettingKey, "false")

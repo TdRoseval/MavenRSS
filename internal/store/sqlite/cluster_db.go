@@ -80,12 +80,23 @@ func (db *DB) UpdateClusterArticleCount(clusterID int64) error {
 // GetClustersByStatus retrieves clusters by status for a user.
 func (db *DB) GetClustersByStatus(userID int64, status string) ([]models.Cluster, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
+	query := `
 		SELECT id, user_id, status, merged_title, merged_summary,
 recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
 article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
 FROM clusters WHERE user_id = ? AND status = ?
-	`, userID, status)
+	`
+	args := []any{userID, status}
+	if status == "pending_merge" {
+		query = `
+		SELECT id, user_id, status, merged_title, merged_summary,
+recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
+article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+FROM clusters WHERE user_id = ? AND status IN ('pending_merge', 'merging')
+	`
+		args = []any{userID}
+	}
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
