@@ -361,7 +361,7 @@ watch(
       </div>
     </template>
 
-    <template v-else-if="clusterStore.shouldBlockClusterView">
+    <template v-else-if="!isDailyRecommendationMode && clusterStore.shouldBlockClusterView">
       <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
         <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">
           <div class="text-sm font-medium uppercase tracking-[0.18em] text-text-tertiary">
