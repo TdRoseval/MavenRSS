@@ -53,6 +53,9 @@ func (db *DB) ResetAIClustersForRenormalization(userID int64) error {
 	if _, err := tx.Exec(`DELETE FROM ai_article_stage_skips WHERE user_id = ?`, userID); err != nil {
 		return fmt.Errorf("delete article stage skips: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM ai_article_stage_timeout_failures WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("delete article stage timeout failures: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit reset renormalization transaction: %w", err)

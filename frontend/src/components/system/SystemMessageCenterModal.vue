@@ -45,6 +45,7 @@ async function handleMarkAllRead(): Promise<void> {
   <BaseModal
     :title="t('notifications.title')"
     size="3xl"
+    :z-index="90"
     max-height="85vh"
     body-class="p-0"
     @close="emit('close')"

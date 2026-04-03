@@ -14,7 +14,10 @@ import AdminUserManagement from './components/auth/AdminUserManagement.vue';
 import { useNotifications } from './composables/ui/useNotifications';
 import { useKeyboardShortcuts } from './composables/ui/useKeyboardShortcuts';
 import { useContextMenu } from './composables/ui/useContextMenu';
-import { useResizablePanels } from './composables/ui/useResizablePanels';
+import {
+  getDefaultArticleListWidth,
+  useResizablePanels,
+} from './composables/ui/useResizablePanels';
 import { useWindowState } from './composables/core/useWindowState';
 import { useAppUpdates } from './composables/core/useAppUpdates';
 import { apiClient } from '@/shared/lib/apiClient';
@@ -178,7 +181,7 @@ function handleLayoutModeChanged(e: Event): void {
   setCompactMode(isCompactModeLayout);
   setSidebarWidth(234);
   if (!isCardMode.value) {
-    setArticleListWidth(isCompactModeLayout ? 408 : 312);
+    setArticleListWidth(getDefaultArticleListWidth(isCompactModeLayout));
   }
 }
 
@@ -260,7 +263,7 @@ async function loadInitialSettings() {
     isCardMode.value = layoutMode === 'card';
     setCompactMode(isCompactModeLayout);
     setSidebarWidth(234);
-    setArticleListWidth(isCompactModeLayout ? 408 : 312);
+    setArticleListWidth(getDefaultArticleListWidth(isCompactModeLayout));
     articleStore.setAIEnhancedMode(isAIEnhancedModeEffectivelyEnabled(data));
 
     window.dispatchEvent(new CustomEvent('settings-loaded'));

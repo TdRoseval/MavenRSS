@@ -3,6 +3,7 @@ package feed
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -1671,6 +1672,121 @@ func TestGetProcessingStatusTreatsSkippedStagesAsCompleted(t *testing.T) {
 	}
 	if status.CompletedArticles != 1 {
 		t.Fatalf("CompletedArticles = %d, want 1", status.CompletedArticles)
+	}
+}
+
+func TestRetryableTranslationTimeoutsEventuallySkipAndFallback(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-1*time.Hour), "timeout-translation", true)
+	if err := db.UpdateArticleEmbeddings(articleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings error: %v", err)
+	}
+
+	task := &AIEnhancedTask{
+		ArticleID:         articleID,
+		UserID:            1,
+		FeedID:            feedID,
+		ArticleTitle:      "timeout-translation",
+		NeedsTranslation:  true,
+		TranslateArticles: true,
+	}
+	timeoutErr := fmt.Errorf("AI request total timeout exceeded after 2m0s: context deadline exceeded")
+
+	for i := 0; i < articleStageTimeoutRetryLimit-1; i++ {
+		if manager.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", "fallback body", timeoutErr) {
+			t.Fatalf("timeout attempt %d exhausted too early", i+1)
+		}
+	}
+	if !manager.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", "fallback body", timeoutErr) {
+		t.Fatal("expected translation timeout budget to exhaust on final attempt")
+	}
+
+	reason, found, err := db.GetAIArticleStageSkipReason(articleID, "translation")
+	if err != nil {
+		t.Fatalf("GetAIArticleStageSkipReason error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected translation skip marker after timeout exhaustion")
+	}
+	if !strings.Contains(reason, "retry budget exhausted") {
+		t.Fatalf("translation skip reason = %q, want retry budget message", reason)
+	}
+
+	translated, provider, found, err := db.GetArticleTranslatedContent(articleID, "zh")
+	if err != nil {
+		t.Fatalf("GetArticleTranslatedContent error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected fallback translated content after timeout exhaustion")
+	}
+	if translated != "fallback body" {
+		t.Fatalf("translated content = %q, want fallback body", translated)
+	}
+	if provider != "source_fallback" {
+		t.Fatalf("provider = %q, want source_fallback", provider)
+	}
+
+	if _, found, err := db.GetAIArticleStageTimeoutFailure(articleID, "translation"); err != nil {
+		t.Fatalf("GetAIArticleStageTimeoutFailure error: %v", err)
+	} else if found {
+		t.Fatal("timeout failure state should be cleared after final translation skip")
+	}
+}
+
+func TestRetryableSummaryTimeoutsEventuallySkipAndFallbackToTitle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-1*time.Hour), "timeout-summary", false)
+
+	task := &AIEnhancedTask{
+		ArticleID:    articleID,
+		UserID:       1,
+		FeedID:       feedID,
+		ArticleTitle: "timeout-summary",
+		NeedsSummary: true,
+	}
+	timeoutErr := fmt.Errorf("AI request total timeout exceeded after 2m0s: context deadline exceeded")
+
+	for i := 0; i < articleStageTimeoutRetryLimit-1; i++ {
+		if manager.skipArticleStageAfterRetryableTimeoutBudget(task, "summary", "ignored", timeoutErr) {
+			t.Fatalf("timeout attempt %d exhausted too early", i+1)
+		}
+	}
+	if !manager.skipArticleStageAfterRetryableTimeoutBudget(task, "summary", "ignored", timeoutErr) {
+		t.Fatal("expected summary timeout budget to exhaust on final attempt")
+	}
+
+	article, err := db.GetArticleByID(articleID)
+	if err != nil {
+		t.Fatalf("GetArticleByID error: %v", err)
+	}
+	if article == nil {
+		t.Fatal("GetArticleByID returned nil article")
+	}
+	if article.Summary != "timeout-summary" {
+		t.Fatalf("summary = %q, want title fallback", article.Summary)
+	}
+
+	reason, found, err := db.GetAIArticleStageSkipReason(articleID, "summary")
+	if err != nil {
+		t.Fatalf("GetAIArticleStageSkipReason error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected summary skip marker after timeout exhaustion")
+	}
+	if !strings.Contains(reason, "retry budget exhausted") {
+		t.Fatalf("summary skip reason = %q, want retry budget message", reason)
 	}
 }
 

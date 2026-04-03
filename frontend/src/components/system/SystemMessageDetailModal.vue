@@ -35,6 +35,7 @@ function formatDate(value?: string): string {
   <BaseModal
     :title="systemMessageStore.activeMessage?.title || t('notifications.details')"
     size="2xl"
+    :z-index="100"
     max-height="80vh"
     @close="emit('close')"
   >

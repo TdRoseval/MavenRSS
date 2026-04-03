@@ -168,6 +168,20 @@ func initSchema(db *sql.DB) error {
 		UNIQUE(article_id, stage)
 	);
 
+	CREATE TABLE IF NOT EXISTS ai_article_stage_timeout_failures (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		article_id INTEGER NOT NULL,
+		stage TEXT NOT NULL,
+		timeout_count INTEGER NOT NULL DEFAULT 0,
+		last_reason TEXT DEFAULT '',
+		first_failed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_failed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE,
+		UNIQUE(article_id, stage)
+	);
+
 	CREATE TABLE IF NOT EXISTS system_messages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER NOT NULL,
@@ -336,6 +350,8 @@ CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(sou
 CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id);
 CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage);
 CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_article_stage ON ai_article_stage_skips(article_id, stage);
+CREATE INDEX IF NOT EXISTS idx_ai_article_stage_timeout_failures_user_stage ON ai_article_stage_timeout_failures(user_id, stage);
+CREATE INDEX IF NOT EXISTS idx_ai_article_stage_timeout_failures_article_stage ON ai_article_stage_timeout_failures(article_id, stage);
 CREATE INDEX IF NOT EXISTS idx_system_messages_user_updated ON system_messages(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_system_messages_user_unread ON system_messages(user_id, is_read, updated_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_system_messages_user_kind ON system_messages(user_id, kind);

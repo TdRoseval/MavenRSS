@@ -30,77 +30,92 @@ AI 增强模式会把 MavenRSS 从“订阅阅读器”升级成“AI 阅读助�
 
 ```mermaid
 flowchart TD
-    subgraph "数据获取层"
-        A["新文章抓取"] --> B["缓存文章内容"]
-        B --> C["应用规则过滤"]
+    subgraph "入队与总开关"
+        A["新文章抓取<br/>或 AI 模式批量扫描"] --> B["构建 AIEnhancedTask<br/>摘要 / 翻译 / embedding / 聚类标记"]
+        B --> C{"ShouldProcess 是否成立?<br/>用户级 AI 配置与功能开关"}
+        C -->|否| D["跳过 AI 增强队列"]
+        C -->|是| E{"正在重建聚类<br/>或摘要向量健康检查失败?"}
+        E -->|是| F["阻止入队并写入系统消息"]
+        E -->|否| G["进入文章处理管线"]
     end
 
-    subgraph "AI处理管道"
-        C --> D{AI增强模式<br/>前置条件满足?}
-        D -->|否| E["跳过AI管道"]
-        D -->|是| F{文章已有摘要?}
-        F -->|否| G["生成AI摘要"]
-        F -->|是| H["保留现有摘要"]
-        G --> I{Feed启用<br/>translate_articles?}
-        H --> I
-        I -->|是| J["翻译文章正文"]
-        I -->|否| K["跳过翻译"]
-        J --> L["生成并归一化<br/>文章 embedding"]
+    subgraph "文章处理管线"
+        G --> H["读取缓存正文<br/>正文缺失时回退到标题"]
+        H --> I{"需要摘要?"}
+        I -->|是| J["生成 AI 摘要<br/>硬失败或额度不足时回退标题"]
+        I -->|否| K["保留现有摘要"]
+        J --> L{"需要翻译且 Feed 开启<br/>translate_articles?"}
         K --> L
+        L -->|是| M["翻译文章内容<br/>按目标语言缓存结果"]
+        L -->|否| N["跳过翻译阶段"]
+        M --> O{"需要 embedding?"}
+        N --> O
+        O -->|是| P["生成并 L2 归一化<br/>文章标题 / 摘要 embedding"]
+        O -->|否| Q["跳过 embedding 阶段"]
+        P --> R{"需要去重聚类?"}
+        Q --> R
+        R -->|是| S["串行执行文章聚类分配"]
+        R -->|否| T["保留 cluster 状态<br/>必要时请求修复"]
     end
 
-    subgraph "去重与聚类"
-        L --> M{embedding 健康门禁<br/>摘要向量是否合格?}
-        M -->|否| N["阻断 AI 任务流<br/>写入/更新系统通知"]
-        M -->|是| O["步骤1: SimHash 摘要<br/>收集汉明距离 ≤ 3 候选文章"]
-        O -->|有候选| P["按摘要向量的归一化平方欧氏距离<br/>对候选文章排序"]
-        P -->|找到最近文章| Q["加入该文章所在的簇"]
-        P -->|没有有效摘要候选| R["步骤2: 摘要向量扩簇<br/>文章级距离 ≤ 0.4"]
-        O -->|无候选| R
-        R -->|有候选簇| S["按簇汇总全部文章摘要向量均值<br/>再做 L2 归一化"]
-        S --> T["加入语义最近的簇"]
-        R -->|无候选| U["当前文章独立成簇"]
-        Q --> V["标记 Cluster 为 pending_merge"]
-        T --> V
-        U --> V
-        V --> W["运行 Fusion / 回退复制"]
-        W --> X["标记 Cluster 为 pending_embed"]
-        X --> Y["生成并归一化<br/>Cluster embedding"]
-        Y --> Z["标记 Cluster 为 complete"]
+    subgraph "聚类与 Cluster 后处理"
+        S --> U{"已有摘要且摘要向量可用?"}
+        U -->|否| V["创建独立 Cluster"]
+        U -->|是| W["步骤 1: SimHash 召回<br/>汉明距离 <= 3"]
+        W -->|命中最近文章| X["加入匹配 Cluster"]
+        W -->|未命中| Y["步骤 2: 语义召回<br/>摘要距离 <= 0.4"]
+        Y -->|命中最近质心| Z["加入最近 Cluster 质心"]
+        Y -->|无候选| V
+        X --> AA["标记 Cluster 为 pending_merge"]
+        Z --> AA
+        V --> AA
+        T --> AB["为 pending_merge / pending_embed<br/>请求 Cluster 后处理"]
+        AA --> AB
+        AB --> AC["Cluster 管线调度器"]
+        AC --> AD["Fusion workers<br/>merging -> pending_embed<br/>LLM 融合或首篇回退"]
+        AC --> AE["Embedding workers<br/>轮询 pending_embed 并写入<br/>Cluster 标题 / 摘要向量"]
+        AD --> AE
+        AE --> AF["标记 Cluster 为 complete"]
+        AF --> AG["若用户兴趣向量缺失<br/>则从收藏 Cluster 冷启动"]
     end
 
-    subgraph "兴趣追踪与推荐"
-        Z --> AA["收集用户反馈<br/>点击/深度阅读/收藏"]
-        AA --> AB["更新用户兴趣向量<br/>EMA + L2 归一化"]
-        AB --> AC["基于向量相似度<br/>召回近期完整簇"]
-        AC --> AD["时间衰减重排序"]
-        AD --> AE["个性化 Cluster Feed"]
-        N --> AF["系统通知中心"]
-        Z --> AG["等待异步 AI 任务排空"]
-        AG --> AH{是否需要<br/>回填、定时或手动刷新?}
-        AH -->|否| AI["结束当前 AI 周期"]
-        AH -->|是| AJ{embedding 健康门禁<br/>是否允许推荐流转?}
-        AJ -->|否| AF
-        AJ -->|是| AK["排队每日推荐生成"]
-        AK --> AL["召回候选簇<br/>兴趣向量或时间序"]
-        AL --> AM{推荐 AI 配置可用?}
-        AM -->|否| AN["基于规则重排序<br/>召回分 + 新鲜度"]
-        AM -->|是| AO["阶段1: 分组锦标赛<br/>从摘要中选出候选"]
-        AO --> AP["阶段2: 全文多维度评分<br/>密度 / 价值 / 兴趣 / 时效"]
-        AP --> AQ["确定 Top 10 推荐"]
-        AN --> AQ
-        AQ --> AR["存储每日推荐<br/>和推荐分数"]
-        AR --> AS["对外提供推荐日期 / 列表 API"]
-        AS --> AT["每日推荐视图"]
+    subgraph "兴趣反馈与每日推荐"
+        AF --> AH["Cluster Feed / 推荐 Feed"]
+        AH --> AI["点击事件 -> 标题向量"]
+        AH --> AJ["深读超过平均时长 -> 摘要向量"]
+        AH --> AK["收藏事件 -> 摘要向量"]
+        AI --> AL["EMA 更新 + L2 归一化<br/>用户兴趣向量"]
+        AJ --> AL
+        AK --> AL
+        AF --> AM["定时调度 / 缺失日期回填<br/>或手动刷新推荐"]
+        AM --> AN{"开启 wait_for_idle 且<br/>当前仍有 AI 工作?"}
+        AN -->|是| AO["排队推荐任务<br/>状态 = waiting_for_idle"]
+        AO --> AP["异步工作排空后开始"]
+        AN -->|否| AP["立即开始推荐任务"]
+        AP --> AQ["召回 complete Cluster<br/>优先向量检索，否则按时间"]
+        AQ --> AR{"候选数 <= 10?"}
+        AR -->|是| AS["直接按时间排序"]
+        AR -->|否| AT{"推荐 AI 配置可用?"}
+        AT -->|否| AU["规则重排<br/>召回分 + 新鲜度"]
+        AT -->|是| AV{"候选数 < 40?"}
+        AV -->|是| AW["仅阶段 2<br/>全文多维评分"]
+        AV -->|否| AX["阶段 1 分组锦标赛<br/>每组选前 3"]
+        AX --> AW
+        AW --> AY["确定 Top 10"]
+        AS --> AY
+        AU --> AY
+        AY --> AZ["保存 daily_recommendations<br/>并更新 Cluster 推荐标记"]
+        AZ --> BA["推荐日期 API<br/>与每日推荐视图"]
     end
 
     style A fill:#e3f2fd,color:#0d47a1
-    style G fill:#fff3e0,color:#e65100
     style J fill:#fff3e0,color:#e65100
-    style L fill:#f3e5f5,color:#7b1fa2
-    style Y fill:#f3e5f5,color:#7b1fa2
-    style AB fill:#c8e6c9,color:#1a5e20
-    style AQ fill:#c8e6c9,color:#1a5e20
+    style M fill:#fff3e0,color:#e65100
+    style P fill:#f3e5f5,color:#7b1fa2
+    style AD fill:#f3e5f5,color:#7b1fa2
+    style AE fill:#f3e5f5,color:#7b1fa2
+    style AL fill:#c8e6c9,color:#1a5e20
+    style AY fill:#c8e6c9,color:#1a5e20
 ```
 
 ## 🚀 快速开始

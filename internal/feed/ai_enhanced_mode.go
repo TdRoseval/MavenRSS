@@ -115,6 +115,8 @@ const (
 	aiProcessingLastProgressAtSettingKey  = "_internal_ai_processing_last_progress_at"
 	aiProcessingFreezeSuspendedSettingKey = "_internal_ai_processing_freeze_suspended"
 	aiProcessingStaleTimeout              = 30 * time.Minute
+	articleStageTimeoutRetryLimit         = 3
+	articleStageTimeoutMaxAge             = 10 * time.Minute
 	articleSummaryConcurrency             = 6
 	articleTranslationConcurrency         = 6
 	articleEmbeddingConcurrency           = 6
@@ -585,12 +587,14 @@ func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, conten
 	defer cancel()
 
 	var titleEmbBlob, summaryEmbBlob []byte
+	var lastEmbeddingErr error
 	if article.Title != "" {
 		if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
 			if len(titleEmb) > 0 {
 				titleEmbBlob, _ = interest.NormalizeAndSerialize(titleEmb)
 			}
 		} else {
+			lastEmbeddingErr = err
 			log.Printf("Failed to generate title embedding for article %d: %v", task.ArticleID, err)
 		}
 	}
@@ -601,11 +605,18 @@ func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, conten
 				summaryEmbBlob, _ = interest.NormalizeAndSerialize(sumEmb)
 			}
 		} else {
+			lastEmbeddingErr = err
 			log.Printf("Failed to generate summary embedding for article %d: %v", task.ArticleID, err)
 		}
 	}
 
 	if len(titleEmbBlob) == 0 && len(summaryEmbBlob) == 0 {
+		if lastEmbeddingErr != nil {
+			m.recordTaskFailure(task.UserID, "embedding", task, "", "", lastEmbeddingErr)
+			if m.skipArticleStageAfterRetryableTimeoutBudget(task, "embedding", "", lastEmbeddingErr) {
+				return
+			}
+		}
 		return
 	}
 
@@ -616,6 +627,9 @@ func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, conten
 	if err := m.db.UpdateArticleEmbeddings(task.ArticleID, titleEmbBlob, summaryEmbBlob); err != nil {
 		log.Printf("Failed to update article %d embeddings: %v", task.ArticleID, err)
 		return
+	}
+	if err := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "embedding"); err != nil {
+		log.Printf("Failed to clear AI embedding timeout failure state for article %d: %v", task.ArticleID, err)
 	}
 	log.Printf("Successfully saved embeddings for article %d", task.ArticleID)
 }
@@ -1457,7 +1471,15 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	if err != nil {
 		m.recordTaskFailure(task.UserID, "summary", task, config.Model, config.Endpoint, err)
 		if m.skipArticleStageIfNonRecoverable(task, "summary", err) {
-			m.fallbackArticleSummaryToTitle(task, "non-recoverable summary failure")
+			if fallbackErr := m.fallbackArticleSummaryByID(task.ArticleID); fallbackErr != nil {
+				log.Printf("Failed to fallback summary after non-recoverable failure for article %d: %v", task.ArticleID, fallbackErr)
+			}
+			if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "summary"); clearErr != nil {
+				log.Printf("Failed to clear AI summary timeout failure state for article %d: %v", task.ArticleID, clearErr)
+			}
+			return
+		}
+		if m.skipArticleStageAfterRetryableTimeoutBudget(task, "summary", content, err) {
 			return
 		}
 		log.Printf("Error generating AI summary for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
@@ -1467,6 +1489,9 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 
 	if err := m.db.DeleteAIArticleStageSkip(task.ArticleID, "summary"); err != nil {
 		log.Printf("Failed to clear AI summary skip marker for article %d: %v", task.ArticleID, err)
+	}
+	if err := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "summary"); err != nil {
+		log.Printf("Failed to clear AI summary timeout failure state for article %d: %v", task.ArticleID, err)
 	}
 
 	if result.IsTooShort && utf8.RuneCountInString(strings.TrimSpace(result.Summary)) < 10 {
@@ -1570,6 +1595,9 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 		if err := m.db.SetArticleTranslatedContent(task.ArticleID, content, targetLang, "ai"); err != nil {
 			log.Printf("Failed to cache original content as translation for article %d: %v", task.ArticleID, err)
 		}
+		if err := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "translation"); err != nil {
+			log.Printf("Failed to clear AI translation timeout failure state for article %d: %v", task.ArticleID, err)
+		}
 		return
 	}
 
@@ -1578,6 +1606,12 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	if err != nil {
 		m.recordTaskFailure(task.UserID, "translation", task, config.Model, config.Endpoint, err)
 		if m.skipArticleStageIfNonRecoverable(task, "translation", err) {
+			if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "translation"); clearErr != nil {
+				log.Printf("Failed to clear AI translation timeout failure state for article %d: %v", task.ArticleID, clearErr)
+			}
+			return
+		}
+		if m.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", content, err) {
 			return
 		}
 		log.Printf("Error generating AI translation for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
@@ -1586,6 +1620,9 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 
 	if err := m.db.DeleteAIArticleStageSkip(task.ArticleID, "translation"); err != nil {
 		log.Printf("Failed to clear AI translation skip marker for article %d: %v", task.ArticleID, err)
+	}
+	if err := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "translation"); err != nil {
+		log.Printf("Failed to clear AI translation timeout failure state for article %d: %v", task.ArticleID, err)
 	}
 
 	// Track AI usage
@@ -2323,9 +2360,134 @@ func (m *AIEnhancedManager) skipArticleStageIfNonRecoverable(task *AIEnhancedTas
 		log.Printf("Failed to persist AI %s skip marker for article %d: %v", stage, task.ArticleID, dbErr)
 		return false
 	}
+	if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, stage); clearErr != nil {
+		log.Printf("Failed to clear AI %s timeout failure state for article %d: %v", stage, task.ArticleID, clearErr)
+	}
 
 	log.Printf("Skipping future AI %s retries for article %d due to non-recoverable article-specific failure: %s", stage, task.ArticleID, reason)
 	return true
+}
+
+func (m *AIEnhancedManager) skipArticleStageAfterRetryableTimeoutBudget(
+	task *AIEnhancedTask,
+	stage string,
+	content string,
+	err error,
+) bool {
+	if task == nil || task.ArticleID <= 0 || task.UserID <= 0 || m.db == nil || !ai.IsTimeoutLikeError(err) {
+		return false
+	}
+
+	reason := strings.TrimSpace(ai.DiagnosticMessage(err))
+	if reason == "" {
+		reason = strings.TrimSpace(err.Error())
+	}
+	if len(reason) > 600 {
+		reason = reason[:600]
+	}
+
+	state, recordErr := m.db.RecordAIArticleStageTimeoutFailure(task.UserID, task.ArticleID, stage, reason)
+	if recordErr != nil {
+		log.Printf("Failed to persist AI %s timeout failure state for article %d: %v", stage, task.ArticleID, recordErr)
+		return false
+	}
+
+	elapsed := time.Since(state.FirstFailedAt)
+	if state.FirstFailedAt.IsZero() || elapsed < 0 {
+		elapsed = 0
+	}
+	if state.TimeoutCount < articleStageTimeoutRetryLimit && elapsed < articleStageTimeoutMaxAge {
+		log.Printf(
+			"AI %s timeout for article %d recorded %d time(s) over %s; will retry",
+			stage,
+			task.ArticleID,
+			state.TimeoutCount,
+			elapsed.Round(time.Second),
+		)
+		return false
+	}
+
+	exhaustedReason := fmt.Sprintf(
+		"retry budget exhausted after %d timeout(s) over %s: %s",
+		state.TimeoutCount,
+		elapsed.Round(time.Second),
+		reason,
+	)
+	if len(exhaustedReason) > 600 {
+		exhaustedReason = exhaustedReason[:600]
+	}
+
+	switch stage {
+	case "summary":
+		if fallbackErr := m.fallbackArticleSummaryByID(task.ArticleID); fallbackErr != nil {
+			log.Printf("Failed to fallback summary for article %d after timeout budget exhaustion: %v", task.ArticleID, fallbackErr)
+		}
+	case "translation":
+		m.fallbackArticleTranslationToSource(task, content, exhaustedReason)
+	case "embedding":
+		if err := m.db.SetAIArticleStageSkip(task.UserID, task.ArticleID, "clustering", exhaustedReason); err != nil {
+			log.Printf("Failed to persist AI clustering skip marker for article %d after embedding timeout exhaustion: %v", task.ArticleID, err)
+			return false
+		}
+		if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "clustering"); clearErr != nil {
+			log.Printf("Failed to clear AI clustering timeout failure state for article %d: %v", task.ArticleID, clearErr)
+		}
+	}
+
+	if err := m.db.SetAIArticleStageSkip(task.UserID, task.ArticleID, stage, exhaustedReason); err != nil {
+		log.Printf("Failed to persist AI %s skip marker for article %d after timeout budget exhaustion: %v", stage, task.ArticleID, err)
+		return false
+	}
+	if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, stage); clearErr != nil {
+		log.Printf("Failed to clear AI %s timeout failure state for article %d: %v", stage, task.ArticleID, clearErr)
+	}
+
+	log.Printf(
+		"Skipping future AI %s retries for article %d after %d timeout(s) over %s",
+		stage,
+		task.ArticleID,
+		state.TimeoutCount,
+		elapsed.Round(time.Second),
+	)
+	return true
+}
+
+func (m *AIEnhancedManager) fallbackArticleTranslationToSource(task *AIEnhancedTask, content string, reason string) {
+	if task == nil || task.ArticleID <= 0 || task.UserID <= 0 || m.db == nil {
+		return
+	}
+
+	targetLang, _ := m.db.GetSettingWithFallback(task.UserID, "target_language")
+	if targetLang == "" {
+		targetLang = "zh"
+	}
+
+	fallbackContent := strings.TrimSpace(content)
+	if fallbackContent == "" {
+		cachedContent, hasContent, err := m.db.GetArticleContent(task.ArticleID)
+		if err != nil {
+			log.Printf("Failed to load article content for translation fallback on article %d: %v", task.ArticleID, err)
+		} else if hasContent {
+			fallbackContent = strings.TrimSpace(cachedContent)
+		}
+	}
+	if fallbackContent == "" {
+		if generatedFallback, fallbackErr := m.ensureArticleContentFallbackFromTitle(task); fallbackErr != nil {
+			log.Printf("Failed to generate title content fallback for translation on article %d: %v", task.ArticleID, fallbackErr)
+		} else {
+			fallbackContent = strings.TrimSpace(generatedFallback)
+		}
+	}
+	if fallbackContent == "" {
+		return
+	}
+
+	if err := m.db.SetArticleTranslatedContent(task.ArticleID, fallbackContent, targetLang, "source_fallback"); err != nil {
+		log.Printf("Failed to cache source-content translation fallback for article %d: %v", task.ArticleID, err)
+		return
+	}
+	task.NeedsTranslation = false
+	log.Printf("Using source content as translation fallback for article %d (%s)", task.ArticleID, reason)
 }
 
 func (m *AIEnhancedManager) getRecentFailure(userID int64) AIProcessingFailure {

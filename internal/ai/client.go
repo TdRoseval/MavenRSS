@@ -112,6 +112,37 @@ func ShouldSkipArticleRetry(err error) bool {
 	return false
 }
 
+// IsTimeoutLikeError reports whether an AI request failed because it timed out
+// or the request context hit its deadline before a response was returned.
+func IsTimeoutLikeError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(strings.TrimSpace(DiagnosticMessage(err)))
+	if errStr == "" {
+		errStr = strings.ToLower(strings.TrimSpace(err.Error()))
+	}
+	if errStr == "" {
+		return false
+	}
+
+	timeoutPatterns := []string{
+		"timeout",
+		"deadline exceeded",
+		"request cancelled",
+		"client.timeout exceeded",
+		"awaiting headers",
+	}
+	for _, pattern := range timeoutPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // NewClient creates a new universal AI client
 func NewClient(config ClientConfig) *Client {
 	if config.Timeout == 0 {
