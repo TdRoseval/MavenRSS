@@ -335,6 +335,100 @@ func TestStartClusterRenormalizationRepairsEmptyMergedContentAndFavoriteFlags(t 
 	}
 }
 
+func TestWaitForRenormalizationArticleTaskTimesOutAndSkipsRemainingStages(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	originalTimeout := renormalizationArticleWaitTimeout
+	originalPollInterval := renormalizationWaitPollInterval
+	renormalizationArticleWaitTimeout = 20 * time.Millisecond
+	renormalizationWaitPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() {
+		renormalizationArticleWaitTimeout = originalTimeout
+		renormalizationWaitPollInterval = originalPollInterval
+	})
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "timed-out-article", false)
+
+	if err := manager.waitForRenormalizationArticleTask(1, articleID, "zh"); err != nil {
+		t.Fatalf("waitForRenormalizationArticleTask error = %v", err)
+	}
+
+	for _, stage := range []string{"summary", "translation", "embedding", "clustering"} {
+		reason, found, err := db.GetAIArticleStageSkipReason(articleID, stage)
+		if err != nil {
+			t.Fatalf("GetAIArticleStageSkipReason(%s) error = %v", stage, err)
+		}
+		if !found {
+			t.Fatalf("expected %s skip marker for timed-out article", stage)
+		}
+		if !strings.Contains(reason, "article-stage wait exceeded") {
+			t.Fatalf("skip reason for %s = %q, want timeout marker", stage, reason)
+		}
+	}
+}
+
+func TestForceCompleteTimedOutClustersBackfillsAndLeavesRepairableState(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "timed-out-cluster", true)
+	if err := db.UpdateArticleEmbeddings(articleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings error = %v", err)
+	}
+
+	clusterID, err := db.CreateCluster(1, "pending_merge")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error = %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error = %v", err)
+	}
+
+	completed, err := manager.forceCompleteTimedOutClusters(1, "test timeout")
+	if err != nil {
+		t.Fatalf("forceCompleteTimedOutClusters error = %v", err)
+	}
+	if completed != 1 {
+		t.Fatalf("completed = %d, want 1", completed)
+	}
+
+	cluster, err := db.GetClusterByID(clusterID)
+	if err != nil {
+		t.Fatalf("GetClusterByID error = %v", err)
+	}
+	if cluster == nil {
+		t.Fatal("GetClusterByID returned nil cluster")
+	}
+	if cluster.Status != "complete" {
+		t.Fatalf("cluster status = %q, want complete", cluster.Status)
+	}
+	if strings.TrimSpace(cluster.MergedSummary) == "" {
+		t.Fatal("MergedSummary should be backfilled for force-completed cluster")
+	}
+	if strings.TrimSpace(cluster.MergedContent) == "" {
+		t.Fatal("MergedContent should be backfilled for force-completed cluster")
+	}
+
+	articles, err := db.GetArticlesForAIBatchProcessing(1, "zh")
+	if err != nil {
+		t.Fatalf("GetArticlesForAIBatchProcessing error = %v", err)
+	}
+	if len(articles) != 1 {
+		t.Fatalf("GetArticlesForAIBatchProcessing returned %d articles, want 1 repair candidate", len(articles))
+	}
+	if !articles[0].ClusterNeedsEmbeddingRepair {
+		t.Fatal("ClusterNeedsEmbeddingRepair = false, want true for complete cluster without embeddings")
+	}
+}
+
 func waitForCondition(t *testing.T, timeout time.Duration, check func() bool) {
 	t.Helper()
 

@@ -576,6 +576,7 @@ func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, e
 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	startedAt := time.Now()
 
 	for {
 		hasWork, barrierReached, err := m.clusterPipelineBarrierState(userID)
@@ -586,6 +587,15 @@ func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, e
 			return false, nil
 		}
 		if barrierReached {
+			return true, nil
+		}
+		if m.isRenormalizationRunning(userID) && time.Since(startedAt) >= renormalizationClusterWaitTimeout {
+			log.Printf(
+				"Cluster pipeline barrier timed out for renormalization user %d after %s; proceeding with remaining cluster work",
+				userID,
+				renormalizationClusterWaitTimeout,
+			)
+			m.abandonTimedOutRenormalizationActivity(userID, "cluster pipeline barrier timed out during renormalization")
 			return true, nil
 		}
 

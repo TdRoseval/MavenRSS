@@ -1297,7 +1297,7 @@ func TestGetProcessingStatusIncludesRecentFailureDiagnostics(t *testing.T) {
 	}
 }
 
-func TestGetProcessingStatusTreatsSkippedSummaryAndTranslationAsCompleted(t *testing.T) {
+func TestGetProcessingStatusTreatsSkippedStagesAsCompleted(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	manager := NewAIEnhancedManager(db)
 	defer manager.Stop()
@@ -1313,11 +1313,16 @@ func TestGetProcessingStatusTreatsSkippedSummaryAndTranslationAsCompleted(t *tes
 	if err := db.SetAIArticleStageSkip(1, articleID, "translation", "safety"); err != nil {
 		t.Fatalf("SetAIArticleStageSkip translation error: %v", err)
 	}
-	mustAttachCompleteCluster(t, db, 1, articleID, "complete")
+	if err := db.SetAIArticleStageSkip(1, articleID, "embedding", "timeout"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip embedding error: %v", err)
+	}
+	if err := db.SetAIArticleStageSkip(1, articleID, "clustering", "timeout"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip clustering error: %v", err)
+	}
 
 	status := manager.GetProcessingStatus(1)
 	if status.PendingArticles != 0 {
-		t.Fatalf("PendingArticles = %d, want 0 after summary/translation skips", status.PendingArticles)
+		t.Fatalf("PendingArticles = %d, want 0 after stage skips", status.PendingArticles)
 	}
 	if status.CompletedArticles != 1 {
 		t.Fatalf("CompletedArticles = %d, want 1", status.CompletedArticles)

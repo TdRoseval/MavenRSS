@@ -7,6 +7,8 @@ import (
 	"MavenRSS/internal/interest"
 )
 
+const renormalizationEmbeddingBatchSize = 200
+
 func (db *DB) ResetAIClustersForRenormalization(userID int64) error {
 	db.WaitForReady()
 
@@ -92,57 +94,69 @@ func (db *DB) NormalizeArticleEmbeddingsForUser(userID int64) (int, int, error) 
 		return 0, 0, fmt.Errorf("iterate article embedding rows: %w", err)
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, 0, fmt.Errorf("begin normalize article embeddings transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	normalizedCount := 0
 	clearedCount := 0
-	for _, row := range allRows {
-		titleVec, titleErr := interest.DeserializeVector(row.titleBlob)
-		sumVec, sumErr := interest.DeserializeVector(row.sumBlob)
-		if titleErr != nil || sumErr != nil || len(titleVec) == 0 || len(sumVec) == 0 {
+	for start := 0; start < len(allRows); start += renormalizationEmbeddingBatchSize {
+		end := start + renormalizationEmbeddingBatchSize
+		if end > len(allRows) {
+			end = len(allRows)
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			return 0, 0, fmt.Errorf("begin normalize article embeddings transaction: %w", err)
+		}
+
+		for _, row := range allRows[start:end] {
+			titleVec, titleErr := interest.DeserializeVector(row.titleBlob)
+			sumVec, sumErr := interest.DeserializeVector(row.sumBlob)
+			if titleErr != nil || sumErr != nil || len(titleVec) == 0 || len(sumVec) == 0 {
+				if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); err != nil {
+					_ = tx.Rollback()
+					return 0, 0, fmt.Errorf("delete invalid article embedding %d: %w", row.articleID, err)
+				}
+				clearedCount++
+				continue
+			}
+
+			titleBlob, err := interest.NormalizeAndSerialize(titleVec)
+			if err != nil {
+				if _, execErr := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); execErr != nil {
+					_ = tx.Rollback()
+					return 0, 0, fmt.Errorf("delete article embedding after title renormalization failure %d: %w", row.articleID, execErr)
+				}
+				clearedCount++
+				continue
+			}
+			sumBlob, err := interest.NormalizeAndSerialize(sumVec)
+			if err != nil {
+				if _, execErr := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); execErr != nil {
+					_ = tx.Rollback()
+					return 0, 0, fmt.Errorf("delete article embedding after summary renormalization failure %d: %w", row.articleID, execErr)
+				}
+				clearedCount++
+				continue
+			}
+
 			if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); err != nil {
-				return 0, 0, fmt.Errorf("delete invalid article embedding %d: %w", row.articleID, err)
+				_ = tx.Rollback()
+				return 0, 0, fmt.Errorf("delete existing article embedding %d before reinserting normalized data: %w", row.articleID, err)
 			}
-			clearedCount++
-			continue
+			if _, err := tx.Exec(
+				`INSERT INTO article_embeddings (article_id, title_embedding, summary_embedding)
+				 VALUES (?, ?, ?)`,
+				row.articleID, titleBlob, sumBlob,
+			); err != nil {
+				_ = tx.Rollback()
+				return 0, 0, fmt.Errorf("update normalized article embedding %d: %w", row.articleID, err)
+			}
+			normalizedCount++
 		}
 
-		titleBlob, err := interest.NormalizeAndSerialize(titleVec)
-		if err != nil {
-			if _, execErr := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); execErr != nil {
-				return 0, 0, fmt.Errorf("delete article embedding after title renormalization failure %d: %w", row.articleID, execErr)
-			}
-			clearedCount++
-			continue
+		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
+			return 0, 0, fmt.Errorf("commit normalize article embeddings transaction: %w", err)
 		}
-		sumBlob, err := interest.NormalizeAndSerialize(sumVec)
-		if err != nil {
-			if _, execErr := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); execErr != nil {
-				return 0, 0, fmt.Errorf("delete article embedding after summary renormalization failure %d: %w", row.articleID, execErr)
-			}
-			clearedCount++
-			continue
-		}
-
-		if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, row.articleID); err != nil {
-			return 0, 0, fmt.Errorf("delete existing article embedding %d before reinserting normalized data: %w", row.articleID, err)
-		}
-		if _, err := tx.Exec(
-			`INSERT INTO article_embeddings (article_id, title_embedding, summary_embedding)
-			 VALUES (?, ?, ?)`,
-			row.articleID, titleBlob, sumBlob,
-		); err != nil {
-			return 0, 0, fmt.Errorf("update normalized article embedding %d: %w", row.articleID, err)
-		}
-		normalizedCount++
-	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, 0, fmt.Errorf("commit normalize article embeddings transaction: %w", err)
 	}
 
 	return normalizedCount, clearedCount, nil

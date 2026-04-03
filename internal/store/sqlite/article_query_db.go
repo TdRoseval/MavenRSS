@@ -53,22 +53,25 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			ac.article_id IS NOT NULL,
 			((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL),
 			(atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL),
-			ae.article_id IS NOT NULL,
-			c.id IS NOT NULL,
+			(ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL),
+			(c.id IS NOT NULL OR skip_clustering.article_id IS NOT NULL),
 			(
 				c.id IS NOT NULL
+				AND skip_clustering.article_id IS NULL
 				AND (
 					c.status <> 'complete'
 					OR ce.cluster_id IS NULL
 				)
 			),
-			(c.id IS NOT NULL AND c.status = 'complete' AND ce.cluster_id IS NULL)
+			(c.id IS NOT NULL AND skip_clustering.article_id IS NULL AND c.status = 'complete' AND ce.cluster_id IS NULL)
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		LEFT JOIN article_contents ac ON ac.article_id = a.id
 		LEFT JOIN article_translated_contents atc ON atc.article_id = a.id AND atc.target_lang = ?
 		LEFT JOIN ai_article_stage_skips skip_summary ON skip_summary.article_id = a.id AND skip_summary.stage = 'summary'
 		LEFT JOIN ai_article_stage_skips skip_translation ON skip_translation.article_id = a.id AND skip_translation.stage = 'translation'
+		LEFT JOIN ai_article_stage_skips skip_embedding ON skip_embedding.article_id = a.id AND skip_embedding.stage = 'embedding'
+		LEFT JOIN ai_article_stage_skips skip_clustering ON skip_clustering.article_id = a.id AND skip_clustering.stage = 'clustering'
 		LEFT JOIN article_embeddings ae ON ae.article_id = a.id
 		LEFT JOIN clusters c ON a.cluster_id = c.id
 		LEFT JOIN cluster_embeddings ce ON ce.cluster_id = c.id
@@ -82,8 +85,9 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			OR (
 				((TRIM(COALESCE(a.summary, '')) = '' OR COALESCE(a.summary, '') = '<no content>') AND skip_summary.article_id IS NULL)
 				OR (COALESCE(f.translate_articles, 0) = 1 AND atc.article_id IS NULL AND skip_translation.article_id IS NULL)
-				OR ae.article_id IS NULL
-				OR c.id IS NULL
+				OR (ae.article_id IS NULL AND skip_embedding.article_id IS NULL)
+				OR (c.id IS NULL AND skip_clustering.article_id IS NULL)
+				OR (c.id IS NOT NULL AND skip_clustering.article_id IS NULL AND (c.status <> 'complete' OR ce.cluster_id IS NULL))
 			)
 		)
 		ORDER BY a.published_at DESC
@@ -170,13 +174,15 @@ func (db *DB) getAIProcessingProgress(
 				((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL) AS has_summary,
 				(COALESCE(f.translate_articles, 0) = 1) AS translate_articles,
 				(atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL) AS has_translation,
-				(ae.article_id IS NOT NULL) AS has_embedding,
-				(c.id IS NOT NULL) AS has_cluster
+				(ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL) AS has_embedding,
+				(c.id IS NOT NULL OR skip_clustering.article_id IS NOT NULL) AS has_cluster
 			FROM articles a
 			LEFT JOIN feeds f ON a.feed_id = f.id
 			LEFT JOIN article_translated_contents atc ON atc.article_id = a.id AND atc.target_lang = ?
 			LEFT JOIN ai_article_stage_skips skip_summary ON skip_summary.article_id = a.id AND skip_summary.stage = 'summary'
 			LEFT JOIN ai_article_stage_skips skip_translation ON skip_translation.article_id = a.id AND skip_translation.stage = 'translation'
+			LEFT JOIN ai_article_stage_skips skip_embedding ON skip_embedding.article_id = a.id AND skip_embedding.stage = 'embedding'
+			LEFT JOIN ai_article_stage_skips skip_clustering ON skip_clustering.article_id = a.id AND skip_clustering.stage = 'clustering'
 			LEFT JOIN article_embeddings ae ON ae.article_id = a.id
 			LEFT JOIN clusters c ON a.cluster_id = c.id
 	` + contentJoin + `
