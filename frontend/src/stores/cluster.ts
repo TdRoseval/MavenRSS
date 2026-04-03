@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { apiClient } from '@/shared/lib/apiClient';
-import { authGet } from '@/shared/lib/authFetch';
+import { authGet, authPost } from '@/shared/lib/authFetch';
 import type {
   AIProcessingStatus,
   Cluster,
