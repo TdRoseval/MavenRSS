@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -288,6 +289,132 @@ func TestGetAIReclusterNormalizationProgressOnlyCountsCachedContentArticles(t *t
 	}
 	if progress.PendingEmbeddingArticles != 1 {
 		t.Fatalf("PendingEmbeddingArticles = %d, want 1", progress.PendingEmbeddingArticles)
+	}
+}
+
+func TestBackfillEmptyClusterMergedContentPersistsFallbackFields(t *testing.T) {
+	db := setupTestDB(t)
+
+	userID, err := db.CreateUser(&models.User{
+		Username:     "recluster-backfill-user",
+		Email:        "recluster-backfill@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser error = %v", err)
+	}
+
+	feedID, err := db.AddFeedForUser(userID, &models.Feed{
+		Title:           "Backfill Feed",
+		URL:             "https://example.com/backfill-feed",
+		Type:            "rss",
+		RefreshInterval: 60,
+	})
+	if err != nil {
+		t.Fatalf("AddFeedForUser error = %v", err)
+	}
+
+	articleID := mustInsertReclusterTestArticle(t, db, userID, feedID, "backfill-article", "fallback summary")
+	clusterID, err := db.CreateCluster(userID, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error = %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error = %v", err)
+	}
+
+	updated, err := db.BackfillEmptyClusterMergedContent(userID)
+	if err != nil {
+		t.Fatalf("BackfillEmptyClusterMergedContent error = %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("updated = %d, want 1", updated)
+	}
+
+	cluster, err := db.GetClusterByID(clusterID)
+	if err != nil {
+		t.Fatalf("GetClusterByID error = %v", err)
+	}
+	if cluster == nil {
+		t.Fatal("GetClusterByID returned nil cluster")
+	}
+	if cluster.MergedTitle != "backfill-article" {
+		t.Fatalf("MergedTitle = %q, want source article title", cluster.MergedTitle)
+	}
+	if cluster.MergedSummary != "fallback summary" {
+		t.Fatalf("MergedSummary = %q, want source article summary", cluster.MergedSummary)
+	}
+	if !strings.Contains(cluster.MergedContent, "article content for recluster normalization tests") {
+		t.Fatalf("MergedContent = %q, want cached article content", cluster.MergedContent)
+	}
+}
+
+func TestSyncClusterFavoriteStatesFromArticlesRepairsFavoriteFlag(t *testing.T) {
+	db := setupTestDB(t)
+
+	userID, err := db.CreateUser(&models.User{
+		Username:     "recluster-favorite-user",
+		Email:        "recluster-favorite@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser error = %v", err)
+	}
+
+	feedID, err := db.AddFeedForUser(userID, &models.Feed{
+		Title:           "Favorite Feed",
+		URL:             "https://example.com/favorite-feed",
+		Type:            "rss",
+		RefreshInterval: 60,
+	})
+	if err != nil {
+		t.Fatalf("AddFeedForUser error = %v", err)
+	}
+
+	result, err := db.Exec(
+		`INSERT INTO articles (user_id, feed_id, title, url, published_at, is_favorite, summary, unique_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, feedID, "favorite-article", "https://example.com/favorite-article", time.Now(), true, "favorite summary", "favorite-article",
+	)
+	if err != nil {
+		t.Fatalf("insert favorite article error = %v", err)
+	}
+	articleID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId error = %v", err)
+	}
+	if err := db.SetArticleContent(articleID, "favorite article content"); err != nil {
+		t.Fatalf("SetArticleContent error = %v", err)
+	}
+
+	clusterID, err := db.CreateCluster(userID, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error = %v", err)
+	}
+	if err := db.SetClusterFavorite(clusterID, false); err != nil {
+		t.Fatalf("SetClusterFavorite(false) error = %v", err)
+	}
+
+	if err := db.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
+		t.Fatalf("SyncClusterFavoriteStatesFromArticles error = %v", err)
+	}
+
+	cluster, err := db.GetClusterByID(clusterID)
+	if err != nil {
+		t.Fatalf("GetClusterByID error = %v", err)
+	}
+	if cluster == nil || !cluster.IsFavorite {
+		t.Fatalf("cluster favorite = %v, want true", cluster != nil && cluster.IsFavorite)
 	}
 }
 

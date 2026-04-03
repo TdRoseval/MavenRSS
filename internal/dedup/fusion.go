@@ -35,8 +35,8 @@ const clusterEmbeddingWorkerCount = 2
 
 // RunFusion processes all pending_merge clusters for a user.
 func RunFusion(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionConfig) error {
-	if cfg == nil || cfg.Summarizer == nil {
-		return fmt.Errorf("fusion config or summarizer is nil")
+	if cfg == nil {
+		cfg = &FusionConfig{}
 	}
 
 	clusters, err := db.GetClustersByStatus(userID, "pending_merge")
@@ -73,6 +73,20 @@ func RunFusion(ctx context.Context, db *sqlite.DB, userID int64, cfg *FusionConf
 				log.Printf("Cluster %d contains a single article, copied source article and advanced to pending_embed", cluster.ID)
 			} else {
 				log.Printf("Cluster %d has no articles, advancing directly to pending_embed", cluster.ID)
+			}
+			if err := db.UpdateClusterStatus(cluster.ID, "pending_embed"); err != nil {
+				log.Printf("Failed to update cluster %d status to pending_embed: %v", cluster.ID, err)
+				continue
+			}
+			continue
+		}
+
+		if cfg.Summarizer == nil {
+			log.Printf("Cluster %d fusion model unavailable, falling back to first article content", cluster.ID)
+			if fallbackErr := copySingleArticle(db, userID, cluster.ID, articles[0]); fallbackErr != nil {
+				log.Printf("Fallback write failed for cluster %d without fusion model: %v", cluster.ID, fallbackErr)
+				_ = db.UpdateClusterStatus(cluster.ID, "pending_merge")
+				continue
 			}
 			if err := db.UpdateClusterStatus(cluster.ID, "pending_embed"); err != nil {
 				log.Printf("Failed to update cluster %d status to pending_embed: %v", cluster.ID, err)

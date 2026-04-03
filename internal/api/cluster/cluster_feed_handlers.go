@@ -81,6 +81,10 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		req.ExcludeIDs = nil
 	}
 
+	if err := h.DB.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
+		log.Printf("Error syncing cluster favorites before realtime cluster feed: %v", err)
+	}
+
 	const (
 		recallTopK  = 100
 		returnLimit = 30

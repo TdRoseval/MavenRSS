@@ -53,6 +53,13 @@ func (m *AIEnhancedManager) ForceStartClusterRenormalization(userID int64) (bool
 	return true, "", nil
 }
 
+func (m *AIEnhancedManager) InterruptUserWork(userID int64) int {
+	if m == nil || userID <= 0 {
+		return 0
+	}
+	return m.interruptUserWorkForRenormalization(userID)
+}
+
 func (m *AIEnhancedManager) beginClusterRenormalization(userID int64) bool {
 	if userID <= 0 {
 		return false
@@ -190,6 +197,16 @@ func (m *AIEnhancedManager) runClusterRenormalization(userID int64) {
 	if err := m.waitForUserArticleProcessingIdle(userID); err != nil {
 		m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
 		log.Printf("Waiting for final cluster pipeline failed for user %d: %v", userID, err)
+		return
+	}
+	if _, err := m.db.BackfillEmptyClusterMergedContent(userID); err != nil {
+		m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
+		log.Printf("Backfilling empty merged cluster content failed for user %d: %v", userID, err)
+		return
+	}
+	if err := m.db.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
+		m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
+		log.Printf("Syncing cluster favorite states failed for user %d: %v", userID, err)
 		return
 	}
 

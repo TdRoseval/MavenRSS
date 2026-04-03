@@ -299,16 +299,30 @@ func HandleCleanupArticleContents(h *core.Handler, w http.ResponseWriter, r *htt
 
 	userID, _ := core.GetUserIDFromRequest(r)
 
-	count, err := h.DB.CleanupAllArticleContents(userID)
+	if h.Fetcher != nil {
+		if manager := h.Fetcher.GetAIEnhancedManager(); manager != nil {
+			manager.InterruptUserWork(userID)
+		}
+	}
+
+	stats, err := h.DB.CleanupArticleCachePreservingFavorites(userID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}
 
+	if h.ContentCache != nil {
+		h.ContentCache.Clear()
+	}
+
 	response.JSON(w, map[string]interface{}{
-		"deleted":         count,
-		"entries_cleaned": count,
-		"message":         "Article contents cleaned up",
+		"deleted":           stats.DeletedArticles,
+		"deleted_articles":  stats.DeletedArticles,
+		"deleted_clusters":  stats.DeletedClusters,
+		"retained_articles": stats.RetainedArticles,
+		"retained_clusters": stats.RetainedClusters,
+		"entries_cleaned":   stats.DeletedArticles,
+		"message":           "Articles cleaned up while preserving favorites",
 	})
 }
 

@@ -43,6 +43,9 @@ FROM clusters WHERE id = ?
 	if err != nil {
 		return nil, err
 	}
+	if err := db.applyClusterMergedContentFallback(&c); err != nil {
+		return nil, err
+	}
 	db.populateClusterMeta(&c)
 	return &c, nil
 }
@@ -335,6 +338,36 @@ func chooseClusterDisplayTitle(mergedTitle, translatedTitle, articleTitle string
 		return mergedTitle
 	}
 	return articleTitle
+}
+
+func (db *DB) applyClusterMergedContentFallback(c *models.Cluster) error {
+	if c == nil || c.ID <= 0 || c.UserID <= 0 {
+		return nil
+	}
+	if strings.TrimSpace(c.MergedTitle) != "" &&
+		strings.TrimSpace(c.MergedSummary) != "" &&
+		strings.TrimSpace(c.MergedContent) != "" {
+		return nil
+	}
+
+	title, summary, content, ok, err := db.buildClusterFallbackFields(c.UserID, c.ID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if strings.TrimSpace(c.MergedTitle) == "" {
+		c.MergedTitle = title
+	}
+	if strings.TrimSpace(c.MergedSummary) == "" {
+		c.MergedSummary = summary
+	}
+	if strings.TrimSpace(c.MergedContent) == "" {
+		c.MergedContent = content
+	}
+	return nil
 }
 
 // populateClusterMeta populates FeedTitles and Authors for a cluster.

@@ -1001,7 +1001,10 @@ func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithSta
 		}
 	}
 
-	userIsRunning := poolTaskCount > 0 || queueTaskCount > 0 || len(filteredErrors) > 0
+	// User refresh state should reflect active refresh work only.
+	// Historical errors may be shown separately, but they must not keep the UI in a
+	// perpetual "refreshing" state once queue and pool work have completed.
+	userIsRunning := poolTaskCount > 0 || queueTaskCount > 0
 
 	return ProgressWithStats{
 		Progress: Progress{
@@ -1010,7 +1013,8 @@ func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithSta
 		},
 		PoolTaskCount:     poolTaskCount,
 		QueueTaskCount:    queueTaskCount,
-		ArticleClickCount: tm.stats.ArticleClickCount,
+		// Immediate article-content backfills are not part of the per-user feed refresh UI.
+		ArticleClickCount: 0,
 	}
 }
 

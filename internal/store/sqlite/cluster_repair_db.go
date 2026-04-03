@@ -1,0 +1,157 @@
+package sqlite
+
+import (
+	"fmt"
+	"strings"
+)
+
+// BackfillEmptyClusterMergedContent populates empty cluster title/summary/content fields
+// from the latest source article so the cluster remains readable even if fusion output
+// has not been persisted yet.
+func (db *DB) BackfillEmptyClusterMergedContent(userID int64) (int, error) {
+	db.WaitForReady()
+	if userID <= 0 {
+		return 0, nil
+	}
+
+	rows, err := db.Query(`
+		SELECT id, merged_title, merged_summary, merged_content
+		FROM clusters
+		WHERE user_id = ?
+		  AND (
+			TRIM(COALESCE(merged_title, '')) = ''
+			OR TRIM(COALESCE(merged_summary, '')) = ''
+			OR TRIM(COALESCE(merged_content, '')) = ''
+		  )
+		ORDER BY id ASC
+	`, userID)
+	if err != nil {
+		return 0, fmt.Errorf("query clusters needing merged-content backfill: %w", err)
+	}
+	defer rows.Close()
+
+	type clusterRow struct {
+		id      int64
+		title   string
+		summary string
+		content string
+	}
+
+	pending := make([]clusterRow, 0)
+	for rows.Next() {
+		var row clusterRow
+		if err := rows.Scan(&row.id, &row.title, &row.summary, &row.content); err != nil {
+			return 0, fmt.Errorf("scan cluster needing merged-content backfill: %w", err)
+		}
+		pending = append(pending, row)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate clusters needing merged-content backfill: %w", err)
+	}
+
+	updated := 0
+	for _, row := range pending {
+		title, summary, content, ok, err := db.buildClusterFallbackFields(userID, row.id)
+		if err != nil {
+			return updated, err
+		}
+		if !ok {
+			continue
+		}
+
+		nextTitle := strings.TrimSpace(row.title)
+		if nextTitle == "" {
+			nextTitle = title
+		}
+		nextSummary := strings.TrimSpace(row.summary)
+		if nextSummary == "" {
+			nextSummary = summary
+		}
+		nextContent := strings.TrimSpace(row.content)
+		if nextContent == "" {
+			nextContent = content
+		}
+
+		if nextTitle == strings.TrimSpace(row.title) &&
+			nextSummary == strings.TrimSpace(row.summary) &&
+			nextContent == strings.TrimSpace(row.content) {
+			continue
+		}
+
+		if err := db.UpdateClusterMergedContent(row.id, nextTitle, nextSummary, nextContent); err != nil {
+			return updated, fmt.Errorf("update fallback merged content for cluster %d: %w", row.id, err)
+		}
+		updated++
+	}
+
+	return updated, nil
+}
+
+// SyncClusterFavoriteStatesFromArticles makes cluster favorite flags reflect the current
+// favorite state of their member articles.
+func (db *DB) SyncClusterFavoriteStatesFromArticles(userID int64) error {
+	db.WaitForReady()
+	if userID <= 0 {
+		return nil
+	}
+
+	_, err := db.Exec(`
+		UPDATE clusters
+		SET is_favorite = CASE
+			WHEN EXISTS (
+				SELECT 1
+				FROM articles a
+				WHERE a.cluster_id = clusters.id AND a.is_favorite = 1
+			) THEN 1
+			ELSE 0
+		END
+		WHERE user_id = ?
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("sync cluster favorite states: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) buildClusterFallbackFields(userID, clusterID int64) (string, string, string, bool, error) {
+	if userID <= 0 || clusterID <= 0 {
+		return "", "", "", false, nil
+	}
+
+	articles, err := db.GetArticlesByClusterID(clusterID)
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("get articles for cluster %d fallback: %w", clusterID, err)
+	}
+	if len(articles) == 0 {
+		return "", "", "", false, nil
+	}
+
+	article := articles[0]
+	title := strings.TrimSpace(article.TranslatedTitle)
+	if title == "" {
+		title = strings.TrimSpace(article.Title)
+	}
+
+	summary := strings.TrimSpace(article.Summary)
+	content, _, err := db.GetArticleContent(article.ID)
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("get article %d content for cluster fallback: %w", article.ID, err)
+	}
+	content = strings.TrimSpace(content)
+
+	if content == "" {
+		content = summary
+	}
+	if summary == "" {
+		summary = title
+	}
+	if content == "" {
+		content = summary
+	}
+	if title == "" && summary == "" && content == "" {
+		return "", "", "", false, nil
+	}
+
+	return title, summary, content, true, nil
+}

@@ -106,6 +106,16 @@ func TestShouldProcessIgnoresGlobalAIKeyWithoutUserConfig(t *testing.T) {
 	}
 }
 
+func TestShouldInspectUserForRecoverySkipsDisabledUsers(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	t.Cleanup(manager.Stop)
+
+	if manager.shouldInspectUserForRecovery(1) {
+		t.Fatal("shouldInspectUserForRecovery() = true, want false when AI enhanced mode is disabled")
+	}
+}
+
 func TestShouldProcessRequiresFusionAndRecommendationEnabled(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 
@@ -331,6 +341,40 @@ func TestBuildFusionConfigUsesFusionProfile(t *testing.T) {
 	}
 	if cfg.GlobalProxyURL != "http://127.0.0.1:8080" {
 		t.Fatalf("buildFusionConfig() global proxy URL = %q, want %q", cfg.GlobalProxyURL, "http://127.0.0.1:8080")
+	}
+}
+
+func TestBuildFusionConfigFallsBackToSummaryProfileWhenFusionProfileMissing(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	summaryProfileID, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:         1,
+		Name:           "summary-only",
+		APIKey:         "summary-key",
+		Endpoint:       "https://summary.example.com",
+		Model:          "summary-model",
+		CustomHeaders:  `{"X-Summary":"1"}`,
+		UseGlobalProxy: false,
+	})
+	if err != nil {
+		t.Fatalf("CreateAIProfile summary error: %v", err)
+	}
+
+	mustSetUserSetting(t, db, 1, "ai_fusion_profile_id", "")
+	mustSetUserSetting(t, db, 1, "ai_summary_profile_id", strconv.FormatInt(summaryProfileID, 10))
+	mustSetUserSetting(t, db, 1, "target_language", "zh")
+
+	cfg, err := manager.buildFusionConfig(1)
+	if err != nil {
+		t.Fatalf("buildFusionConfig summary fallback error: %v", err)
+	}
+	if cfg == nil || cfg.Summarizer == nil {
+		t.Fatal("buildFusionConfig() returned nil summarizer, want summary-profile fallback")
+	}
+	if cfg.Summarizer.APIKey != "summary-key" || cfg.Summarizer.Endpoint != "https://summary.example.com" || cfg.Summarizer.Model != "summary-model" {
+		t.Fatalf("buildFusionConfig() summary fallback = %#v", cfg.Summarizer)
 	}
 }
 

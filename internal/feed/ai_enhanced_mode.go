@@ -768,6 +768,12 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	if err != nil {
 		return err
 	}
+	if cfg == nil || cfg.Summarizer == nil {
+		log.Printf(
+			"Cluster pipeline fusion summarizer unavailable for user %d; pending_merge clusters will use source-article fallback content until a fusion model is resolved",
+			userID,
+		)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -837,14 +843,6 @@ func (m *AIEnhancedManager) initializeInterestVectorFromFavoriteClustersIfMissin
 }
 
 func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig, error) {
-	config, err := getUserFeatureAIConfig(m.db, userID, ai.FeatureFusion)
-	if err != nil {
-		return nil, fmt.Errorf("resolve fusion ai config: %w", err)
-	}
-	if !hasConfiguredAPIKey(config) {
-		return nil, fmt.Errorf("missing user-level fusion ai config")
-	}
-
 	embeddingConfigsJSON, err := m.db.GetSettingWithFallback(userID, "ai_embedding_models")
 	if err != nil {
 		return nil, fmt.Errorf("load embedding models: %w", err)
@@ -854,17 +852,34 @@ func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig
 	if err != nil {
 		return nil, fmt.Errorf("load proxy settings: %w", err)
 	}
-	useGlobalProxy := ai.NewProfileProvider(m.db).UseGlobalProxyForFeatureForUser(userID, ai.FeatureFusion)
-
-	aiSummarizer := summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, useGlobalProxy)
-	if config.CustomHeaders != "" {
-		aiSummarizer.SetCustomHeaders(config.CustomHeaders)
-	}
 	targetLanguage, _ := m.db.GetSettingWithFallback(userID, "target_language")
 	if targetLanguage == "" {
 		targetLanguage = "zh"
 	}
-	aiSummarizer.SetLanguage(targetLanguage)
+
+	config, proxyFeature, err := m.resolveFusionAIClientConfig(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var aiSummarizer *summary.AISummarizer
+	if hasConfiguredAPIKey(config) {
+		useGlobalProxy := ai.NewProfileProvider(m.db).UseGlobalProxyForFeatureForUser(userID, proxyFeature)
+		aiSummarizer = summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, useGlobalProxy)
+		if config.CustomHeaders != "" {
+			aiSummarizer.SetCustomHeaders(config.CustomHeaders)
+		}
+		aiSummarizer.SetLanguage(targetLanguage)
+	}
+
+	log.Printf(
+		"Built cluster fusion config for user %d: summarizer_enabled=%t proxy_feature=%q target_language=%q embedding_models_configured=%t",
+		userID,
+		aiSummarizer != nil,
+		string(proxyFeature),
+		targetLanguage,
+		strings.TrimSpace(embeddingConfigsJSON) != "" && strings.TrimSpace(embeddingConfigsJSON) != "[]",
+	)
 
 	return &dedup.FusionConfig{
 		Summarizer:     aiSummarizer,
@@ -872,6 +887,112 @@ func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig
 		GlobalProxyURL: globalProxyURL,
 		TargetLanguage: targetLanguage,
 	}, nil
+}
+
+func (m *AIEnhancedManager) resolveFusionAIClientConfig(userID int64) (*ai.ClientConfig, ai.FeatureType, error) {
+	provider := ai.NewProfileProvider(m.db)
+	selectedFusionProfileID, _ := m.db.GetSettingForUser(userID, "ai_fusion_profile_id")
+	selectedSummaryProfileID, _ := m.db.GetSettingForUser(userID, "ai_summary_profile_id")
+
+	fusionProfile, profileErr := provider.GetProfileForFeatureForUser(userID, ai.FeatureFusion)
+	if profileErr != nil {
+		log.Printf("Failed to inspect fusion profile resolution for user %d: %v", userID, profileErr)
+	}
+	config, err := getUserFeatureAIConfig(m.db, userID, ai.FeatureFusion)
+	if err != nil {
+		return nil, ai.FeatureFusion, fmt.Errorf("resolve fusion ai config: %w", err)
+	}
+	if hasConfiguredAPIKey(config) {
+		source := "legacy_user_ai_settings"
+		if fusionProfile != nil {
+			source = "fusion_profile_or_default"
+		}
+		m.logFusionConfigResolution(userID, source, selectedFusionProfileID, selectedSummaryProfileID, fusionProfile, config)
+		return config, ai.FeatureFusion, nil
+	}
+
+	// Backward compatibility: older versions reused the summary model for cluster fusion.
+	summaryProfile, profileErr := provider.GetProfileForFeatureForUser(userID, ai.FeatureSummary)
+	if profileErr != nil {
+		log.Printf("Failed to inspect summary profile fallback for user %d: %v", userID, profileErr)
+	}
+	config, err = getUserFeatureAIConfig(m.db, userID, ai.FeatureSummary)
+	if err != nil {
+		return nil, ai.FeatureSummary, fmt.Errorf("resolve summary ai config fallback for fusion: %w", err)
+	}
+	if hasConfiguredAPIKey(config) {
+		source := "legacy_user_ai_settings_via_summary_fallback"
+		if summaryProfile != nil {
+			source = "summary_profile_fallback"
+		}
+		m.logFusionConfigResolution(userID, source, selectedFusionProfileID, selectedSummaryProfileID, summaryProfile, config)
+		return config, ai.FeatureSummary, nil
+	}
+
+	m.logFusionConfigResolution(userID, "missing", selectedFusionProfileID, selectedSummaryProfileID, nil, config)
+	return config, ai.FeatureFusion, nil
+}
+
+func (m *AIEnhancedManager) logFusionConfigResolution(
+	userID int64,
+	source string,
+	selectedFusionProfileID string,
+	selectedSummaryProfileID string,
+	resolvedProfile *models.AIProfile,
+	config *ai.ClientConfig,
+) {
+	if m == nil || m.db == nil || userID <= 0 {
+		return
+	}
+
+	defaultProfile, defaultErr := m.db.GetDefaultAIProfileForUser(userID)
+	if defaultErr != nil {
+		log.Printf("Failed to inspect default AI profile during fusion config logging for user %d: %v", userID, defaultErr)
+	}
+	legacyEndpoint, _ := m.db.GetSettingForUser(userID, "ai_endpoint")
+	legacyModel, _ := m.db.GetSettingForUser(userID, "ai_model")
+
+	log.Printf(
+		"AI fusion config resolution for user %d: source=%s selected_fusion_profile_setting=%q selected_summary_profile_setting=%q resolved_profile=%s default_profile=%s resolved_model=%q resolved_endpoint=%q has_api_key=%t legacy_model=%q legacy_endpoint=%q",
+		userID,
+		source,
+		strings.TrimSpace(selectedFusionProfileID),
+		strings.TrimSpace(selectedSummaryProfileID),
+		formatFusionProfileLogValue(resolvedProfile),
+		formatFusionProfileLogValue(defaultProfile),
+		strings.TrimSpace(fusionConfigValue(config, "model")),
+		strings.TrimSpace(fusionConfigValue(config, "endpoint")),
+		hasConfiguredAPIKey(config),
+		strings.TrimSpace(legacyModel),
+		strings.TrimSpace(legacyEndpoint),
+	)
+}
+
+func formatFusionProfileLogValue(profile *models.AIProfile) string {
+	if profile == nil {
+		return "none"
+	}
+
+	name := strings.TrimSpace(profile.Name)
+	if name == "" {
+		return fmt.Sprintf("%d", profile.ID)
+	}
+	return fmt.Sprintf("%d(%s)", profile.ID, name)
+}
+
+func fusionConfigValue(config *ai.ClientConfig, field string) string {
+	if config == nil {
+		return ""
+	}
+
+	switch field {
+	case "model":
+		return config.Model
+	case "endpoint":
+		return config.Endpoint
+	default:
+		return ""
+	}
 }
 
 // generateAISummary generates and saves AI summary for an article
@@ -1605,18 +1726,32 @@ func (m *AIEnhancedManager) recoverPendingWorkForKnownUsers(reason string) {
 		return
 	}
 
-	if len(userIDs) > 0 {
-		log.Printf("Scanning %d users for recoverable AI processing work (%s)", len(userIDs), reason)
-	}
-
+	candidateUserIDs := make([]int64, 0, len(userIDs))
 	for _, userID := range userIDs {
-		if userID <= 0 {
+		if !m.shouldInspectUserForRecovery(userID) {
 			continue
 		}
+		candidateUserIDs = append(candidateUserIDs, userID)
+	}
 
+	if len(candidateUserIDs) > 0 {
+		log.Printf("Scanning %d AI-enabled users for recoverable AI processing work (%s)", len(candidateUserIDs), reason)
+	}
+
+	for _, userID := range candidateUserIDs {
 		status := m.GetProcessingStatus(userID)
 		m.recoverPendingWorkIfIdle(userID, status, reason)
 	}
+}
+
+func (m *AIEnhancedManager) shouldInspectUserForRecovery(userID int64) bool {
+	if m == nil || m.db == nil || userID <= 0 {
+		return false
+	}
+	if m.isRenormalizationRunning(userID) {
+		return false
+	}
+	return ShouldProcess(m.db, userID)
 }
 
 func (m *AIEnhancedManager) incrementQueuedTask(userID int64) {

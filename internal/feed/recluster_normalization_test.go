@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -245,6 +246,92 @@ func TestStartClusterRenormalizationResetsStateAndRequeuesArticles(t *testing.T)
 	}
 	if !interest.IsNormalized(vec, 1e-3) {
 		t.Fatal("summary embedding should be normalized after renormalization")
+	}
+}
+
+func TestStartClusterRenormalizationRepairsEmptyMergedContentAndFavoriteFlags(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, true, time.Now().Add(-time.Hour), "renorm-repair", true)
+
+	rawBlob := mustSerializeRawEmbeddingBlob(t, 3)
+	if _, err := db.Exec(
+		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+		articleID, rawBlob, rawBlob,
+	); err != nil {
+		t.Fatalf("insert embedding error = %v", err)
+	}
+
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+	manager.resolveFusionConfig = func(userID int64) (*dedup.FusionConfig, error) {
+		return &dedup.FusionConfig{}, nil
+	}
+	manager.runFusion = func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+		clusters, err := db.GetClustersByStatus(userID, "pending_merge")
+		if err != nil {
+			return err
+		}
+		for _, cluster := range clusters {
+			if err := db.UpdateClusterStatus(cluster.ID, "pending_embed"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	manager.runEmbedding = func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+		clusters, err := db.GetClustersByStatus(userID, "pending_embed")
+		if err != nil {
+			return err
+		}
+		for _, cluster := range clusters {
+			if err := db.SetClusterFavorite(cluster.ID, false); err != nil {
+				return err
+			}
+			if err := db.UpdateClusterStatus(cluster.ID, "complete"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	scheduled, reason, err := manager.StartClusterRenormalization(1)
+	if err != nil {
+		t.Fatalf("StartClusterRenormalization error = %v", err)
+	}
+	if !scheduled {
+		t.Fatalf("scheduled = false, want true (reason=%q)", reason)
+	}
+
+	waitForCondition(t, 12*time.Second, func() bool {
+		return !manager.isRenormalizationRunning(1)
+	})
+
+	var clusterID int64
+	if err := db.QueryRow(`SELECT cluster_id FROM articles WHERE id = ?`, articleID).Scan(&clusterID); err != nil {
+		t.Fatalf("query cluster_id error = %v", err)
+	}
+	if clusterID <= 0 {
+		t.Fatalf("clusterID = %d, want > 0", clusterID)
+	}
+
+	cluster, err := db.GetClusterByID(clusterID)
+	if err != nil {
+		t.Fatalf("GetClusterByID error = %v", err)
+	}
+	if cluster == nil {
+		t.Fatal("GetClusterByID returned nil cluster")
+	}
+	if !cluster.IsFavorite {
+		t.Fatal("cluster should be re-synced to favorite after renormalization")
+	}
+	if strings.TrimSpace(cluster.MergedSummary) == "" {
+		t.Fatal("MergedSummary should be backfilled when fusion leaves it empty")
+	}
+	if strings.TrimSpace(cluster.MergedContent) == "" {
+		t.Fatal("MergedContent should be backfilled when fusion leaves it empty")
 	}
 }
 
