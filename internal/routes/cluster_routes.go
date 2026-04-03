@@ -29,4 +29,5 @@ func registerClusterRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	registerProtectedRoute(mux, "/api/clusters/daily-recommendations/regenerate", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleRegenerateDailyRecommendations(h, w, r) })
 	registerProtectedRoute(mux, "/api/clusters/daily-recommendations/refresh", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleRefreshDailyRecommendations(h, w, r) })
 	registerProtectedRoute(mux, "/api/clusters/ai-processing-status", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleAIProcessingStatus(h, w, r) })
+	registerProtectedRoute(mux, "/api/clusters/recluster-normalize", authMiddleware, func(w http.ResponseWriter, r *http.Request) { cluster.HandleClusterRenormalization(h, w, r) })
 }

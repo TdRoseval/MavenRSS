@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"math"
 
-	_ "github.com/mattn/go-sqlite3" // Ensure sqlite3 symbols are linked for sqlite-vec cgo.
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+	_ "github.com/mattn/go-sqlite3" // Ensure sqlite3 symbols are linked for sqlite-vec cgo.
 )
 
 // Learning rate constants for the 3-tier system
@@ -116,7 +116,7 @@ func SerializeVector(vec []float32) ([]byte, error) {
 	if len(vec) == 0 {
 		return nil, fmt.Errorf("empty vector")
 	}
-	return sqlite_vec.SerializeFloat32(vec)
+	return sqlite_vec.SerializeFloat32(NormalizeVector(vec))
 }
 
 // DeserializeVector converts a byte blob back to a float32 slice.
@@ -137,9 +137,9 @@ func DeserializeVector(blob []byte) ([]float32, error) {
 	return vec, nil
 }
 
-// normalize performs L2 normalization on a float32 vector.
-// Returns the zero vector if the norm is 0.
-func normalize(v []float32) []float32 {
+// NormalizeVector performs L2 normalization on a float32 vector.
+// Returns the original zero vector if the norm is 0.
+func NormalizeVector(v []float32) []float32 {
 	var norm float64
 	for _, x := range v {
 		norm += float64(x) * float64(x)
@@ -155,4 +155,80 @@ func normalize(v []float32) []float32 {
 		result[i] = float32(float64(x) / norm)
 	}
 	return result
+}
+
+// NormalizeAndSerialize normalizes the vector before serializing it for SQLite storage.
+func NormalizeAndSerialize(vec []float32) ([]byte, error) {
+	if len(vec) == 0 {
+		return nil, fmt.Errorf("empty vector")
+	}
+	return sqlite_vec.SerializeFloat32(NormalizeVector(vec))
+}
+
+// SquaredL2Distance computes the squared Euclidean distance between two vectors.
+func SquaredL2Distance(a, b []float32) (float64, error) {
+	if len(a) == 0 || len(b) == 0 {
+		return 0, fmt.Errorf("empty vector")
+	}
+	if len(a) != len(b) {
+		return 0, fmt.Errorf("vector dimension mismatch: %d != %d", len(a), len(b))
+	}
+
+	var sum float64
+	for i := range a {
+		diff := float64(a[i] - b[i])
+		sum += diff * diff
+	}
+	return sum, nil
+}
+
+// AverageAndNormalize averages vectors element-wise and normalizes the resulting centroid.
+func AverageAndNormalize(vectors [][]float32) ([]float32, error) {
+	if len(vectors) == 0 {
+		return nil, fmt.Errorf("no vectors provided")
+	}
+
+	dim := len(vectors[0])
+	if dim == 0 {
+		return nil, fmt.Errorf("empty vector")
+	}
+
+	avg := make([]float32, dim)
+	count := 0
+	for _, vec := range vectors {
+		if len(vec) != dim {
+			return nil, fmt.Errorf("vector dimension mismatch: %d != %d", len(vec), dim)
+		}
+		for i := range vec {
+			avg[i] += vec[i]
+		}
+		count++
+	}
+
+	if count == 0 {
+		return nil, fmt.Errorf("no vectors provided")
+	}
+	for i := range avg {
+		avg[i] /= float32(count)
+	}
+	return NormalizeVector(avg), nil
+}
+
+// IsNormalized reports whether the vector norm is approximately 1 within tolerance.
+func IsNormalized(vec []float32, tolerance float64) bool {
+	if len(vec) == 0 {
+		return false
+	}
+
+	var sum float64
+	for _, value := range vec {
+		sum += float64(value) * float64(value)
+	}
+	norm := math.Sqrt(sum)
+	return math.Abs(norm-1) <= tolerance
+}
+
+// normalize is kept for compatibility with existing internal callers.
+func normalize(v []float32) []float32 {
+	return NormalizeVector(v)
 }

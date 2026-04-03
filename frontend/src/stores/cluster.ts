@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { apiClient } from '@/shared/lib/apiClient';
-import { authGet } from '@/shared/lib/authFetch';
+import { authGet, authPost } from '@/shared/lib/authFetch';
 import type {
   AIProcessingStatus,
   Cluster,
+  ClusterRenormalizeResponse,
   DailyRecommendationRefreshResponse,
   DailyRecommendationItem,
   DailyRecommendationResponse,
@@ -19,7 +20,9 @@ interface ClusterListResponse {
 }
 
 export const useClusterStore = defineStore('cluster', () => {
-  const AI_PROCESSING_POLL_INTERVAL_MS = 2000;
+  const AI_PROCESSING_POLL_INTERVAL_MS = 10000;
+  const AI_PROCESSING_IDLE_POLL_INTERVAL_MS = 30000;
+  const AI_PROCESSING_MAX_IDLE_POLL_INTERVAL_MS = 60000;
   const DEFAULT_PAGE_SIZE = 20;
   const REALTIME_BATCH_SIZE = 30;
   const clusters = ref<Cluster[]>([]);
@@ -42,8 +45,9 @@ export const useClusterStore = defineStore('cluster', () => {
   const isAIProcessingStatusLoading = ref(false);
   const hasLoadedAIProcessingStatus = ref(false);
 
-  let aiProcessingPollingTimer: ReturnType<typeof setInterval> | null = null;
+  let aiProcessingPollingTimer: ReturnType<typeof setTimeout> | null = null;
   let aiProcessingPollingConsumers = 0;
+  let aiProcessingIdlePollCount = 0;
 
   const currentCluster = computed(
     () =>
@@ -461,17 +465,62 @@ export const useClusterStore = defineStore('cluster', () => {
     }
   }
 
+  async function forceStartClusterRenormalization(): Promise<ClusterRenormalizeResponse> {
+    const response = await authPost<ClusterRenormalizeResponse>('/api/clusters/recluster-normalize', {
+      force: true,
+    });
+    await fetchProcessingStatuses();
+    return response;
+  }
+
+  function hasActiveProcessingWork(): boolean {
+    return (
+      aiProcessingStatus.value?.is_config_frozen === true ||
+      dailyRecommendationTaskStatus.value?.has_task === true
+    );
+  }
+
+  function getNextAIProcessingPollDelay(): number {
+    if (hasActiveProcessingWork()) {
+      aiProcessingIdlePollCount = 0;
+      return AI_PROCESSING_POLL_INTERVAL_MS;
+    }
+
+    aiProcessingIdlePollCount += 1;
+    if (aiProcessingIdlePollCount === 1) {
+      return AI_PROCESSING_IDLE_POLL_INTERVAL_MS;
+    }
+
+    return AI_PROCESSING_MAX_IDLE_POLL_INTERVAL_MS;
+  }
+
+  function scheduleNextAIProcessingPoll(delay?: number) {
+    if (aiProcessingPollingConsumers === 0) {
+      return;
+    }
+
+    if (aiProcessingPollingTimer) {
+      clearTimeout(aiProcessingPollingTimer);
+    }
+
+    aiProcessingPollingTimer = setTimeout(() => {
+      fetchProcessingStatuses()
+        .catch((error) => {
+          console.error('Failed to poll processing status:', error);
+        })
+        .finally(() => {
+          scheduleNextAIProcessingPoll(getNextAIProcessingPollDelay());
+        });
+    }, delay ?? getNextAIProcessingPollDelay());
+  }
+
   async function startAIProcessingPolling() {
     aiProcessingPollingConsumers += 1;
 
     if (aiProcessingPollingConsumers === 1) {
       await fetchProcessingStatuses();
-
-      aiProcessingPollingTimer = setInterval(() => {
-        fetchProcessingStatuses().catch((error) => {
-          console.error('Failed to poll processing status:', error);
-        });
-      }, AI_PROCESSING_POLL_INTERVAL_MS);
+      aiProcessingIdlePollCount = 0;
+      scheduleNextAIProcessingPoll(AI_PROCESSING_POLL_INTERVAL_MS);
       return;
     }
 
@@ -484,8 +533,9 @@ export const useClusterStore = defineStore('cluster', () => {
     aiProcessingPollingConsumers = Math.max(0, aiProcessingPollingConsumers - 1);
 
     if (aiProcessingPollingConsumers === 0 && aiProcessingPollingTimer) {
-      clearInterval(aiProcessingPollingTimer);
+      clearTimeout(aiProcessingPollingTimer);
       aiProcessingPollingTimer = null;
+      aiProcessingIdlePollCount = 0;
     }
   }
 
@@ -562,6 +612,7 @@ export const useClusterStore = defineStore('cluster', () => {
     setActiveFilters,
     fetchAIProcessingStatus,
     fetchDailyRecommendationTaskStatus,
+    forceStartClusterRenormalization,
     startAIProcessingPolling,
     stopAIProcessingPolling,
     setFilteredClusterIds,

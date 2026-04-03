@@ -1,6 +1,7 @@
 package article
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"MavenRSS/internal/feed"
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/feed"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/rsshub"
 )
@@ -376,9 +377,19 @@ func HandleRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
-	// Trigger refresh via fetcher
+
+	userID, ok := core.GetUserIDFromRequest(r)
+
+	// Trigger refresh via fetcher in a detached background context so the
+	// work can outlive this request.
 	if h.Fetcher != nil {
-		go h.Fetcher.FetchAll(r.Context())
+		go func() {
+			if ok {
+				h.Fetcher.FetchAllForUser(context.Background(), userID)
+				return
+			}
+			h.Fetcher.FetchAll(context.Background())
+		}()
 	}
 	response.JSON(w, map[string]string{"message": "refresh started"})
 }
@@ -389,9 +400,16 @@ func HandleStopRefresh(h *core.Handler, w http.ResponseWriter, r *http.Request) 
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
-	// Stop refresh via fetcher - use StopRefreshForUser with userID 0 for global stop
+
+	userID, ok := core.GetUserIDFromRequest(r)
+
+	// Stop refresh via fetcher.
 	if h.Fetcher != nil {
-		h.Fetcher.StopRefreshForUser(0)
+		if ok {
+			h.Fetcher.StopRefreshForUser(userID)
+		} else {
+			h.Fetcher.StopRefreshForUser(0)
+		}
 	}
 	response.JSON(w, map[string]string{"message": "refresh stopped"})
 }

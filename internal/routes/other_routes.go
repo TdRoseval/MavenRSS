@@ -11,6 +11,7 @@ import (
 	opml "MavenRSS/internal/api/opml"
 	rules "MavenRSS/internal/api/rules"
 	script "MavenRSS/internal/api/script"
+	systemmessage "MavenRSS/internal/api/systemmessage"
 	update "MavenRSS/internal/api/update"
 	window "MavenRSS/internal/api/window"
 	"MavenRSS/internal/middleware"
@@ -29,6 +30,10 @@ func registerOtherRoutes(mux *http.ServeMux, h *core.Handler, cfg Config) {
 	registerProtectedRoute(mux, "/api/refresh/stop", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleStopRefresh(h, w, r) })
 	registerProtectedRoute(mux, "/api/progress", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleProgress(h, w, r) })
 	registerProtectedRoute(mux, "/api/progress/task-details", authMiddleware, func(w http.ResponseWriter, r *http.Request) { article.HandleTaskDetails(h, w, r) })
+	registerProtectedRoute(mux, "/api/system-messages", authMiddleware, func(w http.ResponseWriter, r *http.Request) { systemmessage.HandleListSystemMessages(h, w, r) })
+	registerProtectedRoute(mux, "/api/system-messages/unread-count", authMiddleware, func(w http.ResponseWriter, r *http.Request) { systemmessage.HandleSystemMessageUnreadCount(h, w, r) })
+	registerProtectedRoute(mux, "/api/system-messages/read", authMiddleware, func(w http.ResponseWriter, r *http.Request) { systemmessage.HandleMarkSystemMessageRead(h, w, r) })
+	registerProtectedRoute(mux, "/api/system-messages/mark-all-read", authMiddleware, func(w http.ResponseWriter, r *http.Request) { systemmessage.HandleMarkAllSystemMessagesRead(h, w, r) })
 
 	// OPML
 	registerProtectedRoute(mux, "/api/opml/import", authMiddleware, func(w http.ResponseWriter, r *http.Request) { opml.HandleOPMLImport(h, w, r) })

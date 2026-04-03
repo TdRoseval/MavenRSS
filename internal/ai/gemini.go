@@ -65,7 +65,7 @@ func (h *GeminiHandler) BuildRequest(config RequestConfig) (map[string]interface
 		"contents": contents,
 		"generationConfig": map[string]interface{}{
 			"temperature":     0.3,
-			"maxOutputTokens": 2048,
+			"maxOutputTokens": 8192,
 		},
 	}
 

@@ -49,6 +49,10 @@ func HandleClusters(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 	category := r.URL.Query().Get("category")
 
+	if err := h.DB.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
+		log.Printf("Error syncing cluster favorites before listing clusters: %v", err)
+	}
+
 	clusters, err := h.DB.GetClustersForUser(userID, filter, feedID, category, limit, offset)
 	if err != nil {
 		log.Printf("Error getting clusters: %v", err)

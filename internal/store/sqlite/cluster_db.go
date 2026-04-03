@@ -43,6 +43,9 @@ FROM clusters WHERE id = ?
 	if err != nil {
 		return nil, err
 	}
+	if err := db.applyClusterMergedContentFallback(&c); err != nil {
+		return nil, err
+	}
 	db.populateClusterMeta(&c)
 	return &c, nil
 }
@@ -80,12 +83,23 @@ func (db *DB) UpdateClusterArticleCount(clusterID int64) error {
 // GetClustersByStatus retrieves clusters by status for a user.
 func (db *DB) GetClustersByStatus(userID int64, status string) ([]models.Cluster, error) {
 	db.WaitForReady()
-	rows, err := db.Query(`
+	query := `
 		SELECT id, user_id, status, merged_title, merged_summary,
 recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
 article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
 FROM clusters WHERE user_id = ? AND status = ?
-	`, userID, status)
+	`
+	args := []any{userID, status}
+	if status == "pending_merge" {
+		query = `
+		SELECT id, user_id, status, merged_title, merged_summary,
+recommendation_archive_date, recommendation_score, is_ai_recommended, recommendation_profile_id,
+article_count, created_at, updated_at, is_read, is_favorite, is_read_later, is_hidden
+FROM clusters WHERE user_id = ? AND status IN ('pending_merge', 'merging')
+	`
+		args = []any{userID}
+	}
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +255,7 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 // UpdateClusterEmbeddings stores embeddings for a cluster.
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
+	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
 	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
 	_, err := db.Exec(
 		`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
@@ -323,6 +338,36 @@ func chooseClusterDisplayTitle(mergedTitle, translatedTitle, articleTitle string
 		return mergedTitle
 	}
 	return articleTitle
+}
+
+func (db *DB) applyClusterMergedContentFallback(c *models.Cluster) error {
+	if c == nil || c.ID <= 0 || c.UserID <= 0 {
+		return nil
+	}
+	if strings.TrimSpace(c.MergedTitle) != "" &&
+		strings.TrimSpace(c.MergedSummary) != "" &&
+		strings.TrimSpace(c.MergedContent) != "" {
+		return nil
+	}
+
+	title, summary, content, ok, err := db.buildClusterFallbackFields(c.UserID, c.ID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if strings.TrimSpace(c.MergedTitle) == "" {
+		c.MergedTitle = title
+	}
+	if strings.TrimSpace(c.MergedSummary) == "" {
+		c.MergedSummary = summary
+	}
+	if strings.TrimSpace(c.MergedContent) == "" {
+		c.MergedContent = content
+	}
+	return nil
 }
 
 // populateClusterMeta populates FeedTitles and Authors for a cluster.

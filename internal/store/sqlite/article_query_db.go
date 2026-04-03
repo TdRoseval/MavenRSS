@@ -8,14 +8,15 @@ import (
 )
 
 type AIBatchProcessingArticle struct {
-	Article             models.Article
-	TranslateArticles   bool
-	HasContent          bool
-	HasSummary          bool
-	HasTranslation      bool
-	HasArticleEmbedding bool
-	HasCluster          bool
-	ClusterComplete     bool
+	Article                     models.Article
+	TranslateArticles           bool
+	HasContent                  bool
+	HasSummary                  bool
+	HasTranslation              bool
+	HasArticleEmbedding         bool
+	HasCluster                  bool
+	ClusterNeedsPostProcess     bool
+	ClusterNeedsEmbeddingRepair bool
 }
 
 type AIProcessingProgress struct {
@@ -26,6 +27,15 @@ type AIProcessingProgress struct {
 	PendingTranslationArticles int `json:"pending_translation_articles"`
 	PendingEmbeddingArticles   int `json:"pending_embedding_articles"`
 	PendingClusteringArticles  int `json:"pending_clustering_articles"`
+}
+
+type ClusterProcessingProgress struct {
+	PendingMergeClusters int `json:"pending_merge_clusters"`
+	PendingEmbedClusters int `json:"pending_embed_clusters"`
+}
+
+func (db *DB) GetAIReclusterNormalizationProgress(userID int64, targetLang string) (AIProcessingProgress, error) {
+	return db.getAIProcessingProgress(userID, targetLang, false, true)
 }
 
 func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) ([]AIBatchProcessingArticle, error) {
@@ -43,25 +53,25 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			ac.article_id IS NOT NULL,
 			((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL),
 			(atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL),
-			ae.article_id IS NOT NULL,
-			c.id IS NOT NULL,
+			(ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL),
+			(c.id IS NOT NULL OR skip_clustering.article_id IS NOT NULL),
 			(
 				c.id IS NOT NULL
-				AND c.status = 'complete'
+				AND skip_clustering.article_id IS NULL
 				AND (
-					ce.cluster_id IS NOT NULL
-					OR (
-						TRIM(COALESCE(c.merged_title, '')) = ''
-						AND TRIM(COALESCE(c.merged_summary, '')) = ''
-					)
+					c.status <> 'complete'
+					OR ce.cluster_id IS NULL
 				)
-			)
+			),
+			(c.id IS NOT NULL AND skip_clustering.article_id IS NULL AND c.status = 'complete' AND ce.cluster_id IS NULL)
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		LEFT JOIN article_contents ac ON ac.article_id = a.id
 		LEFT JOIN article_translated_contents atc ON atc.article_id = a.id AND atc.target_lang = ?
 		LEFT JOIN ai_article_stage_skips skip_summary ON skip_summary.article_id = a.id AND skip_summary.stage = 'summary'
 		LEFT JOIN ai_article_stage_skips skip_translation ON skip_translation.article_id = a.id AND skip_translation.stage = 'translation'
+		LEFT JOIN ai_article_stage_skips skip_embedding ON skip_embedding.article_id = a.id AND skip_embedding.stage = 'embedding'
+		LEFT JOIN ai_article_stage_skips skip_clustering ON skip_clustering.article_id = a.id AND skip_clustering.stage = 'clustering'
 		LEFT JOIN article_embeddings ae ON ae.article_id = a.id
 		LEFT JOIN clusters c ON a.cluster_id = c.id
 		LEFT JOIN cluster_embeddings ce ON ce.cluster_id = c.id
@@ -71,19 +81,13 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			OR (a.is_favorite = 0 AND a.published_at >= datetime('now', '-2 days'))
 		)
 		AND (
-			((TRIM(COALESCE(a.summary, '')) = '' OR COALESCE(a.summary, '') = '<no content>') AND skip_summary.article_id IS NULL)
-			OR (COALESCE(f.translate_articles, 0) = 1 AND atc.article_id IS NULL AND skip_translation.article_id IS NULL)
-			OR ae.article_id IS NULL
-			OR c.id IS NULL
-			OR NOT (
-				c.status = 'complete'
-				AND (
-					ce.cluster_id IS NOT NULL
-					OR (
-						TRIM(COALESCE(c.merged_title, '')) = ''
-						AND TRIM(COALESCE(c.merged_summary, '')) = ''
-					)
-				)
+			a.is_favorite = 1
+			OR (
+				((TRIM(COALESCE(a.summary, '')) = '' OR COALESCE(a.summary, '') = '<no content>') AND skip_summary.article_id IS NULL)
+				OR (COALESCE(f.translate_articles, 0) = 1 AND atc.article_id IS NULL AND skip_translation.article_id IS NULL)
+				OR (ae.article_id IS NULL AND skip_embedding.article_id IS NULL)
+				OR (c.id IS NULL AND skip_clustering.article_id IS NULL)
+				OR (c.id IS NOT NULL AND skip_clustering.article_id IS NULL AND (c.status <> 'complete' OR ce.cluster_id IS NULL))
 			)
 		)
 		ORDER BY a.published_at DESC
@@ -110,7 +114,8 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			&article.HasTranslation,
 			&article.HasArticleEmbedding,
 			&article.HasCluster,
-			&article.ClusterComplete,
+			&article.ClusterNeedsPostProcess,
+			&article.ClusterNeedsEmbeddingRepair,
 		)
 		if err != nil {
 			log.Printf("Error scanning article for AI batch: %v", err)
@@ -126,6 +131,15 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 }
 
 func (db *DB) GetAIProcessingProgress(userID int64, targetLang string) (AIProcessingProgress, error) {
+	return db.getAIProcessingProgress(userID, targetLang, true, false)
+}
+
+func (db *DB) getAIProcessingProgress(
+	userID int64,
+	targetLang string,
+	activeWindowOnly bool,
+	requireCachedContent bool,
+) (AIProcessingProgress, error) {
 	db.WaitForReady()
 
 	progress := AIProcessingProgress{}
@@ -133,39 +147,48 @@ func (db *DB) GetAIProcessingProgress(userID int64, targetLang string) (AIProces
 		targetLang = "zh"
 	}
 
-	const articleProgressQuery = `
+	contentJoin := ""
+	contentFilter := ""
+	if requireCachedContent {
+		contentJoin = `
+			LEFT JOIN article_contents ac ON ac.article_id = a.id
+		`
+		contentFilter = `
+			AND ac.article_id IS NOT NULL
+		`
+	}
+
+	scopeFilter := ""
+	if activeWindowOnly {
+		scopeFilter = `
+			AND (
+				a.is_favorite = 1
+				OR (a.is_favorite = 0 AND a.published_at >= datetime('now', '-2 days'))
+			)
+		`
+	}
+
+	articleProgressQuery := `
 		WITH eligible_articles AS (
 			SELECT
 				((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL) AS has_summary,
 				(COALESCE(f.translate_articles, 0) = 1) AS translate_articles,
 				(atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL) AS has_translation,
-				(ae.article_id IS NOT NULL) AS has_embedding,
-				(c.id IS NOT NULL) AS has_cluster,
-				(
-					c.id IS NOT NULL
-					AND c.status = 'complete'
-					AND (
-						ce.cluster_id IS NOT NULL
-						OR (
-							TRIM(COALESCE(c.merged_title, '')) = ''
-							AND TRIM(COALESCE(c.merged_summary, '')) = ''
-						)
-					)
-				) AS cluster_complete
+				(ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL) AS has_embedding,
+				(c.id IS NOT NULL OR skip_clustering.article_id IS NOT NULL) AS has_cluster
 			FROM articles a
 			LEFT JOIN feeds f ON a.feed_id = f.id
-			LEFT JOIN article_contents ac ON ac.article_id = a.id
 			LEFT JOIN article_translated_contents atc ON atc.article_id = a.id AND atc.target_lang = ?
 			LEFT JOIN ai_article_stage_skips skip_summary ON skip_summary.article_id = a.id AND skip_summary.stage = 'summary'
 			LEFT JOIN ai_article_stage_skips skip_translation ON skip_translation.article_id = a.id AND skip_translation.stage = 'translation'
+			LEFT JOIN ai_article_stage_skips skip_embedding ON skip_embedding.article_id = a.id AND skip_embedding.stage = 'embedding'
+			LEFT JOIN ai_article_stage_skips skip_clustering ON skip_clustering.article_id = a.id AND skip_clustering.stage = 'clustering'
 			LEFT JOIN article_embeddings ae ON ae.article_id = a.id
 			LEFT JOIN clusters c ON a.cluster_id = c.id
-			LEFT JOIN cluster_embeddings ce ON ce.cluster_id = c.id
+	` + contentJoin + `
 			WHERE a.user_id = ?
-			AND (
-				a.is_favorite = 1
-				OR (a.is_favorite = 0 AND a.published_at >= datetime('now', '-2 days'))
-			)
+	` + contentFilter + `
+	` + scopeFilter + `
 		),
 		stage_counts AS (
 			SELECT
@@ -173,7 +196,7 @@ func (db *DB) GetAIProcessingProgress(userID int64, targetLang string) (AIProces
 					WHEN NOT has_summary THEN 'summary'
 					WHEN translate_articles AND NOT has_translation THEN 'translation'
 					WHEN NOT has_embedding THEN 'embedding'
-					WHEN NOT has_cluster OR NOT cluster_complete THEN 'clustering'
+					WHEN NOT has_cluster THEN 'clustering'
 					ELSE 'complete'
 				END AS blocking_stage
 			FROM eligible_articles
@@ -202,6 +225,26 @@ func (db *DB) GetAIProcessingProgress(userID int64, targetLang string) (AIProces
 	progress.CompletedArticles = progress.EligibleArticles - progress.PendingArticles
 	if progress.CompletedArticles < 0 {
 		progress.CompletedArticles = 0
+	}
+
+	return progress, nil
+}
+
+func (db *DB) GetClusterProcessingProgress(userID int64) (ClusterProcessingProgress, error) {
+	db.WaitForReady()
+
+	progress := ClusterProcessingProgress{}
+	if err := db.QueryRow(
+		`
+		SELECT
+			COALESCE(SUM(CASE WHEN status IN ('pending_merge', 'merging') THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'pending_embed' THEN 1 ELSE 0 END), 0)
+		FROM clusters
+		WHERE user_id = ?
+	`,
+		userID,
+	).Scan(&progress.PendingMergeClusters, &progress.PendingEmbedClusters); err != nil {
+		return progress, err
 	}
 
 	return progress, nil

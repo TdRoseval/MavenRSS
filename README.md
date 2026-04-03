@@ -30,68 +30,92 @@ AI-Enhanced Mode turns MavenRSS from a feed reader into an AI-powered reading as
 
 ```mermaid
 flowchart TD
-    subgraph "Data Ingestion Layer"
-        A["New Article Fetch"] --> B["Cache Article Content"]
-        B --> C["Apply Rules Filter"]
+    subgraph "Queue & Gates"
+        A["New article fetch<br/>or AI mode batch scan"] --> B["Build AIEnhancedTask<br/>summary / translation / embedding / dedup flags"]
+        B --> C{"ShouldProcess satisfied?<br/>user profiles + feature toggles"}
+        C -->|No| D["Skip AI enhanced queue"]
+        C -->|Yes| E{"Renormalization running<br/>or unhealthy summary embeddings?"}
+        E -->|Yes| F["Block queue / publish system message"]
+        E -->|No| G["Enqueue article pipeline"]
     end
 
-    subgraph "AI Processing Pipeline"
-        C --> D{AI Enhanced Mode<br/>prerequisites satisfied?}
-        D -->|No| E["Skip AI pipeline"]
-        D -->|Yes| F{Article already<br/>has summary?}
-        F -->|No| G["Generate AI Summary"]
-        F -->|Yes| H["Keep Existing Summary"]
-        G --> I{Feed enables<br/>translate_articles?}
-        H --> I
-        I -->|Yes| J["Translate Article Body"]
-        I -->|No| K["Skip Translation"]
-        J --> L["Generate Article Embeddings"]
+    subgraph "Article Pipeline"
+        G --> H["Load cached article content<br/>fallback to title when content is missing"]
+        H --> I{"Needs summary?"}
+        I -->|Yes| J["Generate AI summary<br/>fallback to title on hard failure / quota hit"]
+        I -->|No| K["Keep existing summary"]
+        J --> L{"Needs translation and<br/>feed translate_articles enabled?"}
         K --> L
+        L -->|Yes| M["Translate article content<br/>store per target language"]
+        L -->|No| N["Skip translation stage"]
+        M --> O{"Needs embedding?"}
+        N --> O
+        O -->|Yes| P["Generate + L2 normalize<br/>article title / summary embeddings"]
+        O -->|No| Q["Skip embedding stage"]
+        P --> R{"Needs dedup?"}
+        Q --> R
+        R -->|Yes| S["Run serialized article clustering"]
+        R -->|No| T["Keep cluster state / request repair if needed"]
     end
 
-    subgraph "Deduplication & Clustering"
-        L --> M["Step 1: SimHash summary<br/>Hamming distance ≤ 3"]
-        M -->|Match| N["Join Existing Cluster"]
-        M -->|No match| O["Step 2: sqlite-vec ANN<br/>cosine distance ≤ 0.15"]
-        O -->|Match| N
-        O -->|No match| P["Create New Cluster"]
-        N --> Q["Mark Cluster as pending_merge"]
-        P --> Q
-        Q --> R["Run Fusion / Fallback Copy"]
-        R --> S["Mark Cluster as pending_embed"]
-        S --> T["Generate Cluster Embeddings"]
-        T --> U["Mark Cluster as complete"]
+    subgraph "Clustering & Cluster Post-Processing"
+        S --> U{"Summary and normalized<br/>summary embedding available?"}
+        U -->|No| V["Create standalone cluster"]
+        U -->|Yes| W["Step 1: SimHash band recall<br/>Hamming distance <= 3"]
+        W -->|Nearest match| X["Join matched cluster"]
+        W -->|No match| Y["Step 2: semantic recall<br/>summary distance <= 0.4"]
+        Y -->|Nearest centroid| Z["Join nearest cluster centroid"]
+        Y -->|No candidate| V
+        X --> AA["Mark cluster pending_merge"]
+        Z --> AA
+        V --> AA
+        T --> AB["Request cluster pipeline<br/>for pending_merge / pending_embed repair"]
+        AA --> AB
+        AB --> AC["Cluster pipeline scheduler"]
+        AC --> AD["Fusion workers<br/>merging -> pending_embed<br/>LLM fusion or first-article fallback"]
+        AC --> AE["Embedding workers<br/>watch pending_embed and write<br/>cluster title / summary embeddings"]
+        AD --> AE
+        AE --> AF["Mark cluster complete"]
+        AF --> AG["Init interest vector from<br/>favorite cluster embeddings if missing"]
     end
 
-    subgraph "Interest Tracking & Recommendation"
-        U --> V["Collect User Feedback<br/>clicks / deep reads / favorites"]
-        V --> W["Update User Interest Vector<br/>EMA update"]
-        W --> X["Recall Recent Complete Clusters<br/>by Vector Similarity"]
-        X --> Y["Rerank with Time Decay"]
-        Y --> Z["Personalized Cluster Feed"]
-        U --> AA["Wait for Async AI Work to Drain"]
-        AA --> AB{Need missing-day<br/>backfill or scheduled run?}
-        AB -->|No| AC["End current AI cycle"]
-        AB -->|Yes| AD["Queue Daily Recommendation Generation"]
-        AD --> AE["Recall Candidate Clusters<br/>by interest vector or chronology"]
-        AE --> AF{Recommendation AI<br/>profile available?}
-        AF -->|No| AG["Rule-based rerank<br/>recall score + freshness"]
-        AF -->|Yes| AH["Stage 1: Grouped Tournament<br/>pick top candidates from summaries"]
-        AH --> AI["Stage 2: Full-text multi-factor scoring<br/>density / value / interest / timeliness"]
-        AI --> AJ["Finalize Top 10 Recommendations"]
-        AG --> AJ
-        AJ --> AK["Store daily recommendations<br/>and recommendation scores"]
-        AK --> AL["Expose recommendation dates/list API"]
-        AL --> AM["Daily Recommendation View"]
+    subgraph "Interest Feedback & Daily Recommendations"
+        AF --> AH["Cluster feed / recommendation feed"]
+        AH --> AI["Click event -> title embedding"]
+        AH --> AJ["Deep read above average -> summary embedding"]
+        AH --> AK["Favorite event -> summary embedding"]
+        AI --> AL["EMA update + L2 normalize<br/>user interest vector"]
+        AJ --> AL
+        AK --> AL
+        AF --> AM["Scheduler / missing-day backfill<br/>or manual refresh request"]
+        AM --> AN{"Wait for idle enabled<br/>and active AI work exists?"}
+        AN -->|Yes| AO["Queue recommendation task<br/>status = waiting_for_idle"]
+        AO --> AP["Start after async work drains"]
+        AN -->|No| AP["Start recommendation task"]
+        AP --> AQ["Recall complete clusters<br/>vector search first, chronological fallback"]
+        AQ --> AR{"Candidate count <= 10?"}
+        AR -->|Yes| AS["Keep chronological ranking"]
+        AR -->|No| AT{"Recommendation AI config available?"}
+        AT -->|No| AU["Rule-based rerank<br/>recall score + freshness"]
+        AT -->|Yes| AV{"Candidate count < 40?"}
+        AV -->|Yes| AW["Stage 2 only<br/>full-text multi-factor scoring"]
+        AV -->|No| AX["Stage 1 grouped tournament<br/>pick top 3 per group"]
+        AX --> AW
+        AW --> AY["Finalize Top 10"]
+        AS --> AY
+        AU --> AY
+        AY --> AZ["Save daily_recommendations<br/>and cluster recommendation flags"]
+        AZ --> BA["Recommendation dates API<br/>and daily recommendation view"]
     end
 
     style A fill:#e3f2fd,color:#0d47a1
-    style G fill:#fff3e0,color:#e65100
     style J fill:#fff3e0,color:#e65100
-    style L fill:#f3e5f5,color:#7b1fa2
-    style T fill:#f3e5f5,color:#7b1fa2
-    style W fill:#c8e6c9,color:#1a5e20
-    style AJ fill:#c8e6c9,color:#1a5e20
+    style M fill:#fff3e0,color:#e65100
+    style P fill:#f3e5f5,color:#7b1fa2
+    style AD fill:#f3e5f5,color:#7b1fa2
+    style AE fill:#f3e5f5,color:#7b1fa2
+    style AL fill:#c8e6c9,color:#1a5e20
+    style AY fill:#c8e6c9,color:#1a5e20
 ```
 
 ## 🚀 Quick Start

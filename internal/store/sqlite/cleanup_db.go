@@ -79,8 +79,9 @@ func (db *DB) CleanupOldArticles(userID int64) (int64, error) {
 	return totalDeleted, nil
 }
 
-// CleanupAllArticleContents removes all cached article contents for a specific user
-// If userID is 0, removes all (legacy behavior)
+// CleanupAllArticleContents removes all cached article contents for a specific user.
+// Manual cache clearing should remove both clustered and unclustered article content.
+// If userID is 0, removes all (legacy behavior).
 func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 	db.WaitForReady()
 	var result sql.Result
@@ -90,7 +91,7 @@ func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 			DELETE FROM article_contents
 			WHERE article_id IN (
 				SELECT id FROM articles
-				WHERE user_id = ? AND cluster_id IS NULL
+				WHERE user_id = ?
 			)
 		`, userID)
 	} else {
@@ -98,13 +99,277 @@ func (db *DB) CleanupAllArticleContents(userID int64) (int64, error) {
 			DELETE FROM article_contents
 			WHERE article_id IN (
 				SELECT id FROM articles
-				WHERE cluster_id IS NULL
 			)
 		`)
 	}
 	if err != nil {
 		return 0, err
 	}
+	return result.RowsAffected()
+}
+
+type ManualArticleCleanupStats struct {
+	DeletedArticles  int64
+	DeletedClusters  int64
+	RetainedArticles int64
+	RetainedClusters int64
+}
+
+// CleanupArticleCachePreservingFavorites performs manual article cleanup while keeping
+// favorited standalone articles and any clusters that are either explicitly favorited
+// or contain favorited articles. All other standalone articles and clusters are removed.
+func (db *DB) CleanupArticleCachePreservingFavorites(userID int64) (ManualArticleCleanupStats, error) {
+	db.WaitForReady()
+
+	stats := ManualArticleCleanupStats{}
+
+	retainedArticles, err := db.countRetainedArticlesForManualCleanup(userID)
+	if err != nil {
+		return stats, err
+	}
+	stats.RetainedArticles = retainedArticles
+
+	retainedClusters, err := db.countRetainedClustersForManualCleanup(userID)
+	if err != nil {
+		return stats, err
+	}
+	stats.RetainedClusters = retainedClusters
+
+	deletedStandaloneArticles, err := db.deleteUnclusteredNonFavoriteArticlesForManualCleanup(userID)
+	if err != nil {
+		return stats, err
+	}
+	stats.DeletedArticles += deletedStandaloneArticles
+
+	clusterIDs, err := db.listDeletableClusterIDsForManualCleanup(userID)
+	if err != nil {
+		return stats, err
+	}
+
+	for _, clusterID := range clusterIDs {
+		var clusterArticleCount int64
+		if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE cluster_id = ?`, clusterID).Scan(&clusterArticleCount); err != nil {
+			return stats, err
+		}
+		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
+			return stats, err
+		}
+		stats.DeletedClusters++
+		stats.DeletedArticles += clusterArticleCount
+	}
+
+	_, _ = db.Exec("VACUUM")
+	return stats, nil
+}
+
+func (db *DB) countRetainedArticlesForManualCleanup(userID int64) (int64, error) {
+	db.WaitForReady()
+
+	var count int64
+	if userID > 0 {
+		err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM articles a
+			WHERE a.user_id = ?
+			  AND (
+				a.is_favorite = 1
+				OR EXISTS (
+					SELECT 1
+					FROM clusters c
+					WHERE c.id = a.cluster_id
+					  AND c.user_id = a.user_id
+					  AND (
+						c.is_favorite = 1
+						OR EXISTS (
+							SELECT 1
+							FROM articles fa
+							WHERE fa.cluster_id = c.id
+							  AND fa.is_favorite = 1
+						)
+					  )
+				)
+			  )
+		`, userID).Scan(&count)
+		return count, err
+	}
+
+	err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM articles a
+		WHERE a.is_favorite = 1
+		   OR EXISTS (
+				SELECT 1
+				FROM clusters c
+				WHERE c.id = a.cluster_id
+				  AND (
+					c.is_favorite = 1
+					OR EXISTS (
+						SELECT 1
+						FROM articles fa
+						WHERE fa.cluster_id = c.id
+						  AND fa.is_favorite = 1
+					)
+				  )
+			)
+	`).Scan(&count)
+	return count, err
+}
+
+func (db *DB) countRetainedClustersForManualCleanup(userID int64) (int64, error) {
+	db.WaitForReady()
+
+	var count int64
+	if userID > 0 {
+		err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM clusters c
+			WHERE c.user_id = ?
+			  AND (
+				c.is_favorite = 1
+				OR EXISTS (
+					SELECT 1
+					FROM articles a
+					WHERE a.cluster_id = c.id
+					  AND a.is_favorite = 1
+				)
+			  )
+		`, userID).Scan(&count)
+		return count, err
+	}
+
+	err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM clusters c
+		WHERE c.is_favorite = 1
+		   OR EXISTS (
+				SELECT 1
+				FROM articles a
+				WHERE a.cluster_id = c.id
+				  AND a.is_favorite = 1
+			)
+	`).Scan(&count)
+	return count, err
+}
+
+func (db *DB) listDeletableClusterIDsForManualCleanup(userID int64) ([]int64, error) {
+	db.WaitForReady()
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	if userID > 0 {
+		rows, err = db.Query(`
+			SELECT c.id
+			FROM clusters c
+			WHERE c.user_id = ?
+			  AND NOT (
+				c.is_favorite = 1
+				OR EXISTS (
+					SELECT 1
+					FROM articles a
+					WHERE a.cluster_id = c.id
+					  AND a.is_favorite = 1
+				)
+			  )
+			ORDER BY c.id ASC
+		`, userID)
+	} else {
+		rows, err = db.Query(`
+			SELECT c.id
+			FROM clusters c
+			WHERE NOT (
+				c.is_favorite = 1
+				OR EXISTS (
+					SELECT 1
+					FROM articles a
+					WHERE a.cluster_id = c.id
+					  AND a.is_favorite = 1
+				)
+			)
+			ORDER BY c.id ASC
+		`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	clusterIDs := make([]int64, 0)
+	for rows.Next() {
+		var clusterID int64
+		if err := rows.Scan(&clusterID); err != nil {
+			return nil, err
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return clusterIDs, nil
+}
+
+func (db *DB) deleteUnclusteredNonFavoriteArticlesForManualCleanup(userID int64) (int64, error) {
+	db.WaitForReady()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if userID > 0 {
+		if _, err := tx.Exec(`
+			DELETE FROM article_embeddings
+			WHERE article_id IN (
+				SELECT id
+				FROM articles
+				WHERE user_id = ?
+				  AND cluster_id IS NULL
+				  AND is_favorite = 0
+			)
+		`, userID); err != nil {
+			return 0, err
+		}
+	} else {
+		if _, err := tx.Exec(`
+			DELETE FROM article_embeddings
+			WHERE article_id IN (
+				SELECT id
+				FROM articles
+				WHERE cluster_id IS NULL
+				  AND is_favorite = 0
+			)
+		`); err != nil {
+			return 0, err
+		}
+	}
+
+	var result sql.Result
+	if userID > 0 {
+		result, err = tx.Exec(`
+			DELETE FROM articles
+			WHERE user_id = ?
+			  AND cluster_id IS NULL
+			  AND is_favorite = 0
+		`, userID)
+	} else {
+		result, err = tx.Exec(`
+			DELETE FROM articles
+			WHERE cluster_id IS NULL
+			  AND is_favorite = 0
+		`)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
 	return result.RowsAffected()
 }
 
@@ -205,7 +470,7 @@ func (db *DB) DeleteArticlesForFeed(feedID int64, userID int64) (int64, error) {
 	db.WaitForReady()
 	var result sql.Result
 	var err error
-	
+
 	// First delete article contents for the feed's articles
 	if userID > 0 {
 		_, err = db.Exec(`
@@ -222,11 +487,11 @@ func (db *DB) DeleteArticlesForFeed(feedID int64, userID int64) (int64, error) {
 			)
 		`, feedID)
 	}
-	
+
 	if err != nil {
 		return 0, err
 	}
-	
+
 	// Delete standalone embeddings for the feed's articles
 	if userID > 0 {
 		_, err = db.Exec(`
@@ -253,11 +518,11 @@ func (db *DB) DeleteArticlesForFeed(feedID int64, userID int64) (int64, error) {
 	} else {
 		result, err = db.Exec(`DELETE FROM articles WHERE feed_id = ? AND cluster_id IS NULL`, feedID)
 	}
-	
+
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return result.RowsAffected()
 }
 

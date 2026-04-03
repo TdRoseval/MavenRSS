@@ -44,10 +44,14 @@ func HandleAIProcessingStatus(h *core.Handler, w http.ResponseWriter, r *http.Re
 
 	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
 		response.JSON(w, map[string]any{
-			"is_enabled":          false,
-			"has_interest_vector": false,
-			"is_config_frozen":    false,
-			"progress_percent":    100,
+			"is_enabled":                          false,
+			"has_interest_vector":                 false,
+			"is_config_frozen":                    false,
+			"progress_percent":                    100,
+			"embedding_health_blocked":            false,
+			"embedding_health_sample_size":        0,
+			"embedding_health_unnormalized_count": 0,
+			"embedding_health_unnormalized_ratio": 0,
 		})
 		return
 	}
@@ -75,6 +79,10 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		req.ExcludeIDs = nil
+	}
+
+	if err := h.DB.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
+		log.Printf("Error syncing cluster favorites before realtime cluster feed: %v", err)
 	}
 
 	const (
@@ -136,6 +144,8 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		json.NewEncoder(w).Encode(clusters)
 		return
 	}
+
+	candidates = pruneFavoriteRecallCandidates(candidates, req.Filter, nil)
 
 	if len(candidates) == 0 {
 		clusters, _ := h.DB.GetRecentClustersChronological(
@@ -387,11 +397,57 @@ func HandleRefreshDailyRecommendations(h *core.Handler, w http.ResponseWriter, r
 		http.Error(w, "Failed to refresh daily recommendations", http.StatusInternalServerError)
 		return
 	}
+	scheduled := status.HasTask || status.IsQueued || status.IsRunning
 
 	response.JSON(w, map[string]any{
-		"scheduled": true,
+		"scheduled": scheduled,
 		"date":      status.RecommendationDate,
 		"status":    status,
+	})
+}
+
+func HandleClusterRenormalization(h *core.Handler, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := core.GetUserIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.Fetcher == nil || h.Fetcher.GetAIEnhancedManager() == nil {
+		http.Error(w, "AI enhanced mode unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		Force bool `json:"force"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	manager := h.Fetcher.GetAIEnhancedManager()
+	var (
+		scheduled bool
+		reason    string
+		err       error
+	)
+	if req.Force {
+		scheduled, reason, err = manager.ForceStartClusterRenormalization(userID)
+	} else {
+		scheduled, reason, err = manager.StartClusterRenormalization(userID)
+	}
+	if err != nil {
+		log.Printf("Error starting cluster renormalization: %v", err)
+		http.Error(w, "Failed to start cluster renormalization", http.StatusInternalServerError)
+		return
+	}
+
+	response.JSON(w, models.ClusterRenormalizeResponse{
+		Scheduled: scheduled,
+		Reason:    reason,
 	})
 }
 

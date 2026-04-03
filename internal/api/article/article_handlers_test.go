@@ -29,17 +29,45 @@ func setupHandler(t *testing.T) *core.Handler {
 		t.Fatalf("db Init error: %v", err)
 	}
 	f := ff.NewFetcher(db)
+	t.Cleanup(func() {
+		f.Stop()
+	})
 	return core.NewHandler(db, f, nil, nil)
 }
 
 func withTestUser(r *http.Request) *http.Request {
+	return withUserID(r, 1)
+}
+
+func withUserID(r *http.Request, userID int64) *http.Request {
+	role := "user"
+	username := fmt.Sprintf("user-%d", userID)
+	if userID == 1 {
+		role = "admin"
+		username = "admin"
+	}
+
 	claims := &auth.Claims{
-		UserID:   1,
-		Username: "admin",
-		Role:     "admin",
+		UserID:   userID,
+		Username: username,
+		Role:     role,
 	}
 	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
 	return r.WithContext(ctx)
+}
+
+func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatalf("condition not met within %v", timeout)
 }
 
 func TestHandleArticles_ListAndImageGallery(t *testing.T) {
@@ -296,5 +324,179 @@ func TestHandleExportToObsidian(t *testing.T) {
 
 	if response["success"] != "true" {
 		t.Fatalf("Export not successful: %v", response)
+	}
+}
+
+func TestHandleRefresh_UsesDetachedUserScopedRefresh(t *testing.T) {
+	h := setupHandler(t)
+
+	if _, err := h.DB.CreateUser(&models.User{
+		Username:     "user2",
+		Email:        "user2@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	}); err != nil {
+		t.Fatalf("create user 2: %v", err)
+	}
+
+	if err := h.DB.SetSetting("retry_timeout_seconds", "1"); err != nil {
+		t.Fatalf("set retry timeout: %v", err)
+	}
+
+	if _, err := h.DB.AddFeedForUser(1, &models.Feed{
+		Title: "User 1 Feed",
+		URL:   "://invalid-user-1",
+	}); err != nil {
+		t.Fatalf("add user 1 feed: %v", err)
+	}
+
+	if _, err := h.DB.AddFeedForUser(2, &models.Feed{
+		Title: "User 2 Feed",
+		URL:   "://invalid-user-2",
+	}); err != nil {
+		t.Fatalf("add user 2 feed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/refresh", nil).WithContext(ctx)
+	req = withUserID(req, 1)
+	w := httptest.NewRecorder()
+
+	article.HandleRefresh(h, w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Result().StatusCode)
+	}
+
+	waitForCondition(t, 2*time.Second, func() bool {
+		progress := h.Fetcher.GetProgressWithStatsForUser(1)
+		return !progress.IsRunning && progress.QueueTaskCount == 0 && progress.PoolTaskCount == 0
+	})
+
+	user2Progress := h.Fetcher.GetProgressWithStatsForUser(2)
+	if user2Progress.IsRunning {
+		t.Fatalf("expected user 2 refresh to stay idle, got %+v", user2Progress)
+	}
+	if user2Progress.QueueTaskCount != 0 || user2Progress.PoolTaskCount != 0 {
+		t.Fatalf("expected user 2 to have no tasks, got %+v", user2Progress)
+	}
+}
+
+func TestHandleStopRefresh_StopsOnlyCurrentUser(t *testing.T) {
+	h := setupHandler(t)
+
+	if _, err := h.DB.CreateUser(&models.User{
+		Username:     "user2",
+		Email:        "user2@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	}); err != nil {
+		t.Fatalf("create user 2: %v", err)
+	}
+
+	feed1ID, err := h.DB.AddFeedForUser(1, &models.Feed{
+		Title: "User 1 Feed",
+		URL:   "https://example.com/user1.xml",
+	})
+	if err != nil {
+		t.Fatalf("add user 1 feed: %v", err)
+	}
+
+	feed2ID, err := h.DB.AddFeedForUser(2, &models.Feed{
+		Title: "User 2 Feed",
+		URL:   "https://example.com/user2.xml",
+	})
+	if err != nil {
+		t.Fatalf("add user 2 feed: %v", err)
+	}
+
+	feed1, err := h.DB.GetFeedByIDForUser(1, feed1ID)
+	if err != nil || feed1 == nil {
+		t.Fatalf("get user 1 feed: %v", err)
+	}
+	feed2, err := h.DB.GetFeedByIDForUser(2, feed2ID)
+	if err != nil || feed2 == nil {
+		t.Fatalf("get user 2 feed: %v", err)
+	}
+
+	stuckCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tm := h.Fetcher.GetTaskManager()
+	tm.AddGlobalRefreshForUser(stuckCtx, []models.Feed{*feed1}, 1)
+	tm.AddGlobalRefreshForUser(stuckCtx, []models.Feed{*feed2}, 2)
+
+	waitForCondition(t, time.Second, func() bool {
+		progress1 := h.Fetcher.GetProgressWithStatsForUser(1)
+		progress2 := h.Fetcher.GetProgressWithStatsForUser(2)
+		return progress1.QueueTaskCount == 1 && progress2.QueueTaskCount == 1
+	})
+
+	req := withUserID(httptest.NewRequest(http.MethodPost, "/api/refresh/stop", nil), 1)
+	w := httptest.NewRecorder()
+
+	article.HandleStopRefresh(h, w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Result().StatusCode)
+	}
+
+	progress1 := h.Fetcher.GetProgressWithStatsForUser(1)
+	if progress1.IsRunning || progress1.QueueTaskCount != 0 || progress1.PoolTaskCount != 0 {
+		t.Fatalf("expected user 1 tasks to be stopped, got %+v", progress1)
+	}
+
+	progress2 := h.Fetcher.GetProgressWithStatsForUser(2)
+	if !progress2.IsRunning || progress2.QueueTaskCount != 1 {
+		t.Fatalf("expected user 2 tasks to remain, got %+v", progress2)
+	}
+}
+
+func TestGetProgressWithStatsForUser_DoesNotTreatErrorsAsRunning(t *testing.T) {
+	h := setupHandler(t)
+
+	feedID, err := h.DB.AddFeedForUser(1, &models.Feed{
+		Title: "User 1 Feed",
+		URL:   "://invalid-user-1",
+	})
+	if err != nil {
+		t.Fatalf("add user 1 feed: %v", err)
+	}
+
+	if err := h.DB.SetSetting("retry_timeout_seconds", "1"); err != nil {
+		t.Fatalf("set retry timeout: %v", err)
+	}
+
+	req := withUserID(httptest.NewRequest(http.MethodPost, "/api/refresh", nil), 1)
+	w := httptest.NewRecorder()
+	article.HandleRefresh(h, w, req)
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Result().StatusCode)
+	}
+
+	waitForCondition(t, 3*time.Second, func() bool {
+		progress := h.Fetcher.GetProgressWithStatsForUser(1)
+		return !progress.IsRunning &&
+			progress.QueueTaskCount == 0 &&
+			progress.PoolTaskCount == 0 &&
+			progress.Errors[feedID] != ""
+	})
+
+	progress := h.Fetcher.GetProgressWithStatsForUser(1)
+	if progress.IsRunning {
+		t.Fatalf("expected stale errors not to keep refresh running, got %+v", progress)
+	}
+	if progress.QueueTaskCount != 0 || progress.PoolTaskCount != 0 {
+		t.Fatalf("expected no active tasks, got %+v", progress)
+	}
+	if progress.Errors[feedID] == "" {
+		t.Fatalf("expected filtered errors to remain available for inspection")
+	}
+	if progress.ArticleClickCount != 0 {
+		t.Fatalf("expected per-user article click count to stay hidden from refresh progress, got %+v", progress)
 	}
 }

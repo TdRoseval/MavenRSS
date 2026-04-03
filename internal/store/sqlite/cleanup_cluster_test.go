@@ -115,7 +115,7 @@ func TestCleanupExpiredReadClustersSupportsAllUsers(t *testing.T) {
 	}
 }
 
-func TestCleanupAllArticleContentsSkipsClusteredArticles(t *testing.T) {
+func TestCleanupAllArticleContentsRemovesClusteredArticles(t *testing.T) {
 	db := setupTestDB(t)
 	feedID := insertCleanupFeed(t, db, 1, "Cleanup Feed", "https://example.com/cleanup")
 
@@ -138,16 +138,133 @@ func TestCleanupAllArticleContentsSkipsClusteredArticles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cleanup article contents: %v", err)
 	}
-	if deleted != 1 {
-		t.Fatalf("expected 1 unclustered article content deleted, got %d", deleted)
+	if deleted != 2 {
+		t.Fatalf("expected 2 article contents deleted, got %d", deleted)
 	}
 
 	var clusteredContentCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM article_contents WHERE article_id = ?`, clusteredID).Scan(&clusteredContentCount); err != nil {
 		t.Fatalf("count clustered content: %v", err)
 	}
-	if clusteredContentCount != 1 {
-		t.Fatalf("expected clustered article content to remain, got %d", clusteredContentCount)
+	if clusteredContentCount != 0 {
+		t.Fatalf("expected clustered article content to be removed, got %d", clusteredContentCount)
+	}
+}
+
+func TestCleanupArticleCachePreservingFavoritesKeepsFavoriteArticlesAndRelatedClusters(t *testing.T) {
+	db := setupTestDB(t)
+	feedID := insertCleanupFeed(t, db, 1, "Cleanup Feed", "https://example.com/manual-cleanup")
+
+	favoriteClusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("create favorite cluster: %v", err)
+	}
+	explicitFavoriteClusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("create explicit favorite cluster: %v", err)
+	}
+	deletedClusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("create deletable cluster: %v", err)
+	}
+
+	if err := db.SetClusterFavorite(explicitFavoriteClusterID, true); err != nil {
+		t.Fatalf("set explicit favorite cluster: %v", err)
+	}
+
+	favoriteClusterLead := &models.Article{UserID: 1, FeedID: feedID, Title: "Favorite Cluster Lead", URL: "https://example.com/favorite-cluster-lead", PublishedAt: time.Now(), UniqueID: "favorite-cluster-lead", IsFavorite: true}
+	favoriteClusterPeer := &models.Article{UserID: 1, FeedID: feedID, Title: "Favorite Cluster Peer", URL: "https://example.com/favorite-cluster-peer", PublishedAt: time.Now(), UniqueID: "favorite-cluster-peer"}
+	explicitFavoriteClusterArticle := &models.Article{UserID: 1, FeedID: feedID, Title: "Explicit Favorite Cluster Article", URL: "https://example.com/explicit-favorite-cluster", PublishedAt: time.Now(), UniqueID: "explicit-favorite-cluster"}
+	deletedClusterArticle := &models.Article{UserID: 1, FeedID: feedID, Title: "Deleted Cluster Article", URL: "https://example.com/deleted-cluster", PublishedAt: time.Now(), UniqueID: "deleted-cluster"}
+	favoriteStandalone := &models.Article{UserID: 1, FeedID: feedID, Title: "Favorite Standalone", URL: "https://example.com/favorite-standalone", PublishedAt: time.Now(), UniqueID: "favorite-standalone", IsFavorite: true}
+	deletedStandalone := &models.Article{UserID: 1, FeedID: feedID, Title: "Deleted Standalone", URL: "https://example.com/deleted-standalone", PublishedAt: time.Now(), UniqueID: "deleted-standalone"}
+
+	favoriteClusterLeadID := createCleanupArticle(t, db, favoriteClusterLead, favoriteClusterID)
+	favoriteClusterPeerID := createCleanupArticle(t, db, favoriteClusterPeer, favoriteClusterID)
+	explicitFavoriteClusterArticleID := createCleanupArticle(t, db, explicitFavoriteClusterArticle, explicitFavoriteClusterID)
+	deletedClusterArticleID := createCleanupArticle(t, db, deletedClusterArticle, deletedClusterID)
+	favoriteStandaloneID := createCleanupArticle(t, db, favoriteStandalone, 0)
+	deletedStandaloneID := createCleanupArticle(t, db, deletedStandalone, 0)
+
+	if _, err := db.Exec(`
+		INSERT INTO article_contents (article_id, content) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)
+	`, favoriteClusterLeadID, "favorite cluster lead", favoriteClusterPeerID, "favorite cluster peer", explicitFavoriteClusterArticleID, "explicit favorite cluster article", deletedClusterArticleID, "deleted cluster article", favoriteStandaloneID, "favorite standalone", deletedStandaloneID, "deleted standalone"); err != nil {
+		t.Fatalf("insert article contents: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO daily_recommendations (user_id, cluster_id, recommendation_date, recommendation_score, recommendation_rank, recommendation_profile_id) VALUES (?, ?, ?, ?, ?, ?)`, 1, deletedClusterID, "2026-04-03", 0.9, 1, 123); err != nil {
+		t.Fatalf("insert daily recommendation: %v", err)
+	}
+
+	stats, err := db.CleanupArticleCachePreservingFavorites(1)
+	if err != nil {
+		t.Fatalf("manual cleanup preserving favorites: %v", err)
+	}
+
+	if stats.DeletedArticles != 2 {
+		t.Fatalf("expected 2 deleted articles, got %d", stats.DeletedArticles)
+	}
+	if stats.DeletedClusters != 1 {
+		t.Fatalf("expected 1 deleted cluster, got %d", stats.DeletedClusters)
+	}
+	if stats.RetainedArticles != 4 {
+		t.Fatalf("expected 4 retained articles, got %d", stats.RetainedArticles)
+	}
+	if stats.RetainedClusters != 2 {
+		t.Fatalf("expected 2 retained clusters, got %d", stats.RetainedClusters)
+	}
+
+	var remainingTitles []string
+	rows, err := db.Query(`SELECT title FROM articles WHERE user_id = 1 ORDER BY title ASC`)
+	if err != nil {
+		t.Fatalf("query remaining articles: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var title string
+		if err := rows.Scan(&title); err != nil {
+			t.Fatalf("scan remaining title: %v", err)
+		}
+		remainingTitles = append(remainingTitles, title)
+	}
+
+	expectedTitles := map[string]bool{
+		"Favorite Cluster Lead":             true,
+		"Favorite Cluster Peer":             true,
+		"Explicit Favorite Cluster Article": true,
+		"Favorite Standalone":               true,
+	}
+	if len(remainingTitles) != len(expectedTitles) {
+		t.Fatalf("expected %d remaining articles, got %d (%v)", len(expectedTitles), len(remainingTitles), remainingTitles)
+	}
+	for _, title := range remainingTitles {
+		if !expectedTitles[title] {
+			t.Fatalf("unexpected remaining article %q", title)
+		}
+	}
+
+	var deletedClusterExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM clusters WHERE id = ?`, deletedClusterID).Scan(&deletedClusterExists); err != nil {
+		t.Fatalf("count deleted cluster: %v", err)
+	}
+	if deletedClusterExists != 0 {
+		t.Fatalf("expected deleted cluster to be removed, got %d", deletedClusterExists)
+	}
+
+	var deletedStandaloneExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE id = ?`, deletedStandaloneID).Scan(&deletedStandaloneExists); err != nil {
+		t.Fatalf("count deleted standalone: %v", err)
+	}
+	if deletedStandaloneExists != 0 {
+		t.Fatalf("expected deleted standalone article to be removed, got %d", deletedStandaloneExists)
+	}
+
+	var deletedRecommendationCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM daily_recommendations WHERE cluster_id = ?`, deletedClusterID).Scan(&deletedRecommendationCount); err != nil {
+		t.Fatalf("count deleted recommendations: %v", err)
+	}
+	if deletedRecommendationCount != 0 {
+		t.Fatalf("expected deleted cluster recommendations to be removed, got %d", deletedRecommendationCount)
 	}
 }
 

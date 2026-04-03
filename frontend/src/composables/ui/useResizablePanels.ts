@@ -1,7 +1,11 @@
 import { ref, onBeforeUnmount } from 'vue';
 
 const DEFAULT_SIDEBAR_WIDTH = 234;
-const DEFAULT_ARTICLE_LIST_WIDTH = 312;
+export const DESKTOP_ARTICLE_LIST_MIN_WIDTH = 180;
+export const DESKTOP_ARTICLE_LIST_MAX_WIDTH = 420;
+export const COMPACT_ARTICLE_LIST_MIN_WIDTH = 220;
+export const COMPACT_ARTICLE_LIST_MAX_WIDTH = 520;
+const DEFAULT_ARTICLE_LIST_WIDTH = DESKTOP_ARTICLE_LIST_MAX_WIDTH;
 
 const sidebarWidth = ref<number>(DEFAULT_SIDEBAR_WIDTH);
 const articleListWidth = ref<number>(DEFAULT_ARTICLE_LIST_WIDTH);
@@ -11,6 +15,10 @@ const compactMode = ref<boolean>(false);
 const userManuallyResized = ref<boolean>(false);
 const initialMouseX = ref<number>(0);
 const initialArticleListWidth = ref<number>(DEFAULT_ARTICLE_LIST_WIDTH);
+
+export function getDefaultArticleListWidth(isCompactMode: boolean): number {
+  return isCompactMode ? COMPACT_ARTICLE_LIST_MAX_WIDTH : DESKTOP_ARTICLE_LIST_MAX_WIDTH;
+}
 
 export function useResizablePanels() {
   // Set compact mode state (doesn't change width by itself)
@@ -73,8 +81,12 @@ export function useResizablePanels() {
     const deltaX = currentMouseX - initialMouseX.value;
     const newWidth = initialArticleListWidth.value + deltaX;
     // Keep detail pane roomy on desktop while still allowing manual expansion.
-    const minWidth = compactMode.value ? 220 : 180;
-    const maxWidth = compactMode.value ? 520 : 420;
+    const minWidth = compactMode.value
+      ? COMPACT_ARTICLE_LIST_MIN_WIDTH
+      : DESKTOP_ARTICLE_LIST_MIN_WIDTH;
+    const maxWidth = compactMode.value
+      ? COMPACT_ARTICLE_LIST_MAX_WIDTH
+      : DESKTOP_ARTICLE_LIST_MAX_WIDTH;
     if (newWidth >= minWidth && newWidth <= maxWidth) {
       articleListWidth.value = newWidth;
       // Mark that user has manually resized

@@ -134,6 +134,12 @@ const en: TranslationMessages = {
       processingTitle: 'Clusters are still being prepared',
       processingDescription:
         'Background AI jobs are still summarizing, clustering, and fusing articles. The cluster list will appear automatically when processing finishes.',
+      processingForceReclusterButton: 'Force Recluster Normalize',
+      processingForceReclusterTitle: 'Start cluster renormalization now?',
+      processingForceReclusterConfirm:
+        'This will interrupt the current cluster generation flow, stop daily recommendation generation for this round, and immediately switch to article cluster renormalization.',
+      processingRenormalizationNotice:
+        'Article cluster renormalization is running. The counts below cover all articles for the current user, not just the recent AI batch window.',
       processingProgress: 'Current progress',
       processingEligible: 'Eligible',
       processingCompleted: 'Completed',
@@ -380,6 +386,25 @@ const en: TranslationMessages = {
       isInDevelopment:
         'This feature involves a third-party tool, which may be unstable and have issues.',
     },
+  },
+  notifications: {
+    title: 'System Notifications',
+    subtitle: '{count} unread messages',
+    emptyTitle: 'No system notifications',
+    emptyDescription: 'Background AI and system alerts will appear here when something needs attention.',
+    markAllRead: 'Mark all read',
+    details: 'Notification Details',
+    kind: 'Type',
+    updatedAt: 'Updated',
+    sampleSize: 'Sample size',
+    unnormalizedCount: 'Unnormalized',
+    unnormalizedRatio: 'Unnormalized ratio',
+    blockedScope: 'Triggered by',
+    body: 'Message',
+    openCenter: 'Open notification center',
+    healthBlockedTitle: 'AI task flow is currently blocked',
+    healthBlockedSummary:
+      'Sampled {sample} summary vectors and found {count} unnormalized vectors ({ratio}%). Check the notification center for details before rerunning AI tasks.',
   },
   modal: {
     common: {
@@ -725,6 +750,19 @@ const en: TranslationMessages = {
         'Select a valid fusion profile before enabling AI Enhanced Mode',
       aiEnhancedModeRequiresRecommendationProfile:
         'Select a valid recommendation profile before enabling AI Enhanced Mode',
+      reclusterNormalizeTitle: 'Article Cluster Renormalization',
+      reclusterNormalizeDesc:
+        'Delete existing clusters and daily recommendations, clear cluster links and the interest vector, normalize historical article embeddings, and rebuild clusters from current articles without deleting the articles themselves.',
+      reclusterNormalizeButton: 'Article Cluster Renormalization',
+      reclusterNormalizeStarting: 'Starting...',
+      reclusterNormalizeConfirm:
+        'This will delete all existing article clusters and AI daily recommendations, clear article cluster links and your interest vector, normalize historical article embeddings, and then rebuild clusters from the remaining articles. Existing articles, summaries, and translations will be kept. Do you want to continue?',
+      reclusterNormalizeStarted: 'Article cluster renormalization has started',
+      reclusterNormalizeBusy:
+        'AI background work is still running. Please wait for the current tasks to finish and try again.',
+      reclusterNormalizeDisabled:
+        'AI Enhanced Mode is not currently available, so article cluster renormalization cannot be started.',
+      reclusterNormalizeFailed: 'Failed to start article cluster renormalization',
       processingLockedLabel: 'Processing Lock',
       processingLockedTitle: 'AI settings are temporarily frozen',
       processingLockedDescription:
@@ -1250,6 +1288,7 @@ const en: TranslationMessages = {
       imageGallery: 'Image Gallery',
       immediateTasks: 'Immediate Tasks',
       lastGlobalRefresh: 'Last Update',
+      notifications: 'Notifications',
       queuedTasks: 'Queued Tasks',
       readLater: 'Read Later',
       unreadArticles: 'Unread Articles',

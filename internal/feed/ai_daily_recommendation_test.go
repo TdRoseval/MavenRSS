@@ -1,7 +1,6 @@
 package feed
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,7 +21,7 @@ func TestComputeDailyRecommendationRunTime(t *testing.T) {
 	if err := db.SetSetting("last_global_refresh", "2026-03-30T23:45:00Z"); err != nil {
 		t.Fatalf("set last_global_refresh: %v", err)
 	}
-	if err := db.SetSettingForUser(userID, "update_interval", "30"); err != nil {
+	if err := db.SetSettingForUser(userID, "update_interval", "120"); err != nil {
 		t.Fatalf("set update_interval: %v", err)
 	}
 
@@ -186,7 +185,7 @@ func TestForceDailyRecommendationsQueuesManualRefreshEvenWhenResultsExist(t *tes
 		t.Fatalf("save recommendations: %v", err)
 	}
 
-	atomic.StoreInt64(&manager.activeAsyncWork, 1)
+	manager.incrementActiveAsyncWork(userID)
 	status, err := manager.ForceDailyRecommendations(userID, recommendationDate, true)
 	if err != nil {
 		t.Fatalf("ForceDailyRecommendations error: %v", err)

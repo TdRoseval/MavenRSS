@@ -138,8 +138,54 @@ func TestSerializeDeserialize(t *testing.T) {
 		t.Fatalf("length mismatch: %d vs %d", len(restored), len(original))
 	}
 
+	expected := NormalizeVector(original)
 	for i := range original {
-		assertClose(t, restored[i], original[i], "restored["+string(rune('0'+i))+"]")
+		assertClose(t, restored[i], expected[i], "restored["+string(rune('0'+i))+"]")
+	}
+}
+
+func TestNormalizeVectorZeroVectorStable(t *testing.T) {
+	original := []float32{0, 0, 0}
+	normalized := NormalizeVector(original)
+	if len(normalized) != len(original) {
+		t.Fatalf("len(normalized) = %d, want %d", len(normalized), len(original))
+	}
+	for i := range normalized {
+		if normalized[i] != 0 {
+			t.Fatalf("normalized[%d] = %f, want 0", i, normalized[i])
+		}
+	}
+}
+
+func TestSquaredL2Distance(t *testing.T) {
+	distance, err := SquaredL2Distance([]float32{1, 0}, []float32{0, 1})
+	if err != nil {
+		t.Fatalf("SquaredL2Distance error: %v", err)
+	}
+	assertClose64(t, distance, 2, "distance")
+}
+
+func TestAverageAndNormalize(t *testing.T) {
+	center, err := AverageAndNormalize([][]float32{
+		{1, 0},
+		{1, 0},
+	})
+	if err != nil {
+		t.Fatalf("AverageAndNormalize error: %v", err)
+	}
+	if !IsNormalized(center, 1e-3) {
+		t.Fatalf("center should be normalized, got %v", center)
+	}
+	assertClose(t, center[0], 1, "center[0]")
+	assertClose(t, center[1], 0, "center[1]")
+}
+
+func TestIsNormalized(t *testing.T) {
+	if !IsNormalized([]float32{1, 0}, 1e-3) {
+		t.Fatal("unit vector should be normalized")
+	}
+	if IsNormalized([]float32{2, 0}, 1e-3) {
+		t.Fatal("non-unit vector should not be normalized")
 	}
 }
 

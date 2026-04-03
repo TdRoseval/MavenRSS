@@ -129,6 +129,12 @@ const zh: TranslationMessages = {
       processingLabel: 'AI 处理中',
       processingTitle: '文章簇仍在后台生成中',
       processingDescription: '后台 AI 正在继续完成摘要、聚类和融合。处理结束后，这里会自动切换为正常的文章簇列表。',
+      processingForceReclusterButton: '文章簇重整化',
+      processingForceReclusterTitle: '立即切换到文章簇重整化？',
+      processingForceReclusterConfirm:
+        '这会中止当前这一轮文章簇生成流程，并停止本轮 AI 每日推荐生成，然后立即切换到文章簇重整化任务。',
+      processingRenormalizationNotice:
+        '文章簇重整化正在运行中。下方统计按当前用户的全部文章计算，不再只看最近 AI 批处理窗口。',
       processingProgress: '当前进度',
       processingEligible: '纳入处理',
       processingCompleted: '已完成',
@@ -371,6 +377,25 @@ const zh: TranslationMessages = {
     warning: {
       isInDevelopment: '该功能涉及到第三方工具，可能不稳定且存在问题。',
     },
+  },
+  notifications: {
+    title: '系统通知',
+    subtitle: '{count} 条未读消息',
+    emptyTitle: '暂无系统通知',
+    emptyDescription: '后台 AI 和系统告警会显示在这里，方便后续追踪与处理。',
+    markAllRead: '全部设为已读',
+    details: '通知详情',
+    kind: '类型',
+    updatedAt: '更新时间',
+    sampleSize: '抽样数量',
+    unnormalizedCount: '未归一化数量',
+    unnormalizedRatio: '未归一化比例',
+    blockedScope: '触发范围',
+    body: '消息内容',
+    openCenter: '打开通知中心',
+    healthBlockedTitle: 'AI 任务流已被拦截',
+    healthBlockedSummary:
+      '抽样 {sample} 条摘要向量，发现 {count} 条未归一化，占比 {ratio}%。请先查看通知中心，再继续触发 AI 任务。',
   },
   modal: {
     common: {
@@ -707,6 +732,17 @@ const zh: TranslationMessages = {
         '启用 AI 增强模式前，请先开启 AI 摘要（且提供商设为 AI）、翻译、AI 搜索、AI 聊天、AI 融合、AI 每日推荐，至少配置一个可用嵌入模型，并确保相关 AI 功能存在可用配置。',
       aiEnhancedModeRequiresFusionProfile: '请先为 AI 增强模式选择有效的融合配置',
       aiEnhancedModeRequiresRecommendationProfile: '请先为 AI 增强模式选择有效的推荐配置',
+      reclusterNormalizeTitle: '文章簇重整化',
+      reclusterNormalizeDesc:
+        '删除当前文章簇与 AI 每日推荐，清空文章 cluster_id 与用户兴趣向量，归一化历史文章 embedding，并基于现有文章重新建簇，不会删除文章本身。',
+      reclusterNormalizeButton: '文章簇重整化',
+      reclusterNormalizeStarting: '启动中...',
+      reclusterNormalizeConfirm:
+        '该操作会删除当前全部文章簇和 AI 每日推荐结果，清空文章 cluster_id 与用户兴趣向量，归一化历史文章 embedding，并基于现有文章重新建簇。已有文章、摘要和翻译会保留不删。确定继续吗？',
+      reclusterNormalizeStarted: '文章簇重整化任务已启动',
+      reclusterNormalizeBusy: '当前仍有 AI 后台任务在运行，请等待现有任务完成后再试。',
+      reclusterNormalizeDisabled: 'AI 增强模式当前不可用，无法启动文章簇重整化。',
+      reclusterNormalizeFailed: '启动文章簇重整化失败',
       processingLockedLabel: '处理中锁定',
       processingLockedTitle: 'AI 设置已暂时冻结',
       processingLockedDescription:
@@ -1211,6 +1247,7 @@ const zh: TranslationMessages = {
       imageGallery: '图片模式',
       immediateTasks: '即时任务',
       lastGlobalRefresh: '最后更新时间',
+      notifications: '系统通知',
       queuedTasks: '排队任务',
       readLater: '稍后阅读',
       unreadArticles: '未读文章',

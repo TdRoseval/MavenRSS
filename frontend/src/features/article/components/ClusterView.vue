@@ -5,6 +5,7 @@ import ClusterList from './ClusterList.vue';
 import ClusterDetail from './ClusterDetail.vue';
 import { useArticleStore } from '@/features/article/store';
 import { useClusterStore } from '@/stores/cluster';
+import { useSystemMessageStore } from '@/stores/systemMessages';
 import { useResizablePanels } from '@/composables/ui/useResizablePanels';
 
 interface Props {
@@ -22,10 +23,12 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const articleStore = useArticleStore();
 const clusterStore = useClusterStore();
+const systemMessageStore = useSystemMessageStore();
 const { startResizeArticleList } = useResizablePanels();
 const isMobile = ref(window.innerWidth < 768);
 const mobileView = ref<'list' | 'detail'>('list');
 const showRecentFailureModal = ref(false);
+const isForceRenormalizing = ref(false);
 const isDailyRecommendationMode = computed(
   () => articleStore.currentFilter === 'dailyRecommendations'
 );
@@ -77,13 +80,6 @@ function openRecentFailureModal() {
 
 function closeRecentFailureModal() {
   showRecentFailureModal.value = false;
-}
-
-function getFailurePreview(message?: string) {
-  if (!message) {
-    return '';
-  }
-  return message.length > 120 ? `${message.slice(0, 120)}...` : message;
 }
 
 function getFailureStageLabel(stage?: string) {
@@ -142,6 +138,43 @@ function getRecommendationTaskDescription() {
   }
 
   return t('article.cluster.dailyRecommendationTaskAutomaticDescription');
+}
+
+function openNotifications() {
+  void systemMessageStore.openCenter();
+}
+
+async function forceReclusterNormalizeFromProcessingPanel() {
+  const confirmed = await window.showConfirm({
+    title: t('article.cluster.processingForceReclusterTitle'),
+    message: t('article.cluster.processingForceReclusterConfirm'),
+    isDanger: true,
+  });
+  if (!confirmed) {
+    return;
+  }
+
+  isForceRenormalizing.value = true;
+  try {
+    const result = await clusterStore.forceStartClusterRenormalization();
+    if (result.scheduled) {
+      window.showToast(t('setting.ai.reclusterNormalizeStarted'), 'success');
+      await loadClusterData();
+      return;
+    }
+
+    if (result.reason === 'busy') {
+      window.showToast(t('setting.ai.reclusterNormalizeBusy'), 'warning');
+      return;
+    }
+
+    window.showToast(t('setting.ai.reclusterNormalizeDisabled'), 'warning');
+  } catch (error) {
+    console.error('Failed to force-start cluster renormalization:', error);
+    window.showToast(t('setting.ai.reclusterNormalizeFailed'), 'error');
+  } finally {
+    isForceRenormalizing.value = false;
+  }
 }
 
 onMounted(() => {
@@ -249,6 +282,35 @@ watch(
 
 <template>
   <div class="flex h-full w-full overflow-hidden relative">
+    <div
+      v-if="clusterStore.aiProcessingStatus?.embedding_health_blocked"
+      class="absolute left-4 right-4 top-4 z-30 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 shadow-sm backdrop-blur"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-amber-950">
+            {{ t('notifications.healthBlockedTitle') }}
+          </div>
+          <p class="mt-1 text-sm leading-6 text-amber-900">
+            {{
+              t('notifications.healthBlockedSummary', {
+                sample: clusterStore.aiProcessingStatus?.embedding_health_sample_size ?? 0,
+                count: clusterStore.aiProcessingStatus?.embedding_health_unnormalized_count ?? 0,
+                ratio: ((clusterStore.aiProcessingStatus?.embedding_health_unnormalized_ratio ?? 0) * 100).toFixed(1),
+              })
+            }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 transition hover:bg-amber-100"
+          @click="openNotifications"
+        >
+          {{ t('notifications.openCenter') }}
+        </button>
+      </div>
+    </div>
+
     <template v-if="isDailyRecommendationMode && clusterStore.shouldBlockDailyRecommendationView">
       <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
         <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">
@@ -368,7 +430,7 @@ watch(
       </div>
     </template>
 
-    <template v-else-if="clusterStore.shouldBlockClusterView">
+    <template v-else-if="!isDailyRecommendationMode && clusterStore.shouldBlockClusterView">
       <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
         <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">
           <div class="text-sm font-medium uppercase tracking-[0.18em] text-text-tertiary">
@@ -379,6 +441,26 @@ watch(
           </h3>
           <p class="mt-2 text-sm leading-6 text-text-secondary">
             {{ t('article.cluster.processingDescription') }}
+          </p>
+          <div class="mt-4">
+            <button
+              type="button"
+              class="inline-flex items-center rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isForceRenormalizing || clusterStore.aiProcessingStatus?.is_renormalization_running"
+              @click="forceReclusterNormalizeFromProcessingPanel"
+            >
+              {{
+                isForceRenormalizing
+                  ? t('setting.ai.reclusterNormalizeStarting')
+                  : t('article.cluster.processingForceReclusterButton')
+              }}
+            </button>
+          </div>
+          <p
+            v-if="clusterStore.aiProcessingStatus?.is_renormalization_running"
+            class="mt-2 rounded-xl border border-border/70 bg-bg-primary px-3 py-2 text-xs leading-5 text-text-secondary"
+          >
+            {{ t('article.cluster.processingRenormalizationNotice') }}
           </p>
 
           <div class="mt-6">
@@ -514,39 +596,6 @@ watch(
                   })
                 }}
               </div>
-              <div
-                v-if="clusterStore.aiProcessingStatus?.recent_failure_model"
-                class="mt-1 leading-6"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureModel', {
-                    model: clusterStore.aiProcessingStatus?.recent_failure_model,
-                  })
-                }}
-              </div>
-              <div
-                v-if="clusterStore.aiProcessingStatus?.recent_failure_endpoint"
-                class="mt-1 break-all leading-6"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureEndpoint', {
-                    endpoint: clusterStore.aiProcessingStatus?.recent_failure_endpoint,
-                  })
-                }}
-              </div>
-              <div class="mt-2 rounded-lg bg-white/70 p-3 text-xs leading-5 text-amber-900">
-                {{ getFailurePreview(clusterStore.aiProcessingStatus?.recent_failure_message) }}
-              </div>
-              <div
-                v-if="(clusterStore.aiProcessingStatus?.recent_failure_count ?? 0) > 1"
-                class="mt-2 text-xs leading-5 text-amber-900"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureCount', {
-                    count: clusterStore.aiProcessingStatus?.recent_failure_count ?? 0,
-                  })
-                }}
-              </div>
             </div>
           </div>
         </div>
@@ -582,37 +631,10 @@ watch(
             </div>
 
             <div class="max-h-[70vh] space-y-3 overflow-y-auto px-5 py-4 text-sm text-text-primary">
-              <div v-if="clusterStore.aiProcessingStatus?.recent_failure_article_title">
-                {{
-                  t('article.cluster.processingRecentFailureArticle', {
-                    title: clusterStore.aiProcessingStatus?.recent_failure_article_title,
-                  })
-                }}
-              </div>
               <div v-if="clusterStore.aiProcessingStatus?.recent_failure_model">
                 {{
                   t('article.cluster.processingRecentFailureModel', {
                     model: clusterStore.aiProcessingStatus?.recent_failure_model,
-                  })
-                }}
-              </div>
-              <div
-                v-if="clusterStore.aiProcessingStatus?.recent_failure_endpoint"
-                class="break-all"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureEndpoint', {
-                    endpoint: clusterStore.aiProcessingStatus?.recent_failure_endpoint,
-                  })
-                }}
-              </div>
-              <div
-                v-if="(clusterStore.aiProcessingStatus?.recent_failure_count ?? 0) > 1"
-                class="text-text-secondary"
-              >
-                {{
-                  t('article.cluster.processingRecentFailureCount', {
-                    count: clusterStore.aiProcessingStatus?.recent_failure_count ?? 0,
                   })
                 }}
               </div>

@@ -27,7 +27,7 @@ func (h *AnthropicHandler) BuildRequest(config RequestConfig) (map[string]interf
 		maxTokens = config.MaxCompletionTokens
 	}
 	if maxTokens == 0 {
-		maxTokens = 4096 // Default max tokens
+		maxTokens = 8192 // Default max tokens
 	}
 	request["max_tokens"] = maxTokens
 

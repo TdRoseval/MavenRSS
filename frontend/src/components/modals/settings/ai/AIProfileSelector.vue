@@ -26,11 +26,12 @@ onMounted(() => {
   }
 });
 
-// Computed selected value (keep as string)
-// If no value is set, show the first profile but don't emit update
+// Computed selected value (keep as string).
+// When no actual setting has been saved yet, keep the selector empty instead of
+// visually pretending the first profile is already selected.
 const selectedValue = computed(() => {
   if (props.modelValue === null || props.modelValue === '') {
-    return profiles.value.length > 0 ? String(profiles.value[0].id) : '';
+    return '';
   }
   return String(props.modelValue);
 });
@@ -55,6 +56,9 @@ function handleChange(event: Event) {
       :class="{ 'opacity-50 cursor-not-allowed': disabled || profiles.length === 0 }"
       @change="handleChange"
     >
+      <option v-if="profiles.length > 0" value="">
+        {{ t('setting.ai.selectProfile') }}
+      </option>
       <option v-if="profiles.length === 0" value="" disabled>
         {{ t('setting.ai.noProfiles') }}
       </option>
