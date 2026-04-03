@@ -3,7 +3,10 @@ package dedup
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"MavenRSS/internal/models"
 )
 
 func TestRunFusionCopiesSingleArticleWithoutSummarizer(t *testing.T) {
@@ -57,5 +60,47 @@ func TestRunFusionCopiesSingleArticleWithoutSummarizer(t *testing.T) {
 	}
 	if !strings.Contains(cluster.MergedContent, "single article body content") {
 		t.Fatalf("MergedContent = %q, want source content", cluster.MergedContent)
+	}
+}
+
+func TestRunClusterWorkersProcessesClustersConcurrently(t *testing.T) {
+	clusters := []models.Cluster{
+		{ID: 1},
+		{ID: 2},
+		{ID: 3},
+	}
+
+	var active int32
+	var maxActive int32
+	started := make(chan struct{}, len(clusters))
+	release := make(chan struct{})
+	done := make(chan error, 1)
+
+	go func() {
+		done <- runClusterWorkers(context.Background(), clusters, 2, func(cluster models.Cluster) {
+			current := atomic.AddInt32(&active, 1)
+			for {
+				previous := atomic.LoadInt32(&maxActive)
+				if current <= previous || atomic.CompareAndSwapInt32(&maxActive, previous, current) {
+					break
+				}
+			}
+			started <- struct{}{}
+			<-release
+			atomic.AddInt32(&active, -1)
+		})
+	}()
+
+	<-started
+	<-started
+
+	if got := atomic.LoadInt32(&maxActive); got < 2 {
+		t.Fatalf("maxActive = %d, want >= 2", got)
+	}
+
+	close(release)
+
+	if err := <-done; err != nil {
+		t.Fatalf("runClusterWorkers error = %v", err)
 	}
 }

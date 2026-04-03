@@ -804,6 +804,83 @@ func TestRunClusterPipelineOnceInitializesInterestVectorFromFavoriteClusters(t *
 	}
 }
 
+func TestRunClusterPipelineOnceOverlapsFusionAndEmbedding(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	pendingEmbedClusterID, err := db.CreateCluster(1, "pending_embed")
+	if err != nil {
+		t.Fatalf("CreateCluster pending_embed error: %v", err)
+	}
+	if err := db.UpdateClusterMergedContent(pendingEmbedClusterID, "title", "summary", "content"); err != nil {
+		t.Fatalf("UpdateClusterMergedContent error: %v", err)
+	}
+
+	fusionStarted := make(chan struct{}, 1)
+	releaseFusion := make(chan struct{})
+	embeddingStarted := make(chan struct{}, 1)
+
+	manager := &AIEnhancedManager{
+		db:                      db,
+		clusterPipelineRunning:  make(map[int64]bool),
+		clusterPipelineQueued:   make(map[int64]bool),
+		clusterFusionRunning:    make(map[int64]bool),
+		clusterEmbeddingRunning: make(map[int64]bool),
+		resolveFusionConfig: func(userID int64) (*dedup.FusionConfig, error) {
+			return &dedup.FusionConfig{}, nil
+		},
+		runFusion: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			select {
+			case fusionStarted <- struct{}{}:
+			default:
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-releaseFusion:
+				return nil
+			}
+		},
+		runEmbedding: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			select {
+			case embeddingStarted <- struct{}{}:
+			default:
+			}
+			if err := db.UpdateClusterStatus(pendingEmbedClusterID, "complete"); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.runClusterPipelineOnce(1)
+	}()
+
+	select {
+	case <-fusionStarted:
+	case <-time.After(time.Second):
+		t.Fatal("fusion stage did not start")
+	}
+
+	select {
+	case <-embeddingStarted:
+	case <-time.After(time.Second):
+		t.Fatal("embedding stage did not start while fusion was still running")
+	}
+
+	close(releaseFusion)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runClusterPipelineOnce error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runClusterPipelineOnce did not finish")
+	}
+}
+
 func TestGetProcessingStatusDoesNotTriggerRecoveryWhenPendingButIdle(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	mustEnableAIEnhancedProcessing(t, db, 1)
@@ -1174,6 +1251,136 @@ func TestGetProcessingStatusUsesFullArticleScopeDuringRenormalization(t *testing
 
 	_ = oldArticleID
 	_ = noContentArticleID
+}
+
+func TestClusterPipelineBarrierStateStillWaitsDuringRenormalization(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	manager := &AIEnhancedManager{
+		db:                      db,
+		taskChan:                make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:       map[int64]int{1: 3},
+		activeWorkerTasksByUser: map[int64]int64{1: 2},
+		activeAsyncWorkByUser:   map[int64]int64{1: 4},
+		renormalizationRunning:  map[int64]bool{1: true},
+		clusterPipelineRunning:  make(map[int64]bool),
+		clusterPipelineQueued:   make(map[int64]bool),
+		clusterFusionRunning:    make(map[int64]bool),
+		clusterEmbeddingRunning: make(map[int64]bool),
+	}
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-time.Hour),
+		"renorm-barrier-pending-summary",
+		false,
+	)
+
+	if _, err := db.CreateCluster(1, "pending_merge"); err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+
+	hasWork, barrierReached, err := manager.clusterPipelineBarrierState(1)
+	if err != nil {
+		t.Fatalf("clusterPipelineBarrierState error = %v", err)
+	}
+	if !hasWork {
+		t.Fatal("hasWork = false, want true")
+	}
+	if barrierReached {
+		t.Fatal("barrierReached = true, want false during renormalization while article work exists")
+	}
+}
+
+func TestClusterPipelineBarrierStateStillWaitsOutsideRenormalization(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	manager := &AIEnhancedManager{
+		db:                      db,
+		taskChan:                make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:       map[int64]int{1: 1},
+		activeWorkerTasksByUser: make(map[int64]int64),
+		activeAsyncWorkByUser:   make(map[int64]int64),
+		clusterPipelineRunning:  make(map[int64]bool),
+		clusterPipelineQueued:   make(map[int64]bool),
+		clusterFusionRunning:    make(map[int64]bool),
+		clusterEmbeddingRunning: make(map[int64]bool),
+	}
+
+	if _, err := db.CreateCluster(1, "pending_merge"); err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+
+	hasWork, barrierReached, err := manager.clusterPipelineBarrierState(1)
+	if err != nil {
+		t.Fatalf("clusterPipelineBarrierState error = %v", err)
+	}
+	if !hasWork {
+		t.Fatal("hasWork = false, want true")
+	}
+	if barrierReached {
+		t.Fatal("barrierReached = true, want false outside renormalization when queued article work exists")
+	}
+}
+
+func TestRunUserClusterAssignmentSeriallySerializesSameUserWork(t *testing.T) {
+	manager := &AIEnhancedManager{
+		userClusteringLocks: make(map[int64]*sync.Mutex),
+	}
+
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondEntered := make(chan struct{})
+	firstDone := make(chan struct{})
+
+	go func() {
+		defer close(firstDone)
+		_ = manager.runUserClusterAssignmentSerially(1, func() error {
+			close(firstEntered)
+			<-releaseFirst
+			return nil
+		})
+	}()
+
+	select {
+	case <-firstEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first serialized section did not start")
+	}
+
+	go func() {
+		_ = manager.runUserClusterAssignmentSerially(1, func() error {
+			close(secondEntered)
+			return nil
+		})
+	}()
+
+	select {
+	case <-secondEntered:
+		t.Fatal("second serialized section started before first finished")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	select {
+	case <-firstDone:
+	case <-time.After(time.Second):
+		t.Fatal("first serialized section did not finish")
+	}
+
+	select {
+	case <-secondEntered:
+	case <-time.After(time.Second):
+		t.Fatal("second serialized section did not start after first finished")
+	}
 }
 
 func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {

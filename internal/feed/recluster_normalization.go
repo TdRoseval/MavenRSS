@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"MavenRSS/internal/dedup"
 	"MavenRSS/internal/store/sqlite"
 )
 
@@ -18,6 +19,7 @@ var (
 	renormalizationWaitPollInterval   = 200 * time.Millisecond
 	renormalizationArticleWaitTimeout = 60 * time.Second
 	renormalizationClusterWaitTimeout = 60 * time.Second
+	renormalizationPreclusterWindow   = 8
 )
 
 type renormalizationArticleState struct {
@@ -26,6 +28,11 @@ type renormalizationArticleState struct {
 	hasTranslation    bool
 	hasEmbedding      bool
 	hasCluster        bool
+}
+
+type renormalizationWorkItem struct {
+	article        sqlite.AIBatchProcessingArticle
+	preclusterTask *AIEnhancedTask
 }
 
 func (m *AIEnhancedManager) StartClusterRenormalization(userID int64) (bool, string, error) {
@@ -185,25 +192,59 @@ func (m *AIEnhancedManager) runClusterRenormalization(userID int64) {
 		return
 	}
 
+	workItems := make([]renormalizationWorkItem, 0, len(articles))
 	for _, article := range articles {
-		task := buildRenormalizationTask(article, userID)
-		if task == nil {
-			continue
-		}
-		select {
-		case <-m.stopChan:
-			log.Printf("Stopping cluster renormalization early for user %d because AI manager is stopping", userID)
-			return
-		default:
-		}
-		if !m.tryEnqueueTask(task) {
-			log.Printf("AI enhanced task queue full during cluster renormalization for user %d", userID)
-			return
-		}
-		if err := m.waitForRenormalizationArticleTask(userID, task.ArticleID, targetLang); err != nil {
+		workItems = append(workItems, renormalizationWorkItem{
+			article:        article,
+			preclusterTask: buildRenormalizationPreclusterTask(article, userID),
+		})
+	}
+
+	nextToEnqueue := 0
+	for nextToEnqueue < len(workItems) && nextToEnqueue < renormalizationPreclusterWindow {
+		if err := m.enqueueRenormalizationPreclusterTask(&workItems[nextToEnqueue]); err != nil {
 			m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
-			log.Printf("Waiting for renormalization article-stage task failed for user %d: %v", userID, err)
+			log.Printf("Failed to enqueue renormalization precluster task for user %d: %v", userID, err)
 			return
+		}
+		nextToEnqueue++
+	}
+
+	for idx := range workItems {
+		item := &workItems[idx]
+
+		if err := m.waitForRenormalizationArticleTask(userID, item.article.Article.ID, targetLang); err != nil {
+			m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
+			log.Printf("Waiting for renormalization article precluster stages failed for user %d: %v", userID, err)
+			return
+		}
+
+		readyForClustering, err := m.isRenormalizationArticleReadyForClustering(userID, item.article.Article.ID, targetLang)
+		if err != nil {
+			m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
+			log.Printf("Checking renormalization article readiness failed for user %d article %d: %v", userID, item.article.Article.ID, err)
+			return
+		}
+		if readyForClustering {
+			if err := m.runRenormalizationArticleClustering(item.article, userID); err != nil {
+				task := &AIEnhancedTask{
+					ArticleID:    item.article.Article.ID,
+					UserID:       userID,
+					FeedID:       item.article.Article.FeedID,
+					ArticleTitle: item.article.Article.Title,
+				}
+				m.recordTaskFailure(userID, "clustering", task, "", "", err)
+				log.Printf("Serial renormalization clustering failed for user %d article %d: %v", userID, item.article.Article.ID, err)
+			}
+		}
+
+		if nextToEnqueue < len(workItems) {
+			if err := m.enqueueRenormalizationPreclusterTask(&workItems[nextToEnqueue]); err != nil {
+				m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
+				log.Printf("Failed to enqueue renormalization precluster task for user %d: %v", userID, err)
+				return
+			}
+			nextToEnqueue++
 		}
 	}
 
@@ -259,10 +300,13 @@ func (m *AIEnhancedManager) interruptUserWorkForRenormalization(userID int64) in
 	return removed
 }
 
-func buildRenormalizationTask(article sqlite.AIBatchProcessingArticle, userID int64) *AIEnhancedTask {
+func buildRenormalizationPreclusterTask(article sqlite.AIBatchProcessingArticle, userID int64) *AIEnhancedTask {
 	needsSummary := !article.HasSummary
 	needsTranslation := article.TranslateArticles && !article.HasTranslation
 	needsEmbedding := !article.HasArticleEmbedding
+	if !needsSummary && !needsTranslation && !needsEmbedding {
+		return nil
+	}
 
 	return &AIEnhancedTask{
 		ArticleID:                 article.Article.ID,
@@ -273,9 +317,33 @@ func buildRenormalizationTask(article sqlite.AIBatchProcessingArticle, userID in
 		NeedsTranslation:          needsTranslation,
 		TranslateArticles:         article.TranslateArticles,
 		NeedsEmbedding:            needsEmbedding,
-		NeedsDedup:                true,
+		NeedsDedup:                false,
 		NeedsClusterRun:           false,
 		ForceTitleSummaryFallback: true,
+	}
+}
+
+func (m *AIEnhancedManager) enqueueRenormalizationPreclusterTask(item *renormalizationWorkItem) error {
+	if item == nil || item.preclusterTask == nil {
+		return nil
+	}
+
+	for {
+		select {
+		case <-m.stopChan:
+			return fmt.Errorf("ai enhanced manager stopped")
+		default:
+		}
+
+		if m.tryEnqueueTask(item.preclusterTask) {
+			return nil
+		}
+
+		select {
+		case <-m.stopChan:
+			return fmt.Errorf("ai enhanced manager stopped")
+		case <-time.After(renormalizationWaitPollInterval):
+		}
 	}
 }
 
@@ -303,7 +371,6 @@ func (m *AIEnhancedManager) waitForRenormalizationArticleTask(userID, articleID 
 			if err := m.skipTimedOutRenormalizationArticle(userID, articleID, targetLang, reason); err != nil {
 				return err
 			}
-			m.abandonTimedOutRenormalizationActivity(userID, fmt.Sprintf("article %d timed out during renormalization", articleID))
 			return nil
 		}
 
@@ -324,7 +391,15 @@ func (m *AIEnhancedManager) isRenormalizationArticleTaskDone(userID, articleID i
 	if err != nil {
 		return false, err
 	}
-	return state.hasSummary && state.hasTranslation && state.hasEmbedding && state.hasCluster, nil
+	return state.hasSummary && state.hasTranslation && state.hasEmbedding, nil
+}
+
+func (m *AIEnhancedManager) isRenormalizationArticleReadyForClustering(userID, articleID int64, targetLang string) (bool, error) {
+	state, err := m.getRenormalizationArticleState(userID, articleID, targetLang)
+	if err != nil {
+		return false, err
+	}
+	return state.hasSummary && state.hasTranslation && state.hasEmbedding && !state.hasCluster, nil
 }
 
 func (m *AIEnhancedManager) getRenormalizationArticleState(userID, articleID int64, targetLang string) (renormalizationArticleState, error) {
@@ -493,6 +568,35 @@ func (m *AIEnhancedManager) skipTimedOutRenormalizationArticle(userID, articleID
 		}
 	}
 
+	return nil
+}
+
+func (m *AIEnhancedManager) runRenormalizationArticleClustering(article sqlite.AIBatchProcessingArticle, userID int64) error {
+	if m == nil || m.db == nil || userID <= 0 || article.Article.ID <= 0 {
+		return nil
+	}
+
+	select {
+	case <-m.stopChan:
+		return fmt.Errorf("ai enhanced manager stopped")
+	default:
+	}
+
+	if err := m.runUserClusterAssignmentSerially(userID, func() error {
+		return dedup.ProcessArticle(m.db, article.Article.ID, userID)
+	}); err != nil {
+		reason := fmt.Sprintf("serial renormalization clustering failed: %v", err)
+		if len(reason) > 600 {
+			reason = reason[:600]
+		}
+		if skipErr := m.db.SetAIArticleStageSkip(userID, article.Article.ID, "clustering", reason); skipErr != nil {
+			log.Printf("Failed to persist clustering skip marker for article %d after serial renormalization clustering failure: %v", article.Article.ID, skipErr)
+		}
+		return err
+	}
+
+	log.Printf("Serial renormalization clustering completed for article %d", article.Article.ID)
+	m.scheduleClusterPipeline(userID)
 	return nil
 }
 

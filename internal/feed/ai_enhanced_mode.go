@@ -64,6 +64,8 @@ type AIEnhancedManager struct {
 	queuedTasksByUser          map[int64]int
 	activeWorkerTasksByUser    map[int64]int64
 	activeAsyncWorkByUser      map[int64]int64
+	clusteringLockMu           sync.Mutex
+	userClusteringLocks        map[int64]*sync.Mutex
 	userOperationVersion       map[int64]int64
 	embeddingHealthByUser      map[int64]EmbeddingHealthStatus
 	embeddingHealthCheckedAt   map[int64]time.Time
@@ -166,6 +168,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		queuedTasksByUser:          make(map[int64]int),
 		activeWorkerTasksByUser:    make(map[int64]int64),
 		activeAsyncWorkByUser:      make(map[int64]int64),
+		userClusteringLocks:        make(map[int64]*sync.Mutex),
 		userOperationVersion:       make(map[int64]int64),
 		embeddingHealthByUser:      make(map[int64]EmbeddingHealthStatus),
 		embeddingHealthCheckedAt:   make(map[int64]time.Time),
@@ -454,9 +457,20 @@ func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, co
 				log.Printf("Skipping stale dedup for article %d user %d", task.ArticleID, task.UserID)
 				return
 			}
-			if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
+			dedupCompleted := false
+			if err := m.runUserClusterAssignmentSerially(task.UserID, func() error {
+				if !m.isUserOperationCurrent(task.UserID, version) {
+					log.Printf("Skipping stale serialized dedup for article %d user %d", task.ArticleID, task.UserID)
+					return nil
+				}
+				if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
+					return err
+				}
+				dedupCompleted = true
+				return nil
+			}); err != nil {
 				log.Printf("Dedup pipeline failed for article %d: %v", task.ArticleID, err)
-			} else {
+			} else if dedupCompleted {
 				log.Printf("Dedup pipeline completed for article %d", task.ArticleID)
 				clusterScheduled = true
 			}
@@ -595,7 +609,6 @@ func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, e
 				userID,
 				renormalizationClusterWaitTimeout,
 			)
-			m.abandonTimedOutRenormalizationActivity(userID, "cluster pipeline barrier timed out during renormalization")
 			return true, nil
 		}
 
@@ -644,6 +657,40 @@ func (m *AIEnhancedManager) clusterPipelineBarrierState(userID int64) (bool, boo
 		progress.PendingClusteringArticles == 0
 
 	return true, barrierReached, nil
+}
+
+func (m *AIEnhancedManager) getUserClusteringLock(userID int64) *sync.Mutex {
+	if userID <= 0 {
+		return nil
+	}
+
+	m.clusteringLockMu.Lock()
+	defer m.clusteringLockMu.Unlock()
+
+	if m.userClusteringLocks == nil {
+		m.userClusteringLocks = make(map[int64]*sync.Mutex)
+	}
+	lock := m.userClusteringLocks[userID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		m.userClusteringLocks[userID] = lock
+	}
+	return lock
+}
+
+func (m *AIEnhancedManager) runUserClusterAssignmentSerially(userID int64, fn func() error) error {
+	if userID <= 0 || fn == nil {
+		return nil
+	}
+
+	lock := m.getUserClusteringLock(userID)
+	if lock == nil {
+		return fn()
+	}
+
+	lock.Lock()
+	defer lock.Unlock()
+	return fn()
 }
 
 func (m *AIEnhancedManager) setClusterStageRunning(userID int64, stage string, running bool) {
@@ -788,19 +835,53 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	m.setClusterStageRunning(userID, "fusion", true)
-	if err := m.runFusion(ctx, m.db, userID, cfg); err != nil {
-		m.setClusterStageRunning(userID, "fusion", false)
-		return fmt.Errorf("run fusion: %w", err)
+	type clusterStageResult struct {
+		stage string
+		err   error
 	}
-	m.setClusterStageRunning(userID, "fusion", false)
+
+	results := make(chan clusterStageResult, 2)
+	fusionDone := make(chan struct{})
+
+	m.setClusterStageRunning(userID, "fusion", true)
+	go func() {
+		defer m.setClusterStageRunning(userID, "fusion", false)
+		defer close(fusionDone)
+		results <- clusterStageResult{
+			stage: "fusion",
+			err:   m.runFusion(ctx, m.db, userID, cfg),
+		}
+	}()
 
 	m.setClusterStageRunning(userID, "embedding", true)
-	if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
-		m.setClusterStageRunning(userID, "embedding", false)
-		return fmt.Errorf("run embedding: %w", err)
+	go func() {
+		defer m.setClusterStageRunning(userID, "embedding", false)
+		results <- clusterStageResult{
+			stage: "embedding",
+			err:   m.runClusterEmbeddingPipeline(ctx, userID, cfg, fusionDone),
+		}
+	}()
+
+	var fusionErr error
+	var embeddingErr error
+	for i := 0; i < 2; i++ {
+		result := <-results
+		if result.err != nil {
+			cancel()
+		}
+		switch result.stage {
+		case "fusion":
+			fusionErr = result.err
+		case "embedding":
+			embeddingErr = result.err
+		}
 	}
-	m.setClusterStageRunning(userID, "embedding", false)
+	if fusionErr != nil {
+		return fmt.Errorf("run fusion: %w", fusionErr)
+	}
+	if embeddingErr != nil {
+		return fmt.Errorf("run embedding: %w", embeddingErr)
+	}
 	if m.db == nil {
 		return nil
 	}
@@ -809,6 +890,56 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	}
 
 	return nil
+}
+
+func (m *AIEnhancedManager) runClusterEmbeddingPipeline(ctx context.Context, userID int64, cfg *dedup.FusionConfig, fusionDone <-chan struct{}) error {
+	if m.db == nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-fusionDone:
+		}
+		return m.runEmbedding(ctx, nil, userID, cfg)
+	}
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		progress, err := m.db.GetClusterProcessingProgress(userID)
+		if err != nil {
+			return fmt.Errorf("get cluster processing progress: %w", err)
+		}
+
+		if progress.PendingEmbedClusters > 0 {
+			if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
+				return err
+			}
+			continue
+		}
+
+		select {
+		case <-fusionDone:
+			progress, err = m.db.GetClusterProcessingProgress(userID)
+			if err != nil {
+				return fmt.Errorf("get cluster processing progress after fusion: %w", err)
+			}
+			if progress.PendingEmbedClusters == 0 {
+				return nil
+			}
+		default:
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func (m *AIEnhancedManager) initializeInterestVectorFromFavoriteClustersIfMissing(userID int64) error {
