@@ -292,6 +292,101 @@ func TestGetAIReclusterNormalizationProgressOnlyCountsCachedContentArticles(t *t
 	}
 }
 
+func TestGetReadyArticlesForAIReclusterClusteringOnlyReturnsReadyUnclusteredArticles(t *testing.T) {
+	db := setupTestDB(t)
+
+	userID, err := db.CreateUser(&models.User{
+		Username:     "recluster-ready-user",
+		Email:        "recluster-ready@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser error = %v", err)
+	}
+
+	feedID, err := db.AddFeedForUser(userID, &models.Feed{
+		Title:             "Ready Feed",
+		URL:               "https://example.com/ready-feed",
+		Type:              "rss",
+		RefreshInterval:   60,
+		TranslateArticles: true,
+	})
+	if err != nil {
+		t.Fatalf("AddFeedForUser error = %v", err)
+	}
+
+	readyArticleID := mustInsertReclusterTestArticle(t, db, userID, feedID, "ready-article", "ready summary")
+	if err := db.SetArticleTranslatedContent(readyArticleID, "ready translated", "zh", "ai"); err != nil {
+		t.Fatalf("SetArticleTranslatedContent ready error = %v", err)
+	}
+	if err := db.UpdateArticleEmbeddings(
+		readyArticleID,
+		mustSerializeReclusterVector(t, []float32{1, 0}),
+		mustSerializeReclusterVector(t, []float32{1, 0}),
+	); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings ready error = %v", err)
+	}
+
+	needsTranslationID := mustInsertReclusterTestArticle(t, db, userID, feedID, "needs-translation", "summary")
+	if err := db.UpdateArticleEmbeddings(
+		needsTranslationID,
+		mustSerializeReclusterVector(t, []float32{0, 1}),
+		mustSerializeReclusterVector(t, []float32{0, 1}),
+	); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings needsTranslation error = %v", err)
+	}
+
+	clusteredID := mustInsertReclusterTestArticle(t, db, userID, feedID, "already-clustered", "summary")
+	if err := db.SetArticleTranslatedContent(clusteredID, "clustered translated", "zh", "ai"); err != nil {
+		t.Fatalf("SetArticleTranslatedContent clustered error = %v", err)
+	}
+	if err := db.UpdateArticleEmbeddings(
+		clusteredID,
+		mustSerializeReclusterVector(t, []float32{1, 1}),
+		mustSerializeReclusterVector(t, []float32{1, 1}),
+	); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings clustered error = %v", err)
+	}
+	clusterID, err := db.CreateCluster(userID, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(clusteredID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error = %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error = %v", err)
+	}
+
+	skippedID := mustInsertReclusterTestArticle(t, db, userID, feedID, "skipped-clustering", "summary")
+	if err := db.SetArticleTranslatedContent(skippedID, "skipped translated", "zh", "ai"); err != nil {
+		t.Fatalf("SetArticleTranslatedContent skipped error = %v", err)
+	}
+	if err := db.UpdateArticleEmbeddings(
+		skippedID,
+		mustSerializeReclusterVector(t, []float32{2, 0}),
+		mustSerializeReclusterVector(t, []float32{2, 0}),
+	); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings skipped error = %v", err)
+	}
+	if err := db.SetAIArticleStageSkip(userID, skippedID, "clustering", "already handled"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip error = %v", err)
+	}
+
+	articles, err := db.GetReadyArticlesForAIReclusterClustering(userID, "zh")
+	if err != nil {
+		t.Fatalf("GetReadyArticlesForAIReclusterClustering error = %v", err)
+	}
+	if len(articles) != 1 {
+		t.Fatalf("len(articles) = %d, want 1", len(articles))
+	}
+	if articles[0].Article.ID != readyArticleID {
+		t.Fatalf("article ID = %d, want %d", articles[0].Article.ID, readyArticleID)
+	}
+}
+
 func TestBackfillEmptyClusterMergedContentPersistsFallbackFields(t *testing.T) {
 	db := setupTestDB(t)
 

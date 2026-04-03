@@ -435,6 +435,65 @@ func TestScheduleClusterPipelineCoalescesRepeatedRequests(t *testing.T) {
 	}
 }
 
+func TestRequestClusterPipelineWaitsForArticleWorkToDrain(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	if _, err := db.CreateCluster(1, "pending_merge"); err != nil {
+		t.Fatalf("CreateCluster error: %v", err)
+	}
+
+	started := make(chan struct{}, 1)
+	manager := &AIEnhancedManager{
+		db:                       db,
+		taskChan:                 make(chan *AIEnhancedTask, 10),
+		stopChan:                 make(chan struct{}),
+		queuedTasksByUser:        map[int64]int{1: 1},
+		activeWorkerTasksByUser:  make(map[int64]int64),
+		activeAsyncWorkByUser:    map[int64]int64{1: 1},
+		clusterPipelineRunning:   make(map[int64]bool),
+		clusterPipelineQueued:    make(map[int64]bool),
+		clusterPipelineRequested: make(map[int64]bool),
+		clusterFusionRunning:     make(map[int64]bool),
+		clusterEmbeddingRunning:  make(map[int64]bool),
+		resolveFusionConfig: func(userID int64) (*dedup.FusionConfig, error) {
+			return &dedup.FusionConfig{}, nil
+		},
+		runFusion: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+		runEmbedding: func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error {
+			return nil
+		},
+	}
+
+	manager.requestClusterPipeline(1)
+
+	select {
+	case <-started:
+		t.Fatal("cluster pipeline started before article work drained")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	manager.statusMu.Lock()
+	delete(manager.queuedTasksByUser, 1)
+	delete(manager.activeAsyncWorkByUser, 1)
+	manager.statusMu.Unlock()
+
+	if !manager.maybeStartRequestedClusterPipeline(1) {
+		t.Fatal("maybeStartRequestedClusterPipeline() = false, want true after article work drained")
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cluster pipeline did not start after article work drained")
+	}
+}
+
 func TestRunClusterPipelineOnceRunsFusionThenEmbedding(t *testing.T) {
 	manager := &AIEnhancedManager{
 		clusterPipelineRunning: make(map[int64]bool),
@@ -1383,6 +1442,85 @@ func TestRunUserClusterAssignmentSeriallySerializesSameUserWork(t *testing.T) {
 	}
 }
 
+func TestArticleSummaryStageSemaphoreLimitsConcurrency(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	started := make(chan int64, 12)
+	release := make(chan struct{}, 12)
+	var running int32
+	var maxRunning int32
+
+	manager.runArticleSummary = func(task *AIEnhancedTask, content string) {
+		current := atomic.AddInt32(&running, 1)
+		for {
+			observed := atomic.LoadInt32(&maxRunning)
+			if current <= observed || atomic.CompareAndSwapInt32(&maxRunning, observed, current) {
+				break
+			}
+		}
+		started <- task.ArticleID
+		<-release
+		atomic.AddInt32(&running, -1)
+	}
+
+	tasks := make([]*AIEnhancedTask, 0, 8)
+	for i := 0; i < 8; i++ {
+		title := "summary-stage-" + strconv.Itoa(i)
+		articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(time.Duration(-i)*time.Minute), title, false)
+		tasks = append(tasks, &AIEnhancedTask{
+			ArticleID:    articleID,
+			UserID:       1,
+			FeedID:       feedID,
+			ArticleTitle: title,
+			NeedsSummary: true,
+		})
+	}
+
+	for _, task := range tasks {
+		if err := manager.startArticlePipeline(task, -1); err != nil {
+			t.Fatalf("startArticlePipeline error: %v", err)
+		}
+	}
+
+	for i := 0; i < articleSummaryConcurrency; i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("summary stage started only %d tasks, want %d", i, articleSummaryConcurrency)
+		}
+	}
+
+	select {
+	case <-started:
+		t.Fatal("summary stage exceeded concurrency limit before a slot was released")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	release <- struct{}{}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("summary stage did not admit the next task after a slot was released")
+	}
+
+	for i := 0; i < 7; i++ {
+		release <- struct{}{}
+	}
+
+	waitForCondition(t, 2*time.Second, func() bool {
+		queued, activeWorker, activeAsync := manager.getUserTaskCounts(1)
+		return queued == 0 && activeWorker == 0 && activeAsync == 0
+	})
+
+	if got := atomic.LoadInt32(&maxRunning); got != articleSummaryConcurrency {
+		t.Fatalf("max summary concurrency = %d, want %d", got, articleSummaryConcurrency)
+	}
+}
+
 func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	mustEnableAIEnhancedProcessing(t, db, 1)
@@ -1562,27 +1700,17 @@ func TestProcessTaskUsesTitleAsFallbackSummaryAndContent(t *testing.T) {
 	}
 	manager.processTask(task, 0)
 
-	article, err := db.GetArticleByID(articleID)
-	if err != nil {
-		t.Fatalf("GetArticleByID error: %v", err)
-	}
-	if article == nil {
-		t.Fatal("GetArticleByID returned nil article")
-	}
-	if article.Summary != "missing-content" {
-		t.Fatalf("Summary = %q, want title fallback", article.Summary)
-	}
-
-	content, found, err := db.GetArticleContent(articleID)
-	if err != nil {
-		t.Fatalf("GetArticleContent error: %v", err)
-	}
-	if !found {
-		t.Fatal("expected title fallback content to be cached")
-	}
-	if !strings.Contains(content, "missing-content") {
-		t.Fatalf("fallback content = %q, want title text", content)
-	}
+	waitForCondition(t, 2*time.Second, func() bool {
+		article, err := db.GetArticleByID(articleID)
+		if err != nil || article == nil {
+			return false
+		}
+		content, found, err := db.GetArticleContent(articleID)
+		if err != nil || !found {
+			return false
+		}
+		return article.Summary == "missing-content" && strings.Contains(content, "missing-content")
+	})
 }
 
 func newAIEnhancedModeTestDB(t *testing.T) *sqlite.DB {

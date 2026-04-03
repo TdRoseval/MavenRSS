@@ -429,6 +429,51 @@ func TestForceCompleteTimedOutClustersBackfillsAndLeavesRepairableState(t *testi
 	}
 }
 
+func TestReconcileRenormalizationPendingClusteringClustersResidualReadyArticles(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	firstArticleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-2*time.Hour), "residual-ready-1", true)
+	secondArticleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "residual-ready-2", true)
+
+	if err := db.UpdateArticleEmbeddings(firstArticleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings first error = %v", err)
+	}
+	if err := db.UpdateArticleEmbeddings(secondArticleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
+		t.Fatalf("UpdateArticleEmbeddings second error = %v", err)
+	}
+
+	reconciled, err := manager.reconcileRenormalizationPendingClustering(1, "zh")
+	if err != nil {
+		t.Fatalf("reconcileRenormalizationPendingClustering error = %v", err)
+	}
+	if reconciled != 2 {
+		t.Fatalf("reconciled = %d, want 2", reconciled)
+	}
+
+	var clusteredCount int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM articles WHERE id IN (?, ?) AND cluster_id IS NOT NULL`,
+		firstArticleID,
+		secondArticleID,
+	).Scan(&clusteredCount); err != nil {
+		t.Fatalf("query clusteredCount error = %v", err)
+	}
+	if clusteredCount != 2 {
+		t.Fatalf("clusteredCount = %d, want 2", clusteredCount)
+	}
+
+	progress, err := db.GetAIReclusterNormalizationProgress(1, "zh")
+	if err != nil {
+		t.Fatalf("GetAIReclusterNormalizationProgress error = %v", err)
+	}
+	if progress.PendingClusteringArticles != 0 {
+		t.Fatalf("PendingClusteringArticles = %d, want 0", progress.PendingClusteringArticles)
+	}
+}
+
 func waitForCondition(t *testing.T, timeout time.Duration, check func() bool) {
 	t.Helper()
 

@@ -224,3 +224,83 @@ func (db *DB) GetArticlesForAIReclusterNormalization(userID int64, targetLang st
 	}
 	return articles, nil
 }
+
+func (db *DB) GetReadyArticlesForAIReclusterClustering(userID int64, targetLang string) ([]AIBatchProcessingArticle, error) {
+	db.WaitForReady()
+	if targetLang == "" {
+		targetLang = "zh"
+	}
+
+	rows, err := db.Query(
+		`SELECT a.id, a.feed_id, COALESCE(a.title, ''), COALESCE(a.url, ''), COALESCE(a.image_url, ''), COALESCE(a.audio_url, ''), COALESCE(a.video_url, ''),
+		        a.published_at, a.is_read, a.is_favorite, a.is_hidden, a.is_read_later,
+		        COALESCE(a.translated_title, ''), COALESCE(a.summary, ''), COALESCE(a.freshrss_item_id, ''), COALESCE(f.title, ''), COALESCE(a.author, ''),
+		        a.cluster_id,
+		        COALESCE(f.translate_articles, 0),
+		        1,
+		        1,
+		        CASE
+		        	WHEN COALESCE(f.translate_articles, 0) = 0 THEN 1
+		        	WHEN atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL THEN 1
+		        	ELSE 0
+		        END,
+		        1
+		   FROM articles a
+		   LEFT JOIN feeds f ON a.feed_id = f.id
+		   JOIN article_contents ac ON ac.article_id = a.id
+		   LEFT JOIN article_translated_contents atc ON atc.article_id = a.id AND atc.target_lang = ?
+		   LEFT JOIN article_embeddings ae ON ae.article_id = a.id
+		   LEFT JOIN ai_article_stage_skips skip_summary
+		   	ON skip_summary.user_id = a.user_id AND skip_summary.article_id = a.id AND skip_summary.stage = 'summary'
+		   LEFT JOIN ai_article_stage_skips skip_translation
+		   	ON skip_translation.user_id = a.user_id AND skip_translation.article_id = a.id AND skip_translation.stage = 'translation'
+		   LEFT JOIN ai_article_stage_skips skip_embedding
+		   	ON skip_embedding.user_id = a.user_id AND skip_embedding.article_id = a.id AND skip_embedding.stage = 'embedding'
+		   LEFT JOIN ai_article_stage_skips skip_clustering
+		   	ON skip_clustering.user_id = a.user_id AND skip_clustering.article_id = a.id AND skip_clustering.stage = 'clustering'
+		  WHERE a.user_id = ?
+		    AND ((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL)
+		    AND (COALESCE(f.translate_articles, 0) = 0 OR atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL)
+		    AND (ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL)
+		    AND a.cluster_id IS NULL
+		    AND skip_clustering.article_id IS NULL
+		  ORDER BY a.published_at ASC, a.id ASC`,
+		targetLang,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query ready articles for recluster clustering: %w", err)
+	}
+	defer rows.Close()
+
+	articles := make([]AIBatchProcessingArticle, 0)
+	for rows.Next() {
+		var article AIBatchProcessingArticle
+		var clusterID sql.NullInt64
+		if err := rows.Scan(
+			&article.Article.ID, &article.Article.FeedID, &article.Article.Title, &article.Article.URL, &article.Article.ImageURL, &article.Article.AudioURL, &article.Article.VideoURL,
+			&article.Article.PublishedAt, &article.Article.IsRead, &article.Article.IsFavorite, &article.Article.IsHidden, &article.Article.IsReadLater,
+			&article.Article.TranslatedTitle, &article.Article.Summary, &article.Article.FreshRSSItemID, &article.Article.FeedTitle, &article.Article.Author,
+			&clusterID,
+			&article.TranslateArticles,
+			&article.HasContent,
+			&article.HasSummary,
+			&article.HasTranslation,
+			&article.HasArticleEmbedding,
+		); err != nil {
+			return nil, fmt.Errorf("scan ready article for recluster clustering: %w", err)
+		}
+		if clusterID.Valid {
+			article.Article.ClusterID = clusterID.Int64
+		}
+		article.HasCluster = false
+		article.ClusterNeedsPostProcess = false
+		article.ClusterNeedsEmbeddingRepair = false
+		articles = append(articles, article)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate ready articles for recluster clustering: %w", err)
+	}
+	return articles, nil
+}

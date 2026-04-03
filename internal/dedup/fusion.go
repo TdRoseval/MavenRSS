@@ -32,8 +32,8 @@ type FusionConfig struct {
 }
 
 const (
-	clusterFusionWorkerCount    = 2
-	clusterEmbeddingWorkerCount = 2
+	clusterFusionWorkerCount    = 6
+	clusterEmbeddingWorkerCount = 6
 )
 
 // RunFusion processes all pending_merge clusters for a user.

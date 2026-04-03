@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html"
 	"log"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -53,6 +52,11 @@ type AIProcessingFailure struct {
 	Count        int
 }
 
+type articleSummaryRunner func(task *AIEnhancedTask, content string)
+type articleTranslationRunner func(task *AIEnhancedTask, content string)
+type articleEmbeddingRunner func(task *AIEnhancedTask, content string, version int64)
+type articleDedupRunner func(task *AIEnhancedTask, version int64) bool
+
 // AIEnhancedManager manages the AI enhanced mode task queue and workers
 type AIEnhancedManager struct {
 	db                         *sqlite.DB
@@ -77,6 +81,7 @@ type AIEnhancedManager struct {
 	clusterMu                  sync.Mutex
 	clusterPipelineRunning     map[int64]bool
 	clusterPipelineQueued      map[int64]bool
+	clusterPipelineRequested   map[int64]bool
 	clusterPipelineVersion     map[int64]int64
 	clusterPipelineQueuedVer   map[int64]int64
 	clusterFusionRunning       map[int64]bool
@@ -95,6 +100,14 @@ type AIEnhancedManager struct {
 	resolveFusionConfig        func(userID int64) (*dedup.FusionConfig, error)
 	runFusion                  func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
 	runEmbedding               func(ctx context.Context, db *sqlite.DB, userID int64, cfg *dedup.FusionConfig) error
+	runArticleSummary          articleSummaryRunner
+	runArticleTranslation      articleTranslationRunner
+	runArticleEmbedding        articleEmbeddingRunner
+	runArticleDedup            articleDedupRunner
+	articlePipelineSlots       chan struct{}
+	articleSummarySem          chan struct{}
+	articleTranslationSem      chan struct{}
+	articleEmbeddingSem        chan struct{}
 }
 
 const (
@@ -102,6 +115,10 @@ const (
 	aiProcessingLastProgressAtSettingKey  = "_internal_ai_processing_last_progress_at"
 	aiProcessingFreezeSuspendedSettingKey = "_internal_ai_processing_freeze_suspended"
 	aiProcessingStaleTimeout              = 30 * time.Minute
+	articleSummaryConcurrency             = 6
+	articleTranslationConcurrency         = 6
+	articleEmbeddingConcurrency           = 6
+	articlePipelineWindow                 = 18
 )
 
 type AIProcessingStatus struct {
@@ -150,13 +167,9 @@ type AIProcessingStatus struct {
 
 // NewAIEnhancedManager creates a new AI enhanced mode manager
 func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
-	// Calculate optimal worker count
-	numWorkers := runtime.NumCPU()
+	numWorkers := articleSummaryConcurrency
 	if numWorkers < 1 {
 		numWorkers = 1
-	}
-	if numWorkers > 2 {
-		numWorkers = 2 // Cap at 2 workers for AI tasks to avoid overload
 	}
 
 	taskChan := make(chan *AIEnhancedTask, 100)
@@ -178,6 +191,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		renormalizationRunning:     make(map[int64]bool),
 		clusterPipelineRunning:     make(map[int64]bool),
 		clusterPipelineQueued:      make(map[int64]bool),
+		clusterPipelineRequested:   make(map[int64]bool),
 		clusterPipelineVersion:     make(map[int64]int64),
 		clusterPipelineQueuedVer:   make(map[int64]int64),
 		clusterFusionRunning:       make(map[int64]bool),
@@ -191,12 +205,23 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		pendingRecommendationMode:  make(map[int64]string),
 		pendingRecommendationVer:   make(map[int64]int64),
 		stopChan:                   make(chan struct{}),
+		articlePipelineSlots:       make(chan struct{}, articlePipelineWindow),
+		articleSummarySem:          make(chan struct{}, articleSummaryConcurrency),
+		articleTranslationSem:      make(chan struct{}, articleTranslationConcurrency),
+		articleEmbeddingSem:        make(chan struct{}, articleEmbeddingConcurrency),
 	}
 	manager.resolveFusionConfig = manager.buildFusionConfig
 	manager.runFusion = dedup.RunFusion
 	manager.runEmbedding = dedup.RunEmbedding
 
-	log.Printf("Starting %d AI enhanced mode workers", numWorkers)
+	log.Printf(
+		"Starting %d AI enhanced mode workers (summary=%d translation=%d article_embedding=%d pipeline_window=%d)",
+		numWorkers,
+		articleSummaryConcurrency,
+		articleTranslationConcurrency,
+		articleEmbeddingConcurrency,
+		articlePipelineWindow,
+	)
 	manager.startWorkers()
 	manager.startDailyRecommendationScheduler()
 	manager.startPendingWorkRecoveryMonitor()
@@ -237,45 +262,8 @@ func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
 		return
 	}
 
-	log.Printf("AI enhanced worker %d processing article %d for user %d", workerID, task.ArticleID, task.UserID)
-
-	needsContent := task.NeedsSummary || (task.NeedsTranslation && task.TranslateArticles) || task.NeedsEmbedding
-	content := ""
-	if needsContent {
-		var hasContent bool
-		var err error
-		content, hasContent, err = m.db.GetArticleContent(task.ArticleID)
-		if err != nil {
-			log.Printf("Error getting article content for AI enhanced task: %v", err)
-			return
-		}
-		if !hasContent || content == "" {
-			content, err = m.ensureArticleContentFallbackFromTitle(task)
-			if err != nil {
-				log.Printf("No content available for article %d and failed to build title fallback: %v", task.ArticleID, err)
-				if task.NeedsClusterRun && !task.NeedsSummary && !task.NeedsEmbedding && !task.NeedsDedup {
-					m.scheduleClusterPipeline(task.UserID)
-				}
-				return
-			}
-		}
-	}
-
-	if !m.isTaskOperationCurrent(task) {
-		log.Printf("Stopping stale AI enhanced task for article %d user %d after content load", task.ArticleID, task.UserID)
-		return
-	}
-
-	if task.NeedsSummary {
-		m.generateAISummary(task, content)
-	}
-
-	if task.NeedsTranslation && task.TranslateArticles {
-		m.generateAITranslation(task, content)
-	}
-
-	if task.NeedsEmbedding || task.NeedsDedup || task.NeedsClusterRun {
-		m.advanceArticlePipelineAsync(task, content)
+	if err := m.startArticlePipeline(task, workerID); err != nil {
+		log.Printf("Failed to start AI article pipeline for article %d user %d: %v", task.ArticleID, task.UserID, err)
 	}
 }
 
@@ -374,119 +362,397 @@ func (m *AIEnhancedManager) ensureArticleContentFallbackFromTitle(task *AIEnhanc
 	return fallbackContent, nil
 }
 
-func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, content string) {
+func (m *AIEnhancedManager) ensureArticlePipelineControls() {
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+
+	if m.articlePipelineSlots == nil {
+		m.articlePipelineSlots = make(chan struct{}, articlePipelineWindow)
+	}
+	if m.articleSummarySem == nil {
+		m.articleSummarySem = make(chan struct{}, articleSummaryConcurrency)
+	}
+	if m.articleTranslationSem == nil {
+		m.articleTranslationSem = make(chan struct{}, articleTranslationConcurrency)
+	}
+	if m.articleEmbeddingSem == nil {
+		m.articleEmbeddingSem = make(chan struct{}, articleEmbeddingConcurrency)
+	}
+}
+
+func (m *AIEnhancedManager) acquireStageSlot(slots chan struct{}) error {
+	if slots == nil {
+		return nil
+	}
+
+	select {
+	case <-m.stopChan:
+		return fmt.Errorf("ai enhanced manager stopped")
+	case slots <- struct{}{}:
+		return nil
+	}
+}
+
+func (m *AIEnhancedManager) releaseStageSlot(slots chan struct{}) {
+	if slots == nil {
+		return
+	}
+
+	select {
+	case <-slots:
+	default:
+	}
+}
+
+func (m *AIEnhancedManager) startArticlePipeline(task *AIEnhancedTask, workerID int) error {
+	if task == nil {
+		return nil
+	}
+
+	m.ensureArticlePipelineControls()
+	if err := m.acquireStageSlot(m.articlePipelineSlots); err != nil {
+		return err
+	}
+
+	log.Printf("AI enhanced worker %d dispatched article pipeline for article %d user %d", workerID, task.ArticleID, task.UserID)
+
 	atomic.AddInt64(&m.activeAsyncWork, 1)
 	m.incrementActiveAsyncWork(task.UserID)
 	version := m.stampTaskOperationVersion(task)
 	go func() {
 		defer func() {
 			m.decrementActiveAsyncWork(task.UserID)
+			m.releaseStageSlot(m.articlePipelineSlots)
+			m.maybeStartRequestedClusterPipeline(task.UserID)
 			if atomic.AddInt64(&m.activeAsyncWork, -1) == 0 {
 				m.onAsyncWorkDrained()
 			}
 		}()
-		time.Sleep(2 * time.Second)
-		if !m.isUserOperationCurrent(task.UserID, version) {
-			log.Printf("Skipping stale async article pipeline for article %d user %d", task.ArticleID, task.UserID)
-			return
-		}
 
-		article, err := m.db.GetArticleByID(task.ArticleID)
-		if err != nil || article == nil {
-			log.Printf("Failed to fetch article %d for AI enhanced pipeline: %v", task.ArticleID, err)
-			return
-		}
-		if !m.isUserOperationCurrent(task.UserID, version) {
-			log.Printf("Stopping stale async article pipeline for article %d user %d", task.ArticleID, task.UserID)
-			return
-		}
-
-		if task.NeedsEmbedding {
-			summaryText := article.Summary
-			if summaryText == "" {
-				summaryText = content
-			}
-
-			configsJSON, err := m.db.GetSettingWithFallback(task.UserID, "ai_embedding_models")
-			if err != nil || configsJSON == "" || configsJSON == "[]" {
-				log.Printf("No embedding models configured for user %d, skipping embedding", task.UserID)
-			} else {
-				globalProxyURL, _ := buildGlobalProxyURL(m.db, task.UserID)
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-
-				var titleEmbBlob, summaryEmbBlob []byte
-
-				if article.Title != "" {
-					if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
-						if len(titleEmb) > 0 {
-							titleEmbBlob, _ = interest.NormalizeAndSerialize(titleEmb)
-						}
-					} else {
-						log.Printf("Failed to generate title embedding for article %d: %v", task.ArticleID, err)
-					}
-				}
-
-				if summaryText != "" {
-					if sumEmb, err := ai.GenerateEmbeddings(ctx, summaryText, configsJSON, globalProxyURL); err == nil {
-						if len(sumEmb) > 0 {
-							summaryEmbBlob, _ = interest.NormalizeAndSerialize(sumEmb)
-						}
-					} else {
-						log.Printf("Failed to generate summary embedding for article %d: %v", task.ArticleID, err)
-					}
-				}
-
-				if len(titleEmbBlob) > 0 || len(summaryEmbBlob) > 0 {
-					if !m.isUserOperationCurrent(task.UserID, version) {
-						log.Printf("Discarding stale embeddings for article %d user %d", task.ArticleID, task.UserID)
-						return
-					}
-					if err := m.db.UpdateArticleEmbeddings(task.ArticleID, titleEmbBlob, summaryEmbBlob); err != nil {
-						log.Printf("Failed to update article %d embeddings: %v", task.ArticleID, err)
-					} else {
-						log.Printf("Successfully saved embeddings for article %d", task.ArticleID)
-					}
-				}
-			}
-		}
-
-		clusterScheduled := false
-		if task.NeedsDedup {
-			if !m.isUserOperationCurrent(task.UserID, version) {
-				log.Printf("Skipping stale dedup for article %d user %d", task.ArticleID, task.UserID)
-				return
-			}
-			dedupCompleted := false
-			if err := m.runUserClusterAssignmentSerially(task.UserID, func() error {
-				if !m.isUserOperationCurrent(task.UserID, version) {
-					log.Printf("Skipping stale serialized dedup for article %d user %d", task.ArticleID, task.UserID)
-					return nil
-				}
-				if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
-					return err
-				}
-				dedupCompleted = true
-				return nil
-			}); err != nil {
-				log.Printf("Dedup pipeline failed for article %d: %v", task.ArticleID, err)
-			} else if dedupCompleted {
-				log.Printf("Dedup pipeline completed for article %d", task.ArticleID)
-				clusterScheduled = true
-			}
-		}
-
-		if task.NeedsClusterRun && !clusterScheduled {
-			if m.isUserOperationCurrent(task.UserID, version) {
-				m.scheduleClusterPipeline(task.UserID)
-			}
-			return
-		}
-
-		if clusterScheduled && m.isUserOperationCurrent(task.UserID, version) {
-			m.scheduleClusterPipeline(task.UserID)
-		}
+		m.runArticlePipeline(task, version)
 	}()
+
+	return nil
+}
+
+func (m *AIEnhancedManager) loadArticlePipelineContent(task *AIEnhancedTask) (string, error) {
+	if task == nil {
+		return "", fmt.Errorf("invalid AI enhanced task")
+	}
+
+	needsContent := task.NeedsSummary || (task.NeedsTranslation && task.TranslateArticles) || task.NeedsEmbedding
+	if !needsContent {
+		return "", nil
+	}
+
+	content, hasContent, err := m.db.GetArticleContent(task.ArticleID)
+	if err != nil {
+		return "", err
+	}
+	if hasContent && content != "" {
+		return content, nil
+	}
+
+	return m.ensureArticleContentFallbackFromTitle(task)
+}
+
+func (m *AIEnhancedManager) runArticlePipeline(task *AIEnhancedTask, version int64) {
+	if task == nil {
+		return
+	}
+
+	articleID := task.ArticleID
+	userID := task.UserID
+
+	needsClusterRequest := task.NeedsClusterRun
+
+	afterContentCheck := func() bool {
+		if !m.isUserOperationCurrent(task.UserID, version) {
+			log.Printf("Skipping stale async article pipeline for article %d user %d", articleID, userID)
+			return false
+		}
+		return true
+	}
+
+	content, err := m.loadArticlePipelineContent(task)
+	if err != nil {
+		log.Printf("Error getting article content for AI enhanced task: %v", err)
+		return
+	}
+	if !afterContentCheck() {
+		return
+	}
+
+	if task.NeedsSummary {
+		if err := m.acquireStageSlot(m.articleSummarySem); err != nil {
+			log.Printf("Failed to acquire summary stage slot for article %d: %v", articleID, err)
+			return
+		}
+		m.executeArticleSummary(task, content)
+		m.releaseStageSlot(m.articleSummarySem)
+	}
+
+	if !afterContentCheck() {
+		return
+	}
+
+	if task.NeedsTranslation && task.TranslateArticles {
+		if err := m.acquireStageSlot(m.articleTranslationSem); err != nil {
+			log.Printf("Failed to acquire translation stage slot for article %d: %v", articleID, err)
+			return
+		}
+		m.executeArticleTranslation(task, content)
+		m.releaseStageSlot(m.articleTranslationSem)
+	}
+
+	if !afterContentCheck() {
+		return
+	}
+
+	if task.NeedsEmbedding {
+		if err := m.acquireStageSlot(m.articleEmbeddingSem); err != nil {
+			log.Printf("Failed to acquire embedding stage slot for article %d: %v", articleID, err)
+			return
+		}
+		m.executeArticleEmbedding(task, content, version)
+		m.releaseStageSlot(m.articleEmbeddingSem)
+	}
+
+	if !afterContentCheck() {
+		return
+	}
+
+	if task.NeedsDedup {
+		if m.executeArticleDedup(task, version) {
+			needsClusterRequest = true
+		}
+	}
+
+	if needsClusterRequest && m.isUserOperationCurrent(task.UserID, version) {
+		m.requestClusterPipeline(task.UserID)
+	}
+}
+
+func (m *AIEnhancedManager) executeArticleSummary(task *AIEnhancedTask, content string) {
+	if m.runArticleSummary != nil {
+		m.runArticleSummary(task, content)
+		return
+	}
+	m.generateAISummary(task, content)
+}
+
+func (m *AIEnhancedManager) executeArticleTranslation(task *AIEnhancedTask, content string) {
+	if m.runArticleTranslation != nil {
+		m.runArticleTranslation(task, content)
+		return
+	}
+	m.generateAITranslation(task, content)
+}
+
+func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, content string, version int64) {
+	if m.runArticleEmbedding != nil {
+		m.runArticleEmbedding(task, content, version)
+		return
+	}
+
+	if task == nil || task.ArticleID <= 0 || task.UserID <= 0 {
+		return
+	}
+
+	article, err := m.db.GetArticleByID(task.ArticleID)
+	if err != nil || article == nil {
+		log.Printf("Failed to fetch article %d for AI enhanced pipeline: %v", task.ArticleID, err)
+		return
+	}
+	if !m.isUserOperationCurrent(task.UserID, version) {
+		log.Printf("Stopping stale embedding stage for article %d user %d", task.ArticleID, task.UserID)
+		return
+	}
+
+	summaryText := article.Summary
+	if summaryText == "" {
+		summaryText = content
+	}
+
+	configsJSON, err := m.db.GetSettingWithFallback(task.UserID, "ai_embedding_models")
+	if err != nil || configsJSON == "" || configsJSON == "[]" {
+		log.Printf("No embedding models configured for user %d, skipping embedding", task.UserID)
+		return
+	}
+
+	globalProxyURL, _ := buildGlobalProxyURL(m.db, task.UserID)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	var titleEmbBlob, summaryEmbBlob []byte
+	if article.Title != "" {
+		if titleEmb, err := ai.GenerateEmbeddings(ctx, article.Title, configsJSON, globalProxyURL); err == nil {
+			if len(titleEmb) > 0 {
+				titleEmbBlob, _ = interest.NormalizeAndSerialize(titleEmb)
+			}
+		} else {
+			log.Printf("Failed to generate title embedding for article %d: %v", task.ArticleID, err)
+		}
+	}
+
+	if summaryText != "" {
+		if sumEmb, err := ai.GenerateEmbeddings(ctx, summaryText, configsJSON, globalProxyURL); err == nil {
+			if len(sumEmb) > 0 {
+				summaryEmbBlob, _ = interest.NormalizeAndSerialize(sumEmb)
+			}
+		} else {
+			log.Printf("Failed to generate summary embedding for article %d: %v", task.ArticleID, err)
+		}
+	}
+
+	if len(titleEmbBlob) == 0 && len(summaryEmbBlob) == 0 {
+		return
+	}
+
+	if !m.isUserOperationCurrent(task.UserID, version) {
+		log.Printf("Discarding stale embeddings for article %d user %d", task.ArticleID, task.UserID)
+		return
+	}
+	if err := m.db.UpdateArticleEmbeddings(task.ArticleID, titleEmbBlob, summaryEmbBlob); err != nil {
+		log.Printf("Failed to update article %d embeddings: %v", task.ArticleID, err)
+		return
+	}
+	log.Printf("Successfully saved embeddings for article %d", task.ArticleID)
+}
+
+func (m *AIEnhancedManager) executeArticleDedup(task *AIEnhancedTask, version int64) bool {
+	if m.runArticleDedup != nil {
+		return m.runArticleDedup(task, version)
+	}
+
+	if task == nil || !task.NeedsDedup {
+		return false
+	}
+
+	if !m.isUserOperationCurrent(task.UserID, version) {
+		log.Printf("Skipping stale dedup for article %d user %d", task.ArticleID, task.UserID)
+		return false
+	}
+
+	dedupCompleted := false
+	if err := m.runUserClusterAssignmentSerially(task.UserID, func() error {
+		if !m.isUserOperationCurrent(task.UserID, version) {
+			log.Printf("Skipping stale serialized dedup for article %d user %d", task.ArticleID, task.UserID)
+			return nil
+		}
+		if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
+			return err
+		}
+		dedupCompleted = true
+		return nil
+	}); err != nil {
+		log.Printf("Dedup pipeline failed for article %d: %v", task.ArticleID, err)
+		return false
+	}
+
+	if dedupCompleted {
+		log.Printf("Dedup pipeline completed for article %d", task.ArticleID)
+	}
+	return dedupCompleted
+}
+
+func (m *AIEnhancedManager) requestClusterPipeline(userID int64) {
+	m.requestClusterPipelineForVersion(userID, m.currentUserOperationVersion(userID))
+}
+
+func (m *AIEnhancedManager) requestClusterPipelineForVersion(userID, version int64) {
+	if userID <= 0 {
+		return
+	}
+
+	m.clusterMu.Lock()
+	if m.clusterPipelineRequested == nil {
+		m.clusterPipelineRequested = make(map[int64]bool)
+	}
+	m.clusterPipelineRequested[userID] = true
+	m.clusterMu.Unlock()
+
+	m.maybeStartRequestedClusterPipelineForVersion(userID, version)
+}
+
+func (m *AIEnhancedManager) maybeStartRequestedClusterPipeline(userID int64) bool {
+	return m.maybeStartRequestedClusterPipelineForVersion(userID, m.currentUserOperationVersion(userID))
+}
+
+func (m *AIEnhancedManager) maybeStartRequestedClusterPipelineForVersion(userID, version int64) bool {
+	if userID <= 0 {
+		return false
+	}
+
+	m.clusterMu.Lock()
+	requested := m.clusterPipelineRequested[userID]
+	running := m.clusterPipelineRunning[userID] || m.clusterPipelineQueued[userID]
+	m.clusterMu.Unlock()
+
+	if !requested || running {
+		return false
+	}
+
+	canStart, err := m.canStartRequestedClusterPipeline(userID)
+	if err != nil || !canStart {
+		return false
+	}
+
+	m.clusterMu.Lock()
+	if m.clusterPipelineRequested == nil || !m.clusterPipelineRequested[userID] {
+		m.clusterMu.Unlock()
+		return false
+	}
+	delete(m.clusterPipelineRequested, userID)
+	m.clusterMu.Unlock()
+
+	m.scheduleClusterPipelineForVersion(userID, version)
+	return true
+}
+
+func (m *AIEnhancedManager) canStartRequestedClusterPipeline(userID int64) (bool, error) {
+	if userID <= 0 || m.db == nil {
+		return false, nil
+	}
+
+	clusterProgress, err := m.db.GetClusterProcessingProgress(userID)
+	if err != nil {
+		return false, err
+	}
+	if clusterProgress.PendingMergeClusters == 0 && clusterProgress.PendingEmbedClusters == 0 {
+		m.clusterMu.Lock()
+		delete(m.clusterPipelineRequested, userID)
+		m.clusterMu.Unlock()
+		return false, nil
+	}
+
+	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
+	if targetLang == "" {
+		targetLang = "zh"
+	}
+	progress, err := m.db.GetAIProcessingProgress(userID, targetLang)
+	if err != nil {
+		return false, err
+	}
+
+	queued, activeWorker, activeAsync := m.getUserTaskCounts(userID)
+	return queued == 0 &&
+		activeWorker == 0 &&
+		activeAsync == 0 &&
+		progress.PendingSummaryArticles == 0 &&
+		progress.PendingTranslationArticles == 0 &&
+		progress.PendingEmbeddingArticles == 0 &&
+		progress.PendingClusteringArticles == 0, nil
+}
+
+func (m *AIEnhancedManager) advanceArticlePipelineAsync(task *AIEnhancedTask, content string) {
+	// Deprecated compatibility wrapper retained for tests and incremental callers.
+	if task == nil {
+		return
+	}
+	if err := m.startArticlePipeline(task, -1); err != nil {
+		log.Printf("Failed to start AI article pipeline for article %d user %d: %v", task.ArticleID, task.UserID, err)
+	}
 }
 
 func (m *AIEnhancedManager) scheduleClusterPipeline(userID int64) {
@@ -568,6 +834,10 @@ func (m *AIEnhancedManager) runClusterPipeline(userID, version int64) {
 		delete(m.clusterFusionRunning, userID)
 		delete(m.clusterEmbeddingRunning, userID)
 		m.clusterMu.Unlock()
+
+		if m.maybeStartRequestedClusterPipelineForVersion(userID, m.currentUserOperationVersion(userID)) {
+			return
+		}
 		if m.db != nil {
 			if clusterProgress, err := m.db.GetClusterProcessingProgress(userID); err == nil &&
 				clusterProgress.PendingMergeClusters == 0 &&
@@ -1585,7 +1855,7 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 	if len(articles) == 0 {
 		if hasPendingClusterWork {
 			log.Printf("No article-stage work for user %d, scheduling pending cluster post-processing", userID)
-			m.scheduleClusterPipeline(userID)
+			m.requestClusterPipeline(userID)
 			return 0, nil
 		}
 		log.Printf("No articles to batch process for user %d", userID)
@@ -1648,9 +1918,9 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 	}
 
 	if clusterRunNeeded {
-		m.scheduleClusterPipeline(userID)
+		m.requestClusterPipeline(userID)
 	} else if hasPendingClusterWork {
-		m.scheduleClusterPipeline(userID)
+		m.requestClusterPipeline(userID)
 	}
 
 	return queued, nil

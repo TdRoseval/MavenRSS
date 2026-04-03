@@ -19,7 +19,7 @@ var (
 	renormalizationWaitPollInterval   = 200 * time.Millisecond
 	renormalizationArticleWaitTimeout = 60 * time.Second
 	renormalizationClusterWaitTimeout = 60 * time.Second
-	renormalizationPreclusterWindow   = 8
+	renormalizationPreclusterWindow   = articlePipelineWindow
 )
 
 type renormalizationArticleState struct {
@@ -226,7 +226,7 @@ func (m *AIEnhancedManager) runClusterRenormalization(userID int64) {
 			return
 		}
 		if readyForClustering {
-			if err := m.runRenormalizationArticleClustering(item.article, userID); err != nil {
+			if err := m.clusterRenormalizationArticle(item.article, userID); err != nil {
 				task := &AIEnhancedTask{
 					ArticleID:    item.article.Article.ID,
 					UserID:       userID,
@@ -235,6 +235,8 @@ func (m *AIEnhancedManager) runClusterRenormalization(userID int64) {
 				}
 				m.recordTaskFailure(userID, "clustering", task, "", "", err)
 				log.Printf("Serial renormalization clustering failed for user %d article %d: %v", userID, item.article.Article.ID, err)
+			} else {
+				log.Printf("Serial renormalization clustering completed for article %d", item.article.Article.ID)
 			}
 		}
 
@@ -248,7 +250,17 @@ func (m *AIEnhancedManager) runClusterRenormalization(userID int64) {
 		}
 	}
 
-	m.scheduleClusterPipeline(userID)
+	reconciled, err := m.reconcileRenormalizationPendingClustering(userID, targetLang)
+	if err != nil {
+		m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
+		log.Printf("Reconciling residual renormalization clustering failed for user %d: %v", userID, err)
+		return
+	}
+	if reconciled > 0 {
+		log.Printf("Reconciled %d residual ready-to-cluster renormalization articles for user %d", reconciled, userID)
+	}
+
+	m.requestClusterPipeline(userID)
 	if err := m.waitForUserArticleProcessingIdle(userID); err != nil {
 		m.recordTaskFailure(userID, "recluster_normalize", nil, "", "", err)
 		log.Printf("Waiting for final cluster pipeline failed for user %d: %v", userID, err)
@@ -279,6 +291,7 @@ func (m *AIEnhancedManager) interruptUserWorkForRenormalization(userID int64) in
 	m.clusterMu.Lock()
 	delete(m.clusterPipelineRunning, userID)
 	delete(m.clusterPipelineQueued, userID)
+	delete(m.clusterPipelineRequested, userID)
 	delete(m.clusterPipelineVersion, userID)
 	delete(m.clusterPipelineQueuedVer, userID)
 	delete(m.clusterFusionRunning, userID)
@@ -520,6 +533,7 @@ func (m *AIEnhancedManager) clearUserRuntimeStateForRenormalization(userID int64
 	m.clusterMu.Lock()
 	delete(m.clusterPipelineRunning, userID)
 	delete(m.clusterPipelineQueued, userID)
+	delete(m.clusterPipelineRequested, userID)
 	delete(m.clusterFusionRunning, userID)
 	delete(m.clusterEmbeddingRunning, userID)
 	m.clusterMu.Unlock()
@@ -571,7 +585,7 @@ func (m *AIEnhancedManager) skipTimedOutRenormalizationArticle(userID, articleID
 	return nil
 }
 
-func (m *AIEnhancedManager) runRenormalizationArticleClustering(article sqlite.AIBatchProcessingArticle, userID int64) error {
+func (m *AIEnhancedManager) clusterRenormalizationArticle(article sqlite.AIBatchProcessingArticle, userID int64) error {
 	if m == nil || m.db == nil || userID <= 0 || article.Article.ID <= 0 {
 		return nil
 	}
@@ -594,10 +608,39 @@ func (m *AIEnhancedManager) runRenormalizationArticleClustering(article sqlite.A
 		}
 		return err
 	}
-
-	log.Printf("Serial renormalization clustering completed for article %d", article.Article.ID)
-	m.scheduleClusterPipeline(userID)
 	return nil
+}
+
+func (m *AIEnhancedManager) reconcileRenormalizationPendingClustering(userID int64, targetLang string) (int, error) {
+	if m == nil || m.db == nil || userID <= 0 {
+		return 0, nil
+	}
+
+	articles, err := m.db.GetReadyArticlesForAIReclusterClustering(userID, targetLang)
+	if err != nil {
+		return 0, err
+	}
+
+	reconciled := 0
+	for _, article := range articles {
+		if err := m.clusterRenormalizationArticle(article, userID); err != nil {
+			task := &AIEnhancedTask{
+				ArticleID:    article.Article.ID,
+				UserID:       userID,
+				FeedID:       article.Article.FeedID,
+				ArticleTitle: article.Article.Title,
+			}
+			m.recordTaskFailure(userID, "clustering", task, "", "", err)
+			log.Printf("Residual renormalization clustering failed for user %d article %d: %v", userID, article.Article.ID, err)
+			continue
+		}
+		reconciled++
+	}
+	if reconciled > 0 {
+		m.requestClusterPipeline(userID)
+	}
+
+	return reconciled, nil
 }
 
 func (m *AIEnhancedManager) fallbackArticleSummaryByID(articleID int64) error {
@@ -644,6 +687,7 @@ func (m *AIEnhancedManager) abandonTimedOutRenormalizationActivity(userID int64,
 	m.clusterMu.Lock()
 	delete(m.clusterPipelineRunning, userID)
 	delete(m.clusterPipelineQueued, userID)
+	delete(m.clusterPipelineRequested, userID)
 	delete(m.clusterPipelineVersion, userID)
 	delete(m.clusterPipelineQueuedVer, userID)
 	delete(m.clusterFusionRunning, userID)
