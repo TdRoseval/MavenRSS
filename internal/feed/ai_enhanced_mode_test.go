@@ -1087,6 +1087,19 @@ func TestGetProcessingStatusUsesFullArticleScopeDuringRenormalization(t *testing
 		true,
 	)
 	_ = mustAttachCompleteCluster(t, db, 1, recentArticleID, "complete")
+	noContentArticleID := mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-30*time.Minute),
+		"no-content-renorm-article",
+		true,
+	)
+	if err := db.DeleteArticleContent(noContentArticleID); err != nil {
+		t.Fatalf("DeleteArticleContent error: %v", err)
+	}
 
 	status := manager.GetProcessingStatus(1)
 
@@ -1116,6 +1129,7 @@ func TestGetProcessingStatusUsesFullArticleScopeDuringRenormalization(t *testing
 	}
 
 	_ = oldArticleID
+	_ = noContentArticleID
 }
 
 func TestGetProcessingStatusUnfreezesAfterStaleTimeout(t *testing.T) {

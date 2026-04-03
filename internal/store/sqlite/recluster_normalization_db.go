@@ -65,6 +65,7 @@ func (db *DB) NormalizeArticleEmbeddingsForUser(userID int64) (int, int, error) 
 		`SELECT ae.article_id, ae.title_embedding, ae.summary_embedding
 		   FROM article_embeddings ae
 		   JOIN articles a ON a.id = ae.article_id
+		   JOIN article_contents ac ON ac.article_id = a.id
 		  WHERE a.user_id = ?
 		  ORDER BY ae.article_id ASC`,
 		userID,
@@ -165,7 +166,7 @@ func (db *DB) GetArticlesForAIReclusterNormalization(userID int64, targetLang st
 		        ae.article_id IS NOT NULL
 		   FROM articles a
 		   LEFT JOIN feeds f ON a.feed_id = f.id
-		   LEFT JOIN article_contents ac ON ac.article_id = a.id
+		   JOIN article_contents ac ON ac.article_id = a.id
 		   LEFT JOIN article_translated_contents atc ON atc.article_id = a.id AND atc.target_lang = ?
 		   LEFT JOIN article_embeddings ae ON ae.article_id = a.id
 		  WHERE a.user_id = ?

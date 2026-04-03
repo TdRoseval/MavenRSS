@@ -35,7 +35,7 @@ type ClusterProcessingProgress struct {
 }
 
 func (db *DB) GetAIReclusterNormalizationProgress(userID int64, targetLang string) (AIProcessingProgress, error) {
-	return db.getAIProcessingProgress(userID, targetLang, false)
+	return db.getAIProcessingProgress(userID, targetLang, false, true)
 }
 
 func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) ([]AIBatchProcessingArticle, error) {
@@ -127,15 +127,31 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 }
 
 func (db *DB) GetAIProcessingProgress(userID int64, targetLang string) (AIProcessingProgress, error) {
-	return db.getAIProcessingProgress(userID, targetLang, true)
+	return db.getAIProcessingProgress(userID, targetLang, true, false)
 }
 
-func (db *DB) getAIProcessingProgress(userID int64, targetLang string, activeWindowOnly bool) (AIProcessingProgress, error) {
+func (db *DB) getAIProcessingProgress(
+	userID int64,
+	targetLang string,
+	activeWindowOnly bool,
+	requireCachedContent bool,
+) (AIProcessingProgress, error) {
 	db.WaitForReady()
 
 	progress := AIProcessingProgress{}
 	if targetLang == "" {
 		targetLang = "zh"
+	}
+
+	contentJoin := ""
+	contentFilter := ""
+	if requireCachedContent {
+		contentJoin = `
+			LEFT JOIN article_contents ac ON ac.article_id = a.id
+		`
+		contentFilter = `
+			AND ac.article_id IS NOT NULL
+		`
 	}
 
 	scopeFilter := ""
@@ -163,7 +179,9 @@ func (db *DB) getAIProcessingProgress(userID int64, targetLang string, activeWin
 			LEFT JOIN ai_article_stage_skips skip_translation ON skip_translation.article_id = a.id AND skip_translation.stage = 'translation'
 			LEFT JOIN article_embeddings ae ON ae.article_id = a.id
 			LEFT JOIN clusters c ON a.cluster_id = c.id
+	` + contentJoin + `
 			WHERE a.user_id = ?
+	` + contentFilter + `
 	` + scopeFilter + `
 		),
 		stage_counts AS (
