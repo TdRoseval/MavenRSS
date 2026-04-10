@@ -87,8 +87,8 @@ func (db *DB) BackfillEmptyClusterMergedContent(userID int64) (int, error) {
 	return updated, nil
 }
 
-// SyncClusterFavoriteStatesFromArticles makes cluster favorite flags reflect the current
-// favorite state of their member articles.
+// SyncClusterFavoriteStatesFromArticles repairs cluster favorite flags from member
+// articles without clearing clusters the user explicitly favorited.
 func (db *DB) SyncClusterFavoriteStatesFromArticles(userID int64) error {
 	db.WaitForReady()
 	if userID <= 0 {
@@ -103,7 +103,7 @@ func (db *DB) SyncClusterFavoriteStatesFromArticles(userID int64) error {
 				FROM articles a
 				WHERE a.cluster_id = clusters.id AND a.is_favorite = 1
 			) THEN 1
-			ELSE 0
+			ELSE is_favorite
 		END
 		WHERE user_id = ?
 	`, userID)

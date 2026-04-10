@@ -513,6 +513,67 @@ func TestSyncClusterFavoriteStatesFromArticlesRepairsFavoriteFlag(t *testing.T) 
 	}
 }
 
+func TestSyncClusterFavoriteStatesFromArticlesPreservesExplicitFavorite(t *testing.T) {
+	db := setupTestDB(t)
+
+	userID, err := db.CreateUser(&models.User{
+		Username:     "recluster-explicit-favorite-user",
+		Email:        "recluster-explicit-favorite@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser error = %v", err)
+	}
+
+	feedID, err := db.AddFeedForUser(userID, &models.Feed{
+		Title:           "Explicit Favorite Feed",
+		URL:             "https://example.com/explicit-favorite-feed",
+		Type:            "rss",
+		RefreshInterval: 60,
+	})
+	if err != nil {
+		t.Fatalf("AddFeedForUser error = %v", err)
+	}
+
+	result, err := db.Exec(
+		`INSERT INTO articles (user_id, feed_id, title, url, published_at, summary, unique_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, feedID, "explicit-favorite-article", "https://example.com/explicit-favorite-article", time.Now(), "explicit favorite summary", "explicit-favorite-article",
+	)
+	if err != nil {
+		t.Fatalf("insert article error = %v", err)
+	}
+	articleID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId error = %v", err)
+	}
+
+	clusterID, err := db.CreateCluster(userID, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error = %v", err)
+	}
+	if err := db.SetClusterFavorite(clusterID, true); err != nil {
+		t.Fatalf("SetClusterFavorite(true) error = %v", err)
+	}
+
+	if err := db.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
+		t.Fatalf("SyncClusterFavoriteStatesFromArticles error = %v", err)
+	}
+
+	cluster, err := db.GetClusterByID(clusterID)
+	if err != nil {
+		t.Fatalf("GetClusterByID error = %v", err)
+	}
+	if cluster == nil || !cluster.IsFavorite {
+		t.Fatalf("cluster favorite = %v, want true for explicit favorite", cluster != nil && cluster.IsFavorite)
+	}
+}
+
 func mustInsertReclusterTestArticle(t *testing.T, db *dbpkg.DB, userID, feedID int64, uniqueID, summary string) int64 {
 	t.Helper()
 	result, err := db.Exec(
