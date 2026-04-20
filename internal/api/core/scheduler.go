@@ -23,7 +23,7 @@ func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
 	// Trigger initial cleanup on startup
 	go func() {
 		log.Println("Triggering initial cleanup on startup")
-		h.Fetcher.GetCleanupManager().RequestCleanup()
+		h.Fetcher.GetCleanupManager().RequestCleanup(0)
 	}()
 
 	// Run initial cleanup only if auto_cleanup is enabled

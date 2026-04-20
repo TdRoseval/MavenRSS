@@ -734,6 +734,22 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		log.Printf("Deleted %d read articles, current size: %.2f MB", count, currentSizeMB)
 	}
 
+	// Step 1b: If still over limit, delete oldest fully-eligible read clusters.
+	readState := true
+	for currentSizeMB > targetSizeMB {
+		_, deletedArticles, cleanupErr := db.cleanupEligibleClusters(userID, nil, &readState, 0, 100)
+		if cleanupErr != nil {
+			break
+		}
+		if deletedArticles == 0 {
+			break
+		}
+
+		totalDeleted += deletedArticles
+		currentSizeMB, _ = db.GetDatabaseSizeMB()
+		log.Printf("Deleted %d read clustered articles, current size: %.2f MB", deletedArticles, currentSizeMB)
+	}
+
 	// Step 2: If still over limit, delete oldest unread articles (not favorited, not read later)
 	for currentSizeMB > targetSizeMB {
 		var result sql.Result
@@ -775,6 +791,22 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		totalDeleted += count
 		currentSizeMB, _ = db.GetDatabaseSizeMB()
 		log.Printf("Deleted %d unread articles, current size: %.2f MB", count, currentSizeMB)
+	}
+
+	// Step 2b: If still over limit, delete oldest fully-eligible unread clusters.
+	readState = false
+	for currentSizeMB > targetSizeMB {
+		_, deletedArticles, cleanupErr := db.cleanupEligibleClusters(userID, nil, &readState, 0, 100)
+		if cleanupErr != nil {
+			break
+		}
+		if deletedArticles == 0 {
+			break
+		}
+
+		totalDeleted += deletedArticles
+		currentSizeMB, _ = db.GetDatabaseSizeMB()
+		log.Printf("Deleted %d unread clustered articles, current size: %.2f MB", deletedArticles, currentSizeMB)
 	}
 
 	if totalDeleted > 0 {
@@ -1025,7 +1057,14 @@ func (db *DB) CleanupOldReadArticles(maxAgeDays int, userID int64) (int64, error
 	}
 
 	count, _ := result.RowsAffected()
-	return count, nil
+
+	readState := true
+	_, clusterArticleCount, clusterErr := db.cleanupEligibleClusters(userID, &cutoffDate, &readState, 0, 0)
+	if clusterErr != nil {
+		return count, clusterErr
+	}
+
+	return count + clusterArticleCount, nil
 }
 
 // CleanupOldUnreadArticles removes unread articles older than specified days
@@ -1062,7 +1101,14 @@ func (db *DB) CleanupOldUnreadArticles(maxAgeDays int, userID int64) (int64, err
 	}
 
 	count, _ := result.RowsAffected()
-	return count, nil
+
+	readState := false
+	_, clusterArticleCount, clusterErr := db.cleanupEligibleClusters(userID, &cutoffDate, &readState, 0, 0)
+	if clusterErr != nil {
+		return count, clusterErr
+	}
+
+	return count + clusterArticleCount, nil
 }
 
 // CleanupExpiredClusters removes clusters older than maxAgeDays that are not AI recommended.
@@ -1072,42 +1118,8 @@ func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error
 	db.WaitForReady()
 
 	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
-
-	// Query to find expired clusters (not AI recommended, older than cutoff)
-	query := `SELECT id FROM clusters WHERE is_ai_recommended = 0 AND updated_at < ?`
-	args := []interface{}{cutoffDate}
-	if userID > 0 {
-		query += ` AND user_id = ?`
-		args = append(args, userID)
-	}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	var clusterIDs []int64
-	for rows.Next() {
-		var clusterID int64
-		if err := rows.Scan(&clusterID); err != nil {
-			return 0, err
-		}
-		clusterIDs = append(clusterIDs, clusterID)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-
-	var totalDeleted int64
-	for _, clusterID := range clusterIDs {
-		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
-			return totalDeleted, err
-		}
-		totalDeleted++
-	}
-
-	return totalDeleted, nil
+	deletedClusters, _, err := db.cleanupEligibleClusters(userID, &cutoffDate, nil, 0, 0)
+	return deletedClusters, err
 }
 
 // DeleteClusterAndArticles deletes a cluster and all its associated articles and related data.
@@ -1204,40 +1216,9 @@ func (db *DB) CleanupExpiredReadClusters(userID int64, maxAgeDays int) (int64, e
 
 	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
 
-	query := `SELECT id FROM clusters WHERE is_read = 1 AND is_favorite = 0 AND is_read_later = 0 AND is_ai_recommended = 0 AND updated_at < ?`
-	args := []interface{}{cutoffDate}
-	if userID > 0 {
-		query += ` AND user_id = ?`
-		args = append(args, userID)
-	}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	var clusterIDs []int64
-	for rows.Next() {
-		var clusterID int64
-		if err := rows.Scan(&clusterID); err != nil {
-			return 0, err
-		}
-		clusterIDs = append(clusterIDs, clusterID)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-
-	var totalDeleted int64
-	for _, clusterID := range clusterIDs {
-		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
-			return totalDeleted, err
-		}
-		totalDeleted++
-	}
-
-	return totalDeleted, nil
+	readState := true
+	deletedClusters, _, err := db.cleanupEligibleClusters(userID, &cutoffDate, &readState, 0, 0)
+	return deletedClusters, err
 }
 
 // CleanupExpiredUnreadClusters removes unread clusters older than maxAgeDays that are not favorited or read later.
@@ -1248,38 +1229,129 @@ func (db *DB) CleanupExpiredUnreadClusters(userID int64, maxAgeDays int) (int64,
 
 	cutoffDate := time.Now().AddDate(0, 0, -maxAgeDays)
 
-	query := `SELECT id FROM clusters WHERE is_read = 0 AND is_favorite = 0 AND is_read_later = 0 AND is_ai_recommended = 0 AND updated_at < ?`
-	args := []interface{}{cutoffDate}
+	readState := false
+	deletedClusters, _, err := db.cleanupEligibleClusters(userID, &cutoffDate, &readState, 0, 0)
+	return deletedClusters, err
+}
+
+type cleanupClusterCandidate struct {
+	ClusterID    int64
+	ArticleCount int64
+}
+
+func (db *DB) cleanupEligibleClusters(
+	userID int64,
+	cutoffDate *time.Time,
+	requireRead *bool,
+	limitClusters int,
+	maxArticleDeletes int64,
+) (int64, int64, error) {
+	db.WaitForReady()
+
+	candidates, err := db.listEligibleCleanupClusters(userID, cutoffDate, requireRead, limitClusters)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var deletedClusters int64
+	var deletedArticles int64
+	for _, candidate := range candidates {
+		if maxArticleDeletes > 0 && deletedArticles >= maxArticleDeletes {
+			break
+		}
+		if err := db.DeleteClusterAndArticles(candidate.ClusterID); err != nil {
+			return deletedClusters, deletedArticles, err
+		}
+		deletedClusters++
+		deletedArticles += candidate.ArticleCount
+	}
+
+	return deletedClusters, deletedArticles, nil
+}
+
+func (db *DB) listEligibleCleanupClusters(
+	userID int64,
+	cutoffDate *time.Time,
+	requireRead *bool,
+	limit int,
+) ([]cleanupClusterCandidate, error) {
+	db.WaitForReady()
+
+	query := `
+		SELECT
+			c.id,
+			COUNT(a.id) AS article_count
+		FROM clusters c
+		INNER JOIN articles a ON a.cluster_id = c.id AND a.user_id = c.user_id
+		WHERE c.is_favorite = 0
+		  AND c.is_read_later = 0
+		  AND c.is_ai_recommended = 0
+	`
+	args := make([]interface{}, 0, 4)
+
 	if userID > 0 {
-		query += ` AND user_id = ?`
+		query += ` AND c.user_id = ?`
 		args = append(args, userID)
+	}
+
+	if requireRead != nil {
+		if *requireRead {
+			query += ` AND c.is_read = 1`
+		} else {
+			query += ` AND c.is_read = 0`
+		}
+	}
+
+	query += `
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM articles ax
+			WHERE ax.cluster_id = c.id
+			  AND ax.user_id = c.user_id
+			  AND (
+				ax.is_favorite = 1
+				OR ax.is_read_later = 1
+	`
+
+	if cutoffDate != nil {
+		query += ` OR ax.published_at >= ?`
+		args = append(args, *cutoffDate)
+	}
+
+	if requireRead != nil {
+		if *requireRead {
+			query += ` OR ax.is_read = 0`
+		} else {
+			query += ` OR ax.is_read = 1`
+		}
+	}
+
+	query += `
+			  )
+		  )
+		GROUP BY c.id
+		ORDER BY MIN(a.published_at) ASC, c.id ASC
+	`
+
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
 	}
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer rows.Close()
 
-	var clusterIDs []int64
+	candidates := make([]cleanupClusterCandidate, 0)
 	for rows.Next() {
-		var clusterID int64
-		if err := rows.Scan(&clusterID); err != nil {
-			return 0, err
+		var candidate cleanupClusterCandidate
+		if err := rows.Scan(&candidate.ClusterID, &candidate.ArticleCount); err != nil {
+			return nil, err
 		}
-		clusterIDs = append(clusterIDs, clusterID)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
+		candidates = append(candidates, candidate)
 	}
 
-	var totalDeleted int64
-	for _, clusterID := range clusterIDs {
-		if err := db.DeleteClusterAndArticles(clusterID); err != nil {
-			return totalDeleted, err
-		}
-		totalDeleted++
-	}
-
-	return totalDeleted, nil
+	return candidates, rows.Err()
 }
