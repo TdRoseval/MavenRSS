@@ -76,7 +76,7 @@ func HandleOPMLImport(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	imported := 0
 	for _, feed := range feeds {
 		feed.UserID = userID
-		_, err := h.DB.AddFeed(&feed)
+		_, err := h.DB.AddFeedForUser(userID, &feed)
 		if err != nil {
 			log.Printf("Error importing feed %s: %v", feed.URL, err)
 			continue
