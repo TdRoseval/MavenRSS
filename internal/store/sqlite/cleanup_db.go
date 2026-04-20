@@ -571,13 +571,7 @@ func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {
 func (db *DB) GetDatabaseSizeMB() (float64, error) {
 	db.WaitForReady()
 
-	var pageCount, pageSize int64
-	err := db.QueryRow("PRAGMA page_count").Scan(&pageCount)
-	if err != nil {
-		return 0, err
-	}
-
-	err = db.QueryRow("PRAGMA page_size").Scan(&pageSize)
+	pageCount, pageSize, _, err := db.getDatabasePageStats()
 	if err != nil {
 		return 0, err
 	}
@@ -588,40 +582,69 @@ func (db *DB) GetDatabaseSizeMB() (float64, error) {
 	return sizeMB, nil
 }
 
+// GetDatabaseUsedSizeMB returns the estimated live database size in megabytes.
+// Free pages that have not yet been returned to the filesystem are excluded.
+func (db *DB) GetDatabaseUsedSizeMB() (float64, error) {
+	db.WaitForReady()
+
+	pageCount, pageSize, freePages, err := db.getDatabasePageStats()
+	if err != nil {
+		return 0, err
+	}
+
+	usedPages := pageCount - freePages
+	if usedPages < 0 {
+		usedPages = 0
+	}
+
+	sizeBytes := usedPages * pageSize
+	sizeMB := float64(sizeBytes) / (1024 * 1024)
+
+	return sizeMB, nil
+}
+
+func (db *DB) getDatabasePageStats() (pageCount, pageSize, freePages int64, err error) {
+	if err = db.QueryRow("PRAGMA page_count").Scan(&pageCount); err != nil {
+		return 0, 0, 0, err
+	}
+	if err = db.QueryRow("PRAGMA page_size").Scan(&pageSize); err != nil {
+		return 0, 0, 0, err
+	}
+	if err = db.QueryRow("PRAGMA freelist_count").Scan(&freePages); err != nil {
+		return 0, 0, 0, err
+	}
+	return pageCount, pageSize, freePages, nil
+}
+
+func (db *DB) getEffectiveCleanupLimitMB(userID int64) int {
+	if userID > 0 {
+		if limit := db.GetEffectiveMaxCacheSizeMB(userID); limit > 0 {
+			return limit
+		}
+	}
+
+	maxSizeMB := 500
+	maxSizeMBStr, err := db.GetSetting("max_cache_size_mb")
+	if err == nil {
+		if size, convErr := strconv.Atoi(maxSizeMBStr); convErr == nil && size > 0 {
+			maxSizeMB = size
+		}
+	}
+
+	return maxSizeMB
+}
+
 // ShouldCleanupBeforeSave checks if database is approaching the size limit.
 // Returns true if database size is over 80% of max_cache_size_mb.
 // Admin quota takes precedence over user setting.
-func (db *DB) ShouldCleanupBeforeSave() (bool, error) {
+func (db *DB) ShouldCleanupBeforeSave(userID int64) (bool, error) {
 	db.WaitForReady()
 
-	var adminQuotaLimit int
-	var userSettingLimit int = 500 // Default
+	maxSizeMB := db.getEffectiveCleanupLimitMB(userID)
 
-	// Try to get admin quota for the first user
-	users, _ := db.ListUsers()
-	if len(users) > 0 {
-		quota, err := db.GetUserQuota(users[0].ID)
-		if err == nil && quota.MaxStorageMB > 0 {
-			adminQuotaLimit = quota.MaxStorageMB
-		}
-	}
-
-	// Get user setting
-	maxSizeMBStr, err := db.GetSetting("max_cache_size_mb")
-	if err == nil {
-		if size, err := strconv.Atoi(maxSizeMBStr); err == nil && size > 0 {
-			userSettingLimit = size
-		}
-	}
-
-	// Determine the effective limit: admin quota takes precedence if set
-	maxSizeMB := userSettingLimit
-	if adminQuotaLimit > 0 && adminQuotaLimit < userSettingLimit {
-		maxSizeMB = adminQuotaLimit
-	}
-
-	// Get current database size
-	currentSizeMB, err := db.GetDatabaseSizeMB()
+	// Use live size here, otherwise deleted free pages keep page_count flat and
+	// make cleanup appear ineffective.
+	currentSizeMB, err := db.GetDatabaseUsedSizeMB()
 	if err != nil {
 		return false, err
 	}
@@ -639,42 +662,10 @@ func (db *DB) ShouldCleanupBeforeSave() (bool, error) {
 func (db *DB) CleanupBySize(userID int64) (int64, error) {
 	db.WaitForReady()
 
-	var adminQuotaLimit int
-	var userSettingLimit int = 500 // Default
+	maxSizeMB := db.getEffectiveCleanupLimitMB(userID)
 
-	// Try to get admin quota for the specified user (or first user if 0)
-	if userID > 0 {
-		quota, err := db.GetUserQuota(userID)
-		if err == nil && quota.MaxStorageMB > 0 {
-			adminQuotaLimit = quota.MaxStorageMB
-		}
-	} else {
-		users, _ := db.ListUsers()
-		if len(users) > 0 {
-			quota, err := db.GetUserQuota(users[0].ID)
-			if err == nil && quota.MaxStorageMB > 0 {
-				adminQuotaLimit = quota.MaxStorageMB
-			}
-		}
-	}
-
-	// Get user setting
-	maxSizeMBStr, err := db.GetSetting("max_cache_size_mb")
-	if err == nil {
-		if size, err := strconv.Atoi(maxSizeMBStr); err == nil && size > 0 {
-			userSettingLimit = size
-		}
-	}
-
-	// Determine the effective limit: admin quota takes precedence if set
-	maxSizeMB := userSettingLimit
-	if adminQuotaLimit > 0 && adminQuotaLimit < userSettingLimit {
-		log.Printf("CleanupBySize: Using admin quota limit (%d MB) instead of user setting (%d MB)", adminQuotaLimit, userSettingLimit)
-		maxSizeMB = adminQuotaLimit
-	}
-
-	// Get current database size
-	currentSizeMB, err := db.GetDatabaseSizeMB()
+	// Use live size during cleanup progress tracking.
+	currentSizeMB, err := db.GetDatabaseUsedSizeMB()
 	if err != nil {
 		return 0, err
 	}
@@ -684,7 +675,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		return 0, nil
 	}
 
-	log.Printf("Database size (%.2f MB) exceeds limit (%d MB), starting cleanup...", currentSizeMB, maxSizeMB)
+	log.Printf("Database used size (%.2f MB) exceeds limit (%d MB), starting cleanup...", currentSizeMB, maxSizeMB)
 
 	totalDeleted := int64(0)
 	targetSizeMB := float64(maxSizeMB) * 0.95 // Aim for 95% of limit
@@ -730,8 +721,8 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += count
-		currentSizeMB, _ = db.GetDatabaseSizeMB()
-		log.Printf("Deleted %d read articles, current size: %.2f MB", count, currentSizeMB)
+		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		log.Printf("Deleted %d read articles, current used size: %.2f MB", count, currentSizeMB)
 	}
 
 	// Step 1b: If still over limit, delete oldest fully-eligible read clusters.
@@ -746,8 +737,8 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += deletedArticles
-		currentSizeMB, _ = db.GetDatabaseSizeMB()
-		log.Printf("Deleted %d read clustered articles, current size: %.2f MB", deletedArticles, currentSizeMB)
+		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		log.Printf("Deleted %d read clustered articles, current used size: %.2f MB", deletedArticles, currentSizeMB)
 	}
 
 	// Step 2: If still over limit, delete oldest unread articles (not favorited, not read later)
@@ -789,8 +780,8 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += count
-		currentSizeMB, _ = db.GetDatabaseSizeMB()
-		log.Printf("Deleted %d unread articles, current size: %.2f MB", count, currentSizeMB)
+		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		log.Printf("Deleted %d unread articles, current used size: %.2f MB", count, currentSizeMB)
 	}
 
 	// Step 2b: If still over limit, delete oldest fully-eligible unread clusters.
@@ -805,12 +796,16 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += deletedArticles
-		currentSizeMB, _ = db.GetDatabaseSizeMB()
-		log.Printf("Deleted %d unread clustered articles, current size: %.2f MB", deletedArticles, currentSizeMB)
+		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		log.Printf("Deleted %d unread clustered articles, current used size: %.2f MB", deletedArticles, currentSizeMB)
 	}
 
 	if totalDeleted > 0 {
-		log.Printf("Size-based cleanup completed: removed %d articles, final size: %.2f MB", totalDeleted, currentSizeMB)
+		_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+		_, _ = db.Exec("VACUUM")
+		finalUsedMB, _ := db.GetDatabaseUsedSizeMB()
+		finalAllocatedMB, _ := db.GetDatabaseSizeMB()
+		log.Printf("Size-based cleanup completed: removed %d articles, final used size: %.2f MB, allocated size after VACUUM: %.2f MB", totalDeleted, finalUsedMB, finalAllocatedMB)
 	}
 
 	return totalDeleted, nil

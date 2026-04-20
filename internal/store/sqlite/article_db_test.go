@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,6 +206,65 @@ func TestCleanupOldAndUnimportantAndDBSize(t *testing.T) {
 	}
 	if sz < 0 {
 		t.Fatalf("unexpected db size: %f", sz)
+	}
+}
+
+func TestGetDatabaseUsedSizeMBReflectsFreedPages(t *testing.T) {
+	db := setupDBWithFeed(t)
+
+	var feedID int64
+	if err := db.QueryRow(`SELECT id FROM feeds WHERE url = ?`, "https://example.com/feed").Scan(&feedID); err != nil {
+		t.Fatalf("scan feed id: %v", err)
+	}
+
+	largeContent := strings.Repeat("content-", 16*1024)
+	for i := 0; i < 10; i++ {
+		result, err := db.Exec(
+			`INSERT INTO articles (user_id, feed_id, title, url, published_at, unique_id) VALUES (1, ?, ?, ?, ?, ?)`,
+			feedID, fmt.Sprintf("Large %d", i), fmt.Sprintf("https://example.com/large/%d", i), time.Now().Add(time.Duration(i)*time.Minute), fmt.Sprintf("large-%d", i),
+		)
+		if err != nil {
+			t.Fatalf("insert article %d: %v", i, err)
+		}
+		articleID, err := result.LastInsertId()
+		if err != nil {
+			t.Fatalf("last insert id %d: %v", i, err)
+		}
+		if err := db.SetArticleContent(articleID, largeContent); err != nil {
+			t.Fatalf("set article content %d: %v", i, err)
+		}
+	}
+
+	beforeUsed, err := db.GetDatabaseUsedSizeMB()
+	if err != nil {
+		t.Fatalf("GetDatabaseUsedSizeMB before delete: %v", err)
+	}
+	beforeAllocated, err := db.GetDatabaseSizeMB()
+	if err != nil {
+		t.Fatalf("GetDatabaseSizeMB before delete: %v", err)
+	}
+
+	if _, err := db.Exec(`DELETE FROM article_contents`); err != nil {
+		t.Fatalf("delete article contents: %v", err)
+	}
+
+	afterUsed, err := db.GetDatabaseUsedSizeMB()
+	if err != nil {
+		t.Fatalf("GetDatabaseUsedSizeMB after delete: %v", err)
+	}
+	afterAllocated, err := db.GetDatabaseSizeMB()
+	if err != nil {
+		t.Fatalf("GetDatabaseSizeMB after delete: %v", err)
+	}
+
+	if afterUsed >= beforeUsed {
+		t.Fatalf("expected used size to decrease after deleting contents, before %.2f MB after %.2f MB", beforeUsed, afterUsed)
+	}
+	if afterAllocated < afterUsed {
+		t.Fatalf("allocated size should be at least used size, allocated %.2f MB used %.2f MB", afterAllocated, afterUsed)
+	}
+	if beforeAllocated < beforeUsed {
+		t.Fatalf("allocated size should be at least used size before delete, allocated %.2f MB used %.2f MB", beforeAllocated, beforeUsed)
 	}
 }
 

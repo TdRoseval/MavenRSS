@@ -855,6 +855,11 @@ func (f *Fetcher) cacheArticleContents(articlesWithContent []*ArticleWithContent
 			utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)
 			continue
 		}
+		if articleID <= 0 {
+			// The article may have been ignored as a duplicate or removed by cleanup.
+			utils.DebugLog("Skipping content cache for %s because no persisted article ID was found", awc.Article.Title)
+			continue
+		}
 
 		// Cache the content (this will overwrite any existing cache as required)
 		if err := f.db.SetArticleContent(articleID, awc.Content); err != nil {
