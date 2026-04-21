@@ -207,6 +207,13 @@ watch(
 );
 
 watch(
+  () => articleStore.clusterReloadToken,
+  () => {
+    void resetListPosition();
+  }
+);
+
+watch(
   () => articleStore.showOnlyUnread,
   () => {
     void resetListPosition();

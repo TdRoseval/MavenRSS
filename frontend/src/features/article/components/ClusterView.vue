@@ -258,6 +258,19 @@ watch(
 );
 
 watch(
+  () => articleStore.clusterReloadToken,
+  () => {
+    clusterStore.clearData();
+    clusterStore.currentClusterId = null;
+    mobileView.value = 'list';
+
+    loadClusterData().catch((error) => {
+      console.error('Failed to force reload cluster data:', error);
+    });
+  }
+);
+
+watch(
   () => clusterStore.shouldBlockDailyRecommendationView,
   (isBlocked, wasBlocked) => {
     if (!isDailyRecommendationMode.value) {
