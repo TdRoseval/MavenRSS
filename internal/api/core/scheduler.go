@@ -23,6 +23,18 @@ func (h *Handler) StartBackgroundScheduler(ctx context.Context) {
 	// Trigger initial cleanup on startup
 	go func() {
 		log.Println("Triggering initial cleanup on startup")
+		if fileutil.IsServerMode() {
+			users, err := h.DB.ListActiveUsers()
+			if err != nil {
+				log.Printf("Failed to list active users for startup cleanup: %v", err)
+				return
+			}
+			for _, user := range users {
+				h.Fetcher.GetCleanupManager().RequestCleanup(user.ID)
+			}
+			return
+		}
+
 		h.Fetcher.GetCleanupManager().RequestCleanup(0)
 	}()
 
@@ -217,23 +229,23 @@ func (h *Handler) triggerGlobalRefresh(ctx context.Context, intelligentMode bool
 		len(refreshableFeeds), len(globalFeeds)-len(refreshableFeeds), intelligentMode)
 
 	if intelligentMode {
-			// In intelligent mode, schedule each feed individually with calculated intervals
-			calculator := h.Fetcher.GetIntelligentRefreshCalculator()
-			for _, feed := range refreshableFeeds {
-				interval := calculator.CalculateInterval(feed)
-				staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
+		// In intelligent mode, schedule each feed individually with calculated intervals
+		calculator := h.Fetcher.GetIntelligentRefreshCalculator()
+		for _, feed := range refreshableFeeds {
+			interval := calculator.CalculateInterval(feed)
+			staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
 
-				go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
-					select {
-					case <-time.After(delay):
-						log.Printf("Auto-refreshing feed %s (intelligent mode, interval: %v)", f.Title, calculatedInterval)
-						h.Fetcher.FetchSingleFeed(ctx, f, false)
-					case <-ctx.Done():
-						return
-					}
-				}(feed, staggerDelay, interval)
-			}
-		} else {
+			go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
+				select {
+				case <-time.After(delay):
+					log.Printf("Auto-refreshing feed %s (intelligent mode, interval: %v)", f.Title, calculatedInterval)
+					h.Fetcher.FetchSingleFeed(ctx, f, false)
+				case <-ctx.Done():
+					return
+				}
+			}(feed, staggerDelay, interval)
+		}
+	} else {
 		// In fixed mode, refresh all feeds together
 		h.Fetcher.FetchAll(ctx)
 	}
@@ -549,23 +561,23 @@ func (h *Handler) triggerUserRefresh(ctx context.Context, userID int64, intellig
 		userID, len(refreshableFeeds), len(globalFeeds)-len(refreshableFeeds), intelligentMode)
 
 	if intelligentMode {
-			// In intelligent mode, schedule each feed individually with calculated intervals
-			calculator := h.Fetcher.GetIntelligentRefreshCalculator()
-			for _, feed := range refreshableFeeds {
-				interval := calculator.CalculateInterval(feed)
-				staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
+		// In intelligent mode, schedule each feed individually with calculated intervals
+		calculator := h.Fetcher.GetIntelligentRefreshCalculator()
+		for _, feed := range refreshableFeeds {
+			interval := calculator.CalculateInterval(feed)
+			staggerDelay := h.Fetcher.GetStaggeredDelay(feed.ID, len(refreshableFeeds))
 
-				go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
-					select {
-					case <-time.After(delay):
-						log.Printf("User %d: Auto-refreshing feed %s (intelligent mode, interval: %v)", userID, f.Title, calculatedInterval)
-						h.Fetcher.FetchSingleFeed(ctx, f, false)
-					case <-ctx.Done():
-						return
-					}
-				}(feed, staggerDelay, interval)
-			}
-		} else {
+			go func(f models.Feed, delay time.Duration, calculatedInterval time.Duration) {
+				select {
+				case <-time.After(delay):
+					log.Printf("User %d: Auto-refreshing feed %s (intelligent mode, interval: %v)", userID, f.Title, calculatedInterval)
+					h.Fetcher.FetchSingleFeed(ctx, f, false)
+				case <-ctx.Done():
+					return
+				}
+			}(feed, staggerDelay, interval)
+		}
+	} else {
 		// In fixed mode, refresh all feeds for this user
 		h.Fetcher.FetchAllForUser(ctx, userID)
 	}

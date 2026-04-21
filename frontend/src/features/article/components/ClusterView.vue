@@ -223,6 +223,7 @@ watch(
       return;
     }
 
+    clusterStore.clearData();
     clusterStore.currentClusterId = null;
     mobileView.value = 'list';
     loadClusterData().catch((error) => {
@@ -234,6 +235,7 @@ watch(
 watch(
   () => [articleStore.currentFilter, articleStore.currentFeedId, articleStore.currentCategory],
   () => {
+    clusterStore.clearData();
     clusterStore.currentClusterId = null;
     mobileView.value = 'list';
 
@@ -251,6 +253,19 @@ watch(
 
     loadClusterData().catch((error) => {
       console.error('Failed to reload cluster data:', error);
+    });
+  }
+);
+
+watch(
+  () => articleStore.clusterReloadToken,
+  () => {
+    clusterStore.clearData();
+    clusterStore.currentClusterId = null;
+    mobileView.value = 'list';
+
+    loadClusterData().catch((error) => {
+      console.error('Failed to force reload cluster data:', error);
     });
   }
 );

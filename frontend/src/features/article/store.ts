@@ -40,6 +40,7 @@ export const useArticleStore = defineStore('article', () => {
   const filteredArticlesFromServer = ref<Article[]>([]);
   const isFilterLoading = ref(false);
   const aiEnhancedMode = ref(false);
+  const clusterReloadToken = ref(0);
 
   const articleViewModePreferences = ref<Map<number, 'original' | 'rendered'>>(new Map());
 
@@ -89,6 +90,9 @@ export const useArticleStore = defineStore('article', () => {
   }
 
   async function setFilter(filter: Filter): Promise<void> {
+    const isReselectingRootFilter =
+      currentFilter.value === filter && currentFeedId.value === null && currentCategory.value === null;
+
     currentFilter.value = filter;
     currentFeedId.value = null;
     currentCategory.value = null;
@@ -101,6 +105,9 @@ export const useArticleStore = defineStore('article', () => {
       filter === 'clusters'
     ) {
       resetArticleCollection();
+      if (isReselectingRootFilter) {
+        clusterReloadToken.value += 1;
+      }
       return;
     }
 
@@ -345,6 +352,7 @@ export const useArticleStore = defineStore('article', () => {
     filteredArticlesFromServer,
     isFilterLoading,
     aiEnhancedMode,
+    clusterReloadToken,
     articleViewModePreferences,
     aiSearchResults,
     filterCounts,

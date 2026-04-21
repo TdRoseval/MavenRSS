@@ -16,7 +16,7 @@ type CleanupManager struct {
 
 	// Cleanup request tracking
 	pendingCleanupByUser map[int64]bool
-	pendingCleanupMu sync.Mutex
+	pendingCleanupMu     sync.Mutex
 
 	// Retry mechanism
 	retryInterval time.Duration // 10 minutes
@@ -246,13 +246,13 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 	totalRemoved := int64(0)
 
 	// Get current size
-	currentSizeMB, _ := cm.fetcher.db.GetDatabaseSizeMB()
+	currentSizeMB, _ := cm.fetcher.db.GetStorageUsageMB(userID)
 
 	if currentSizeMB <= targetSizeMB {
 		return 0
 	}
 
-	log.Printf("Current size: %.2f MB, Target: %.2f MB", currentSizeMB, targetSizeMB)
+	log.Printf("Current storage usage for user %d: %.2f MB, Target: %.2f MB", userID, currentSizeMB, targetSizeMB)
 
 	// Layer 1: Expired read clusters (30+ days old)
 	if currentSizeMB > targetSizeMB {
@@ -262,7 +262,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 1: Removed %d expired read clusters", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -274,7 +274,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 2: Removed %d expired unread clusters", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -286,7 +286,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 3: Removed %d old article contents", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -298,7 +298,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 4: Removed %d medium article contents", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -310,7 +310,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 5: Removed %d old article metadata", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -322,7 +322,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 6: Removed %d new article contents", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -335,7 +335,7 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 7: Removed %d article contents by size", count)
 			totalRemoved += count
-			currentSizeMB, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			currentSizeMB, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
@@ -347,22 +347,22 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 		} else {
 			log.Printf("Layer 8: Removed %d medium article metadata", count)
 			totalRemoved += count
-			_, _ = cm.fetcher.db.GetDatabaseSizeMB()
+			_, _ = cm.fetcher.db.GetStorageUsageMB(userID)
 		}
 	}
 
 	// Final size check
-	finalSizeMB, _ := cm.fetcher.db.GetDatabaseSizeMB()
-	log.Printf("Final size before VACUUM: %.2f MB (target was %.2f MB)", finalSizeMB, targetSizeMB)
+	finalSizeMB, _ := cm.fetcher.db.GetStorageUsageMB(userID)
+	log.Printf("Final storage usage before VACUUM for user %d: %.2f MB (target was %.2f MB)", userID, finalSizeMB, targetSizeMB)
 
 	// Run VACUUM to reclaim space if we removed anything
 	if totalRemoved > 0 {
 		log.Println("Running VACUUM to reclaim disk space...")
 		_, _ = cm.fetcher.db.Exec("VACUUM")
-		
+
 		// Log final size after VACUUM
-		finalSizeAfterVACUUM, _ := cm.fetcher.db.GetDatabaseSizeMB()
-		log.Printf("Final size after VACUUM: %.2f MB", finalSizeAfterVACUUM)
+		finalSizeAfterVACUUM, _ := cm.fetcher.db.GetStorageUsageMB(userID)
+		log.Printf("Final storage usage after VACUUM for user %d: %.2f MB", userID, finalSizeAfterVACUUM)
 	}
 
 	return totalRemoved
@@ -402,7 +402,7 @@ func (cm *CleanupManager) CheckSizeAndCleanup() {
 
 	maxSizeMB := cm.getTargetSize(0)
 
-	currentSizeMB, err := cm.fetcher.db.GetDatabaseSizeMB()
+	currentSizeMB, err := cm.fetcher.db.GetStorageUsageMB(0)
 	if err != nil {
 		log.Printf("Error checking database size: %v", err)
 		return

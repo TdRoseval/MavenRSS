@@ -30,6 +30,11 @@ type dailyRecommendationResponse struct {
 	Total           int                       `json:"total"`
 }
 
+type clusterFeedResponse struct {
+	Clusters []models.Cluster `json:"clusters"`
+	HasMore  bool             `json:"has_more"`
+}
+
 func HandleAIProcessingStatus(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -76,6 +81,7 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		Filter     string  `json:"filter"`
 		FeedID     int64   `json:"feed_id"`
 		Category   string  `json:"category"`
+		Limit      int     `json:"limit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		req.ExcludeIDs = nil
@@ -85,11 +91,13 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		log.Printf("Error syncing cluster favorites before realtime cluster feed: %v", err)
 	}
 
-	const (
-		recallTopK  = 100
+	const maxAgeDays = 3
+	returnLimit := req.Limit
+	if returnLimit <= 0 {
 		returnLimit = 30
-		maxAgeDays  = 3
-	)
+	}
+	targetResultCount := returnLimit + 1
+	recallTopK := calculateRealtimeRecallTopK(len(req.ExcludeIDs), targetResultCount)
 
 	vecBlob, _ := h.DB.GetUserInterestVector(userID)
 	if len(vecBlob) == 0 {
@@ -112,7 +120,7 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			req.Filter,
 			req.FeedID,
 			req.Category,
-			returnLimit,
+			targetResultCount,
 		)
 		if err != nil {
 			log.Printf("Error fetching chronological clusters: %v", err)
@@ -122,8 +130,12 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		if clusters == nil {
 			clusters = []models.Cluster{}
 		}
+		hasMore := len(clusters) > returnLimit
+		if hasMore {
+			clusters = clusters[:returnLimit]
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(clusters)
+		json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: clusters, HasMore: hasMore})
 		return
 	}
 
@@ -138,10 +150,14 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			req.Filter,
 			req.FeedID,
 			req.Category,
-			returnLimit,
+			targetResultCount,
 		)
+		hasMore := len(clusters) > returnLimit
+		if hasMore {
+			clusters = clusters[:returnLimit]
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(clusters)
+		json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: clusters, HasMore: hasMore})
 		return
 	}
 
@@ -154,10 +170,14 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 			req.Filter,
 			req.FeedID,
 			req.Category,
-			returnLimit,
+			targetResultCount,
 		)
+		hasMore := len(clusters) > returnLimit
+		if hasMore {
+			clusters = clusters[:returnLimit]
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(clusters)
+		json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: clusters, HasMore: hasMore})
 		return
 	}
 
@@ -179,17 +199,60 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return candidates[i].Distance > candidates[j].Distance
 	})
 
-	if len(candidates) > returnLimit {
-		candidates = candidates[:returnLimit]
+	result := make([]models.Cluster, 0, targetResultCount)
+	selectedIDs := make(map[int64]struct{}, len(req.ExcludeIDs)+len(candidates))
+	for _, clusterID := range req.ExcludeIDs {
+		selectedIDs[clusterID] = struct{}{}
+	}
+	for _, candidate := range candidates {
+		if len(result) >= targetResultCount {
+			break
+		}
+		if _, exists := selectedIDs[candidate.Cluster.ID]; exists {
+			continue
+		}
+		result = append(result, candidate.Cluster)
+		selectedIDs[candidate.Cluster.ID] = struct{}{}
 	}
 
-	result := make([]models.Cluster, len(candidates))
-	for i, c := range candidates {
-		result[i] = c.Cluster
+	if len(result) < targetResultCount {
+		fallbackExcludeIDs := make([]int64, 0, len(selectedIDs))
+		for clusterID := range selectedIDs {
+			fallbackExcludeIDs = append(fallbackExcludeIDs, clusterID)
+		}
+
+		fallbackClusters, err := h.DB.GetRecentClustersChronological(
+			userID,
+			fallbackExcludeIDs,
+			req.Filter,
+			req.FeedID,
+			req.Category,
+			targetResultCount-len(result),
+		)
+		if err != nil {
+			log.Printf("Error fetching fallback chronological clusters: %v", err)
+		} else {
+			result = append(result, fallbackClusters...)
+		}
+	}
+	hasMore := len(result) > returnLimit
+	if hasMore {
+		result = result[:returnLimit]
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: result, HasMore: hasMore})
+}
+
+func calculateRealtimeRecallTopK(excludedCount, pageSize int) int {
+	topK := excludedCount + pageSize*8
+	if topK < 200 {
+		topK = 200
+	}
+	if topK > 2000 {
+		topK = 2000
+	}
+	return topK
 }
 
 func HandleDailyRecommendationDates(h *core.Handler, w http.ResponseWriter, r *http.Request) {

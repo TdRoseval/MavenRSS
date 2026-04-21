@@ -634,6 +634,70 @@ func (db *DB) getEffectiveCleanupLimitMB(userID int64) int {
 	return maxSizeMB
 }
 
+// GetStorageUsageMB returns the storage usage relevant to cleanup decisions.
+// Global cleanup uses SQLite live page usage, while per-user cleanup uses an
+// estimated size derived from the user's own article-related records.
+func (db *DB) GetStorageUsageMB(userID int64) (float64, error) {
+	if userID <= 0 {
+		return db.GetDatabaseUsedSizeMB()
+	}
+
+	totalBytes, err := db.getEstimatedUserStorageBytes(userID)
+	if err != nil {
+		return 0, err
+	}
+
+	return float64(totalBytes) / (1024 * 1024), nil
+}
+
+func (db *DB) getEstimatedUserStorageBytes(userID int64) (int64, error) {
+	db.WaitForReady()
+
+	queries := []string{
+		`SELECT IFNULL(SUM(
+			LENGTH(COALESCE(title, '')) +
+			LENGTH(COALESCE(url, '')) +
+			LENGTH(COALESCE(image_url, '')) +
+			LENGTH(COALESCE(audio_url, '')) +
+			LENGTH(COALESCE(video_url, '')) +
+			LENGTH(COALESCE(translated_title, '')) +
+			LENGTH(COALESCE(summary, '')) +
+			LENGTH(COALESCE(unique_id, '')) +
+			LENGTH(COALESCE(author, '')) +
+			128
+		), 0)
+		FROM articles
+		WHERE user_id = ?`,
+		`SELECT IFNULL(SUM(LENGTH(COALESCE(ac.content, ''))), 0)
+		FROM article_contents ac
+		INNER JOIN articles a ON a.id = ac.article_id
+		WHERE a.user_id = ?`,
+		`SELECT IFNULL(SUM(LENGTH(COALESCE(atc.content, ''))), 0)
+		FROM article_translated_contents atc
+		INNER JOIN articles a ON a.id = atc.article_id
+		WHERE a.user_id = ?`,
+		`SELECT IFNULL(SUM(
+			LENGTH(COALESCE(merged_title, '')) +
+			LENGTH(COALESCE(merged_summary, '')) +
+			LENGTH(COALESCE(merged_content, '')) +
+			128
+		), 0)
+		FROM clusters
+		WHERE user_id = ?`,
+	}
+
+	var totalBytes int64
+	for _, query := range queries {
+		var part int64
+		if err := db.QueryRow(query, userID).Scan(&part); err != nil {
+			return 0, err
+		}
+		totalBytes += part
+	}
+
+	return totalBytes, nil
+}
+
 // ShouldCleanupBeforeSave checks if database is approaching the size limit.
 // Returns true if database size is over 80% of max_cache_size_mb.
 // Admin quota takes precedence over user setting.
@@ -644,7 +708,7 @@ func (db *DB) ShouldCleanupBeforeSave(userID int64) (bool, error) {
 
 	// Use live size here, otherwise deleted free pages keep page_count flat and
 	// make cleanup appear ineffective.
-	currentSizeMB, err := db.GetDatabaseUsedSizeMB()
+	currentSizeMB, err := db.GetStorageUsageMB(userID)
 	if err != nil {
 		return false, err
 	}
@@ -665,7 +729,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 	maxSizeMB := db.getEffectiveCleanupLimitMB(userID)
 
 	// Use live size during cleanup progress tracking.
-	currentSizeMB, err := db.GetDatabaseUsedSizeMB()
+	currentSizeMB, err := db.GetStorageUsageMB(userID)
 	if err != nil {
 		return 0, err
 	}
@@ -675,7 +739,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		return 0, nil
 	}
 
-	log.Printf("Database used size (%.2f MB) exceeds limit (%d MB), starting cleanup...", currentSizeMB, maxSizeMB)
+	log.Printf("Storage usage (%.2f MB) exceeds limit (%d MB) for user %d, starting cleanup...", currentSizeMB, maxSizeMB, userID)
 
 	totalDeleted := int64(0)
 	targetSizeMB := float64(maxSizeMB) * 0.95 // Aim for 95% of limit
@@ -721,7 +785,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += count
-		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		currentSizeMB, _ = db.GetStorageUsageMB(userID)
 		log.Printf("Deleted %d read articles, current used size: %.2f MB", count, currentSizeMB)
 	}
 
@@ -737,7 +801,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += deletedArticles
-		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		currentSizeMB, _ = db.GetStorageUsageMB(userID)
 		log.Printf("Deleted %d read clustered articles, current used size: %.2f MB", deletedArticles, currentSizeMB)
 	}
 
@@ -780,7 +844,7 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += count
-		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		currentSizeMB, _ = db.GetStorageUsageMB(userID)
 		log.Printf("Deleted %d unread articles, current used size: %.2f MB", count, currentSizeMB)
 	}
 
@@ -796,14 +860,14 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += deletedArticles
-		currentSizeMB, _ = db.GetDatabaseUsedSizeMB()
+		currentSizeMB, _ = db.GetStorageUsageMB(userID)
 		log.Printf("Deleted %d unread clustered articles, current used size: %.2f MB", deletedArticles, currentSizeMB)
 	}
 
 	if totalDeleted > 0 {
 		_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 		_, _ = db.Exec("VACUUM")
-		finalUsedMB, _ := db.GetDatabaseUsedSizeMB()
+		finalUsedMB, _ := db.GetStorageUsageMB(userID)
 		finalAllocatedMB, _ := db.GetDatabaseSizeMB()
 		log.Printf("Size-based cleanup completed: removed %d articles, final used size: %.2f MB, allocated size after VACUUM: %.2f MB", totalDeleted, finalUsedMB, finalAllocatedMB)
 	}
@@ -852,17 +916,10 @@ func (db *DB) CleanupArticleContentsByAge(maxAgeDays int, userID int64) (int64, 
 func (db *DB) CleanupArticleContentsBySize(userID int64) (int64, error) {
 	db.WaitForReady()
 
-	// Get max cache size from settings (default 500 MB)
-	maxSizeMBStr, err := db.GetSetting("max_cache_size_mb")
-	maxSizeMB := 500
-	if err == nil {
-		if size, err := strconv.Atoi(maxSizeMBStr); err == nil && size > 0 {
-			maxSizeMB = size
-		}
-	}
+	maxSizeMB := db.getEffectiveCleanupLimitMB(userID)
 
 	// Get current database size
-	currentSizeMB, err := db.GetDatabaseSizeMB()
+	currentSizeMB, err := db.GetStorageUsageMB(userID)
 	if err != nil {
 		return 0, err
 	}
@@ -913,7 +970,7 @@ func (db *DB) CleanupArticleContentsBySize(userID int64) (int64, error) {
 		}
 
 		totalDeleted += count
-		currentSizeMB, _ = db.GetDatabaseSizeMB()
+		currentSizeMB, _ = db.GetStorageUsageMB(userID)
 	}
 
 	return totalDeleted, nil

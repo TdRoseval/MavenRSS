@@ -17,6 +17,7 @@ import { useArticleStore } from '@/features/article/store';
 interface ClusterListResponse {
   clusters: Cluster[];
   total?: number;
+  has_more?: boolean;
 }
 
 export const useClusterStore = defineStore('cluster', () => {
@@ -154,6 +155,7 @@ export const useClusterStore = defineStore('cluster', () => {
       if (hasRealtimeInterestStream.value) {
         const payload: Record<string, any> = {
           exclude_ids: isFirstPage ? [] : clusters.value.map((cluster) => cluster.id),
+          limit: REALTIME_BATCH_SIZE,
         };
 
         if (articleStore.currentFilter && articleStore.currentFilter !== 'all') {
@@ -166,7 +168,11 @@ export const useClusterStore = defineStore('cluster', () => {
           payload.category = articleStore.currentCategory;
         }
 
-        const clusterData = await apiClient.post<Cluster[]>('/clusters/feed', payload);
+        const response = await apiClient.post<Cluster[] | ClusterListResponse>('/clusters/feed', payload);
+        const clusterData = normalizeClusterListResponse(response);
+        const realtimeHasMore = Array.isArray(response)
+          ? clusterData.length === REALTIME_BATCH_SIZE
+          : response?.has_more === true;
 
         if (
           requestSequence !== fetchSequence ||
@@ -178,10 +184,10 @@ export const useClusterStore = defineStore('cluster', () => {
         }
 
         if (isFirstPage) {
-          clusters.value = clusterData || [];
+          clusters.value = clusterData;
         } else {
           const existingIds = new Set(clusters.value.map((cluster) => cluster.id));
-          const newClusters = (clusterData || []).filter((cluster) => !existingIds.has(cluster.id));
+          const newClusters = clusterData.filter((cluster) => !existingIds.has(cluster.id));
           clusters.value = [...clusters.value, ...newClusters];
         }
 
@@ -191,7 +197,7 @@ export const useClusterStore = defineStore('cluster', () => {
           );
         }
 
-        hasMore.value = (clusterData?.length || 0) === REALTIME_BATCH_SIZE;
+        hasMore.value = realtimeHasMore;
         currentPage.value = page;
 
         if (isFirstPage) {
