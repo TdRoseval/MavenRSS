@@ -16,6 +16,7 @@ const { t } = useI18n();
 const { settings } = useSettings();
 
 const listRef = ref<HTMLDivElement | null>(null);
+const loadMoreSentinelRef = ref<HTMLDivElement | null>(null);
 const shouldRestoreScroll = ref(false);
 
 interface Props {
@@ -98,6 +99,7 @@ const selectedRecommendationDate = computed({
 });
 
 const isRefreshingRecommendations = ref(false);
+let loadMoreObserver: IntersectionObserver | null = null;
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
@@ -105,8 +107,45 @@ onMounted(async () => {
     if (listRef.value) {
       containerHeight.value = listRef.value.clientHeight;
     }
+    setupLoadMoreObserver();
   }
 });
+
+function disconnectLoadMoreObserver(): void {
+  if (loadMoreObserver) {
+    loadMoreObserver.disconnect();
+    loadMoreObserver = null;
+  }
+}
+
+function setupLoadMoreObserver(): void {
+  disconnectLoadMoreObserver();
+
+  if (
+    isDailyRecommendationMode.value ||
+    !clusterStore.hasMore ||
+    !listRef.value ||
+    !loadMoreSentinelRef.value ||
+    typeof IntersectionObserver === 'undefined'
+  ) {
+    return;
+  }
+
+  loadMoreObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void clusterStore.loadMore();
+      }
+    },
+    {
+      root: listRef.value,
+      rootMargin: '0px 0px 400px 0px',
+      threshold: 0,
+    }
+  );
+
+  loadMoreObserver.observe(loadMoreSentinelRef.value);
+}
 
 async function resetListPosition(): Promise<void> {
   scrollTop.value = 0;
@@ -117,6 +156,7 @@ async function resetListPosition(): Promise<void> {
     listRef.value.scrollTop = 0;
     containerHeight.value = listRef.value.clientHeight;
   }
+  setupLoadMoreObserver();
 }
 
 async function maybeLoadMoreIfNeeded(): Promise<void> {
@@ -154,6 +194,7 @@ watch(
       shouldRestoreScroll.value = false;
     }
 
+    setupLoadMoreObserver();
     void maybeLoadMoreIfNeeded();
   }
 );
@@ -176,18 +217,23 @@ watch(
   () => [clusterStore.clusters.length, clusterStore.isLoadingMore, clusterStore.hasMore],
   ([, isLoadingMore]) => {
     if (!isLoadingMore) {
+      setupLoadMoreObserver();
       void maybeLoadMoreIfNeeded();
     }
   }
 );
 
-let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+watch(
+  () => [listRef.value, loadMoreSentinelRef.value, isDailyRecommendationMode.value, clusterStore.hasMore],
+  async () => {
+    await nextTick();
+    setupLoadMoreObserver();
+  }
+);
+
 onBeforeUnmount(() => {
   temporarilyKeptClusterIds.value.clear();
-  if (scrollThrottleTimer) {
-    clearTimeout(scrollThrottleTimer);
-    scrollThrottleTimer = null;
-  }
+  disconnectLoadMoreObserver();
 });
 
 function selectCluster(cluster: Cluster): void {
@@ -219,7 +265,6 @@ function selectCluster(cluster: Cluster): void {
   }
 }
 
-const SCROLL_THROTTLE_DELAY = 200;
 const SCROLL_THRESHOLD = 400;
 
 function handleScroll(e: Event): void {
@@ -227,20 +272,6 @@ function handleScroll(e: Event): void {
 
   scrollTop.value = target.scrollTop;
   containerHeight.value = target.clientHeight;
-
-  if (scrollThrottleTimer) return;
-
-  scrollThrottleTimer = setTimeout(() => {
-    scrollThrottleTimer = null;
-    const { scrollTop, clientHeight, scrollHeight } = target;
-
-    if (
-      !isDailyRecommendationMode.value &&
-      scrollTop + clientHeight >= scrollHeight - SCROLL_THRESHOLD
-    ) {
-      clusterStore.loadMore();
-    }
-  }, SCROLL_THROTTLE_DELAY);
 }
 
 function handleContextmenu(e: MouseEvent, cluster: Cluster) {
@@ -506,6 +537,7 @@ async function refreshRecommendations(): Promise<void> {
           <span class="text-sm">{{ t('article.cluster.loadingMore') }}</span>
         </div>
       </div>
+      <div ref="loadMoreSentinelRef" class="h-px w-full" aria-hidden="true"></div>
     </div>
 
     <div
