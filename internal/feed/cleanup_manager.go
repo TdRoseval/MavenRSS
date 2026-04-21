@@ -15,7 +15,7 @@ type CleanupManager struct {
 	mu        sync.RWMutex
 
 	// Cleanup request tracking
-	pendingCleanup   bool
+	pendingCleanupByUser map[int64]bool
 	pendingCleanupMu sync.Mutex
 
 	// Retry mechanism
@@ -27,10 +27,10 @@ type CleanupManager struct {
 // NewCleanupManager creates a new cleanup manager
 func NewCleanupManager(fetcher *Fetcher) *CleanupManager {
 	return &CleanupManager{
-		fetcher:        fetcher,
-		retryInterval:  10 * time.Minute,
-		stopChan:       make(chan struct{}),
-		pendingCleanup: false,
+		fetcher:              fetcher,
+		retryInterval:        10 * time.Minute,
+		stopChan:             make(chan struct{}),
+		pendingCleanupByUser: make(map[int64]bool),
 	}
 }
 
@@ -68,18 +68,26 @@ func (cm *CleanupManager) Stop() {
 	log.Println("Cleanup manager stopped")
 }
 
-// RequestCleanup requests a cleanup operation
-// If cleanup is blocked (tasks running), it will be retried every 10 minutes
-func (cm *CleanupManager) RequestCleanup() {
+// RequestCleanup requests a cleanup operation for a specific user.
+// If userID is 0, it falls back to legacy global cleanup behavior.
+// If cleanup is blocked (tasks running), it will be retried every 10 minutes.
+func (cm *CleanupManager) RequestCleanup(userID int64) {
 	// Check if auto cleanup is enabled first
-	autoCleanup, _ := cm.fetcher.db.GetSetting("auto_cleanup_enabled")
+	autoCleanup, _ := cm.fetcher.db.GetSettingWithFallback(userID, "auto_cleanup_enabled")
 	if autoCleanup != "true" {
-		log.Println("Auto cleanup is disabled, skipping cleanup request")
+		if userID > 0 {
+			log.Printf("Auto cleanup is disabled for user %d, skipping cleanup request", userID)
+		} else {
+			log.Println("Auto cleanup is disabled, skipping cleanup request")
+		}
 		return
 	}
 
 	cm.pendingCleanupMu.Lock()
-	cm.pendingCleanup = true
+	if cm.pendingCleanupByUser == nil {
+		cm.pendingCleanupByUser = make(map[int64]bool)
+	}
+	cm.pendingCleanupByUser[userID] = true
 	cm.pendingCleanupMu.Unlock()
 
 	// Try to execute immediately
@@ -114,19 +122,25 @@ func (cm *CleanupManager) tryCleanup() {
 	}
 
 	cm.pendingCleanupMu.Lock()
-	if !cm.pendingCleanup {
+	if len(cm.pendingCleanupByUser) == 0 {
 		cm.pendingCleanupMu.Unlock()
 		return
 	}
-	cm.pendingCleanup = false
+
+	pendingUserIDs := make([]int64, 0, len(cm.pendingCleanupByUser))
+	for userID := range cm.pendingCleanupByUser {
+		pendingUserIDs = append(pendingUserIDs, userID)
+	}
+	cm.pendingCleanupByUser = make(map[int64]bool)
 	cm.pendingCleanupMu.Unlock()
 
-	// Execute cleanup
-	cm.wg.Add(1)
-	go func() {
-		defer cm.wg.Done()
-		cm.executeCleanup()
-	}()
+	for _, userID := range pendingUserIDs {
+		cm.wg.Add(1)
+		go func(uid int64) {
+			defer cm.wg.Done()
+			cm.executeCleanup(uid)
+		}(userID)
+	}
 }
 
 // canCleanup checks if cleanup can be executed (no tasks running)
@@ -142,31 +156,51 @@ func (cm *CleanupManager) canCleanup() bool {
 }
 
 // executeCleanup executes the layered cleanup
-func (cm *CleanupManager) executeCleanup() {
+func (cm *CleanupManager) executeCleanup(userID int64) {
 	// Double-check if auto cleanup is enabled
-	autoCleanup, _ := cm.fetcher.db.GetSetting("auto_cleanup_enabled")
+	autoCleanup, _ := cm.fetcher.db.GetSettingWithFallback(userID, "auto_cleanup_enabled")
 	if autoCleanup != "true" {
-		log.Println("Auto cleanup is disabled, skipping execution")
+		if userID > 0 {
+			log.Printf("Auto cleanup is disabled for user %d, skipping execution", userID)
+		} else {
+			log.Println("Auto cleanup is disabled, skipping execution")
+		}
 		return
 	}
 
-	log.Println("Starting automatic cleanup...")
+	if userID > 0 {
+		log.Printf("Starting automatic cleanup for user %d...", userID)
+	} else {
+		log.Println("Starting automatic cleanup...")
+	}
 
-	maxSizeMB := cm.getTargetSize()
+	maxSizeMB := cm.getTargetSize(userID)
 
 	// Execute layered cleanup with 80% target
-	totalRemoved := cm.layeredCleanup(maxSizeMB * 0.8)
+	totalRemoved := cm.layeredCleanup(userID, maxSizeMB*0.8)
 
 	if totalRemoved > 0 {
-		log.Printf("Automatic cleanup completed: removed %d items", totalRemoved)
+		if userID > 0 {
+			log.Printf("Automatic cleanup completed for user %d: removed %d items", userID, totalRemoved)
+		} else {
+			log.Printf("Automatic cleanup completed: removed %d items", totalRemoved)
+		}
 	} else {
-		log.Println("Automatic cleanup completed: nothing to clean")
+		if userID > 0 {
+			log.Printf("Automatic cleanup completed for user %d: nothing to clean", userID)
+		} else {
+			log.Println("Automatic cleanup completed: nothing to clean")
+		}
 	}
 }
 
 // getTargetSize returns the target database size in MB
 // Uses the minimum of user setting and admin quota (admin quota takes precedence)
-func (cm *CleanupManager) getTargetSize() float64 {
+func (cm *CleanupManager) getTargetSize(userID int64) float64 {
+	if userID > 0 {
+		return float64(cm.fetcher.db.GetEffectiveMaxCacheSizeMB(userID))
+	}
+
 	var adminQuotaLimit int
 	var userSettingLimit int = 500 // Default
 
@@ -208,7 +242,7 @@ func (cm *CleanupManager) getTargetSize() float64 {
 // 7. Latest unclustered article contents
 // 8. Medium unclustered article metadata
 // Note: New and latest article metadata are never cleaned
-func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
+func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int64 {
 	totalRemoved := int64(0)
 
 	// Get current size
@@ -222,7 +256,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 1: Expired read clusters (30+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupExpiredReadClusters(0, 30)
+		count, err := cm.fetcher.db.CleanupExpiredReadClusters(userID, 30)
 		if err != nil {
 			log.Printf("Layer 1 error: %v", err)
 		} else {
@@ -234,7 +268,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 2: Expired unread clusters (60+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupExpiredUnreadClusters(0, 60)
+		count, err := cm.fetcher.db.CleanupExpiredUnreadClusters(userID, 60)
 		if err != nil {
 			log.Printf("Layer 2 error: %v", err)
 		} else {
@@ -246,7 +280,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 3: Old article contents (7+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(7, 0)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(7, userID)
 		if err != nil {
 			log.Printf("Layer 3 error: %v", err)
 		} else {
@@ -258,7 +292,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 4: Medium article contents (3+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(3, 0)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(3, userID)
 		if err != nil {
 			log.Printf("Layer 4 error: %v", err)
 		} else {
@@ -270,7 +304,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 5: Old article metadata (read, 30+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupOldReadArticles(30, 0)
+		count, err := cm.fetcher.db.CleanupOldReadArticles(30, userID)
 		if err != nil {
 			log.Printf("Layer 5 error: %v", err)
 		} else {
@@ -282,7 +316,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 6: New article contents (1+ days old)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsByAge(1, 0)
+		count, err := cm.fetcher.db.CleanupArticleContentsByAge(1, userID)
 		if err != nil {
 			log.Printf("Layer 6 error: %v", err)
 		} else {
@@ -295,7 +329,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 	// Layer 7: Only cleanup article contents by size instead of deleting all
 	// This is a safer approach that doesn't delete everything
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupArticleContentsBySize(0)
+		count, err := cm.fetcher.db.CleanupArticleContentsBySize(userID)
 		if err != nil {
 			log.Printf("Layer 7 error: %v", err)
 		} else {
@@ -307,7 +341,7 @@ func (cm *CleanupManager) layeredCleanup(targetSizeMB float64) int64 {
 
 	// Layer 8: Medium article metadata (unread, 60+ days old, not favorite/read-later)
 	if currentSizeMB > targetSizeMB {
-		count, err := cm.fetcher.db.CleanupOldUnreadArticles(60, 0)
+		count, err := cm.fetcher.db.CleanupOldUnreadArticles(60, userID)
 		if err != nil {
 			log.Printf("Layer 8 error: %v", err)
 		} else {
@@ -347,7 +381,7 @@ func (cm *CleanupManager) retryLoop() {
 			return
 		case <-ticker.C:
 			cm.pendingCleanupMu.Lock()
-			hasPending := cm.pendingCleanup
+			hasPending := len(cm.pendingCleanupByUser) > 0
 			cm.pendingCleanupMu.Unlock()
 
 			if hasPending {
@@ -366,7 +400,7 @@ func (cm *CleanupManager) CheckSizeAndCleanup() {
 		return
 	}
 
-	maxSizeMB := cm.getTargetSize()
+	maxSizeMB := cm.getTargetSize(0)
 
 	currentSizeMB, err := cm.fetcher.db.GetDatabaseSizeMB()
 	if err != nil {
@@ -376,6 +410,6 @@ func (cm *CleanupManager) CheckSizeAndCleanup() {
 
 	if currentSizeMB > maxSizeMB {
 		log.Printf("Database size %.2f MB exceeds limit %.2f MB, triggering cleanup", currentSizeMB, maxSizeMB)
-		cm.RequestCleanup()
+		cm.RequestCleanup(0)
 	}
 }

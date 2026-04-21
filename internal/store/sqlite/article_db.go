@@ -45,18 +45,18 @@ func (db *DB) SaveArticle(article *models.Article) error {
 	// 2. Original published time is in the future
 	now := time.Now().UTC()
 	needToUpdate := false
-	
+
 	// Check case 1: Time is only date (00:00:00)
 	hour, min, sec := originalPublishedAt.Clock()
 	if hour == 0 && min == 0 && sec == 0 {
 		needToUpdate = true
 	}
-	
+
 	// Check case 2: Time is in the future
 	if originalPublishedAt.After(now) {
 		needToUpdate = true
 	}
-	
+
 	if needToUpdate {
 		// Update published time to current refresh time
 		article.PublishedAt = now
@@ -66,10 +66,10 @@ func (db *DB) SaveArticle(article *models.Article) error {
 	// Generate unique_id for deduplication
 	query := `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = db.Exec(query, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
-	
+
 	// Set unique_id back to article's UniqueID field for subsequent operations
 	article.UniqueID = uniqueID
-	
+
 	return err
 }
 
@@ -107,11 +107,11 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	}
 	originalInfos := make([]ArticleOriginalInfo, len(articles))
 	uniqueIDs := make([]string, len(articles))
-	
+
 	for i, article := range articles {
 		article.PublishedAt = article.PublishedAt.UTC()
 		originalInfos[i].originalPublishedAt = article.PublishedAt
-		
+
 		// Generate unique_id using original time
 		uniqueIDs[i] = urlutil.GenerateArticleUniqueID(article.UserID, article.Title, article.FeedID, originalInfos[i].originalPublishedAt, article.HasValidPublishedTime)
 		article.UniqueID = uniqueIDs[i]
@@ -123,21 +123,21 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	if userID > 0 {
 		const batchSize = 500
 		existingIDs = make(map[string]bool)
-		
+
 		for i := 0; i < len(uniqueIDs); i += batchSize {
 			end := i + batchSize
 			if end > len(uniqueIDs) {
 				end = len(uniqueIDs)
 			}
 			batch := uniqueIDs[i:end]
-			
+
 			placeholders := make([]string, len(batch))
 			args := make([]interface{}, len(batch))
 			for j, id := range batch {
 				placeholders[j] = "?"
 				args[j] = id
 			}
-			
+
 			query := "SELECT unique_id FROM articles WHERE unique_id IN (" + strings.Join(placeholders, ",") + ")"
 			rows, err := db.Query(query, args...)
 			if err != nil {
@@ -159,7 +159,7 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 				rows.Close()
 			}
 		}
-		
+
 		for _, id := range uniqueIDs {
 			if !existingIDs[id] {
 				newArticlesCount++
@@ -183,18 +183,18 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		if !existingIDs[uniqueIDs[i]] {
 			// This is a new article
 			needToUpdate := false
-			
+
 			// Check case 1: Time is only date (00:00:00)
 			hour, min, sec := originalInfos[i].originalPublishedAt.Clock()
 			if hour == 0 && min == 0 && sec == 0 {
 				needToUpdate = true
 			}
-			
+
 			// Check case 2: Time is in the future
 			if originalInfos[i].originalPublishedAt.After(now) {
 				needToUpdate = true
 			}
-			
+
 			if needToUpdate {
 				// Update published time to current refresh time
 				article.PublishedAt = now
@@ -206,17 +206,15 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 	// Progressive cleanup: check if we need to clean up before saving
 	if len(articles) > 10 {
 		// Only check for larger batches to avoid overhead
-		shouldCleanup, _ := db.ShouldCleanupBeforeSave()
+		shouldCleanup, _ := db.ShouldCleanupBeforeSave(userID)
 		if shouldCleanup {
 			log.Printf("Database approaching size limit, running progressive cleanup...")
-			go func() {
-				deleted, err := db.CleanupBySize(0)
-				if err != nil {
-					log.Printf("Progressive cleanup error: %v", err)
-				} else if deleted > 0 {
-					log.Printf("Progressive cleanup removed %d articles", deleted)
-				}
-			}()
+			deleted, err := db.CleanupBySize(userID)
+			if err != nil {
+				log.Printf("Progressive cleanup error for user %d: %v", userID, err)
+			} else if deleted > 0 {
+				log.Printf("Progressive cleanup removed %d articles for user %d", deleted, userID)
+			}
 		}
 	}
 

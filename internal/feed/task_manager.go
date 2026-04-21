@@ -533,6 +533,10 @@ func (tm *TaskManager) ExecuteImmediately(ctx context.Context, feed models.Feed)
 			tm.stats.ArticleClickCount--
 			tm.statsMutex.Unlock()
 
+			if tm.fetcher != nil && tm.fetcher.cleanupManager != nil {
+				tm.fetcher.cleanupManager.RequestCleanup(feed.UserID)
+			}
+
 			// Check if all tasks completed
 			tm.checkCompletion()
 		}()
@@ -685,6 +689,10 @@ func (tm *TaskManager) processTask(ctx context.Context, task *RefreshTask) {
 		// Update stats
 		tm.updateStats()
 
+		if tm.fetcher != nil && tm.fetcher.cleanupManager != nil {
+			tm.fetcher.cleanupManager.RequestCleanup(task.Feed.UserID)
+		}
+
 		// Check if this was the last task
 		tm.checkCompletion()
 
@@ -774,9 +782,6 @@ func (tm *TaskManager) checkCompletion() {
 		tm.progress.IsRunning = false
 
 		log.Println("All tasks completed")
-
-		// Trigger cleanup through cleanup manager
-		tm.fetcher.cleanupManager.RequestCleanup()
 	}
 }
 

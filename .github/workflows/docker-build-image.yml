@@ -1,7 +1,15 @@
 name: Docker Image Build
+
 on:
   workflow_dispatch:
     inputs:
+      build_arch_mode:
+        description: "Build architecture mode"
+        type: choice
+        options:
+          - amd64
+          - amd64+arm64
+        default: amd64
       use_china_mirror:
         description: "Use China mirror (DockerfileCN.server)"
         type: boolean
@@ -30,6 +38,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up QEMU
+        if: ${{ inputs.build_arch_mode == 'amd64+arm64' }}
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -50,6 +62,15 @@ jobs:
             echo "file=./Dockerfile.server" >> $GITHUB_OUTPUT
           fi
 
+      - name: Determine build platforms
+        id: platforms
+        run: |
+          if [ "${{ inputs.build_arch_mode }}" = "amd64+arm64" ]; then
+            echo "value=linux/amd64,linux/arm64/v8" >> $GITHUB_OUTPUT
+          else
+            echo "value=linux/amd64" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set lowercase repository owner
         id: repo-owner
         run: |
@@ -61,7 +82,7 @@ jobs:
         with:
           context: .
           file: ${{ steps.dockerfile.outputs.file }}
-          platforms: linux/amd64
+          platforms: ${{ steps.platforms.outputs.value }}
           push: ${{ inputs.push_to_registry != false }}
           tags: |
             ${{ (inputs.push_to_registry != false) && format('ghcr.io/{0}/mavenrss:{1}', steps.repo-owner.outputs.owner, inputs.image_tag || 'latest') || '' }}
@@ -75,8 +96,10 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Docker Build Completed! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Build Completed!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build architecture mode:** ${{ inputs.build_arch_mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:** ${{ steps.platforms.outputs.value }}" >> $GITHUB_STEP_SUMMARY
           echo "**Dockerfile used:** ${{ steps.dockerfile.outputs.file }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.push_to_registry != false }}" = "true" ]; then

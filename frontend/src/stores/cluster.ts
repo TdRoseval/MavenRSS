@@ -48,6 +48,9 @@ export const useClusterStore = defineStore('cluster', () => {
   let aiProcessingPollingTimer: ReturnType<typeof setTimeout> | null = null;
   let aiProcessingPollingConsumers = 0;
   let aiProcessingIdlePollCount = 0;
+  let queuedFetchPage: number | null = null;
+  let activeFetchContextKey = '';
+  let fetchSequence = 0;
 
   const currentCluster = computed(
     () =>
@@ -96,11 +99,45 @@ export const useClusterStore = defineStore('cluster', () => {
     return response.clusters || [];
   }
 
-  async function fetchClusters(page = 1) {
-    if (isLoading.value) return;
+  function buildFetchContextKey(): string {
+    const articleStore = useArticleStore();
 
+    return JSON.stringify({
+      filter: articleStore.currentFilter || 'all',
+      feedId: articleStore.currentFeedId ?? null,
+      category: articleStore.currentCategory ?? null,
+      activeFilters: activeFilters.value.map((filter) => ({
+        field: filter.field,
+        type: filter.type,
+        operator: filter.operator,
+        value: filter.value,
+        logic: filter.logic || 'and',
+      })),
+      filteredClusterIds: filteredClusterIds.value,
+      hasRealtimeInterestStream: hasRealtimeInterestStream.value,
+    });
+  }
+
+  async function fetchClusters(page = 1) {
     const articleStore = useArticleStore();
     const isFirstPage = page === 1;
+    const requestContextKey = buildFetchContextKey();
+
+    if (isLoading.value) {
+      queuedFetchPage = isFirstPage ? 1 : Math.max(queuedFetchPage ?? 0, page);
+
+      if (isFirstPage) {
+        isInitialLoading.value = true;
+        clusters.value = [];
+        currentClusterId.value = null;
+        currentPage.value = 1;
+        hasMore.value = true;
+      }
+      return;
+    }
+
+    activeFetchContextKey = requestContextKey;
+    const requestSequence = ++fetchSequence;
 
     if (isFirstPage) {
       isInitialLoading.value = true;
@@ -130,6 +167,15 @@ export const useClusterStore = defineStore('cluster', () => {
         }
 
         const clusterData = await apiClient.post<Cluster[]>('/clusters/feed', payload);
+
+        if (
+          requestSequence !== fetchSequence ||
+          activeFetchContextKey !== requestContextKey ||
+          buildFetchContextKey() !== requestContextKey
+        ) {
+          queuedFetchPage = 1;
+          return;
+        }
 
         if (isFirstPage) {
           clusters.value = clusterData || [];
@@ -183,6 +229,15 @@ export const useClusterStore = defineStore('cluster', () => {
       const response = await apiClient.get<Cluster[] | ClusterListResponse>('/clusters', params);
       const clusterData = normalizeClusterListResponse(response);
 
+      if (
+        requestSequence !== fetchSequence ||
+        activeFetchContextKey !== requestContextKey ||
+        buildFetchContextKey() !== requestContextKey
+      ) {
+        queuedFetchPage = 1;
+        return;
+      }
+
       if (isFirstPage) {
         clusters.value = clusterData;
       } else {
@@ -210,6 +265,12 @@ export const useClusterStore = defineStore('cluster', () => {
       isLoading.value = false;
       isInitialLoading.value = false;
       isLoadingMore.value = false;
+
+      const nextQueuedPage = queuedFetchPage;
+      queuedFetchPage = null;
+      if (nextQueuedPage !== null) {
+        void fetchClusters(nextQueuedPage);
+      }
     }
   }
 
@@ -566,6 +627,8 @@ export const useClusterStore = defineStore('cluster', () => {
     hasMore.value = true;
     dailyRecommendationsError.value = '';
     dailyRecommendationTaskStatus.value = null;
+    queuedFetchPage = null;
+    activeFetchContextKey = '';
   }
 
   return {

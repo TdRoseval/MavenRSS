@@ -108,6 +108,42 @@ onMounted(async () => {
   }
 });
 
+async function resetListPosition(): Promise<void> {
+  scrollTop.value = 0;
+  temporarilyKeptClusterIds.value = new Set();
+
+  await nextTick();
+  if (listRef.value) {
+    listRef.value.scrollTop = 0;
+    containerHeight.value = listRef.value.clientHeight;
+  }
+}
+
+async function maybeLoadMoreIfNeeded(): Promise<void> {
+  if (
+    isDailyRecommendationMode.value ||
+    !listRef.value ||
+    clusterStore.isLoading ||
+    clusterStore.isLoadingMore ||
+    !clusterStore.hasMore
+  ) {
+    return;
+  }
+
+  await nextTick();
+  const target = listRef.value;
+  if (!target) {
+    return;
+  }
+
+  const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - SCROLL_THRESHOLD;
+  const contentDoesNotFillViewport = target.scrollHeight <= target.clientHeight + SCROLL_THRESHOLD;
+
+  if (nearBottom || contentDoesNotFillViewport) {
+    void clusterStore.loadMore();
+  }
+}
+
 watch(
   () => displayedClusters.value.length,
   async () => {
@@ -116,6 +152,31 @@ watch(
       await nextTick();
       listRef.value.scrollTop = currentScroll;
       shouldRestoreScroll.value = false;
+    }
+
+    void maybeLoadMoreIfNeeded();
+  }
+);
+
+watch(
+  () => [articleStore.currentFilter, articleStore.currentFeedId, articleStore.currentCategory],
+  () => {
+    void resetListPosition();
+  }
+);
+
+watch(
+  () => articleStore.showOnlyUnread,
+  () => {
+    void resetListPosition();
+  }
+);
+
+watch(
+  () => [clusterStore.clusters.length, clusterStore.isLoadingMore, clusterStore.hasMore],
+  ([, isLoadingMore]) => {
+    if (!isLoadingMore) {
+      void maybeLoadMoreIfNeeded();
     }
   }
 );

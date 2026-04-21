@@ -82,8 +82,8 @@ func TestCleanupExpiredReadClustersSupportsAllUsers(t *testing.T) {
 		t.Fatalf("update protected cluster: %v", err)
 	}
 
-	articleOne := &models.Article{UserID: 1, FeedID: feedOne, Title: "Cluster One", URL: "https://example.com/c1", PublishedAt: oldTime, UniqueID: "cluster-one"}
-	articleTwo := &models.Article{UserID: 2, FeedID: feedTwo, Title: "Cluster Two", URL: "https://example.com/c2", PublishedAt: oldTime, UniqueID: "cluster-two"}
+	articleOne := &models.Article{UserID: 1, FeedID: feedOne, Title: "Cluster One", URL: "https://example.com/c1", PublishedAt: oldTime, UniqueID: "cluster-one", IsRead: true}
+	articleTwo := &models.Article{UserID: 2, FeedID: feedTwo, Title: "Cluster Two", URL: "https://example.com/c2", PublishedAt: oldTime, UniqueID: "cluster-two", IsRead: true}
 	articleThree := &models.Article{UserID: 1, FeedID: feedOne, Title: "Protected", URL: "https://example.com/c3", PublishedAt: oldTime, UniqueID: "cluster-protected"}
 
 	createCleanupArticle(t, db, articleOne, clusterOne)
@@ -112,6 +112,89 @@ func TestCleanupExpiredReadClustersSupportsAllUsers(t *testing.T) {
 	}
 	if protectedExists != 1 {
 		t.Fatalf("expected protected cluster articles to remain, got %d", protectedExists)
+	}
+}
+
+func TestCleanupExpiredReadClustersRequiresAllArticlesToMeetCriteria(t *testing.T) {
+	db := setupTestDB(t)
+	feedID := insertCleanupFeed(t, db, 1, "Cleanup Feed", "https://example.com/cleanup-all-read")
+
+	clusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("create cluster: %v", err)
+	}
+
+	oldTime := time.Now().AddDate(0, 0, -45)
+	recentTime := time.Now().AddDate(0, 0, -5)
+	if _, err := db.Exec(`UPDATE clusters SET updated_at = ?, is_read = 1 WHERE id = ?`, oldTime, clusterID); err != nil {
+		t.Fatalf("update cluster state: %v", err)
+	}
+
+	oldArticle := &models.Article{UserID: 1, FeedID: feedID, Title: "Old Cluster Article", URL: "https://example.com/old-cluster", PublishedAt: oldTime, UniqueID: "old-cluster-article", IsRead: true}
+	recentArticle := &models.Article{UserID: 1, FeedID: feedID, Title: "Recent Cluster Article", URL: "https://example.com/recent-cluster", PublishedAt: recentTime, UniqueID: "recent-cluster-article", IsRead: true}
+
+	createCleanupArticle(t, db, oldArticle, clusterID)
+	createCleanupArticle(t, db, recentArticle, clusterID)
+
+	deleted, err := db.CleanupExpiredReadClusters(1, 30)
+	if err != nil {
+		t.Fatalf("cleanup expired read clusters: %v", err)
+	}
+	if deleted != 0 {
+		t.Fatalf("expected no clusters deleted when one article is still too new, got %d", deleted)
+	}
+
+	var clusterExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM clusters WHERE id = ?`, clusterID).Scan(&clusterExists); err != nil {
+		t.Fatalf("count cluster: %v", err)
+	}
+	if clusterExists != 1 {
+		t.Fatalf("expected cluster to remain, got %d", clusterExists)
+	}
+}
+
+func TestCleanupOldReadArticlesDeletesEntireEligibleCluster(t *testing.T) {
+	db := setupTestDB(t)
+	feedID := insertCleanupFeed(t, db, 1, "Cleanup Feed", "https://example.com/cleanup-old-read")
+
+	clusterID, err := db.CreateCluster(1, "complete")
+	if err != nil {
+		t.Fatalf("create cluster: %v", err)
+	}
+
+	oldTime := time.Now().AddDate(0, 0, -45)
+	if _, err := db.Exec(`UPDATE clusters SET updated_at = ?, is_read = 1 WHERE id = ?`, oldTime, clusterID); err != nil {
+		t.Fatalf("update cluster state: %v", err)
+	}
+
+	first := &models.Article{UserID: 1, FeedID: feedID, Title: "Old Read Cluster A", URL: "https://example.com/old-read-a", PublishedAt: oldTime, UniqueID: "old-read-cluster-a", IsRead: true}
+	second := &models.Article{UserID: 1, FeedID: feedID, Title: "Old Read Cluster B", URL: "https://example.com/old-read-b", PublishedAt: oldTime.Add(-time.Hour), UniqueID: "old-read-cluster-b", IsRead: true}
+
+	createCleanupArticle(t, db, first, clusterID)
+	createCleanupArticle(t, db, second, clusterID)
+
+	deletedArticles, err := db.CleanupOldReadArticles(30, 1)
+	if err != nil {
+		t.Fatalf("cleanup old read articles: %v", err)
+	}
+	if deletedArticles != 2 {
+		t.Fatalf("expected 2 clustered articles deleted, got %d", deletedArticles)
+	}
+
+	var clusterExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM clusters WHERE id = ?`, clusterID).Scan(&clusterExists); err != nil {
+		t.Fatalf("count cluster: %v", err)
+	}
+	if clusterExists != 0 {
+		t.Fatalf("expected eligible cluster to be deleted, got %d", clusterExists)
+	}
+
+	var articleCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE user_id = 1`).Scan(&articleCount); err != nil {
+		t.Fatalf("count remaining articles: %v", err)
+	}
+	if articleCount != 0 {
+		t.Fatalf("expected clustered articles to be deleted together, got %d remaining", articleCount)
 	}
 }
 
