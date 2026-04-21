@@ -573,18 +573,12 @@ func (db *DB) CheckStorageQuota(userID int64) (bool, error) {
 		return true, nil
 	}
 
-	var totalSizeBytes int64
-	err = db.QueryRow(`
-		SELECT IFNULL(SUM(LENGTH(content)), 0) 
-		FROM article_contents 
-		WHERE article_id IN (SELECT id FROM articles WHERE user_id = ?)
-	`, userID).Scan(&totalSizeBytes)
+	currentSizeMB, err := db.GetStorageUsageMB(userID)
 	if err != nil {
 		return true, nil
 	}
 
-	currentSizeMB := int(totalSizeBytes / (1024 * 1024))
-	if currentSizeMB >= quota.MaxStorageMB {
+	if currentSizeMB >= float64(quota.MaxStorageMB) {
 		return false, ErrQuotaExceededStorage
 	}
 
