@@ -19,9 +19,14 @@ const (
 	SemanticSearchTopK = 200
 )
 
+type ProcessArticleOptions struct {
+	Batch *BatchContext
+}
+
 // ProcessArticle runs the cluster assignment pipeline for a single article.
 // The article must already have a summary and summary embedding stored.
-func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
+func ProcessArticle(db *sqlite.DB, articleID, userID int64, opts ...*ProcessArticleOptions) error {
+	options := resolveProcessArticleOptions(opts...)
 	article, err := db.GetArticleByID(articleID)
 	if err != nil || article == nil {
 		return err
@@ -29,7 +34,7 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 
 	summaryText := article.Summary
 	if summaryText == "" {
-		return createStandaloneCluster(db, articleID, userID, article.IsFavorite)
+		return createStandaloneCluster(db, articleID, userID, article.IsFavorite, options)
 	}
 
 	currentSummaryVec, err := loadArticleSummaryVector(db, articleID)
@@ -37,7 +42,7 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 		log.Printf("Failed to load summary embedding for article %d: %v", articleID, err)
 	}
 	if len(currentSummaryVec) == 0 {
-		return createStandaloneCluster(db, articleID, userID, article.IsFavorite)
+		return createStandaloneCluster(db, articleID, userID, article.IsFavorite, options)
 	}
 
 	if IsValidForSimHash(summaryText) {
@@ -48,33 +53,42 @@ func ProcessArticle(db *sqlite.DB, articleID, userID int64) error {
 			log.Printf("Failed to store SimHash for article %d: %v", articleID, err)
 		}
 
-		clusterID, err := findBestHammingCluster(db, articleID, userID, hash, b1, b2, b3, b4, currentSummaryVec)
+		clusterID, err := findBestHammingCluster(db, articleID, userID, hash, b1, b2, b3, b4, currentSummaryVec, options)
 		if err != nil {
 			log.Printf("Hamming cluster selection failed for article %d: %v", articleID, err)
 		}
 		if clusterID > 0 {
 			log.Printf("Article %d matched cluster %d via SimHash + summary ranking", articleID, clusterID)
-			return joinCluster(db, articleID, clusterID, article.IsFavorite)
+			return joinCluster(db, articleID, clusterID, article.IsFavorite, options)
 		}
 	}
 
-	clusterID, err := semanticSearch(db, articleID, userID, currentSummaryVec)
+	clusterID, err := semanticSearch(db, articleID, userID, currentSummaryVec, options)
 	if err != nil {
 		log.Printf("Semantic search failed for article %d: %v", articleID, err)
 	}
 	if clusterID > 0 {
 		log.Printf("Article %d matched cluster %d via summary centroid search", articleID, clusterID)
-		return joinCluster(db, articleID, clusterID, article.IsFavorite)
+		return joinCluster(db, articleID, clusterID, article.IsFavorite, options)
 	}
 
-	return createStandaloneCluster(db, articleID, userID, article.IsFavorite)
+	return createStandaloneCluster(db, articleID, userID, article.IsFavorite, options)
 }
 
-func semanticSearch(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32) (int64, error) {
-	clusterIDs, err := semanticCandidateClusterIDs(db, articleID, userID, currentSummaryVec)
+func resolveProcessArticleOptions(opts ...*ProcessArticleOptions) *ProcessArticleOptions {
+	for _, opt := range opts {
+		if opt != nil {
+			return opt
+		}
+	}
+	return &ProcessArticleOptions{}
+}
+
+func semanticSearch(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32, opts *ProcessArticleOptions) (int64, error) {
+	clusterIDs, err := semanticCandidateClusterIDs(db, articleID, userID, currentSummaryVec, opts)
 	if err != nil {
 		log.Printf("Semantic ANN candidate recall failed for article %d, falling back to full scan: %v", articleID, err)
-		return semanticSearchFullScan(db, articleID, userID, currentSummaryVec)
+		return semanticSearchFullScan(db, articleID, userID, currentSummaryVec, opts)
 	}
 	if len(clusterIDs) == 0 {
 		return 0, nil
@@ -83,7 +97,7 @@ func semanticSearch(db *sqlite.DB, articleID, userID int64, currentSummaryVec []
 	return selectBestClusterByCentroid(db, userID, clusterIDs, currentSummaryVec)
 }
 
-func semanticCandidateClusterIDs(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32) ([]int64, error) {
+func semanticCandidateClusterIDs(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32, opts *ProcessArticleOptions) ([]int64, error) {
 	queryBlob, err := interest.SerializeVector(currentSummaryVec)
 	if err != nil {
 		return nil, err
@@ -110,10 +124,10 @@ func semanticCandidateClusterIDs(db *sqlite.DB, articleID, userID int64, current
 		clusterIDs = append(clusterIDs, clusterID)
 	}
 	sort.Slice(clusterIDs, func(i, j int) bool { return clusterIDs[i] < clusterIDs[j] })
-	return clusterIDs, nil
+	return filterClusterIDsByBatchLimits(db, clusterIDs, opts)
 }
 
-func semanticSearchFullScan(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32) (int64, error) {
+func semanticSearchFullScan(db *sqlite.DB, articleID, userID int64, currentSummaryVec []float32, opts *ProcessArticleOptions) (int64, error) {
 	candidates, err := db.ListClusteredArticleSummaryEmbeddings(userID)
 	if err != nil {
 		return 0, err
@@ -148,8 +162,31 @@ func semanticSearchFullScan(db *sqlite.DB, articleID, userID int64, currentSumma
 		clusterIDs = append(clusterIDs, clusterID)
 	}
 	sort.Slice(clusterIDs, func(i, j int) bool { return clusterIDs[i] < clusterIDs[j] })
+	clusterIDs, err = filterClusterIDsByBatchLimits(db, clusterIDs, opts)
+	if err != nil {
+		return 0, err
+	}
 
 	return selectBestClusterByCentroid(db, userID, clusterIDs, currentSummaryVec)
+}
+
+func filterClusterIDsByBatchLimits(db *sqlite.DB, clusterIDs []int64, opts *ProcessArticleOptions) ([]int64, error) {
+	if len(clusterIDs) == 0 || opts == nil || opts.Batch == nil {
+		return clusterIDs, nil
+	}
+
+	filtered := make([]int64, 0, len(clusterIDs))
+	for _, clusterID := range clusterIDs {
+		ignore, err := opts.Batch.ShouldIgnoreClusterForRecall(clusterID, db.GetClusterSnapshot)
+		if err != nil {
+			return nil, err
+		}
+		if ignore {
+			continue
+		}
+		filtered = append(filtered, clusterID)
+	}
+	return filtered, nil
 }
 
 func selectBestClusterByCentroid(db *sqlite.DB, userID int64, clusterIDs []int64, currentSummaryVec []float32) (int64, error) {
@@ -199,6 +236,7 @@ func findBestHammingCluster(
 	hash int64,
 	b1, b2, b3, b4 int16,
 	currentSummaryVec []float32,
+	opts *ProcessArticleOptions,
 ) (int64, error) {
 	candidates, err := db.FindSimHashCandidateArticles(userID, b1, b2, b3, b4)
 	if err != nil {
@@ -212,6 +250,15 @@ func findBestHammingCluster(
 	for _, candidate := range candidates {
 		if candidate.ArticleID == articleID || candidate.ClusterID <= 0 {
 			continue
+		}
+		if opts != nil && opts.Batch != nil {
+			ignore, err := opts.Batch.ShouldIgnoreClusterForRecall(candidate.ClusterID, db.GetClusterSnapshot)
+			if err != nil {
+				return 0, err
+			}
+			if ignore {
+				continue
+			}
 		}
 		if HammingDistance(hash, candidate.SimHash64) > SimHashThreshold {
 			continue
@@ -262,7 +309,7 @@ func deserializeNormalizedVector(blob []byte) ([]float32, error) {
 	return interest.NormalizeVector(vec), nil
 }
 
-func joinCluster(db *sqlite.DB, articleID, clusterID int64, articleIsFavorite bool) error {
+func joinCluster(db *sqlite.DB, articleID, clusterID int64, articleIsFavorite bool, opts *ProcessArticleOptions) error {
 	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
 		return err
 	}
@@ -272,10 +319,13 @@ func joinCluster(db *sqlite.DB, articleID, clusterID int64, articleIsFavorite bo
 	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
 		return err
 	}
+	if opts != nil && opts.Batch != nil {
+		opts.Batch.RecordNewArticle(clusterID, articleID)
+	}
 	return db.UpdateClusterStatus(clusterID, "pending_merge")
 }
 
-func createStandaloneCluster(db *sqlite.DB, articleID, userID int64, articleIsFavorite bool) error {
+func createStandaloneCluster(db *sqlite.DB, articleID, userID int64, articleIsFavorite bool, opts *ProcessArticleOptions) error {
 	clusterID, err := db.CreateCluster(userID, "pending_merge")
 	if err != nil {
 		return err
@@ -288,6 +338,10 @@ func createStandaloneCluster(db *sqlite.DB, articleID, userID int64, articleIsFa
 	}
 	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
 		return err
+	}
+	if opts != nil && opts.Batch != nil {
+		opts.Batch.MarkClusterCreated(clusterID)
+		opts.Batch.RecordNewArticle(clusterID, articleID)
 	}
 	return nil
 }

@@ -154,6 +154,16 @@ type Cluster struct {
 	Articles                  []Article `json:"articles,omitempty"`
 }
 
+type ClusterBatchSnapshot struct {
+	ClusterID            int64  `json:"cluster_id"`
+	ExistingArticleCount int    `json:"existing_article_count"`
+	ExistingTotalChars   int    `json:"existing_total_chars"`
+	MergedTitle          string `json:"merged_title"`
+	MergedSummary        string `json:"merged_summary"`
+	MergedContent        string `json:"merged_content"`
+	CreatedInBatch       bool   `json:"created_in_batch"`
+}
+
 type SystemMessage struct {
 	ID           int64      `json:"id"`
 	UserID       int64      `json:"user_id"`

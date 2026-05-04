@@ -86,6 +86,7 @@ type AIEnhancedManager struct {
 	clusterPipelineQueuedVer   map[int64]int64
 	clusterFusionRunning       map[int64]bool
 	clusterEmbeddingRunning    map[int64]bool
+	clusterBatchContext        map[int64]*dedup.BatchContext
 	recommendationMu           sync.Mutex
 	recommendationRunning      map[int64]bool
 	recommendationRunningVer   map[int64]int64
@@ -198,6 +199,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		clusterPipelineQueuedVer:   make(map[int64]int64),
 		clusterFusionRunning:       make(map[int64]bool),
 		clusterEmbeddingRunning:    make(map[int64]bool),
+		clusterBatchContext:        make(map[int64]*dedup.BatchContext),
 		recommendationRunning:      make(map[int64]bool),
 		recommendationRunningVer:   make(map[int64]int64),
 		recommendationStatusByUser: make(map[int64]DailyRecommendationTaskStatus),
@@ -649,12 +651,15 @@ func (m *AIEnhancedManager) executeArticleDedup(task *AIEnhancedTask, version in
 	}
 
 	dedupCompleted := false
+	batchCtx := m.getOrCreateClusterBatchContext(task.UserID)
 	if err := m.runUserClusterAssignmentSerially(task.UserID, func() error {
 		if !m.isUserOperationCurrent(task.UserID, version) {
 			log.Printf("Skipping stale serialized dedup for article %d user %d", task.ArticleID, task.UserID)
 			return nil
 		}
-		if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
+		if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID, &dedup.ProcessArticleOptions{
+			Batch: batchCtx,
+		}); err != nil {
 			return err
 		}
 		dedupCompleted = true
@@ -822,7 +827,8 @@ func (m *AIEnhancedManager) runClusterPipeline(userID, version int64) {
 		}
 
 		if shouldRun && m.isUserOperationCurrent(userID, version) {
-			if err := m.runClusterPipelineOnce(userID); err != nil {
+			batchCtx := m.beginClusterPipelineBatch(userID)
+			if err := m.runClusterPipelineOnceWithBatch(userID, batchCtx); err != nil {
 				m.recordTaskFailure(userID, "clustering", nil, "", "", err)
 				log.Printf("Cluster pipeline failed for user %d: %v", userID, err)
 			}
@@ -977,6 +983,52 @@ func (m *AIEnhancedManager) runUserClusterAssignmentSerially(userID int64, fn fu
 	return fn()
 }
 
+func (m *AIEnhancedManager) getOrCreateClusterBatchContext(userID int64) *dedup.BatchContext {
+	if userID <= 0 {
+		return nil
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	if m.clusterBatchContext == nil {
+		m.clusterBatchContext = make(map[int64]*dedup.BatchContext)
+	}
+	ctx := m.clusterBatchContext[userID]
+	if ctx == nil {
+		ctx = dedup.NewBatchContext()
+		m.clusterBatchContext[userID] = ctx
+	}
+	return ctx
+}
+
+func (m *AIEnhancedManager) beginClusterPipelineBatch(userID int64) *dedup.BatchContext {
+	if userID <= 0 {
+		return nil
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	if m.clusterBatchContext == nil {
+		return nil
+	}
+	ctx := m.clusterBatchContext[userID]
+	delete(m.clusterBatchContext, userID)
+	return ctx
+}
+
+func (m *AIEnhancedManager) clearClusterBatchContext(userID int64) {
+	if userID <= 0 {
+		return
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	delete(m.clusterBatchContext, userID)
+}
+
 func (m *AIEnhancedManager) setClusterStageRunning(userID int64, stage string, running bool) {
 	if userID <= 0 {
 		return
@@ -1090,6 +1142,10 @@ func (m *AIEnhancedManager) determineClusterPhase(status *AIProcessingStatus) {
 }
 
 func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
+	return m.runClusterPipelineOnceWithBatch(userID, nil)
+}
+
+func (m *AIEnhancedManager) runClusterPipelineOnceWithBatch(userID int64, batchCtx *dedup.BatchContext) error {
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeClusterPipeline)
 	if err != nil {
 		return fmt.Errorf("embedding health gate: %w", err)
@@ -1109,7 +1165,11 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	if err != nil {
 		return err
 	}
-	if cfg == nil || cfg.Summarizer == nil {
+	if cfg == nil {
+		cfg = &dedup.FusionConfig{}
+	}
+	cfg.Batch = batchCtx
+	if cfg.Summarizer == nil {
 		log.Printf(
 			"Cluster pipeline fusion summarizer unavailable for user %d; pending_merge clusters will use source-article fallback content until a fusion model is resolved",
 			userID,

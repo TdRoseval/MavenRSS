@@ -1,6 +1,7 @@
 package dedup
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -156,6 +157,81 @@ func TestProcessArticleCreatesStandaloneClusterWhenNoMatch(t *testing.T) {
 	cluster := mustGetArticleCluster(t, db, targetArticleID)
 	if cluster.ArticleCount != 1 {
 		t.Fatalf("cluster article_count = %d, want 1", cluster.ArticleCount)
+	}
+}
+
+func TestProcessArticleIgnoresOversizedExistingClusterByArticleCount(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+	batch := NewBatchContext()
+
+	clusterID := createSeedClusterArticle(t, db, userID, feedID, "oversized-count-seed", "oversized count summary", vector1024(1, 0), true)
+	if _, err := db.Exec(`UPDATE clusters SET article_count = ? WHERE id = ?`, 201, clusterID); err != nil {
+		t.Fatalf("update oversized cluster article_count error: %v", err)
+	}
+
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "oversized-count-target", false, "oversized count summary", vector1024(1, 0))
+	if err := ProcessArticle(db, targetArticleID, userID, &ProcessArticleOptions{Batch: batch}); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
+	}
+
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID == clusterID {
+		t.Fatalf("article joined oversized existing cluster %d, want standalone cluster", clusterID)
+	}
+	if cluster.ArticleCount != 1 {
+		t.Fatalf("standalone cluster article_count = %d, want 1", cluster.ArticleCount)
+	}
+}
+
+func TestProcessArticleIgnoresOversizedExistingClusterByContentChars(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+	batch := NewBatchContext()
+
+	clusterID := createSeedClusterArticle(t, db, userID, feedID, "oversized-chars-seed", "oversized chars summary", vector1024(1, 0), true)
+	var seedArticleID int64
+	if err := db.QueryRow(`SELECT id FROM articles WHERE cluster_id = ? ORDER BY id ASC LIMIT 1`, clusterID).Scan(&seedArticleID); err != nil {
+		t.Fatalf("query seed article id error: %v", err)
+	}
+	if err := db.SetArticleContent(seedArticleID, strings.Repeat("a", 200001)); err != nil {
+		t.Fatalf("SetArticleContent error: %v", err)
+	}
+
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "oversized-chars-target", false, "oversized chars summary", vector1024(1, 0))
+	if err := ProcessArticle(db, targetArticleID, userID, &ProcessArticleOptions{Batch: batch}); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
+	}
+
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID == clusterID {
+		t.Fatalf("article joined oversized-content existing cluster %d, want standalone cluster", clusterID)
+	}
+}
+
+func TestProcessArticleAllowsBatchCreatedClusterToGrowPastRecallLimit(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+	batch := NewBatchContext()
+
+	firstArticleID := createDedupTestArticle(t, db, userID, feedID, "batch-created-first", false, "batch-created summary", vector1024(1, 0))
+	if err := ProcessArticle(db, firstArticleID, userID, &ProcessArticleOptions{Batch: batch}); err != nil {
+		t.Fatalf("first ProcessArticle error: %v", err)
+	}
+	firstCluster := mustGetArticleCluster(t, db, firstArticleID)
+
+	if _, err := db.Exec(`UPDATE clusters SET article_count = ? WHERE id = ?`, 250, firstCluster.ID); err != nil {
+		t.Fatalf("update batch-created cluster article_count error: %v", err)
+	}
+
+	secondArticleID := createDedupTestArticle(t, db, userID, feedID, "batch-created-second", false, "batch-created summary", vector1024(1, 0))
+	if err := ProcessArticle(db, secondArticleID, userID, &ProcessArticleOptions{Batch: batch}); err != nil {
+		t.Fatalf("second ProcessArticle error: %v", err)
+	}
+
+	secondCluster := mustGetArticleCluster(t, db, secondArticleID)
+	if secondCluster.ID != firstCluster.ID {
+		t.Fatalf("article joined cluster %d, want batch-created cluster %d", secondCluster.ID, firstCluster.ID)
 	}
 }
 
