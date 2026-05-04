@@ -179,7 +179,11 @@ func (db *DB) GetArticlesForAIReclusterNormalization(userID int64, targetLang st
 		        COALESCE(f.translate_articles, 0),
 		        ac.article_id IS NOT NULL,
 		        (TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>'),
-		        atc.article_id IS NOT NULL,
+		        CASE
+		        	WHEN COALESCE(f.translate_articles, 0) = 0 THEN 1
+		        	WHEN atc.article_id IS NOT NULL AND TRIM(COALESCE(a.translated_title, '')) <> '' THEN 1
+		        	ELSE 0
+		        END,
 		        ae.article_id IS NOT NULL
 		   FROM articles a
 		   LEFT JOIN feeds f ON a.feed_id = f.id
@@ -244,7 +248,8 @@ func (db *DB) GetReadyArticlesForAIReclusterClustering(userID int64, targetLang 
 		        1,
 		        CASE
 		        	WHEN COALESCE(f.translate_articles, 0) = 0 THEN 1
-		        	WHEN atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL THEN 1
+		        	WHEN skip_translation.article_id IS NOT NULL THEN 1
+		        	WHEN atc.article_id IS NOT NULL AND TRIM(COALESCE(a.translated_title, '')) <> '' THEN 1
 		        	ELSE 0
 		        END,
 		        1
@@ -263,7 +268,11 @@ func (db *DB) GetReadyArticlesForAIReclusterClustering(userID int64, targetLang 
 		   	ON skip_clustering.user_id = a.user_id AND skip_clustering.article_id = a.id AND skip_clustering.stage = 'clustering'
 		  WHERE a.user_id = ?
 		    AND ((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL)
-		    AND (COALESCE(f.translate_articles, 0) = 0 OR atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL)
+		    AND (
+		    	COALESCE(f.translate_articles, 0) = 0
+		    	OR skip_translation.article_id IS NOT NULL
+		    	OR (atc.article_id IS NOT NULL AND TRIM(COALESCE(a.translated_title, '')) <> '')
+		    )
 		    AND (ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL)
 		    AND a.cluster_id IS NULL
 		    AND skip_clustering.article_id IS NULL

@@ -340,6 +340,11 @@ func chooseClusterDisplayTitle(mergedTitle, translatedTitle, articleTitle string
 	return articleTitle
 }
 
+func chooseClusterSingleArticleDisplayTitle(db *DB, userID int64, article models.Article, mergedTitle string) string {
+	resolvedTitle := db.ResolveArticleTitleForCluster(userID, article)
+	return chooseClusterDisplayTitle(mergedTitle, resolvedTitle, article.Title)
+}
+
 func (db *DB) applyClusterMergedContentFallback(c *models.Cluster) error {
 	if c == nil || c.ID <= 0 || c.UserID <= 0 {
 		return nil
@@ -373,7 +378,7 @@ func (db *DB) applyClusterMergedContentFallback(c *models.Cluster) error {
 // populateClusterMeta populates FeedTitles and Authors for a cluster.
 func (db *DB) populateClusterMeta(c *models.Cluster) {
 	rows, err := db.Query(`
-		SELECT COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, ''), COALESCE(a.image_url, '')
+		SELECT a.id, a.feed_id, COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, ''), COALESCE(a.image_url, '')
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.cluster_id = ?
@@ -387,18 +392,23 @@ func (db *DB) populateClusterMeta(c *models.Cluster) {
 	feedSet := make(map[string]bool)
 	authorSet := make(map[string]bool)
 	articleCount := 0
-	latestTitle := ""
-	latestTranslatedTitle := ""
+	var latestArticle models.Article
 	c.ImageURL = ""
 	for rows.Next() {
+		var articleID, feedID int64
 		var feedTitle, author, articleTitle, translatedTitle, imageURL string
-		if err := rows.Scan(&feedTitle, &author, &articleTitle, &translatedTitle, &imageURL); err != nil {
+		if err := rows.Scan(&articleID, &feedID, &feedTitle, &author, &articleTitle, &translatedTitle, &imageURL); err != nil {
 			continue
 		}
 		articleCount++
 		if articleCount == 1 {
-			latestTitle = articleTitle
-			latestTranslatedTitle = translatedTitle
+			latestArticle = models.Article{
+				ID:              articleID,
+				FeedID:          feedID,
+				UserID:          c.UserID,
+				Title:           articleTitle,
+				TranslatedTitle: translatedTitle,
+			}
 		}
 		if c.ImageURL == "" && imageURL != "" {
 			c.ImageURL = imageURL
@@ -414,10 +424,10 @@ func (db *DB) populateClusterMeta(c *models.Cluster) {
 	}
 
 	if articleCount <= 1 {
-		c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, latestTranslatedTitle, latestTitle)
+		c.DisplayTitle = chooseClusterSingleArticleDisplayTitle(db, c.UserID, latestArticle, c.MergedTitle)
 		return
 	}
-	c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, "", latestTitle)
+	c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, "", latestArticle.Title)
 }
 
 // MarkClusterRead marks a cluster as read/unread.

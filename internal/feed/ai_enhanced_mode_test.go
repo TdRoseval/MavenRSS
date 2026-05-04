@@ -19,6 +19,14 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
 
+type fakeTitleTranslator struct {
+	prefix string
+}
+
+func (f fakeTitleTranslator) Translate(text, targetLang string) (string, error) {
+	return f.prefix + text, nil
+}
+
 func TestShouldProcessUsesUserProfilesWithoutGlobalAIKey(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 
@@ -597,6 +605,36 @@ func TestGetArticlesForAIBatchProcessingTreatsSkippedTranslationAsResolved(t *te
 	}
 }
 
+func TestGetArticlesForAIBatchProcessingKeepsArticlesMissingTranslatedTitle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-2*time.Hour), "missing-title-translation", true)
+
+	if err := db.SetArticleTranslatedContent(articleID, "translated body", "zh", "ai"); err != nil {
+		t.Fatalf("SetArticleTranslatedContent error: %v", err)
+	}
+	mustAttachCompleteCluster(t, db, 1, articleID, "complete")
+
+	articles, err := db.GetArticlesForAIBatchProcessing(1, "zh")
+	if err != nil {
+		t.Fatalf("GetArticlesForAIBatchProcessing error: %v", err)
+	}
+
+	found := false
+	for _, article := range articles {
+		if article.Article.ID == articleID {
+			found = true
+			if article.HasTranslation {
+				t.Fatalf("article %d translation should remain pending when translated_title is empty", articleID)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("article %d should remain queued until translated_title is persisted", articleID)
+	}
+}
+
 func TestGetArticlesForAIBatchProcessingIncludesArticlesWithoutContentForTitleFallback(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 
@@ -1144,6 +1182,9 @@ func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 	if err := db.SetArticleTranslatedContent(firstArticleID, "already translated", "zh", "ai"); err != nil {
 		t.Fatalf("SetArticleTranslatedContent error: %v", err)
 	}
+	if err := db.UpdateArticleTranslation(firstArticleID, "already translated title"); err != nil {
+		t.Fatalf("UpdateArticleTranslation error: %v", err)
+	}
 
 	clusteredArticleID := mustInsertBatchArticle(
 		t,
@@ -1181,6 +1222,9 @@ func TestGetProcessingStatusReportsPendingStageBreakdown(t *testing.T) {
 	)
 	if err := db.SetArticleTranslatedContent(clusteringArticleID, "already translated", "zh", "ai"); err != nil {
 		t.Fatalf("SetArticleTranslatedContent error: %v", err)
+	}
+	if err := db.UpdateArticleTranslation(clusteringArticleID, "already translated title"); err != nil {
+		t.Fatalf("UpdateArticleTranslation error: %v", err)
 	}
 	if err := db.UpdateArticleEmbeddings(clusteringArticleID, mustEmbeddingBlob(t), mustEmbeddingBlob(t)); err != nil {
 		t.Fatalf("UpdateArticleEmbeddings error: %v", err)
@@ -1732,10 +1776,58 @@ func TestRetryableTranslationTimeoutsEventuallySkipAndFallback(t *testing.T) {
 		t.Fatalf("provider = %q, want source_fallback", provider)
 	}
 
+	article, err := db.GetArticleByID(articleID)
+	if err != nil {
+		t.Fatalf("GetArticleByID error: %v", err)
+	}
+	if article == nil {
+		t.Fatal("expected article after translation fallback")
+	}
+	if article.TranslatedTitle != "timeout-translation" {
+		t.Fatalf("TranslatedTitle = %q, want source title fallback", article.TranslatedTitle)
+	}
+
 	if _, found, err := db.GetAIArticleStageTimeoutFailure(articleID, "translation"); err != nil {
 		t.Fatalf("GetAIArticleStageTimeoutFailure error: %v", err)
 	} else if found {
 		t.Fatal("timeout failure state should be cleared after final translation skip")
+	}
+}
+
+func TestTranslateAndPersistArticleTitleStoresTranslatedTitle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	feedID := mustCreateTestFeed(t, db, 1, true)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-1*time.Hour), "translate-title-stage", true)
+
+	task := &AIEnhancedTask{
+		ArticleID:         articleID,
+		UserID:            1,
+		FeedID:            feedID,
+		ArticleTitle:      "translate-title-stage",
+		NeedsTranslation:  true,
+		TranslateArticles: true,
+	}
+
+	tokens, err := manager.translateAndPersistArticleTitle(task, fakeTitleTranslator{prefix: "ZH:"}, "zh")
+	if err != nil {
+		t.Fatalf("translateAndPersistArticleTitle error: %v", err)
+	}
+	if tokens == 0 {
+		t.Fatal("tokens = 0, want non-zero for translated title")
+	}
+
+	article, err := db.GetArticleByID(articleID)
+	if err != nil {
+		t.Fatalf("GetArticleByID error: %v", err)
+	}
+	if article == nil {
+		t.Fatal("expected article after title translation")
+	}
+	if article.TranslatedTitle != "ZH:translate-title-stage" {
+		t.Fatalf("TranslatedTitle = %q", article.TranslatedTitle)
 	}
 }
 

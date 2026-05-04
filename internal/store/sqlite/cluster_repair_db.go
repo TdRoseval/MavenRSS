@@ -128,10 +128,7 @@ func (db *DB) buildClusterFallbackFields(userID, clusterID int64) (string, strin
 	}
 
 	article := articles[0]
-	title := strings.TrimSpace(article.TranslatedTitle)
-	if title == "" {
-		title = strings.TrimSpace(article.Title)
-	}
+	title := db.ResolveArticleTitleForCluster(userID, article)
 
 	summary := strings.TrimSpace(article.Summary)
 	content, _, err := db.GetArticleContent(article.ID)

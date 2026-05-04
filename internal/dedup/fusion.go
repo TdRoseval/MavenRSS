@@ -221,10 +221,7 @@ func processClusterEmbedding(ctx context.Context, db *sqlite.DB, cluster models.
 
 func copySingleArticle(db *sqlite.DB, userID, clusterID int64, a models.Article) error {
 	content, _, _ := db.GetArticleContent(a.ID)
-	title := strings.TrimSpace(a.TranslatedTitle)
-	if title == "" {
-		title = strings.TrimSpace(a.Title)
-	}
+	title := db.ResolveArticleTitleForCluster(userID, a)
 	smry := strings.TrimSpace(a.Summary)
 
 	targetLang, _ := db.GetSettingWithFallback(userID, "target_language")

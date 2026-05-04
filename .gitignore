@@ -92,3 +92,4 @@ __pycache__/
 tmp/
 .air.toml
 .trae/*
+.metadata_cache/

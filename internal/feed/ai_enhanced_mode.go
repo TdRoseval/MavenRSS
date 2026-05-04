@@ -2,6 +2,8 @@ package feed
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -1613,6 +1615,102 @@ func (m *AIEnhancedManager) fallbackArticleSummaryToTitle(task *AIEnhancedTask, 
 	log.Printf("Using article title as summary fallback for article %d (%s)", task.ArticleID, reason)
 }
 
+func (m *AIEnhancedManager) resolveArticleTitle(task *AIEnhancedTask) (string, string, error) {
+	if task == nil || task.ArticleID <= 0 || m.db == nil {
+		return "", "", fmt.Errorf("invalid AI enhanced task")
+	}
+
+	title := strings.TrimSpace(task.ArticleTitle)
+	existingTranslatedTitle := ""
+
+	article, err := m.db.GetArticleByID(task.ArticleID)
+	if err != nil {
+		return "", "", fmt.Errorf("load article for title translation: %w", err)
+	}
+	if article != nil {
+		if title == "" {
+			title = strings.TrimSpace(article.Title)
+		}
+		existingTranslatedTitle = strings.TrimSpace(article.TranslatedTitle)
+	}
+
+	return title, existingTranslatedTitle, nil
+}
+
+func hashAIEnhancedTranslationText(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+func (m *AIEnhancedManager) persistArticleTranslatedTitle(articleID int64, sourceTitle, translatedTitle, targetLang, provider string) error {
+	if m == nil || m.db == nil || articleID <= 0 {
+		return nil
+	}
+
+	sourceTitle = strings.TrimSpace(sourceTitle)
+	translatedTitle = strings.TrimSpace(translatedTitle)
+	if translatedTitle == "" {
+		translatedTitle = sourceTitle
+	}
+	if translatedTitle == "" {
+		return nil
+	}
+
+	if err := m.db.UpdateArticleTranslation(articleID, translatedTitle); err != nil {
+		return fmt.Errorf("persist translated title: %w", err)
+	}
+
+	if provider != "" && sourceTitle != "" && targetLang != "" {
+		if err := m.db.SetCachedTranslation(
+			hashAIEnhancedTranslationText(sourceTitle),
+			sourceTitle,
+			targetLang,
+			translatedTitle,
+			provider,
+		); err != nil {
+			log.Printf("Failed to cache translated title for article %d: %v", articleID, err)
+		}
+	}
+
+	return nil
+}
+
+func (m *AIEnhancedManager) translateAndPersistArticleTitle(task *AIEnhancedTask, translator translation.Translator, targetLang string) (int64, error) {
+	if task == nil || task.ArticleID <= 0 {
+		return 0, nil
+	}
+
+	title, existingTranslatedTitle, err := m.resolveArticleTitle(task)
+	if err != nil {
+		return 0, err
+	}
+	if title == "" {
+		return 0, nil
+	}
+	if existingTranslatedTitle != "" {
+		return 0, nil
+	}
+
+	translatedTitle := title
+	shouldTranslate := translation.GetLanguageDetector().ShouldTranslate(title, targetLang)
+	if shouldTranslate {
+		translatedTitle, err = translation.TranslateMarkdownAIPrompt(title, translator, targetLang)
+		if err != nil {
+			return 0, fmt.Errorf("translate article title: %w", err)
+		}
+	}
+
+	if err := m.persistArticleTranslatedTitle(task.ArticleID, title, translatedTitle, targetLang, "ai"); err != nil {
+		return 0, err
+	}
+
+	if !shouldTranslate {
+		return 0, nil
+	}
+
+	return ai.EstimateTokens(title) + ai.EstimateTokens(translatedTitle), nil
+}
+
 // generateAITranslation generates and saves AI translation for an article
 func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content string) {
 	if !m.isTaskOperationCurrent(task) {
@@ -1647,6 +1745,25 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	}
 	if config.CustomHeaders != "" {
 		aiTranslator.SetCustomHeaders(config.CustomHeaders)
+	}
+
+	titleTokens, err := m.translateAndPersistArticleTitle(task, aiTranslator, targetLang)
+	if err != nil {
+		m.recordTaskFailure(task.UserID, "translation", task, config.Model, config.Endpoint, err)
+		if m.skipArticleStageIfNonRecoverable(task, "translation", err) {
+			if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "translation"); clearErr != nil {
+				log.Printf("Failed to clear AI translation timeout failure state for article %d: %v", task.ArticleID, clearErr)
+			}
+			return
+		}
+		if m.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", content, err) {
+			return
+		}
+		log.Printf("Error generating AI title translation for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
+		return
+	}
+	if titleTokens > 0 {
+		m.addAIUsage(task.UserID, titleTokens)
 	}
 
 	translationInput := prepareAITranslationInput(content)
@@ -2545,6 +2662,14 @@ func (m *AIEnhancedManager) fallbackArticleTranslationToSource(task *AIEnhancedT
 	if err := m.db.SetArticleTranslatedContent(task.ArticleID, fallbackContent, targetLang, "source_fallback"); err != nil {
 		log.Printf("Failed to cache source-content translation fallback for article %d: %v", task.ArticleID, err)
 		return
+	}
+	title, _, err := m.resolveArticleTitle(task)
+	if err != nil {
+		log.Printf("Failed to resolve article title for translation fallback on article %d: %v", task.ArticleID, err)
+	} else if title != "" {
+		if err := m.persistArticleTranslatedTitle(task.ArticleID, title, title, targetLang, ""); err != nil {
+			log.Printf("Failed to persist source-title translation fallback for article %d: %v", task.ArticleID, err)
+		}
 	}
 	task.NeedsTranslation = false
 	log.Printf("Using source content as translation fallback for article %d (%s)", task.ArticleID, reason)
