@@ -31,3 +31,53 @@ func TestShouldSkipArticleRetryIgnoresConfigFailures(t *testing.T) {
 		t.Fatal("ShouldSkipArticleRetry() = true, want false for configuration failure")
 	}
 }
+
+func TestIsRetryableStageFailureMatchesNetworkAndServiceFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "proxy connection failure",
+			err: &RequestError{
+				UserMessage: "AI service unavailable: Unable to connect to the AI service. Please check your network connection and proxy settings.",
+				Diagnostics: []string{
+					`OpenAI: request failed: proxyconnect tcp: dial tcp 127.0.0.1:7890: connectex: No connection could be made because the target machine actively refused it.`,
+				},
+			},
+			want: true,
+		},
+		{
+			name: "rate limit",
+			err: &RequestError{
+				UserMessage: "AI service unavailable: Rate limit exceeded. Please try again later.",
+				Diagnostics: []string{
+					"OpenAI: status 429 rate limit exceeded",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "invalid key",
+			err: &RequestError{
+				UserMessage: "AI service unavailable: Invalid API key. Please check your AI configuration.",
+				Diagnostics: []string{
+					"OpenAI: authentication failed - check API key: invalid key",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsRetryableStageFailure(tt.err); got != tt.want {
+				t.Fatalf("IsRetryableStageFailure() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

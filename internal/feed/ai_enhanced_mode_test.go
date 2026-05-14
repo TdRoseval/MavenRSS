@@ -3,7 +3,9 @@ package feed
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -1072,6 +1074,151 @@ func TestRecoverPendingWorkForKnownUsersQueuesRecoveryWhenPendingButIdle(t *test
 	}
 }
 
+func TestRecoverPendingWorkAbandonsStaleActiveRuntimeAndRequeues(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(
+		t,
+		db,
+		1,
+		feedID,
+		false,
+		time.Now().Add(-4*time.Hour),
+		"stale-active-summary",
+		false,
+	)
+
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     map[int64]int64{1: 2},
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		userOperationVersion:      make(map[int64]int64),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		clusterPipelineRequested:  make(map[int64]bool),
+		clusterPipelineVersion:    make(map[int64]int64),
+		clusterPipelineQueuedVer:  make(map[int64]int64),
+		clusterFusionRunning:      make(map[int64]bool),
+		clusterEmbeddingRunning:   make(map[int64]bool),
+		clusterBatchContext:       make(map[int64]*dedup.BatchContext),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	initial := manager.GetProcessingStatus(1)
+	if initial.PendingSummaryArticles == 0 {
+		t.Fatal("expected pending summary work before stale recovery")
+	}
+	if err := db.SetSettingForUser(1, aiProcessingSnapshotSettingKey, manager.buildProcessingSnapshot(initial)); err != nil {
+		t.Fatalf("SetSettingForUser snapshot error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, aiProcessingLastProgressAtSettingKey, time.Now().Add(-31*time.Minute).Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("SetSettingForUser last progress error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, aiProcessingFreezeSuspendedSettingKey, "false"); err != nil {
+		t.Fatalf("SetSettingForUser freeze suspended error: %v", err)
+	}
+
+	status := manager.GetProcessingStatus(1)
+	if !status.IsStale {
+		t.Fatal("status.IsStale = false, want true for stale active runtime")
+	}
+	if status.ActiveAsyncWork == 0 {
+		t.Fatal("ActiveAsyncWork = 0, want stale active runtime before recovery")
+	}
+
+	manager.recoverPendingWorkIfIdle(1, status, "test-stale")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		queued, _, activeAsync := manager.getUserTaskCounts(1)
+		if queued > 0 || len(manager.taskChan) > 0 {
+			if activeAsync != 0 {
+				t.Fatalf("activeAsync = %d, want cleared stale runtime", activeAsync)
+			}
+			if version := manager.currentUserOperationVersion(1); version == 0 {
+				t.Fatal("operation version was not advanced for stale runtime abandonment")
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected stale recovery to requeue AI work, queued=%d len(taskChan)=%d activeAsync=%d", queued, len(manager.taskChan), activeAsync)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestStaleRuntimeAbandonmentIgnoresLateOldCounterDecrements(t *testing.T) {
+	manager := &AIEnhancedManager{
+		taskChan:                 make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:        make(map[int64]int),
+		activeWorkerTasksByUser:  make(map[int64]int64),
+		activeAsyncWorkByUser:    make(map[int64]int64),
+		userOperationVersion:     make(map[int64]int64),
+		clusterPipelineRunning:   make(map[int64]bool),
+		clusterPipelineQueued:    make(map[int64]bool),
+		clusterPipelineRequested: make(map[int64]bool),
+		clusterPipelineVersion:   make(map[int64]int64),
+		clusterPipelineQueuedVer: make(map[int64]int64),
+		clusterFusionRunning:     make(map[int64]bool),
+		clusterEmbeddingRunning:  make(map[int64]bool),
+		clusterBatchContext:      make(map[int64]*dedup.BatchContext),
+	}
+
+	oldVersion := manager.currentUserOperationVersion(1)
+	queuedTask := &AIEnhancedTask{ArticleID: 42, UserID: 1}
+	if !manager.tryEnqueueTask(queuedTask) {
+		t.Fatal("expected stale test task to enqueue")
+	}
+	manager.incrementActiveWorkerTask(1)
+	manager.incrementActiveAsyncWork(1)
+
+	manager.abandonStaleAIProcessingRuntime(1, "test-stale", AIProcessingStatus{
+		ActiveWorkerTasks: 1,
+		ActiveAsyncWork:   1,
+		IsStale:           true,
+	})
+
+	if manager.isTaskOperationCurrent(queuedTask) {
+		t.Fatal("stale queued task was restamped as current after runtime abandonment")
+	}
+	if queuedTask.OperationVersion != oldVersion {
+		t.Fatalf("queued task version changed from %d to %d", oldVersion, queuedTask.OperationVersion)
+	}
+
+	manager.incrementActiveWorkerTask(1)
+	manager.incrementActiveAsyncWork(1)
+	if manager.decrementActiveWorkerTaskForVersion(1, oldVersion) {
+		t.Fatal("old worker decrement was applied to the new runtime generation")
+	}
+	if manager.decrementActiveAsyncWorkForVersion(1, oldVersion) {
+		t.Fatal("old async decrement was applied to the new runtime generation")
+	}
+	_, activeWorker, activeAsync := manager.getUserTaskCounts(1)
+	if activeWorker != 1 || activeAsync != 1 {
+		t.Fatalf("new runtime counters changed after old decrement, activeWorker=%d activeAsync=%d", activeWorker, activeAsync)
+	}
+
+	currentVersion := manager.currentUserOperationVersion(1)
+	if !manager.decrementActiveWorkerTaskForVersion(1, currentVersion) {
+		t.Fatal("current worker decrement was not applied")
+	}
+	if !manager.decrementActiveAsyncWorkForVersion(1, currentVersion) {
+		t.Fatal("current async decrement was not applied")
+	}
+	_, activeWorker, activeAsync = manager.getUserTaskCounts(1)
+	if activeWorker != 0 || activeAsync != 0 {
+		t.Fatalf("current runtime counters were not drained, activeWorker=%d activeAsync=%d", activeWorker, activeAsync)
+	}
+}
+
 func TestRecoverPendingWorkForKnownUsersSchedulesClusterRecoveryWhenOnlyClusterWorkRemains(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 	mustEnableAIEnhancedProcessing(t, db, 1)
@@ -1743,11 +1890,11 @@ func TestRetryableTranslationTimeoutsEventuallySkipAndFallback(t *testing.T) {
 	timeoutErr := fmt.Errorf("AI request total timeout exceeded after 2m0s: context deadline exceeded")
 
 	for i := 0; i < articleStageTimeoutRetryLimit-1; i++ {
-		if manager.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", "fallback body", timeoutErr) {
+		if manager.skipArticleStageAfterRetryableFailureBudget(task, "translation", "fallback body", timeoutErr) {
 			t.Fatalf("timeout attempt %d exhausted too early", i+1)
 		}
 	}
-	if !manager.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", "fallback body", timeoutErr) {
+	if !manager.skipArticleStageAfterRetryableFailureBudget(task, "translation", "fallback body", timeoutErr) {
 		t.Fatal("expected translation timeout budget to exhaust on final attempt")
 	}
 
@@ -1851,11 +1998,11 @@ func TestRetryableSummaryTimeoutsEventuallySkipAndFallbackToTitle(t *testing.T) 
 	timeoutErr := fmt.Errorf("AI request total timeout exceeded after 2m0s: context deadline exceeded")
 
 	for i := 0; i < articleStageTimeoutRetryLimit-1; i++ {
-		if manager.skipArticleStageAfterRetryableTimeoutBudget(task, "summary", "ignored", timeoutErr) {
+		if manager.skipArticleStageAfterRetryableFailureBudget(task, "summary", "ignored", timeoutErr) {
 			t.Fatalf("timeout attempt %d exhausted too early", i+1)
 		}
 	}
-	if !manager.skipArticleStageAfterRetryableTimeoutBudget(task, "summary", "ignored", timeoutErr) {
+	if !manager.skipArticleStageAfterRetryableFailureBudget(task, "summary", "ignored", timeoutErr) {
 		t.Fatal("expected summary timeout budget to exhaust on final attempt")
 	}
 
@@ -1880,6 +2027,272 @@ func TestRetryableSummaryTimeoutsEventuallySkipAndFallbackToTitle(t *testing.T) 
 	if !strings.Contains(reason, "retry budget exhausted") {
 		t.Fatalf("summary skip reason = %q, want retry budget message", reason)
 	}
+}
+
+func TestRetryableSummaryNetworkFailuresEventuallySkipAndFallbackToTitle(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	manager := NewAIEnhancedManager(db)
+	defer manager.Stop()
+
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-1*time.Hour), "network-summary", false)
+
+	task := &AIEnhancedTask{
+		ArticleID:    articleID,
+		UserID:       1,
+		FeedID:       feedID,
+		ArticleTitle: "network-summary",
+		NeedsSummary: true,
+	}
+	networkErr := &ai.RequestError{
+		UserMessage: "AI service unavailable: Unable to connect to the AI service. Please check your network connection and proxy settings.",
+		Diagnostics: []string{
+			`OpenAI: request failed: proxyconnect tcp: dial tcp 127.0.0.1:7890: connectex: No connection could be made because the target machine actively refused it.`,
+		},
+	}
+
+	for i := 0; i < articleStageTimeoutRetryLimit-1; i++ {
+		if manager.skipArticleStageAfterRetryableFailureBudget(task, "summary", "ignored", networkErr) {
+			t.Fatalf("network attempt %d exhausted too early", i+1)
+		}
+	}
+	if !manager.skipArticleStageAfterRetryableFailureBudget(task, "summary", "ignored", networkErr) {
+		t.Fatal("expected summary network failure budget to exhaust on final attempt")
+	}
+
+	article, err := db.GetArticleByID(articleID)
+	if err != nil {
+		t.Fatalf("GetArticleByID error: %v", err)
+	}
+	if article == nil {
+		t.Fatal("GetArticleByID returned nil article")
+	}
+	if article.Summary != "network-summary" {
+		t.Fatalf("summary = %q, want title fallback", article.Summary)
+	}
+
+	reason, found, err := db.GetAIArticleStageSkipReason(articleID, "summary")
+	if err != nil {
+		t.Fatalf("GetAIArticleStageSkipReason error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected summary skip marker after network budget exhaustion")
+	}
+	if !strings.Contains(reason, "retry budget exhausted") {
+		t.Fatalf("summary skip reason = %q, want retry budget message", reason)
+	}
+}
+
+func TestAIPipelineDiagnosticLifecycleActive(t *testing.T) {
+	manager := &AIEnhancedManager{}
+
+	tests := []struct {
+		name     string
+		snapshot aiPipelineDiagnosticSnapshot
+		want     bool
+	}{
+		{
+			name: "disabled pending work ignored",
+			snapshot: aiPipelineDiagnosticSnapshot{
+				IsEnabled:       false,
+				ArticleProgress: sqlite.AIProcessingProgress{PendingSummaryArticles: 1, PendingArticles: 1},
+			},
+			want: false,
+		},
+		{
+			name: "pending summary",
+			snapshot: aiPipelineDiagnosticSnapshot{
+				IsEnabled:       true,
+				ArticleProgress: sqlite.AIProcessingProgress{PendingSummaryArticles: 1, PendingArticles: 1},
+			},
+			want: true,
+		},
+		{
+			name: "pending recommendation",
+			snapshot: aiPipelineDiagnosticSnapshot{
+				IsEnabled:                 true,
+				PendingRecommendationDays: 1,
+			},
+			want: true,
+		},
+		{
+			name: "pending cluster work",
+			snapshot: aiPipelineDiagnosticSnapshot{
+				IsEnabled:       true,
+				ClusterProgress: sqlite.ClusterProcessingProgress{PendingMergeClusters: 1},
+			},
+			want: true,
+		},
+		{
+			name: "active async",
+			snapshot: aiPipelineDiagnosticSnapshot{
+				IsEnabled: true,
+				Runtime:   aiPipelineRuntimeDiagnostic{ActiveAsyncWork: 1},
+			},
+			want: true,
+		},
+		{
+			name: "all clear",
+			snapshot: aiPipelineDiagnosticSnapshot{
+				IsEnabled: true,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := manager.isAIPipelineLifecycleActive(tt.snapshot); got != tt.want {
+				t.Fatalf("isAIPipelineLifecycleActive() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAIPipelineDiagnosticSnapshotIsReadOnlyForProgressState(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "diagnostic-pending-summary", false)
+
+	manager := newAIEnhancedDiagnosticTestManager(db)
+	storedSnapshot := "preserved|snapshot"
+	storedLastProgressAt := time.Now().Add(-45 * time.Minute).Format(time.RFC3339Nano)
+	if err := db.SetSettingForUser(1, aiProcessingSnapshotSettingKey, storedSnapshot); err != nil {
+		t.Fatalf("SetSettingForUser snapshot error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, aiProcessingLastProgressAtSettingKey, storedLastProgressAt); err != nil {
+		t.Fatalf("SetSettingForUser last progress error: %v", err)
+	}
+	if err := db.SetSettingForUser(1, aiProcessingFreezeSuspendedSettingKey, "false"); err != nil {
+		t.Fatalf("SetSettingForUser freeze suspended error: %v", err)
+	}
+
+	snapshot := manager.buildAIPipelineDiagnosticSnapshot(1, "test")
+	if !snapshot.LifecycleActive {
+		t.Fatal("LifecycleActive = false, want true for pending summary work")
+	}
+	if snapshot.ArticleProgress.PendingSummaryArticles == 0 {
+		t.Fatal("PendingSummaryArticles = 0, want pending summary work in diagnostic snapshot")
+	}
+
+	afterSnapshot, _ := db.GetSettingForUser(1, aiProcessingSnapshotSettingKey)
+	afterLastProgressAt, _ := db.GetSettingForUser(1, aiProcessingLastProgressAtSettingKey)
+	if afterSnapshot != storedSnapshot {
+		t.Fatalf("stored snapshot changed to %q, want %q", afterSnapshot, storedSnapshot)
+	}
+	if afterLastProgressAt != storedLastProgressAt {
+		t.Fatalf("last progress changed to %q, want %q", afterLastProgressAt, storedLastProgressAt)
+	}
+}
+
+func TestAIPipelineDiagnosticSnapshotIncludesDeepBlockersAndRedactsSecrets(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	articleID := mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "diagnostic-secret-title", false)
+	if err := db.SetAIArticleStageSkip(1, articleID, "translation", "content policy"); err != nil {
+		t.Fatalf("SetAIArticleStageSkip error: %v", err)
+	}
+	if _, err := db.RecordAIArticleStageTimeoutFailure(1, articleID, "summary", "timeout"); err != nil {
+		t.Fatalf("RecordAIArticleStageTimeoutFailure error: %v", err)
+	}
+	clusterID, err := db.CreateCluster(1, "pending_merge")
+	if err != nil {
+		t.Fatalf("CreateCluster error: %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error: %v", err)
+	}
+
+	manager := newAIEnhancedDiagnosticTestManager(db)
+	manager.activeAsyncWorkByUser[1] = 2
+	manager.pendingRecommendationDate[1] = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	manager.pendingRecommendationWait[1] = true
+	manager.pendingRecommendationMode[1] = recommendationTriggerAutomatic
+	manager.recordTaskFailure(
+		1,
+		"summary",
+		&AIEnhancedTask{ArticleID: articleID, UserID: 1, ArticleTitle: "diagnostic-secret-title"},
+		"summary-model",
+		"https://api.example.com/v1/chat?api_key=secret",
+		fmt.Errorf("request failed without secret value"),
+	)
+
+	snapshot := manager.buildAIPipelineDiagnosticSnapshot(1, "test")
+	if !snapshot.LifecycleActive {
+		t.Fatal("LifecycleActive = false, want true")
+	}
+	if snapshot.Runtime.ActiveAsyncWork != 2 {
+		t.Fatalf("ActiveAsyncWork = %d, want 2", snapshot.Runtime.ActiveAsyncWork)
+	}
+	if snapshot.RecentFailure.Endpoint != "https://api.example.com/v1/chat" {
+		t.Fatalf("endpoint = %q, want query redacted", snapshot.RecentFailure.Endpoint)
+	}
+	if !containsString(snapshot.Blockers, "cluster_barrier_waiting_for_article_work") {
+		t.Fatalf("blockers = %v, want cluster barrier blocker", snapshot.Blockers)
+	}
+	if !containsString(snapshot.Blockers, "recommendation_waiting_for_idle") {
+		t.Fatalf("blockers = %v, want recommendation blocker", snapshot.Blockers)
+	}
+	if len(snapshot.StageSkipCounts) == 0 {
+		t.Fatal("expected stage skip counts")
+	}
+	if len(snapshot.StageTimeoutFailures) == 0 {
+		t.Fatal("expected stage timeout failure summaries")
+	}
+	if len(snapshot.ClusterStatusCounts) == 0 {
+		t.Fatal("expected cluster status counts")
+	}
+
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("Marshal snapshot error: %v", err)
+	}
+	payloadStr := string(payload)
+	for _, forbidden := range []string{"embed-key", "api_key=secret", "article content for batch processing tests"} {
+		if strings.Contains(payloadStr, forbidden) {
+			t.Fatalf("diagnostic payload leaked %q: %s", forbidden, payloadStr)
+		}
+	}
+}
+
+func TestLogAIPipelineDiagnosticsWritesStructuredSingleLine(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+
+	feedID := mustCreateTestFeed(t, db, 1, false)
+	_ = mustInsertBatchArticle(t, db, 1, feedID, false, time.Now().Add(-time.Hour), "diagnostic-log-summary", false)
+
+	manager := newAIEnhancedDiagnosticTestManager(db)
+	var buf bytes.Buffer
+	previousOutput := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(previousOutput)
+
+	manager.logAIPipelineDiagnostics("test")
+
+	output := buf.String()
+	if !strings.Contains(output, "AI_PIPELINE_DIAG user_id=1 lifecycle_active=true snapshot=") {
+		t.Fatalf("diagnostic log missing structured prefix: %s", output)
+	}
+	if strings.Count(strings.TrimSpace(output), "\n") != 0 {
+		t.Fatalf("diagnostic log should be a single line, got: %q", output)
+	}
+	if !strings.Contains(output, `"pending_summary_articles":1`) {
+		t.Fatalf("diagnostic log missing pending summary count: %s", output)
+	}
+}
+
+func TestAIPipelineDiagnosticMonitorStopsOnStopChan(t *testing.T) {
+	manager := newAIEnhancedDiagnosticTestManager(nil)
+	manager.startAIPipelineDiagnosticMonitorWithInterval(10 * time.Millisecond)
+	close(manager.stopChan)
+	time.Sleep(30 * time.Millisecond)
 }
 
 func TestProcessTaskUsesTitleAsFallbackSummaryAndContent(t *testing.T) {
@@ -1933,6 +2346,54 @@ func newAIEnhancedModeTestDB(t *testing.T) *sqlite.DB {
 	}
 
 	return db
+}
+
+func newAIEnhancedDiagnosticTestManager(db *sqlite.DB) *AIEnhancedManager {
+	return &AIEnhancedManager{
+		db:                         db,
+		taskChan:                   make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:          make(map[int64]int),
+		activeWorkerTasksByUser:    make(map[int64]int64),
+		activeAsyncWorkByUser:      make(map[int64]int64),
+		userClusteringLocks:        make(map[int64]*sync.Mutex),
+		userOperationVersion:       make(map[int64]int64),
+		embeddingHealthByUser:      make(map[int64]EmbeddingHealthStatus),
+		embeddingHealthCheckedAt:   make(map[int64]time.Time),
+		recentFailureByUser:        make(map[int64]AIProcessingFailure),
+		recoveryInProgress:         make(map[int64]bool),
+		lastRecoveryAttemptByUser:  make(map[int64]time.Time),
+		renormalizationRunning:     make(map[int64]bool),
+		clusterPipelineRunning:     make(map[int64]bool),
+		clusterPipelineQueued:      make(map[int64]bool),
+		clusterPipelineRequested:   make(map[int64]bool),
+		clusterPipelineVersion:     make(map[int64]int64),
+		clusterPipelineQueuedVer:   make(map[int64]int64),
+		clusterFusionRunning:       make(map[int64]bool),
+		clusterEmbeddingRunning:    make(map[int64]bool),
+		clusterBatchContext:        make(map[int64]*dedup.BatchContext),
+		recommendationRunning:      make(map[int64]bool),
+		recommendationRunningVer:   make(map[int64]int64),
+		recommendationStatusByUser: make(map[int64]DailyRecommendationTaskStatus),
+		pendingRecommendationDate:  make(map[int64]string),
+		pendingRecommendationWait:  make(map[int64]bool),
+		pendingRecommendationForce: make(map[int64]bool),
+		pendingRecommendationMode:  make(map[int64]string),
+		pendingRecommendationVer:   make(map[int64]int64),
+		stopChan:                   make(chan struct{}),
+		articlePipelineSlots:       make(chan struct{}, articlePipelineWindow),
+		articleSummarySem:          make(chan struct{}, articleSummaryConcurrency),
+		articleTranslationSem:      make(chan struct{}, articleTranslationConcurrency),
+		articleEmbeddingSem:        make(chan struct{}, articleEmbeddingConcurrency),
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func mustSetGlobalSetting(t *testing.T, db *sqlite.DB, key, value string) {

@@ -143,6 +143,53 @@ func IsTimeoutLikeError(err error) bool {
 	return false
 }
 
+// IsRetryableStageFailure reports whether an AI stage failure is transient
+// enough to retry for a limited budget, but should eventually be skipped or
+// downgraded so one bad network/proxy state cannot block background pipelines
+// forever.
+func IsRetryableStageFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if IsTimeoutLikeError(err) {
+		return true
+	}
+
+	errStr := strings.ToLower(strings.TrimSpace(DiagnosticMessage(err)))
+	if errStr == "" {
+		errStr = strings.ToLower(strings.TrimSpace(err.Error()))
+	}
+	if errStr == "" {
+		return false
+	}
+
+	if isNetworkError(errStr) {
+		return true
+	}
+
+	retryablePatterns := []string{
+		"unable to connect",
+		"cannot reach",
+		"network connection",
+		"proxy settings",
+		"bad gateway",
+		"service unavailable",
+		"gateway timeout",
+		"502",
+		"503",
+		"504",
+		"rate limit",
+		"429",
+	}
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // NewClient creates a new universal AI client
 func NewClient(config ClientConfig) *Client {
 	if config.Timeout == 0 {
@@ -450,7 +497,7 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 		}
 
 		// Send request with formatted endpoint and handler
-		resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
+		resp, err := c.sendRequestToEndpointWithHandler(config.Context, jsonBody, formattedEndpoint, handler)
 		if err != nil {
 			lastErr = fmt.Errorf("request failed: %w", err)
 
@@ -532,7 +579,7 @@ func (c *Client) tryFormat(handler FormatHandler, config RequestConfig) (Respons
 }
 
 // sendRequestToEndpointWithHandler sends the HTTP request to a specific endpoint with handler-specific headers
-func (c *Client) sendRequestToEndpointWithHandler(jsonBody []byte, apiURL string, handler FormatHandler) (*http.Response, error) {
+func (c *Client) sendRequestToEndpointWithHandler(ctx context.Context, jsonBody []byte, apiURL string, handler FormatHandler) (*http.Response, error) {
 	// Validate endpoint URL to prevent SSRF attacks
 	parsedURL, err := url.Parse(apiURL)
 	if err != nil {
@@ -556,7 +603,10 @@ func (c *Client) sendRequestToEndpointWithHandler(jsonBody []byte, apiURL string
 		apiURL = parsedURL.String()
 	}
 
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBody))
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -802,7 +852,7 @@ func (c *Client) tryStreamFormat(streamHandler StreamFormatHandler, handler Form
 	}
 
 	// Send request
-	resp, err := c.sendRequestToEndpointWithHandler(jsonBody, formattedEndpoint, handler)
+	resp, err := c.sendRequestToEndpointWithHandler(config.Context, jsonBody, formattedEndpoint, handler)
 	if err != nil {
 		return fmt.Errorf("stream request failed: %w", err)
 	}
