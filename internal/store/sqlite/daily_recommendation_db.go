@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -359,74 +360,77 @@ func (db *DB) GetDailyRecommendationCandidatesChronological(
 
 func (db *DB) SaveDailyRecommendations(userID int64, recommendationDate string, recommendations []models.DailyRecommendation) error {
 	db.WaitForReady()
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.Query(
-		`SELECT cluster_id FROM daily_recommendations WHERE user_id = ? AND recommendation_date = ?`,
-		userID, recommendationDate,
-	)
-	if err != nil {
-		return err
-	}
-	previousIDs := make([]int64, 0)
-	for rows.Next() {
-		var clusterID int64
-		if err := rows.Scan(&clusterID); err == nil {
-			previousIDs = append(previousIDs, clusterID)
-		}
-	}
-	rows.Close()
-
-	if _, err := tx.Exec(
-		`DELETE FROM daily_recommendations WHERE user_id = ? AND recommendation_date = ?`,
-		userID, recommendationDate,
-	); err != nil {
-		return err
-	}
-
-	for _, clusterID := range previousIDs {
-		var remaining int
-		if err := tx.QueryRow(
-			`SELECT COUNT(*) FROM daily_recommendations WHERE user_id = ? AND cluster_id = ?`,
-			userID, clusterID,
-		).Scan(&remaining); err != nil {
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		rows, err := tx.Query(
+			`SELECT cluster_id FROM daily_recommendations WHERE user_id = ? AND recommendation_date = ?`,
+			userID, recommendationDate,
+		)
+		if err != nil {
 			return err
 		}
-		if remaining == 0 {
+		previousIDs := make([]int64, 0)
+		for rows.Next() {
+			var clusterID int64
+			if err := rows.Scan(&clusterID); err != nil {
+				rows.Close()
+				return err
+			}
+			previousIDs = append(previousIDs, clusterID)
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		if _, err := tx.Exec(
+			`DELETE FROM daily_recommendations WHERE user_id = ? AND recommendation_date = ?`,
+			userID, recommendationDate,
+		); err != nil {
+			return err
+		}
+
+		for _, clusterID := range previousIDs {
+			var remaining int
+			if err := tx.QueryRow(
+				`SELECT COUNT(*) FROM daily_recommendations WHERE user_id = ? AND cluster_id = ?`,
+				userID, clusterID,
+			).Scan(&remaining); err != nil {
+				return err
+			}
+			if remaining == 0 {
+				if _, err := tx.Exec(
+					`UPDATE clusters
+					 SET recommendation_archive_date = '', recommendation_score = 0, recommendation_profile_id = 0, is_ai_recommended = 0, updated_at = CURRENT_TIMESTAMP
+					 WHERE id = ? AND user_id = ?`,
+					clusterID, userID,
+				); err != nil {
+					return err
+				}
+			}
+		}
+
+		for _, rec := range recommendations {
+			if _, err := tx.Exec(
+				`INSERT INTO daily_recommendations (user_id, cluster_id, recommendation_date, recommendation_score, recommendation_rank, recommendation_profile_id)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				rec.UserID, rec.ClusterID, rec.RecommendationDate, rec.RecommendationScore, rec.RecommendationRank, rec.RecommendationProfileID,
+			); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(
 				`UPDATE clusters
-				 SET recommendation_archive_date = '', recommendation_score = 0, recommendation_profile_id = 0, is_ai_recommended = 0, updated_at = CURRENT_TIMESTAMP
+				 SET recommendation_archive_date = ?, recommendation_score = ?, recommendation_profile_id = ?, is_ai_recommended = 1, updated_at = CURRENT_TIMESTAMP
 				 WHERE id = ? AND user_id = ?`,
-				clusterID, userID,
+				rec.RecommendationDate, rec.RecommendationScore, rec.RecommendationProfileID, rec.ClusterID, userID,
 			); err != nil {
 				return err
 			}
 		}
-	}
 
-	for _, rec := range recommendations {
-		if _, err := tx.Exec(
-			`INSERT INTO daily_recommendations (user_id, cluster_id, recommendation_date, recommendation_score, recommendation_rank, recommendation_profile_id)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			rec.UserID, rec.ClusterID, rec.RecommendationDate, rec.RecommendationScore, rec.RecommendationRank, rec.RecommendationProfileID,
-		); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(
-			`UPDATE clusters
-			 SET recommendation_archive_date = ?, recommendation_score = ?, recommendation_profile_id = ?, is_ai_recommended = 1, updated_at = CURRENT_TIMESTAMP
-			 WHERE id = ? AND user_id = ?`,
-			rec.RecommendationDate, rec.RecommendationScore, rec.RecommendationProfileID, rec.ClusterID, userID,
-		); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 func parseNullableSQLiteTime(value sql.NullString) (time.Time, bool) {

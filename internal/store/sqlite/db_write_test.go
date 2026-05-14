@@ -176,6 +176,89 @@ func TestSaveArticlesAndClusterWritesDoNotReturnLocked(t *testing.T) {
 	}
 }
 
+func TestRecommendationBackfillWritesDoNotReturnLocked(t *testing.T) {
+	db := newWriteTestDB(t)
+	defer db.Close()
+
+	feedID := createWriteTestFeed(t, db)
+	articleIDs := createWriteTestArticles(t, db, feedID, 18, "recommendation-backfill")
+	clusterIDs := make([]int64, 0, len(articleIDs))
+	for _, articleID := range articleIDs {
+		clusterID, err := db.CreateStandaloneClusterForArticle(1, articleID, false)
+		if err != nil {
+			t.Fatalf("create cluster for article %d: %v", articleID, err)
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+
+	errs := make(chan error, 3)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			recs := make([]models.DailyRecommendation, 0, 10)
+			for idx, clusterID := range clusterIDs {
+				if idx >= 10 {
+					break
+				}
+				recs = append(recs, models.DailyRecommendation{
+					UserID:              1,
+					ClusterID:           clusterID,
+					RecommendationDate:  "2026-05-13",
+					RecommendationRank:  idx + 1,
+					RecommendationScore: float64(100 - idx - i),
+				})
+			}
+			if err := db.SaveDailyRecommendations(1, "2026-05-13", recs); err != nil {
+				errs <- fmt.Errorf("save recommendation backfill round %d: %w", i, err)
+				return
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 60; i++ {
+			articleID := articleIDs[i%len(articleIDs)]
+			if err := db.UpdateArticleSummary(articleID, fmt.Sprintf("summary backfill %d", i)); err != nil {
+				errs <- fmt.Errorf("update summary %d: %w", i, err)
+				return
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 60; i++ {
+			articleID := articleIDs[i%len(articleIDs)]
+			clusterID := clusterIDs[i%len(clusterIDs)]
+			if err := db.UpdateArticleEmbeddings(articleID, nil, nil); err != nil {
+				errs <- fmt.Errorf("update article embedding %d: %w", i, err)
+				return
+			}
+			if err := db.UpdateClusterEmbeddings(clusterID, nil, nil); err != nil {
+				errs <- fmt.Errorf("update cluster embedding %d: %w", i, err)
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if isSQLiteBusyOrLocked(err) || strings.Contains(strings.ToLower(err.Error()), "locked") {
+			t.Fatalf("recommendation backfill concurrent write returned lock error: %v", err)
+		}
+		if err != nil {
+			t.Fatalf("recommendation backfill concurrent write error: %v", err)
+		}
+	}
+}
+
 func newWriteTestDB(t *testing.T) *DB {
 	t.Helper()
 

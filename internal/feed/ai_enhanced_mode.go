@@ -1092,6 +1092,9 @@ func (m *AIEnhancedManager) hasUserRecommendationBlockingWork(userID int64) bool
 	if queued > 0 || activeWorker > 0 || activeAsync > 0 {
 		return true
 	}
+	if m.userHasPendingArticleWork(userID) {
+		return true
+	}
 
 	m.clusterMu.Lock()
 	clusterBusy := m.clusterPipelineRunning[userID] ||
@@ -1104,6 +1107,20 @@ func (m *AIEnhancedManager) hasUserRecommendationBlockingWork(userID int64) bool
 	}
 
 	return m.userHasPendingClusterWork(userID)
+}
+
+func (m *AIEnhancedManager) userHasPendingArticleWork(userID int64) bool {
+	if userID <= 0 || m.db == nil {
+		return false
+	}
+
+	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
+	progress, err := m.db.GetAIProcessingProgress(userID, targetLang)
+	if err != nil {
+		log.Printf("failed to get AI article processing progress before recommendation for user %d: %v", userID, err)
+		return false
+	}
+	return progress.PendingArticles > 0
 }
 
 func (m *AIEnhancedManager) userHasPendingClusterWork(userID int64) bool {
