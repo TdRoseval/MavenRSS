@@ -310,33 +310,18 @@ func deserializeNormalizedVector(blob []byte) ([]float32, error) {
 }
 
 func joinCluster(db *sqlite.DB, articleID, clusterID int64, articleIsFavorite bool, opts *ProcessArticleOptions) error {
-	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
-		return err
-	}
-	if err := syncClusterFavoriteFromArticle(db, clusterID, articleIsFavorite); err != nil {
-		return err
-	}
-	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+	if err := db.JoinArticleCluster(articleID, clusterID, articleIsFavorite); err != nil {
 		return err
 	}
 	if opts != nil && opts.Batch != nil {
 		opts.Batch.RecordNewArticle(clusterID, articleID)
 	}
-	return db.UpdateClusterStatus(clusterID, "pending_merge")
+	return nil
 }
 
 func createStandaloneCluster(db *sqlite.DB, articleID, userID int64, articleIsFavorite bool, opts *ProcessArticleOptions) error {
-	clusterID, err := db.CreateCluster(userID, "pending_merge")
+	clusterID, err := db.CreateStandaloneClusterForArticle(userID, articleID, articleIsFavorite)
 	if err != nil {
-		return err
-	}
-	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
-		return err
-	}
-	if err := syncClusterFavoriteFromArticle(db, clusterID, articleIsFavorite); err != nil {
-		return err
-	}
-	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
 		return err
 	}
 	if opts != nil && opts.Batch != nil {
@@ -344,11 +329,4 @@ func createStandaloneCluster(db *sqlite.DB, articleID, userID int64, articleIsFa
 		opts.Batch.RecordNewArticle(clusterID, articleID)
 	}
 	return nil
-}
-
-func syncClusterFavoriteFromArticle(db *sqlite.DB, clusterID int64, articleIsFavorite bool) error {
-	if !articleIsFavorite {
-		return nil
-	}
-	return db.SetClusterFavorite(clusterID, true)
 }

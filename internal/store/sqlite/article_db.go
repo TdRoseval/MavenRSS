@@ -218,36 +218,35 @@ func (db *DB) SaveArticles(ctx context.Context, articles []*models.Article) erro
 		}
 	}
 
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for i, article := range articles {
-		// Check context before each insert
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Use pre-generated unique_id for deduplication
-		uniqueID := uniqueIDs[i]
-		_, err := stmt.ExecContext(ctx, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
+	return db.WithWriteTx(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO articles (user_id, feed_id, title, url, image_url, audio_url, video_url, published_at, translated_title, is_read, is_favorite, is_hidden, is_read_later, summary, unique_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		if err != nil {
-			log.Println("Error saving article in batch:", err)
-			// Continue even if one fails
+			return err
 		}
-	}
+		defer stmt.Close()
 
-	return tx.Commit()
+		for i, article := range articles {
+			// Check context before each insert
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			// Use pre-generated unique_id for deduplication
+			uniqueID := uniqueIDs[i]
+			_, err := stmt.ExecContext(ctx, article.UserID, article.FeedID, article.Title, article.URL, article.ImageURL, article.AudioURL, article.VideoURL, article.PublishedAt, article.TranslatedTitle, article.IsRead, article.IsFavorite, article.IsHidden, article.IsReadLater, article.Summary, uniqueID, article.Author)
+			if err != nil {
+				if isSQLiteBusyOrLocked(err) {
+					return err
+				}
+				log.Println("Error saving article in batch:", err)
+				// Continue even if one fails
+			}
+		}
+
+		return nil
+	})
 }
 
 // GetArticles retrieves articles with filtering, pagination, and sorting.

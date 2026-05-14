@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -21,6 +22,65 @@ func (db *DB) CreateCluster(userID int64, status string) (int64, error) {
 		return 0, fmt.Errorf("create cluster: %w", err)
 	}
 	return result.LastInsertId()
+}
+
+// CreateStandaloneClusterForArticle creates a cluster and assigns the article in one write transaction.
+func (db *DB) CreateStandaloneClusterForArticle(userID, articleID int64, articleIsFavorite bool) (int64, error) {
+	db.WaitForReady()
+	now := time.Now()
+	var clusterID int64
+
+	err := db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		result, err := tx.Exec(
+			`INSERT INTO clusters (user_id, status, is_favorite, updated_at) VALUES (?, 'pending_merge', ?, ?)`,
+			userID, articleIsFavorite, now,
+		)
+		if err != nil {
+			return fmt.Errorf("create cluster: %w", err)
+		}
+		clusterID, err = result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("get cluster id: %w", err)
+		}
+		if _, err := tx.Exec(`UPDATE articles SET cluster_id = ? WHERE id = ?`, clusterID, articleID); err != nil {
+			return fmt.Errorf("assign article cluster: %w", err)
+		}
+		if _, err := tx.Exec(
+			`UPDATE clusters SET article_count = (SELECT COUNT(*) FROM articles WHERE cluster_id = ?), updated_at = ? WHERE id = ?`,
+			clusterID, now, clusterID,
+		); err != nil {
+			return fmt.Errorf("update cluster article count: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return clusterID, nil
+}
+
+// JoinArticleCluster assigns an article to an existing cluster and refreshes cluster metadata atomically.
+func (db *DB) JoinArticleCluster(articleID, clusterID int64, articleIsFavorite bool) error {
+	db.WaitForReady()
+	now := time.Now()
+
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`UPDATE articles SET cluster_id = ? WHERE id = ?`, clusterID, articleID); err != nil {
+			return fmt.Errorf("assign article cluster: %w", err)
+		}
+		if articleIsFavorite {
+			if _, err := tx.Exec(`UPDATE clusters SET is_favorite = 1, updated_at = ? WHERE id = ?`, now, clusterID); err != nil {
+				return fmt.Errorf("sync cluster favorite: %w", err)
+			}
+		}
+		if _, err := tx.Exec(
+			`UPDATE clusters SET article_count = (SELECT COUNT(*) FROM articles WHERE cluster_id = ?), status = 'pending_merge', updated_at = ? WHERE id = ?`,
+			clusterID, now, clusterID,
+		); err != nil {
+			return fmt.Errorf("update cluster article count and status: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetClusterByID retrieves a cluster by its ID.
@@ -256,12 +316,18 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
-	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
-	_, err := db.Exec(
-		`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		clusterID, titleEmb, summaryEmb,
-	)
-	return err
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
+			return fmt.Errorf("delete cluster embedding: %w", err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+			clusterID, titleEmb, summaryEmb,
+		); err != nil {
+			return fmt.Errorf("insert cluster embedding: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetClustersForUser retrieves clusters for a user with filtering and pagination.

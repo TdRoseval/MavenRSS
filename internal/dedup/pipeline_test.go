@@ -63,6 +63,33 @@ func TestProcessArticleMarksStandaloneClusterFavoriteWhenArticleFavorited(t *tes
 	}
 }
 
+func TestProcessArticleMarksJoinedClusterFavoriteWhenArticleFavorited(t *testing.T) {
+	db := newDedupTestDB(t)
+	userID, feedID := createDedupTestUserAndFeed(t, db)
+
+	summary := "shared favorite summary text for joined cluster"
+	clusterID := createSeedClusterArticle(t, db, userID, feedID, "favorite-join-seed", summary, vector1024(1, 0), true)
+	targetArticleID := createDedupTestArticle(t, db, userID, feedID, "favorite-join-target", true, summary, vector1024(1, 0))
+
+	if err := ProcessArticle(db, targetArticleID, userID); err != nil {
+		t.Fatalf("ProcessArticle error: %v", err)
+	}
+
+	cluster := mustGetArticleCluster(t, db, targetArticleID)
+	if cluster.ID != clusterID {
+		t.Fatalf("joined cluster %d, want %d", cluster.ID, clusterID)
+	}
+	if !cluster.IsFavorite {
+		t.Fatal("cluster is_favorite = false, want true")
+	}
+	if cluster.ArticleCount != 2 {
+		t.Fatalf("cluster article_count = %d, want 2", cluster.ArticleCount)
+	}
+	if cluster.Status != "pending_merge" {
+		t.Fatalf("cluster status = %q, want pending_merge", cluster.Status)
+	}
+}
+
 func TestProcessArticleChoosesNearestSemanticMatchAmongHammingCandidates(t *testing.T) {
 	db := newDedupTestDB(t)
 	userID, feedID := createDedupTestUserAndFeed(t, db)

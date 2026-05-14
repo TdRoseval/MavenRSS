@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultBusyTimeout = 10000
+	defaultBusyTimeout = 30000
 	defaultCacheSize   = -64000
 	defaultMmapSize    = 30000000000
 
@@ -32,6 +32,7 @@ var (
 
 type DB struct {
 	*sql.DB
+	writeMu        sync.Mutex
 	ready          chan struct{}
 	once           sync.Once
 	startupOnce    sync.Once
