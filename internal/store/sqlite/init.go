@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"MavenRSS/internal/config"
+	"MavenRSS/internal/utils/fileutil"
 )
 
 // Init initializes the database schema and settings.
@@ -49,11 +50,14 @@ func (db *DB) Init() error {
 			_, _ = db.Exec(fmt.Sprintf(`INSERT OR IGNORE INTO settings (key, value) VALUES ('%s', '%s')`, key, defaultVal))
 		}
 
-		// Ensure at least one user exists (ID 1)
+		// Ensure at least one user exists for desktop/test flows. Server mode
+		// bootstraps real admin/template accounts from environment variables.
 		var userCount int
-		if err = db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount); err == nil && userCount == 0 {
+		if !fileutil.IsServerMode() {
 			// Insert a default user for tests and initial setup
-			_, _ = db.Exec(`INSERT INTO users (id, username, email, password_hash, role, status) VALUES (1, 'admin', 'admin@example.com', 'hash', 'admin', 'active')`)
+			if err = db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount); err == nil && userCount == 0 {
+				_, _ = db.Exec(`INSERT INTO users (id, username, email, password_hash, role, status) VALUES (1, 'admin', 'admin@example.com', 'hash', 'admin', 'active')`)
+			}
 		}
 
 		// Apply additional migrations

@@ -62,6 +62,90 @@ func debugLog(format string, args ...interface{}) {
 	}
 }
 
+func bootstrapUser(db *sqlite.DB, label string, role models.UserRole, username, email, password string, quota *models.UserQuota) {
+	user, err := db.GetUserByUsername(username)
+	if err == nil {
+		if role == models.RoleAdmin && user.PasswordHash == "hash" {
+			if err := updateBootstrapUser(db, user.ID, username, email, password, role); err != nil {
+				log.Printf("Failed to repair legacy %s user %q: %v", label, username, err)
+				return
+			}
+			quota.UserID = user.ID
+			ensureBootstrapQuota(db, label, quota)
+			log.Printf("%s user repaired from legacy placeholder: %s", label, username)
+		}
+		return
+	}
+
+	if role == models.RoleAdmin {
+		repaired, err := repairLegacyAdminPlaceholder(db, username, email, password, quota)
+		if err != nil {
+			log.Printf("Failed to repair legacy admin placeholder: %v", err)
+			return
+		}
+		if repaired {
+			log.Printf("Admin user repaired from legacy placeholder: %s", username)
+			return
+		}
+	}
+
+	hashedPassword, err := auth.HashPassword(password)
+	if err != nil {
+		log.Printf("Failed to hash %s password: %v", label, err)
+		return
+	}
+
+	newUser := &models.User{
+		Username:     username,
+		Email:        email,
+		PasswordHash: hashedPassword,
+		Role:         role,
+		Status:       "active",
+	}
+	userID, err := db.CreateUser(newUser)
+	if err != nil {
+		log.Printf("Failed to create %s user %q: %v", label, username, err)
+		return
+	}
+
+	quota.UserID = userID
+	ensureBootstrapQuota(db, label, quota)
+	log.Printf("%s user created: %s", label, username)
+}
+
+func updateBootstrapUser(db *sqlite.DB, userID int64, username, email, password string, role models.UserRole) error {
+	hashedPassword, err := auth.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(
+		`UPDATE users SET username = ?, email = ?, password_hash = ?, role = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		username, email, hashedPassword, role, userID,
+	)
+	return err
+}
+
+func repairLegacyAdminPlaceholder(db *sqlite.DB, username, email, password string, quota *models.UserQuota) (bool, error) {
+	var legacyID int64
+	err := db.QueryRow(`SELECT id FROM users WHERE username = 'admin' AND password_hash = 'hash' AND role = 'admin' LIMIT 1`).Scan(&legacyID)
+	if err != nil {
+		return false, nil
+	}
+
+	if err := updateBootstrapUser(db, legacyID, username, email, password, models.RoleAdmin); err != nil {
+		return false, err
+	}
+	quota.UserID = legacyID
+	ensureBootstrapQuota(db, "Admin", quota)
+	return true, nil
+}
+
+func ensureBootstrapQuota(db *sqlite.DB, label string, quota *models.UserQuota) {
+	if _, err := db.CreateUserQuota(quota); err != nil {
+		log.Printf("Failed to create %s quota for user %d: %v", label, quota.UserID, err)
+	}
+}
+
 //go:embed frontend/dist
 var frontendFiles embed.FS
 
@@ -312,38 +396,19 @@ func main() {
 		log.Println("⚠️  Set MRRSS_ADMIN_PASSWORD environment variable IMMEDIATELY!")
 		log.Println("========================================")
 	}
-	_, err = db.GetUserByUsername(adminUsername)
-	if err != nil {
-		hashedPassword, err := auth.HashPassword(adminPassword)
-		if err == nil {
-			adminUser := &models.User{
-				Username:     adminUsername,
-				Email:        adminEmail,
-				PasswordHash: hashedPassword,
-				Role:         models.RoleAdmin,
-				Status:       "active",
-			}
-			userID, err := db.CreateUser(adminUser)
-			if err == nil {
-				adminQuota := &models.UserQuota{
-					UserID:                     userID,
-					MaxFeeds:                   10000,
-					MaxArticles:                10000000,
-					MaxAITokens:                1000000000,
-					MaxAIConcurrency:           10,
-					MaxFeedFetchConcurrency:    20,
-					MaxDBQueryConcurrency:      10,
-					MaxMediaCacheConcurrency:   5,
-					MaxRSSDiscoveryConcurrency: 5,
-					MaxRSSPathCheckConcurrency: 3,
-					MaxTranslationConcurrency:  5,
-					MaxStorageMB:               10000,
-				}
-				db.CreateUserQuota(adminQuota)
-				log.Printf("Admin user created: %s (password: %s)", adminUsername, adminPassword)
-			}
-		}
-	}
+	bootstrapUser(db, "Admin", models.RoleAdmin, adminUsername, adminEmail, adminPassword, &models.UserQuota{
+		MaxFeeds:                   10000,
+		MaxArticles:                10000000,
+		MaxAITokens:                1000000000,
+		MaxAIConcurrency:           10,
+		MaxFeedFetchConcurrency:    20,
+		MaxDBQueryConcurrency:      10,
+		MaxMediaCacheConcurrency:   5,
+		MaxRSSDiscoveryConcurrency: 5,
+		MaxRSSPathCheckConcurrency: 3,
+		MaxTranslationConcurrency:  5,
+		MaxStorageMB:               10000,
+	})
 
 	// Create template user if not exists
 	templateUsername := os.Getenv("MRRSS_TEMPLATE_USERNAME")
@@ -358,38 +423,19 @@ func main() {
 	if templatePassword == "" {
 		templatePassword = "template"
 	}
-	_, err = db.GetUserByUsername(templateUsername)
-	if err != nil {
-		hashedPassword, err := auth.HashPassword(templatePassword)
-		if err == nil {
-			templateUser := &models.User{
-				Username:     templateUsername,
-				Email:        templateEmail,
-				PasswordHash: hashedPassword,
-				Role:         models.RoleTemplate,
-				Status:       "active",
-			}
-			userID, err := db.CreateUser(templateUser)
-			if err == nil {
-				templateQuota := &models.UserQuota{
-					UserID:                     userID,
-					MaxFeeds:                   1000,
-					MaxArticles:                1000000,
-					MaxAITokens:                100000000,
-					MaxAIConcurrency:           5,
-					MaxFeedFetchConcurrency:    10,
-					MaxDBQueryConcurrency:      5,
-					MaxMediaCacheConcurrency:   3,
-					MaxRSSDiscoveryConcurrency: 3,
-					MaxRSSPathCheckConcurrency: 2,
-					MaxTranslationConcurrency:  3,
-					MaxStorageMB:               5000,
-				}
-				db.CreateUserQuota(templateQuota)
-				log.Printf("Template user created: %s (password: %s)", templateUsername, templatePassword)
-			}
-		}
-	}
+	bootstrapUser(db, "Template", models.RoleTemplate, templateUsername, templateEmail, templatePassword, &models.UserQuota{
+		MaxFeeds:                   1000,
+		MaxArticles:                1000000,
+		MaxAITokens:                100000000,
+		MaxAIConcurrency:           5,
+		MaxFeedFetchConcurrency:    10,
+		MaxDBQueryConcurrency:      5,
+		MaxMediaCacheConcurrency:   3,
+		MaxRSSDiscoveryConcurrency: 3,
+		MaxRSSPathCheckConcurrency: 2,
+		MaxTranslationConcurrency:  3,
+		MaxStorageMB:               5000,
+	})
 
 	// Initialize AI profile provider
 	profileProvider := ai.NewProfileProvider(db)
