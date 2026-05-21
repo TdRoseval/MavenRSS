@@ -6,6 +6,7 @@ import {
   PhKey,
   PhLink,
   PhBrain,
+  PhClock,
   PhSliders,
   PhArrowClockwise,
   PhBookOpen,
@@ -68,7 +69,10 @@ watch(
   async () => {
     if (props.isOpen) {
       if (props.initialData) {
-        formData.value = { ...props.initialData };
+        formData.value = {
+          ...props.initialData,
+          timeout_seconds: normalizeTimeoutSeconds(props.initialData.timeout_seconds),
+        };
       } else {
         formData.value = { ...defaultAIProfileFormData };
       }
@@ -95,7 +99,7 @@ async function testConfiguration() {
   try {
     let result: AIProfileTestResult | null;
 
-    if (isEditMode.value && props.editProfileId && !formData.value.api_key.startsWith('****')) {
+    if (isEditMode.value && props.editProfileId && formData.value.api_key.startsWith('****')) {
       // For existing profiles with unchanged API key, test via profile ID
       result = await testProfile(props.editProfileId);
     } else {
@@ -105,6 +109,7 @@ async function testConfiguration() {
         endpoint: formData.value.endpoint,
         model: formData.value.model,
         custom_headers: formData.value.custom_headers,
+        timeout_seconds: normalizeTimeoutSeconds(formData.value.timeout_seconds),
       });
     }
 
@@ -139,6 +144,7 @@ async function saveProfile() {
     saveError.value = t('setting.ai.modelRequired');
     return;
   }
+  formData.value.timeout_seconds = normalizeTimeoutSeconds(formData.value.timeout_seconds);
 
   isSaving.value = true;
   saveError.value = null;
@@ -173,6 +179,11 @@ function openDocumentation() {
     ? 'https://github.com/WCY-dt/MavenRSS/blob/main/docs/AI_CONFIGURATION.zh.md'
     : 'https://github.com/WCY-dt/MavenRSS/blob/main/docs/AI_CONFIGURATION.md';
   openInBrowser(docUrl);
+}
+
+function normalizeTimeoutSeconds(value: number | undefined): number {
+  const seconds = Number(value) || 0;
+  return seconds >= 300 ? seconds : 300;
 }
 
 // Status display for test results
@@ -285,6 +296,21 @@ function handleClose() {
             v-model="formData.model"
             type="text"
             :placeholder="t('setting.ai.aiModelPlaceholder')"
+            class="input-field w-full sm:w-48 text-xs sm:text-sm"
+          />
+        </SettingItem>
+
+        <!-- Timeout -->
+        <SettingItem
+          :icon="PhClock"
+          :title="t('setting.ai.aiTimeout')"
+          :description="t('setting.ai.aiTimeoutDesc')"
+        >
+          <input
+            v-model.number="formData.timeout_seconds"
+            type="number"
+            min="300"
+            step="30"
             class="input-field w-full sm:w-48 text-xs sm:text-sm"
           />
         </SettingItem>

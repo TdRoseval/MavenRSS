@@ -9,6 +9,7 @@ export interface AIProfile {
   endpoint: string;
   model: string;
   custom_headers: string; // JSON string of key-value pairs
+  timeout_seconds: number;
   is_default: boolean;
   use_global_proxy: boolean;
   created_at: string;
@@ -31,6 +32,7 @@ export interface AIProfileFormData {
   endpoint: string;
   model: string;
   custom_headers: string;
+  timeout_seconds: number;
   is_default: boolean;
   use_global_proxy: boolean;
 }
@@ -42,6 +44,7 @@ export const defaultAIProfileFormData: AIProfileFormData = {
   endpoint: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
   custom_headers: '',
+  timeout_seconds: 300,
   is_default: false,
   use_global_proxy: true,
 };

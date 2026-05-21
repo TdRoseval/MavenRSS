@@ -211,6 +211,7 @@ func runMigrations(db *sql.DB) error {
 		endpoint TEXT NOT NULL,
 		model TEXT NOT NULL,
 		custom_headers TEXT DEFAULT '',
+		timeout_seconds INTEGER DEFAULT 0,
 		is_default BOOLEAN DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -218,6 +219,7 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_is_default ON ai_profiles(is_default)`)
 
 	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN use_global_proxy BOOLEAN DEFAULT 1`)
+	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN timeout_seconds INTEGER DEFAULT 0`)
 
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_tokens INTEGER DEFAULT 1000000`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_concurrency INTEGER DEFAULT 5`)

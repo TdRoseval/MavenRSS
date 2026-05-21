@@ -23,9 +23,9 @@ func (db *DB) CreateAIProfile(profile *models.AIProfile) (int64, error) {
 
 	now := time.Now()
 	result, err := db.Exec(`
-		INSERT INTO ai_profiles (user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, profile.UserID, profile.Name, encryptedKey, profile.Endpoint, profile.Model, profile.CustomHeaders, profile.IsDefault, profile.UseGlobalProxy, now, now)
+		INSERT INTO ai_profiles (user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, profile.UserID, profile.Name, encryptedKey, profile.Endpoint, profile.Model, profile.CustomHeaders, profile.TimeoutSeconds, profile.IsDefault, profile.UseGlobalProxy, now, now)
 	if err != nil {
 		return 0, fmt.Errorf("insert ai profile: %w", err)
 	}
@@ -48,11 +48,11 @@ func (db *DB) GetAIProfile(id int64) (*models.AIProfile, error) {
 	var profile models.AIProfile
 	var encryptedKey string
 	err := db.QueryRow(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE id = ?
 	`, id).Scan(
 		&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-		&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+		&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -78,11 +78,11 @@ func (db *DB) GetAIProfileForUser(userID, id int64) (*models.AIProfile, error) {
 	var profile models.AIProfile
 	var encryptedKey string
 	err := db.QueryRow(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE user_id = ? AND id = ?
 	`, userID, id).Scan(
 		&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-		&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+		&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -106,7 +106,7 @@ func (db *DB) GetAIProfileForUser(userID, id int64) (*models.AIProfile, error) {
 // GetAllAIProfiles retrieves all AI profiles
 func (db *DB) GetAllAIProfiles() ([]models.AIProfile, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles ORDER BY is_default DESC, id ASC
 	`)
 	if err != nil {
@@ -120,7 +120,7 @@ func (db *DB) GetAllAIProfiles() ([]models.AIProfile, error) {
 		var encryptedKey string
 		err := rows.Scan(
 			&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-			&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+			&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 			&profile.CreatedAt, &profile.UpdatedAt,
 		)
 		if err != nil {
@@ -144,7 +144,7 @@ func (db *DB) GetAllAIProfiles() ([]models.AIProfile, error) {
 // GetAllAIProfilesForUser retrieves all AI profiles for a specific user
 func (db *DB) GetAllAIProfilesForUser(userID int64) ([]models.AIProfile, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE user_id = ? ORDER BY is_default DESC, id ASC
 	`, userID)
 	if err != nil {
@@ -158,7 +158,7 @@ func (db *DB) GetAllAIProfilesForUser(userID int64) ([]models.AIProfile, error) 
 		var encryptedKey string
 		err := rows.Scan(
 			&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-			&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+			&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 			&profile.CreatedAt, &profile.UpdatedAt,
 		)
 		if err != nil {
@@ -182,7 +182,7 @@ func (db *DB) GetAllAIProfilesForUser(userID int64) ([]models.AIProfile, error) 
 // GetAllAIProfilesWithoutKeys retrieves all AI profiles without decrypting keys (for list display)
 func (db *DB) GetAllAIProfilesWithoutKeys() ([]models.AIProfile, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, name, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles ORDER BY is_default DESC, id ASC
 	`)
 	if err != nil {
@@ -195,7 +195,7 @@ func (db *DB) GetAllAIProfilesWithoutKeys() ([]models.AIProfile, error) {
 		var profile models.AIProfile
 		err := rows.Scan(
 			&profile.ID, &profile.UserID, &profile.Name, &profile.Endpoint,
-			&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+			&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 			&profile.CreatedAt, &profile.UpdatedAt,
 		)
 		if err != nil {
@@ -211,7 +211,7 @@ func (db *DB) GetAllAIProfilesWithoutKeys() ([]models.AIProfile, error) {
 // GetAllAIProfilesWithoutKeysForUser retrieves all AI profiles without decrypting keys for a specific user
 func (db *DB) GetAllAIProfilesWithoutKeysForUser(userID int64) ([]models.AIProfile, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, name, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE user_id = ? ORDER BY is_default DESC, id ASC
 	`, userID)
 	if err != nil {
@@ -224,7 +224,7 @@ func (db *DB) GetAllAIProfilesWithoutKeysForUser(userID int64) ([]models.AIProfi
 		var profile models.AIProfile
 		err := rows.Scan(
 			&profile.ID, &profile.UserID, &profile.Name, &profile.Endpoint,
-			&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+			&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 			&profile.CreatedAt, &profile.UpdatedAt,
 		)
 		if err != nil {
@@ -265,9 +265,9 @@ func (db *DB) UpdateAIProfile(profile *models.AIProfile) error {
 
 	_, err = db.Exec(`
 		UPDATE ai_profiles
-		SET name = ?, api_key = ?, endpoint = ?, model = ?, custom_headers = ?, is_default = ?, use_global_proxy = ?, updated_at = ?
+		SET name = ?, api_key = ?, endpoint = ?, model = ?, custom_headers = ?, timeout_seconds = ?, is_default = ?, use_global_proxy = ?, updated_at = ?
 		WHERE user_id = ? AND id = ?
-	`, profile.Name, encryptedKey, profile.Endpoint, profile.Model, profile.CustomHeaders, profile.IsDefault, profile.UseGlobalProxy, time.Now(), profile.UserID, profile.ID)
+	`, profile.Name, encryptedKey, profile.Endpoint, profile.Model, profile.CustomHeaders, profile.TimeoutSeconds, profile.IsDefault, profile.UseGlobalProxy, time.Now(), profile.UserID, profile.ID)
 	if err != nil {
 		return fmt.Errorf("update ai profile: %w", err)
 	}
@@ -303,11 +303,11 @@ func (db *DB) GetDefaultAIProfile() (*models.AIProfile, error) {
 	var profile models.AIProfile
 	var encryptedKey string
 	err := db.QueryRow(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE is_default = 1 LIMIT 1
 	`).Scan(
 		&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-		&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+		&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -334,11 +334,11 @@ func (db *DB) GetDefaultAIProfileForUser(userID int64) (*models.AIProfile, error
 	var profile models.AIProfile
 	var encryptedKey string
 	err := db.QueryRow(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE user_id = ? AND is_default = 1 LIMIT 1
 	`, userID).Scan(
 		&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-		&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+		&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -365,11 +365,11 @@ func (db *DB) getFirstAIProfile() (*models.AIProfile, error) {
 	var profile models.AIProfile
 	var encryptedKey string
 	err := db.QueryRow(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles ORDER BY id ASC LIMIT 1
 	`).Scan(
 		&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-		&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+		&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -395,11 +395,11 @@ func (db *DB) getFirstAIProfileForUser(userID int64) (*models.AIProfile, error) 
 	var profile models.AIProfile
 	var encryptedKey string
 	err := db.QueryRow(`
-		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE user_id = ? ORDER BY id ASC LIMIT 1
 	`, userID).Scan(
 		&profile.ID, &profile.UserID, &profile.Name, &encryptedKey, &profile.Endpoint,
-		&profile.Model, &profile.CustomHeaders, &profile.IsDefault, &profile.UseGlobalProxy,
+		&profile.Model, &profile.CustomHeaders, &profile.TimeoutSeconds, &profile.IsDefault, &profile.UseGlobalProxy,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
@@ -470,56 +470,57 @@ func (db *DB) HasAPIKeySet(id int64) (bool, error) {
 // CopyAIProfiles copies all AI profiles from one user to another, and returns a map of old profile ID to new profile ID
 func (db *DB) CopyAIProfiles(fromUserID, toUserID int64, tx *sql.Tx) (map[int64]int64, error) {
 	idMap := make(map[int64]int64)
-	
+
 	// First delete any existing AI profiles for the target user
 	_, err := tx.Exec(`DELETE FROM ai_profiles WHERE user_id = ?`, toUserID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Query all AI profiles from the source user
 	rows, err := tx.Query(`
-		SELECT id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at
+		SELECT id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at
 		FROM ai_profiles WHERE user_id = ?`, fromUserID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	now := time.Now()
-	
+
 	for rows.Next() {
 		var oldID int64
 		var name, encryptedKey, endpoint, model, customHeaders string
+		var timeoutSeconds int
 		var isDefault, useGlobalProxy bool
 		var createdAt, updatedAt time.Time
-		
+
 		err := rows.Scan(
 			&oldID, &name, &encryptedKey, &endpoint, &model, &customHeaders,
-			&isDefault, &useGlobalProxy, &createdAt, &updatedAt,
+			&timeoutSeconds, &isDefault, &useGlobalProxy, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Insert the profile for the new user
 		result, err := tx.Exec(`
-			INSERT INTO ai_profiles (user_id, name, api_key, endpoint, model, custom_headers, is_default, use_global_proxy, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			INSERT INTO ai_profiles (user_id, name, api_key, endpoint, model, custom_headers, timeout_seconds, is_default, use_global_proxy, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			toUserID, name, encryptedKey, endpoint, model, customHeaders,
-			isDefault, useGlobalProxy, now, now,
+			timeoutSeconds, isDefault, useGlobalProxy, now, now,
 		)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		newID, err := result.LastInsertId()
 		if err != nil {
 			return nil, err
 		}
-		
+
 		idMap[oldID] = newID
 	}
-	
+
 	return idMap, rows.Err()
 }

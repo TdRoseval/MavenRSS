@@ -19,13 +19,14 @@ import (
 
 // ClientConfig holds the configuration for the AI client
 type ClientConfig struct {
-	APIKey        string
-	Endpoint      string
-	Model         string
-	SystemPrompt  string
-	CustomHeaders string
-	Timeout       time.Duration
-	ProxyURL      string
+	APIKey         string
+	Endpoint       string
+	Model          string
+	SystemPrompt   string
+	CustomHeaders  string
+	Timeout        time.Duration
+	TimeoutSeconds int
+	ProxyURL       string
 }
 
 // Client represents a universal AI client that supports multiple API formats
@@ -192,6 +193,9 @@ func IsRetryableStageFailure(err error) bool {
 
 // NewClient creates a new universal AI client
 func NewClient(config ClientConfig) *Client {
+	if config.Timeout == 0 && config.TimeoutSeconds > 0 {
+		config.Timeout = time.Duration(config.TimeoutSeconds) * time.Second
+	}
 	if config.Timeout == 0 {
 		config.Timeout = 60 * time.Second
 	}
@@ -206,6 +210,9 @@ func NewClient(config ClientConfig) *Client {
 
 // NewClientWithHTTPClient creates a new AI client with a custom HTTP client
 func NewClientWithHTTPClient(config ClientConfig, httpClient *http.Client) *Client {
+	if config.Timeout == 0 && config.TimeoutSeconds > 0 {
+		config.Timeout = time.Duration(config.TimeoutSeconds) * time.Second
+	}
 	return &Client{
 		config: config,
 		client: httpClient,
@@ -248,7 +255,10 @@ func (c *Client) RequestWithMessages(messages []map[string]string) (ResponseResu
 
 // RequestWithConfig makes an AI request with full configuration
 func (c *Client) RequestWithConfig(config RequestConfig) (ResponseResult, error) {
-	const totalAITimeout = 120 * time.Second
+	totalAITimeout := LegacyTotalRequestTimeout
+	if c.config.Timeout > totalAITimeout {
+		totalAITimeout = c.config.Timeout
+	}
 
 	ctx := config.Context
 	if ctx == nil {

@@ -17,6 +17,7 @@ import (
 	"MavenRSS/internal/dedup"
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/store/sqlite"
+	"MavenRSS/internal/summary"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
@@ -220,6 +221,30 @@ func TestShouldProcessRequiresUsableEmbeddingModelConfig(t *testing.T) {
 	mustSetUserSetting(t, db, 1, "ai_embedding_models", `[{"modelname":"embed-v1","baseurl":"https://embed.example.com","apikey":"embed-key"}]`)
 	if !ShouldProcess(db, 1) {
 		t.Fatal("ShouldProcess() = false, want true when embedding model config is usable")
+	}
+}
+
+func TestAIPipelineTimeoutDefaultsAndOverrides(t *testing.T) {
+	if got := articleEmbeddingPipelineTimeout(`[{"modelname":"embed","baseurl":"https://embed.example.com"}]`); got != ai.MinimumConfigurableTimeout {
+		t.Fatalf("articleEmbeddingPipelineTimeout default = %v, want %v", got, ai.MinimumConfigurableTimeout)
+	}
+	if got := articleEmbeddingPipelineTimeout(`[{"modelname":"embed","baseurl":"https://embed.example.com","timeout_seconds":600}]`); got != 10*time.Minute {
+		t.Fatalf("articleEmbeddingPipelineTimeout override = %v, want 10m", got)
+	}
+
+	defaultClusterCfg := &dedup.FusionConfig{
+		EmbConfigsJSON: `[{"modelname":"embed","baseurl":"https://embed.example.com"}]`,
+	}
+	if got := clusterPipelineTimeout(defaultClusterCfg); got != ai.MinimumConfigurableTimeout {
+		t.Fatalf("clusterPipelineTimeout default = %v, want %v", got, ai.MinimumConfigurableTimeout)
+	}
+
+	slowClusterCfg := &dedup.FusionConfig{
+		Summarizer:     &summary.AISummarizer{Timeout: 10 * time.Minute},
+		EmbConfigsJSON: `[{"modelname":"embed","baseurl":"https://embed.example.com","timeout_seconds":420}]`,
+	}
+	if got := clusterPipelineTimeout(slowClusterCfg); got != 10*time.Minute {
+		t.Fatalf("clusterPipelineTimeout override = %v, want 10m", got)
 	}
 }
 

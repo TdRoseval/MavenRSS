@@ -2,6 +2,7 @@ package ai
 
 import (
 	"testing"
+	"time"
 
 	"MavenRSS/internal/models"
 	"MavenRSS/internal/store/sqlite"
@@ -47,6 +48,36 @@ func TestGetConfigForFeatureForUserUsesUserProfileOnly(t *testing.T) {
 	}
 	if cfg == nil || cfg.APIKey != "user-key" || cfg.Endpoint != "https://user.example.com" || cfg.Model != "user-model" {
 		t.Fatalf("GetConfigForFeatureForUser() = %#v, want user-scoped profile", cfg)
+	}
+	if cfg.Timeout != MinimumConfigurableTimeout || cfg.TimeoutSeconds != 300 {
+		t.Fatalf("GetConfigForFeatureForUser() timeout = %v/%d, want 5m/300", cfg.Timeout, cfg.TimeoutSeconds)
+	}
+}
+
+func TestGetConfigForFeatureForUserUsesProfileTimeout(t *testing.T) {
+	db := newProfileProviderTestDB(t)
+	provider := NewProfileProvider(db)
+
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:         1,
+		Name:           "slow",
+		APIKey:         "user-key",
+		Endpoint:       "https://user.example.com",
+		Model:          "user-model",
+		TimeoutSeconds: 600,
+	}); err != nil {
+		t.Fatalf("CreateAIProfile user error: %v", err)
+	}
+
+	cfg, err := provider.GetConfigForFeatureForUser(1, FeatureSummary)
+	if err != nil {
+		t.Fatalf("GetConfigForFeatureForUser error: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("GetConfigForFeatureForUser() = nil, want config")
+	}
+	if cfg.Timeout != 10*time.Minute || cfg.TimeoutSeconds != 600 {
+		t.Fatalf("timeout = %v/%d, want 10m/600", cfg.Timeout, cfg.TimeoutSeconds)
 	}
 }
 

@@ -593,7 +593,7 @@ func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, conten
 	}
 
 	globalProxyURL, _ := buildGlobalProxyURL(m.db, task.UserID)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), articleEmbeddingPipelineTimeout(configsJSON))
 	defer cancel()
 
 	var titleEmbBlob, summaryEmbBlob []byte
@@ -1201,7 +1201,7 @@ func (m *AIEnhancedManager) runClusterPipelineOnceWithBatch(userID int64, batchC
 		)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), clusterPipelineTimeout(cfg))
 	defer cancel()
 
 	type clusterStageResult struct {
@@ -1259,6 +1259,21 @@ func (m *AIEnhancedManager) runClusterPipelineOnceWithBatch(userID int64, batchC
 	}
 
 	return nil
+}
+
+func articleEmbeddingPipelineTimeout(configsJSON string) time.Duration {
+	return ai.MaxEmbeddingTimeoutFromConfigJSON(configsJSON)
+}
+
+func clusterPipelineTimeout(cfg *dedup.FusionConfig) time.Duration {
+	if cfg == nil {
+		return ai.MinimumConfigurableTimeout
+	}
+	timeout := ai.MaxTimeout(ai.MaxEmbeddingTimeoutFromConfigJSON(cfg.EmbConfigsJSON))
+	if cfg.Summarizer != nil {
+		timeout = ai.MaxTimeout(timeout, cfg.Summarizer.Timeout)
+	}
+	return timeout
 }
 
 func (m *AIEnhancedManager) runClusterEmbeddingPipeline(ctx context.Context, userID int64, cfg *dedup.FusionConfig, fusionDone <-chan struct{}) error {
@@ -1375,7 +1390,7 @@ func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig
 	var aiSummarizer *summary.AISummarizer
 	if hasConfiguredAPIKey(config) {
 		useGlobalProxy := ai.NewProfileProvider(m.db).UseGlobalProxyForFeatureForUser(userID, proxyFeature)
-		aiSummarizer = summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, useGlobalProxy)
+		aiSummarizer = summary.NewAISummarizerWithDBAndTimeout(config.APIKey, config.Endpoint, config.Model, m.db, config.Timeout, useGlobalProxy)
 		if config.CustomHeaders != "" {
 			aiSummarizer.SetCustomHeaders(config.CustomHeaders)
 		}
@@ -1542,7 +1557,7 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	}
 
 	// Create AI summarizer with Chinese language
-	aiSummarizer := summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, true)
+	aiSummarizer := summary.NewAISummarizerWithDBAndTimeout(config.APIKey, config.Endpoint, config.Model, m.db, config.Timeout, true)
 	if systemPrompt != "" {
 		aiSummarizer.SetSystemPrompt(systemPrompt)
 	}
@@ -1762,7 +1777,7 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	}
 
 	// Create AI translator
-	aiTranslator := translation.NewAITranslatorWithDB(config.APIKey, config.Endpoint, config.Model, m.db, true)
+	aiTranslator := translation.NewAITranslatorWithDBAndTimeout(config.APIKey, config.Endpoint, config.Model, m.db, config.Timeout, true)
 	if systemPrompt != "" {
 		aiTranslator.SetSystemPrompt(systemPrompt)
 	}

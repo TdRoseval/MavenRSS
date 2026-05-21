@@ -294,3 +294,15 @@ func TestRankRecommendationCandidatesChronologicalUsesPublishedAtDescending(t *t
 		}
 	}
 }
+
+func TestRecommendationRequestTimeoutDefaultsAndOverrides(t *testing.T) {
+	if got := recommendationRequestTimeout(nil); got != ai.MinimumConfigurableTimeout {
+		t.Fatalf("recommendationRequestTimeout(nil) = %v, want %v", got, ai.MinimumConfigurableTimeout)
+	}
+	if got := recommendationRequestTimeout(&ai.ClientConfig{}); got != ai.MinimumConfigurableTimeout {
+		t.Fatalf("recommendationRequestTimeout(empty) = %v, want %v", got, ai.MinimumConfigurableTimeout)
+	}
+	if got := recommendationRequestTimeout(&ai.ClientConfig{Timeout: 10 * time.Minute}); got != 10*time.Minute {
+		t.Fatalf("recommendationRequestTimeout(10m) = %v, want 10m", got)
+	}
+}

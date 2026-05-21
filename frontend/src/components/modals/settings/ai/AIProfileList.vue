@@ -39,6 +39,11 @@ const testResults = ref<Map<number, AIProfileTestResult>>(new Map());
 const testingProfiles = ref<Set<number>>(new Set());
 const isTestingAll = ref(false);
 
+function normalizeTimeoutSeconds(value: number | undefined): number {
+  const seconds = Number(value) || 0;
+  return seconds >= 300 ? seconds : 300;
+}
+
 // Load profiles on mount
 onMounted(() => {
   fetchProfiles();
@@ -198,6 +203,14 @@ function getTestStatus(profileId: number): 'success' | 'error' | 'unknown' {
               >
                 <span class="text-text-tertiary">{{ t('setting.ai.model') }}</span>
                 <span class="text-text-secondary font-medium">{{ profile.model }}</span>
+              </div>
+              <div
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-bg-tertiary text-xs"
+              >
+                <span class="text-text-tertiary">{{ t('setting.ai.timeoutShort') }}</span>
+                <span class="text-text-secondary"
+                  >{{ normalizeTimeoutSeconds(profile.timeout_seconds) }}s</span
+                >
               </div>
             </div>
           </div>

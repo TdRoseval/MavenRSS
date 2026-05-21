@@ -124,10 +124,12 @@ func (p *ProfileProvider) GetConfigForFeature(feature FeatureType) (*ClientConfi
 	}
 
 	cfg := &ClientConfig{
-		APIKey:        profile.APIKey,
-		Endpoint:      profile.Endpoint,
-		Model:         profile.Model,
-		CustomHeaders: profile.CustomHeaders, // Keep as string, will be parsed by client
+		APIKey:         profile.APIKey,
+		Endpoint:       profile.Endpoint,
+		Model:          profile.Model,
+		CustomHeaders:  profile.CustomHeaders, // Keep as string, will be parsed by client
+		Timeout:        EffectiveTimeoutFromSeconds(profile.TimeoutSeconds),
+		TimeoutSeconds: TimeoutSeconds(EffectiveTimeoutFromSeconds(profile.TimeoutSeconds)),
 	}
 
 	return cfg, nil
@@ -142,10 +144,12 @@ func (p *ProfileProvider) GetConfigForFeatureForUser(userID int64, feature Featu
 	}
 	if profile != nil {
 		return &ClientConfig{
-			APIKey:        profile.APIKey,
-			Endpoint:      profile.Endpoint,
-			Model:         profile.Model,
-			CustomHeaders: profile.CustomHeaders,
+			APIKey:         profile.APIKey,
+			Endpoint:       profile.Endpoint,
+			Model:          profile.Model,
+			CustomHeaders:  profile.CustomHeaders,
+			Timeout:        EffectiveTimeoutFromSeconds(profile.TimeoutSeconds),
+			TimeoutSeconds: TimeoutSeconds(EffectiveTimeoutFromSeconds(profile.TimeoutSeconds)),
 		}, nil
 	}
 
@@ -223,9 +227,11 @@ func (p *ProfileProvider) getLegacyConfigForUser(userID int64) *ClientConfig {
 	}
 
 	return &ClientConfig{
-		APIKey:        apiKey,
-		Endpoint:      endpoint,
-		Model:         model,
-		CustomHeaders: customHeaders,
+		APIKey:         apiKey,
+		Endpoint:       endpoint,
+		Model:          model,
+		CustomHeaders:  customHeaders,
+		Timeout:        MinimumConfigurableTimeout,
+		TimeoutSeconds: TimeoutSeconds(MinimumConfigurableTimeout),
 	}
 }

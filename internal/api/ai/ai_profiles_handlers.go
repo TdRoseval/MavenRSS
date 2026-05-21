@@ -25,16 +25,18 @@ type ProfileRequest struct {
 	Endpoint       string `json:"endpoint"`
 	Model          string `json:"model"`
 	CustomHeaders  string `json:"custom_headers"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
 	IsDefault      bool   `json:"is_default"`
 	UseGlobalProxy bool   `json:"use_global_proxy"`
 }
 
 // ProfileTestRequest represents the request body for testing a configuration without saving
 type ProfileTestRequest struct {
-	APIKey        string `json:"api_key"`
-	Endpoint      string `json:"endpoint"`
-	Model         string `json:"model"`
-	CustomHeaders string `json:"custom_headers"`
+	APIKey         string `json:"api_key"`
+	Endpoint       string `json:"endpoint"`
+	Model          string `json:"model"`
+	CustomHeaders  string `json:"custom_headers"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 // ProfileTestResult represents the result of testing an AI profile
@@ -185,6 +187,7 @@ func HandleCreateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		Endpoint:       req.Endpoint,
 		Model:          req.Model,
 		CustomHeaders:  req.CustomHeaders,
+		TimeoutSeconds: normalizeProfileTimeoutSeconds(req.TimeoutSeconds),
 		IsDefault:      req.IsDefault,
 		UseGlobalProxy: req.UseGlobalProxy,
 	}
@@ -282,6 +285,7 @@ func HandleUpdateAIProfile(h *core.Handler, w http.ResponseWriter, r *http.Reque
 		Endpoint:       req.Endpoint,
 		Model:          req.Model,
 		CustomHeaders:  req.CustomHeaders,
+		TimeoutSeconds: normalizeProfileTimeoutSeconds(req.TimeoutSeconds),
 		IsDefault:      req.IsDefault,
 		UseGlobalProxy: req.UseGlobalProxy,
 	}
@@ -501,12 +505,13 @@ func HandleTestAIProfileConfig(h *core.Handler, w http.ResponseWriter, r *http.R
 
 	// Create a temporary profile for testing
 	tempProfile := &models.AIProfile{
-		ID:            0,
-		Name:          "Test",
-		APIKey:        req.APIKey,
-		Endpoint:      req.Endpoint,
-		Model:         req.Model,
-		CustomHeaders: req.CustomHeaders,
+		ID:             0,
+		Name:           "Test",
+		APIKey:         req.APIKey,
+		Endpoint:       req.Endpoint,
+		Model:          req.Model,
+		CustomHeaders:  req.CustomHeaders,
+		TimeoutSeconds: normalizeProfileTimeoutSeconds(req.TimeoutSeconds),
 	}
 
 	result := testAIProfileConnection(h, tempProfile, userID)
@@ -559,7 +564,8 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile, userID 
 	}
 
 	// Create HTTP client with proxy support if configured
-	httpClient, err := createHTTPClientWithProxyForProfile(h, profile.UseGlobalProxy, userID)
+	timeout := ai.EffectiveTimeoutFromSeconds(profile.TimeoutSeconds)
+	httpClient, err := createHTTPClientWithProxyForProfile(h, profile.UseGlobalProxy, userID, timeout)
 	if err != nil {
 		result.ConnectionSuccess = false
 		result.ModelAvailable = false
@@ -570,11 +576,12 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile, userID 
 
 	// Create AI client for testing
 	clientConfig := ai.ClientConfig{
-		APIKey:        profile.APIKey,
-		Endpoint:      profile.Endpoint,
-		Model:         profile.Model,
-		Timeout:       30 * time.Second,
-		CustomHeaders: profile.CustomHeaders, // Keep as string, client will parse it
+		APIKey:         profile.APIKey,
+		Endpoint:       profile.Endpoint,
+		Model:          profile.Model,
+		Timeout:        timeout,
+		TimeoutSeconds: ai.TimeoutSeconds(timeout),
+		CustomHeaders:  profile.CustomHeaders, // Keep as string, client will parse it
 	}
 
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
@@ -599,7 +606,7 @@ func testAIProfileConnection(h *core.Handler, profile *models.AIProfile, userID 
 }
 
 // createHTTPClientWithProxyForProfile creates an HTTP client with global proxy settings
-func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool, userID int64) (*http.Client, error) {
+func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool, userID int64, timeout time.Duration) (*http.Client, error) {
 	var proxyURL string
 
 	if useGlobalProxy {
@@ -614,7 +621,17 @@ func createHTTPClientWithProxyForProfile(h *core.Handler, useGlobalProxy bool, u
 		}
 	}
 
-	return httputil.GetPooledAIHTTPClient(proxyURL, 30*time.Second), nil
+	return httputil.GetPooledAIHTTPClient(proxyURL, ai.EffectiveTimeout(timeout)), nil
+}
+
+func normalizeProfileTimeoutSeconds(seconds int) int {
+	if seconds <= 0 {
+		return 0
+	}
+	if seconds < int(ai.MinimumConfigurableTimeout.Seconds()) {
+		return int(ai.MinimumConfigurableTimeout.Seconds())
+	}
+	return seconds
 }
 
 // buildProxyURLForProfile builds a proxy URL from components

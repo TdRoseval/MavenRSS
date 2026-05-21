@@ -264,6 +264,7 @@ func initSchema(db *sql.DB) error {
 		endpoint TEXT,
 		model TEXT,
 		custom_headers TEXT,
+		timeout_seconds INTEGER DEFAULT 0,
 		is_default BOOLEAN DEFAULT 0,
 		use_global_proxy BOOLEAN DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

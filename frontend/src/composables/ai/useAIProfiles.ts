@@ -105,6 +105,7 @@ export function useAIProfiles() {
     endpoint: string;
     model: string;
     custom_headers: string;
+    timeout_seconds: number;
   }): Promise<AIProfileTestResult | null> {
     try {
       return await authPost<AIProfileTestResult>('/api/ai/profiles/test-config', config);
@@ -145,6 +146,7 @@ export function useAIProfiles() {
       endpoint: profile.endpoint,
       model: profile.model,
       custom_headers: profile.custom_headers,
+      timeout_seconds: profile.timeout_seconds || 300,
       is_default: profile.is_default,
       use_global_proxy: profile.use_global_proxy ?? true,
     };

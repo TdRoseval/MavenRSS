@@ -1083,15 +1083,17 @@ func (m *AIEnhancedManager) scoreRecommendationCandidate(userID int64, candidate
 }
 
 func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.ClientConfig, prompt string) (string, bool) {
+	timeout := recommendationRequestTimeout(config)
 	client := ai.NewClient(ai.ClientConfig{
-		APIKey:        config.APIKey,
-		Endpoint:      config.Endpoint,
-		Model:         config.Model,
-		CustomHeaders: config.CustomHeaders,
-		ProxyURL:      config.ProxyURL,
-		Timeout:       90 * time.Second,
+		APIKey:         config.APIKey,
+		Endpoint:       config.Endpoint,
+		Model:          config.Model,
+		CustomHeaders:  config.CustomHeaders,
+		ProxyURL:       config.ProxyURL,
+		Timeout:        timeout,
+		TimeoutSeconds: ai.TimeoutSeconds(timeout),
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	result, err := client.RequestWithConfig(ai.RequestConfig{
 		Model:       config.Model,
@@ -1111,6 +1113,13 @@ func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.C
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 	return content, content != ""
+}
+
+func recommendationRequestTimeout(config *ai.ClientConfig) time.Duration {
+	if config == nil {
+		return ai.MinimumConfigurableTimeout
+	}
+	return ai.EffectiveTimeout(config.Timeout)
 }
 
 func (m *AIEnhancedManager) GetDailyRecommendationTaskStatus(userID int64) DailyRecommendationTaskStatus {
