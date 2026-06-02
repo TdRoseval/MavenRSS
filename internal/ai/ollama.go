@@ -77,7 +77,11 @@ func (h *OllamaHandler) BuildRequest(config RequestConfig) (map[string]interface
 
 	// Add format for structured outputs (JSON schema)
 	if config.ResponseFormat != nil {
-		request["format"] = config.ResponseFormat
+		if isJSONResponseFormat(config.ResponseFormat) {
+			request["format"] = "json"
+		} else {
+			request["format"] = config.ResponseFormat
+		}
 	}
 
 	return request, nil

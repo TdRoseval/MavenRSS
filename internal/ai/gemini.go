@@ -99,6 +99,11 @@ func (h *GeminiHandler) BuildRequest(config RequestConfig) (map[string]interface
 		genConfig["seed"] = config.Seed
 	}
 
+	// JSON response mode for Gemini structured output requests
+	if isJSONResponseFormat(config.ResponseFormat) {
+		genConfig["responseMimeType"] = "application/json"
+	}
+
 	// Add system instruction if provided (Gemini-specific)
 	// Note: systemInstruction does NOT have a "role" field in Gemini API
 	if config.SystemPrompt != "" {

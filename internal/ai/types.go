@@ -38,6 +38,22 @@ type RequestConfig struct {
 	Context             context.Context        // Context for cancellation
 }
 
+// JSONResponseFormat requests a JSON object response from providers that support
+// JSON mode or an equivalent structured-output parameter.
+func JSONResponseFormat() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "json_object",
+	}
+}
+
+func isJSONResponseFormat(format map[string]interface{}) bool {
+	if format == nil {
+		return false
+	}
+	formatType, ok := format["type"].(string)
+	return ok && formatType == "json_object"
+}
+
 // ResponseResult holds the result from an AI API call
 type ResponseResult struct {
 	Content    string     // The main response content
@@ -69,12 +85,11 @@ type StreamFormatHandler interface {
 
 // StreamChunk represents a single chunk from a streaming response
 type StreamChunk struct {
-	Content    string
-	Thinking   string
-	Done       bool
-	Error      error
+	Content  string
+	Thinking string
+	Done     bool
+	Error    error
 }
-
 
 // ParseCustomHeaders parses custom headers from JSON string to map
 func ParseCustomHeaders(headersJSON string) map[string]string {

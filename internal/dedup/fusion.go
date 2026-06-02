@@ -254,6 +254,7 @@ func callLLMFusion(cluster models.Cluster, articles []models.Article, db *sqlite
 		s.SetLanguage(cfg.TargetLanguage)
 	}
 	s.SetSystemPrompt(buildFusionSystemPrompt(targetLabel))
+	s.SetResponseFormat(ai.JSONResponseFormat())
 
 	input, err := buildFusionInput(cluster, articles, db, cfg)
 	if err != nil {

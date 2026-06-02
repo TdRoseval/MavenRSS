@@ -22,6 +22,7 @@ type AISummarizer struct {
 	CustomHeaders  string
 	Language       string // User's language setting (e.g., "en", "zh")
 	Timeout        time.Duration
+	ResponseFormat map[string]interface{}
 	client         *ai.Client
 	httpClient     *http.Client // Store HTTP client to preserve proxy settings
 	db             DBInterface  // Store DB reference for proxy updates
@@ -168,6 +169,11 @@ func (s *AISummarizer) SetCustomHeaders(headers string) {
 	s.recreateClient()
 }
 
+// SetResponseFormat sets an optional structured-output format for AI requests.
+func (s *AISummarizer) SetResponseFormat(format map[string]interface{}) {
+	s.ResponseFormat = format
+}
+
 // SetLanguage sets the language for the summarizer.
 // If language is empty, it keeps the current language setting.
 func (s *AISummarizer) SetLanguage(language string) {
@@ -266,7 +272,14 @@ func (s *AISummarizer) Summarize(text string, length SummaryLength) (SummaryResu
 	userPrompt := s.getUserPrompt(targetWords, cleanedText)
 
 	// Use the universal client which handles format detection automatically
-	result, err := s.client.RequestWithThinking(systemPrompt, userPrompt)
+	result, err := s.client.RequestWithConfig(ai.RequestConfig{
+		Model:          s.Model,
+		SystemPrompt:   systemPrompt,
+		UserPrompt:     userPrompt,
+		Temperature:    0.3,
+		MaxTokens:      8192,
+		ResponseFormat: s.ResponseFormat,
+	})
 	if err != nil {
 		return SummaryResult{}, err
 	}

@@ -1096,11 +1096,12 @@ func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.C
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	result, err := client.RequestWithConfig(ai.RequestConfig{
-		Model:       config.Model,
-		Messages:    []map[string]string{{"role": "user", "content": prompt}},
-		Temperature: 0.2,
-		MaxTokens:   2048,
-		Context:     ctx,
+		Model:          config.Model,
+		Messages:       []map[string]string{{"role": "user", "content": prompt}},
+		Temperature:    0.2,
+		MaxTokens:      2048,
+		ResponseFormat: ai.JSONResponseFormat(),
+		Context:        ctx,
 	})
 	if err != nil {
 		m.recordTaskFailure(userID, "recommendation", nil, config.Model, config.Endpoint, err)
