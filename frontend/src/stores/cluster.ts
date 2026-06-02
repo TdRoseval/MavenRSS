@@ -18,6 +18,7 @@ interface ClusterListResponse {
   clusters: Cluster[];
   total?: number;
   has_more?: boolean;
+  cache_hit?: boolean;
 }
 
 export const useClusterStore = defineStore('cluster', () => {
@@ -200,9 +201,6 @@ export const useClusterStore = defineStore('cluster', () => {
         hasMore.value = realtimeHasMore;
         currentPage.value = page;
 
-        if (isFirstPage) {
-          currentClusterId.value = clusters.value[0]?.id ?? null;
-        }
         return;
       }
 
@@ -261,9 +259,6 @@ export const useClusterStore = defineStore('cluster', () => {
       hasMore.value = clusterData.length === DEFAULT_PAGE_SIZE;
       currentPage.value = page;
 
-      if (isFirstPage) {
-        currentClusterId.value = clusters.value[0]?.id ?? null;
-      }
     } catch (error) {
       console.error('Failed to fetch clusters:', error);
       throw error;

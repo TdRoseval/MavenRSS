@@ -345,6 +345,17 @@ func runMigrations(db *sql.DB) error {
 
 	ensureDailyRecommendationSchema(db)
 
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS cluster_feed_first_page_cache (
+		user_id INTEGER NOT NULL,
+		filter TEXT NOT NULL,
+		vector_hash TEXT NOT NULL,
+		payload_json TEXT NOT NULL,
+		generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY(user_id, filter),
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_cluster_feed_first_page_cache_user ON cluster_feed_first_page_cache(user_id)`)
+
 	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN interest_vector BLOB DEFAULT NULL`)
 	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_read_count INTEGER DEFAULT 0`)
 	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_total_read_time INTEGER DEFAULT 0`)

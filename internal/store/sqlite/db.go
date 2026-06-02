@@ -32,15 +32,17 @@ var (
 
 type DB struct {
 	*sql.DB
-	writeMu        sync.Mutex
-	ready          chan struct{}
-	once           sync.Once
-	startupOnce    sync.Once
-	startupResult  StartupCheckResult
-	startupErr     error
-	driverName     string
-	dataSourceName string
-	inMemory       bool
+	writeMu                     sync.Mutex
+	ready                       chan struct{}
+	once                        sync.Once
+	startupOnce                 sync.Once
+	startupResult               StartupCheckResult
+	startupErr                  error
+	driverName                  string
+	dataSourceName              string
+	inMemory                    bool
+	clusterFeedFirstPageCache   map[int64]map[string]ClusterFeedFirstPageCacheEntry
+	clusterFeedFirstPageCacheMu sync.RWMutex
 }
 
 func md5Hex(input string) string {

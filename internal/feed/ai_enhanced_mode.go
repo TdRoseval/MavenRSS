@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
+	"MavenRSS/internal/clusterfeed"
 	"MavenRSS/internal/dedup"
 	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
@@ -871,11 +872,27 @@ func (m *AIEnhancedManager) runClusterPipeline(userID, version int64) {
 				clusterProgress.PendingMergeClusters == 0 &&
 				clusterProgress.PendingEmbedClusters == 0 {
 				m.requestMissingRecommendationBackfill(userID)
+				m.prewarmClusterFeedFirstPageCache(userID, version)
 			}
 		}
 		m.onAsyncWorkDrained()
 		return
 	}
+}
+
+func (m *AIEnhancedManager) prewarmClusterFeedFirstPageCache(userID, version int64) {
+	if m == nil || m.db == nil || userID <= 0 || !m.isUserOperationCurrent(userID, version) {
+		return
+	}
+
+	go func() {
+		if !m.isUserOperationCurrent(userID, version) {
+			return
+		}
+		if err := clusterfeed.PrewarmRootFilters(m.db, userID); err != nil {
+			log.Printf("Failed to prewarm cluster feed first-page cache for user %d: %v", userID, err)
+		}
+	}()
 }
 
 func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, error) {

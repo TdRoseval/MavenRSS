@@ -64,7 +64,15 @@ func (db *DB) UpdateUserInterestVector(userID int64, vectorBlob []byte) error {
 		}
 	}
 
-	return tx.Commit()
+	if _, err := tx.Exec(`DELETE FROM cluster_feed_first_page_cache WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	db.clearClusterFeedFirstPageMemoryCache(userID)
+	return nil
 }
 
 // GetFavoriteClusterSummaryEmbeddings retrieves summary embedding blobs for all

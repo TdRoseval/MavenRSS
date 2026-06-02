@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // TranslationCache represents a cached translation entry
@@ -32,6 +33,59 @@ func (db *DB) GetCachedTranslation(sourceTextHash, targetLang, provider string) 
 		return "", false, err
 	}
 	return translatedText, true, nil
+}
+
+// GetCachedTranslations retrieves cached translations for a batch of source hashes.
+func (db *DB) GetCachedTranslations(sourceTextHashes []string, targetLang, provider string) (map[string]string, error) {
+	db.WaitForReady()
+	result := make(map[string]string)
+	if len(sourceTextHashes) == 0 {
+		return result, nil
+	}
+
+	seen := make(map[string]struct{}, len(sourceTextHashes))
+	hashes := make([]string, 0, len(sourceTextHashes))
+	for _, hash := range sourceTextHashes {
+		hash = strings.TrimSpace(hash)
+		if hash == "" {
+			continue
+		}
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+		hashes = append(hashes, hash)
+	}
+	if len(hashes) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(hashes))
+	args := make([]interface{}, 0, len(hashes)+2)
+	for i, hash := range hashes {
+		placeholders[i] = "?"
+		args = append(args, hash)
+	}
+	args = append(args, targetLang, provider)
+
+	rows, err := db.Query(fmt.Sprintf(`
+		SELECT source_text_hash, translated_text
+		FROM translation_cache
+		WHERE source_text_hash IN (%s) AND target_lang = ? AND provider = ?
+	`, strings.Join(placeholders, ",")), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var hash, translatedText string
+		if err := rows.Scan(&hash, &translatedText); err != nil {
+			continue
+		}
+		result[hash] = translatedText
+	}
+	return result, rows.Err()
 }
 
 // SetCachedTranslation stores a translation in cache

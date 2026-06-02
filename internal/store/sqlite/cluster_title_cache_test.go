@@ -97,6 +97,83 @@ func TestGetClusterByIDUsesCachedTranslatedTitleForSingleArticleDisplay(t *testi
 	}
 }
 
+func TestGetClustersForUserBatchMetaUsesCachedTranslatedTitle(t *testing.T) {
+	db := setupTestDB(t)
+
+	userID, err := db.CreateUser(&models.User{
+		Username:     "cluster-title-cache-list-user",
+		Email:        "cluster-title-cache-list@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser error = %v", err)
+	}
+
+	feedID, err := db.AddFeedForUser(userID, &models.Feed{
+		Title:             "Translated Feed",
+		URL:               "https://example.com/translated-feed-list",
+		Type:              "rss",
+		RefreshInterval:   60,
+		TranslateArticles: true,
+	})
+	if err != nil {
+		t.Fatalf("AddFeedForUser error = %v", err)
+	}
+
+	if err := db.SetSettingForUser(userID, "target_language", "zh"); err != nil {
+		t.Fatalf("SetSettingForUser target_language error = %v", err)
+	}
+	if err := db.SetSettingForUser(userID, "translation_provider", "google"); err != nil {
+		t.Fatalf("SetSettingForUser translation_provider error = %v", err)
+	}
+
+	const originalTitle = "Single article list cluster title"
+	const cachedTitle = "鍗曠瘒鍒楄〃鑱氱被鏍囬缂撳瓨"
+
+	articleResult, err := db.Exec(
+		`INSERT INTO articles (user_id, feed_id, title, url, published_at, summary, unique_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, feedID, originalTitle, "https://example.com/list-article", time.Now(), "summary", "cluster-title-cache-list-1",
+	)
+	if err != nil {
+		t.Fatalf("insert article error = %v", err)
+	}
+	articleID, err := articleResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("article LastInsertId error = %v", err)
+	}
+
+	if err := db.SetCachedTranslation(hashClusterTitleCacheTest(originalTitle), originalTitle, "zh", cachedTitle, "google"); err != nil {
+		t.Fatalf("SetCachedTranslation error = %v", err)
+	}
+
+	clusterID, err := db.CreateCluster(userID, "complete")
+	if err != nil {
+		t.Fatalf("CreateCluster error = %v", err)
+	}
+	if err := db.UpdateArticleClusterID(articleID, clusterID); err != nil {
+		t.Fatalf("UpdateArticleClusterID error = %v", err)
+	}
+	if err := db.UpdateClusterArticleCount(clusterID); err != nil {
+		t.Fatalf("UpdateClusterArticleCount error = %v", err)
+	}
+	if err := db.UpdateClusterMergedContent(clusterID, originalTitle, "summary", "content"); err != nil {
+		t.Fatalf("UpdateClusterMergedContent error = %v", err)
+	}
+
+	clusters, err := db.GetClustersForUser(userID, "all", 0, "", 20, 0)
+	if err != nil {
+		t.Fatalf("GetClustersForUser error = %v", err)
+	}
+	if len(clusters) != 1 {
+		t.Fatalf("len(clusters) = %d, want 1", len(clusters))
+	}
+	if clusters[0].DisplayTitle != cachedTitle {
+		t.Fatalf("DisplayTitle = %q, want cached translated title %q", clusters[0].DisplayTitle, cachedTitle)
+	}
+}
+
 func hashClusterTitleCacheTest(text string) string {
 	sum := sha256.Sum256([]byte(text))
 	return hex.EncodeToString(sum[:])

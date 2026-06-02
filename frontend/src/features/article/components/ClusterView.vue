@@ -179,12 +179,12 @@ async function forceReclusterNormalizeFromProcessingPanel() {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);
-  clusterStore
-    .startAIProcessingPolling()
-    .then(() => loadClusterData())
-    .catch((error) => {
-      console.error('Failed to initialize AI processing status:', error);
-    });
+  loadClusterData().catch((error) => {
+    console.error('Failed to load initial cluster data:', error);
+  });
+  clusterStore.startAIProcessingPolling().catch((error) => {
+    console.error('Failed to initialize AI processing status:', error);
+  });
 });
 
 onBeforeUnmount(() => {

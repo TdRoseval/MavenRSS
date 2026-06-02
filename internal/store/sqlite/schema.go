@@ -147,6 +147,16 @@ func initSchema(db *sql.DB) error {
 		FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
 		UNIQUE(user_id, recommendation_date, cluster_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS cluster_feed_first_page_cache (
+		user_id INTEGER NOT NULL,
+		filter TEXT NOT NULL,
+		vector_hash TEXT NOT NULL,
+		payload_json TEXT NOT NULL,
+		generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY(user_id, filter),
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
 	CREATE TABLE IF NOT EXISTS article_contents (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		article_id INTEGER NOT NULL UNIQUE,
@@ -347,6 +357,7 @@ CREATE INDEX IF NOT EXISTS idx_clusters_user_ai_recommended ON clusters(user_id,
 CREATE INDEX IF NOT EXISTS idx_clusters_archive_date ON clusters(user_id, recommendation_archive_date DESC);
 CREATE INDEX IF NOT EXISTS idx_daily_recommendations_user_date ON daily_recommendations(user_id, recommendation_date DESC);
 CREATE INDEX IF NOT EXISTS idx_daily_recommendations_cluster ON daily_recommendations(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_cluster_feed_first_page_cache_user ON cluster_feed_first_page_cache(user_id);
 CREATE INDEX IF NOT EXISTS idx_translation_cache_lookup ON translation_cache(source_text_hash, target_lang, provider);
 CREATE INDEX IF NOT EXISTS idx_article_contents_article_id ON article_contents(article_id);
 CREATE INDEX IF NOT EXISTS idx_ai_article_stage_skips_user_stage ON ai_article_stage_skips(user_id, stage);
