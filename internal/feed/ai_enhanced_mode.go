@@ -2,6 +2,8 @@ package feed
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -14,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"MavenRSS/internal/ai"
+	"MavenRSS/internal/clusterfeed"
 	"MavenRSS/internal/dedup"
 	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
@@ -32,6 +35,7 @@ type AIEnhancedTask struct {
 	FeedID                    int64
 	ArticleTitle              string
 	OperationVersion          int64
+	operationStamped          bool
 	NeedsSummary              bool
 	NeedsTranslation          bool
 	TranslateArticles         bool
@@ -86,6 +90,7 @@ type AIEnhancedManager struct {
 	clusterPipelineQueuedVer   map[int64]int64
 	clusterFusionRunning       map[int64]bool
 	clusterEmbeddingRunning    map[int64]bool
+	clusterBatchContext        map[int64]*dedup.BatchContext
 	recommendationMu           sync.Mutex
 	recommendationRunning      map[int64]bool
 	recommendationRunningVer   map[int64]int64
@@ -198,6 +203,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 		clusterPipelineQueuedVer:   make(map[int64]int64),
 		clusterFusionRunning:       make(map[int64]bool),
 		clusterEmbeddingRunning:    make(map[int64]bool),
+		clusterBatchContext:        make(map[int64]*dedup.BatchContext),
 		recommendationRunning:      make(map[int64]bool),
 		recommendationRunningVer:   make(map[int64]int64),
 		recommendationStatusByUser: make(map[int64]DailyRecommendationTaskStatus),
@@ -227,6 +233,7 @@ func NewAIEnhancedManager(db *sqlite.DB) *AIEnhancedManager {
 	manager.startWorkers()
 	manager.startDailyRecommendationScheduler()
 	manager.startPendingWorkRecoveryMonitor()
+	manager.startAIPipelineDiagnosticMonitor()
 
 	return manager
 }
@@ -253,13 +260,18 @@ func (m *AIEnhancedManager) worker(workerID int) {
 
 // processTask processes a single AI enhanced task
 func (m *AIEnhancedManager) processTask(task *AIEnhancedTask, workerID int) {
+	if task == nil {
+		return
+	}
+
 	m.decrementQueuedTask(task.UserID)
 	atomic.AddInt64(&m.activeWorkerTasks, 1)
 	m.incrementActiveWorkerTask(task.UserID)
+	version := m.stampTaskOperationVersion(task)
 	defer atomic.AddInt64(&m.activeWorkerTasks, -1)
-	defer m.decrementActiveWorkerTask(task.UserID)
+	defer m.decrementActiveWorkerTaskForVersion(task.UserID, version)
 
-	if !m.isTaskOperationCurrent(task) {
+	if !m.isUserOperationCurrent(task.UserID, version) {
 		log.Printf("Skipping stale AI enhanced task for article %d user %d", task.ArticleID, task.UserID)
 		return
 	}
@@ -300,8 +312,9 @@ func (m *AIEnhancedManager) stampTaskOperationVersion(task *AIEnhancedTask) int6
 	if task == nil || task.UserID <= 0 {
 		return 0
 	}
-	if task.OperationVersion == 0 {
+	if !task.operationStamped {
 		task.OperationVersion = m.currentUserOperationVersion(task.UserID)
+		task.operationStamped = true
 	}
 	return task.OperationVersion
 }
@@ -309,9 +322,6 @@ func (m *AIEnhancedManager) stampTaskOperationVersion(task *AIEnhancedTask) int6
 func (m *AIEnhancedManager) isUserOperationCurrent(userID, version int64) bool {
 	if userID <= 0 {
 		return false
-	}
-	if version == 0 {
-		return true
 	}
 	return m.currentUserOperationVersion(userID) == version
 }
@@ -418,17 +428,18 @@ func (m *AIEnhancedManager) startArticlePipeline(task *AIEnhancedTask, workerID 
 
 	log.Printf("AI enhanced worker %d dispatched article pipeline for article %d user %d", workerID, task.ArticleID, task.UserID)
 
+	version := m.stampTaskOperationVersion(task)
 	atomic.AddInt64(&m.activeAsyncWork, 1)
 	m.incrementActiveAsyncWork(task.UserID)
-	version := m.stampTaskOperationVersion(task)
 	go func() {
 		defer func() {
-			m.decrementActiveAsyncWork(task.UserID)
+			m.decrementActiveAsyncWorkForVersion(task.UserID, version)
 			m.releaseStageSlot(m.articlePipelineSlots)
 			m.maybeStartRequestedClusterPipeline(task.UserID)
-			if atomic.AddInt64(&m.activeAsyncWork, -1) == 0 {
-				m.onAsyncWorkDrained()
+			if remaining := atomic.AddInt64(&m.activeAsyncWork, -1); remaining < 0 {
+				atomic.StoreInt64(&m.activeAsyncWork, 0)
 			}
+			m.onAsyncWorkDrained()
 		}()
 
 		m.runArticlePipeline(task, version)
@@ -583,7 +594,7 @@ func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, conten
 	}
 
 	globalProxyURL, _ := buildGlobalProxyURL(m.db, task.UserID)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), articleEmbeddingPipelineTimeout(configsJSON))
 	defer cancel()
 
 	var titleEmbBlob, summaryEmbBlob []byte
@@ -613,7 +624,7 @@ func (m *AIEnhancedManager) executeArticleEmbedding(task *AIEnhancedTask, conten
 	if len(titleEmbBlob) == 0 && len(summaryEmbBlob) == 0 {
 		if lastEmbeddingErr != nil {
 			m.recordTaskFailure(task.UserID, "embedding", task, "", "", lastEmbeddingErr)
-			if m.skipArticleStageAfterRetryableTimeoutBudget(task, "embedding", "", lastEmbeddingErr) {
+			if m.skipArticleStageAfterRetryableFailureBudget(task, "embedding", "", lastEmbeddingErr) {
 				return
 			}
 		}
@@ -649,12 +660,15 @@ func (m *AIEnhancedManager) executeArticleDedup(task *AIEnhancedTask, version in
 	}
 
 	dedupCompleted := false
+	batchCtx := m.getOrCreateClusterBatchContext(task.UserID)
 	if err := m.runUserClusterAssignmentSerially(task.UserID, func() error {
 		if !m.isUserOperationCurrent(task.UserID, version) {
 			log.Printf("Skipping stale serialized dedup for article %d user %d", task.ArticleID, task.UserID)
 			return nil
 		}
-		if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID); err != nil {
+		if err := dedup.ProcessArticle(m.db, task.ArticleID, task.UserID, &dedup.ProcessArticleOptions{
+			Batch: batchCtx,
+		}); err != nil {
 			return err
 		}
 		dedupCompleted = true
@@ -822,7 +836,8 @@ func (m *AIEnhancedManager) runClusterPipeline(userID, version int64) {
 		}
 
 		if shouldRun && m.isUserOperationCurrent(userID, version) {
-			if err := m.runClusterPipelineOnce(userID); err != nil {
+			batchCtx := m.beginClusterPipelineBatch(userID)
+			if err := m.runClusterPipelineOnceWithBatch(userID, batchCtx); err != nil {
 				m.recordTaskFailure(userID, "clustering", nil, "", "", err)
 				log.Printf("Cluster pipeline failed for user %d: %v", userID, err)
 			}
@@ -857,11 +872,27 @@ func (m *AIEnhancedManager) runClusterPipeline(userID, version int64) {
 				clusterProgress.PendingMergeClusters == 0 &&
 				clusterProgress.PendingEmbedClusters == 0 {
 				m.requestMissingRecommendationBackfill(userID)
+				m.prewarmClusterFeedFirstPageCache(userID, version)
 			}
 		}
 		m.onAsyncWorkDrained()
 		return
 	}
+}
+
+func (m *AIEnhancedManager) prewarmClusterFeedFirstPageCache(userID, version int64) {
+	if m == nil || m.db == nil || userID <= 0 || !m.isUserOperationCurrent(userID, version) {
+		return
+	}
+
+	go func() {
+		if !m.isUserOperationCurrent(userID, version) {
+			return
+		}
+		if err := clusterfeed.PrewarmRootFilters(m.db, userID); err != nil {
+			log.Printf("Failed to prewarm cluster feed first-page cache for user %d: %v", userID, err)
+		}
+	}()
 }
 
 func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, error) {
@@ -977,6 +1008,52 @@ func (m *AIEnhancedManager) runUserClusterAssignmentSerially(userID int64, fn fu
 	return fn()
 }
 
+func (m *AIEnhancedManager) getOrCreateClusterBatchContext(userID int64) *dedup.BatchContext {
+	if userID <= 0 {
+		return nil
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	if m.clusterBatchContext == nil {
+		m.clusterBatchContext = make(map[int64]*dedup.BatchContext)
+	}
+	ctx := m.clusterBatchContext[userID]
+	if ctx == nil {
+		ctx = dedup.NewBatchContext()
+		m.clusterBatchContext[userID] = ctx
+	}
+	return ctx
+}
+
+func (m *AIEnhancedManager) beginClusterPipelineBatch(userID int64) *dedup.BatchContext {
+	if userID <= 0 {
+		return nil
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	if m.clusterBatchContext == nil {
+		return nil
+	}
+	ctx := m.clusterBatchContext[userID]
+	delete(m.clusterBatchContext, userID)
+	return ctx
+}
+
+func (m *AIEnhancedManager) clearClusterBatchContext(userID int64) {
+	if userID <= 0 {
+		return
+	}
+
+	m.clusterMu.Lock()
+	defer m.clusterMu.Unlock()
+
+	delete(m.clusterBatchContext, userID)
+}
+
 func (m *AIEnhancedManager) setClusterStageRunning(userID int64, stage string, running bool) {
 	if userID <= 0 {
 		return
@@ -1038,6 +1115,9 @@ func (m *AIEnhancedManager) hasUserRecommendationBlockingWork(userID int64) bool
 	if queued > 0 || activeWorker > 0 || activeAsync > 0 {
 		return true
 	}
+	if m.userHasPendingArticleWork(userID) {
+		return true
+	}
 
 	m.clusterMu.Lock()
 	clusterBusy := m.clusterPipelineRunning[userID] ||
@@ -1050,6 +1130,20 @@ func (m *AIEnhancedManager) hasUserRecommendationBlockingWork(userID int64) bool
 	}
 
 	return m.userHasPendingClusterWork(userID)
+}
+
+func (m *AIEnhancedManager) userHasPendingArticleWork(userID int64) bool {
+	if userID <= 0 || m.db == nil {
+		return false
+	}
+
+	targetLang, _ := m.db.GetSettingWithFallback(userID, "target_language")
+	progress, err := m.db.GetAIProcessingProgress(userID, targetLang)
+	if err != nil {
+		log.Printf("failed to get AI article processing progress before recommendation for user %d: %v", userID, err)
+		return false
+	}
+	return progress.PendingArticles > 0
 }
 
 func (m *AIEnhancedManager) userHasPendingClusterWork(userID int64) bool {
@@ -1090,6 +1184,10 @@ func (m *AIEnhancedManager) determineClusterPhase(status *AIProcessingStatus) {
 }
 
 func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
+	return m.runClusterPipelineOnceWithBatch(userID, nil)
+}
+
+func (m *AIEnhancedManager) runClusterPipelineOnceWithBatch(userID int64, batchCtx *dedup.BatchContext) error {
 	health, allowed, err := m.guardEmbeddingHealth(userID, blockedScopeClusterPipeline)
 	if err != nil {
 		return fmt.Errorf("embedding health gate: %w", err)
@@ -1109,14 +1207,18 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	if err != nil {
 		return err
 	}
-	if cfg == nil || cfg.Summarizer == nil {
+	if cfg == nil {
+		cfg = &dedup.FusionConfig{}
+	}
+	cfg.Batch = batchCtx
+	if cfg.Summarizer == nil {
 		log.Printf(
 			"Cluster pipeline fusion summarizer unavailable for user %d; pending_merge clusters will use source-article fallback content until a fusion model is resolved",
 			userID,
 		)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), clusterPipelineTimeout(cfg))
 	defer cancel()
 
 	type clusterStageResult struct {
@@ -1174,6 +1276,21 @@ func (m *AIEnhancedManager) runClusterPipelineOnce(userID int64) error {
 	}
 
 	return nil
+}
+
+func articleEmbeddingPipelineTimeout(configsJSON string) time.Duration {
+	return ai.MaxEmbeddingTimeoutFromConfigJSON(configsJSON)
+}
+
+func clusterPipelineTimeout(cfg *dedup.FusionConfig) time.Duration {
+	if cfg == nil {
+		return ai.MinimumConfigurableTimeout
+	}
+	timeout := ai.MaxTimeout(ai.MaxEmbeddingTimeoutFromConfigJSON(cfg.EmbConfigsJSON))
+	if cfg.Summarizer != nil {
+		timeout = ai.MaxTimeout(timeout, cfg.Summarizer.Timeout)
+	}
+	return timeout
 }
 
 func (m *AIEnhancedManager) runClusterEmbeddingPipeline(ctx context.Context, userID int64, cfg *dedup.FusionConfig, fusionDone <-chan struct{}) error {
@@ -1290,7 +1407,7 @@ func (m *AIEnhancedManager) buildFusionConfig(userID int64) (*dedup.FusionConfig
 	var aiSummarizer *summary.AISummarizer
 	if hasConfiguredAPIKey(config) {
 		useGlobalProxy := ai.NewProfileProvider(m.db).UseGlobalProxyForFeatureForUser(userID, proxyFeature)
-		aiSummarizer = summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, useGlobalProxy)
+		aiSummarizer = summary.NewAISummarizerWithDBAndTimeout(config.APIKey, config.Endpoint, config.Model, m.db, config.Timeout, useGlobalProxy)
 		if config.CustomHeaders != "" {
 			aiSummarizer.SetCustomHeaders(config.CustomHeaders)
 		}
@@ -1457,7 +1574,7 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	}
 
 	// Create AI summarizer with Chinese language
-	aiSummarizer := summary.NewAISummarizerWithDB(config.APIKey, config.Endpoint, config.Model, m.db, true)
+	aiSummarizer := summary.NewAISummarizerWithDBAndTimeout(config.APIKey, config.Endpoint, config.Model, m.db, config.Timeout, true)
 	if systemPrompt != "" {
 		aiSummarizer.SetSystemPrompt(systemPrompt)
 	}
@@ -1479,7 +1596,7 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 			}
 			return
 		}
-		if m.skipArticleStageAfterRetryableTimeoutBudget(task, "summary", content, err) {
+		if m.skipArticleStageAfterRetryableFailureBudget(task, "summary", content, err) {
 			return
 		}
 		log.Printf("Error generating AI summary for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
@@ -1553,6 +1670,102 @@ func (m *AIEnhancedManager) fallbackArticleSummaryToTitle(task *AIEnhancedTask, 
 	log.Printf("Using article title as summary fallback for article %d (%s)", task.ArticleID, reason)
 }
 
+func (m *AIEnhancedManager) resolveArticleTitle(task *AIEnhancedTask) (string, string, error) {
+	if task == nil || task.ArticleID <= 0 || m.db == nil {
+		return "", "", fmt.Errorf("invalid AI enhanced task")
+	}
+
+	title := strings.TrimSpace(task.ArticleTitle)
+	existingTranslatedTitle := ""
+
+	article, err := m.db.GetArticleByID(task.ArticleID)
+	if err != nil {
+		return "", "", fmt.Errorf("load article for title translation: %w", err)
+	}
+	if article != nil {
+		if title == "" {
+			title = strings.TrimSpace(article.Title)
+		}
+		existingTranslatedTitle = strings.TrimSpace(article.TranslatedTitle)
+	}
+
+	return title, existingTranslatedTitle, nil
+}
+
+func hashAIEnhancedTranslationText(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+func (m *AIEnhancedManager) persistArticleTranslatedTitle(articleID int64, sourceTitle, translatedTitle, targetLang, provider string) error {
+	if m == nil || m.db == nil || articleID <= 0 {
+		return nil
+	}
+
+	sourceTitle = strings.TrimSpace(sourceTitle)
+	translatedTitle = strings.TrimSpace(translatedTitle)
+	if translatedTitle == "" {
+		translatedTitle = sourceTitle
+	}
+	if translatedTitle == "" {
+		return nil
+	}
+
+	if err := m.db.UpdateArticleTranslation(articleID, translatedTitle); err != nil {
+		return fmt.Errorf("persist translated title: %w", err)
+	}
+
+	if provider != "" && sourceTitle != "" && targetLang != "" {
+		if err := m.db.SetCachedTranslation(
+			hashAIEnhancedTranslationText(sourceTitle),
+			sourceTitle,
+			targetLang,
+			translatedTitle,
+			provider,
+		); err != nil {
+			log.Printf("Failed to cache translated title for article %d: %v", articleID, err)
+		}
+	}
+
+	return nil
+}
+
+func (m *AIEnhancedManager) translateAndPersistArticleTitle(task *AIEnhancedTask, translator translation.Translator, targetLang string) (int64, error) {
+	if task == nil || task.ArticleID <= 0 {
+		return 0, nil
+	}
+
+	title, existingTranslatedTitle, err := m.resolveArticleTitle(task)
+	if err != nil {
+		return 0, err
+	}
+	if title == "" {
+		return 0, nil
+	}
+	if existingTranslatedTitle != "" {
+		return 0, nil
+	}
+
+	translatedTitle := title
+	shouldTranslate := translation.GetLanguageDetector().ShouldTranslate(title, targetLang)
+	if shouldTranslate {
+		translatedTitle, err = translation.TranslateMarkdownAIPrompt(title, translator, targetLang)
+		if err != nil {
+			return 0, fmt.Errorf("translate article title: %w", err)
+		}
+	}
+
+	if err := m.persistArticleTranslatedTitle(task.ArticleID, title, translatedTitle, targetLang, "ai"); err != nil {
+		return 0, err
+	}
+
+	if !shouldTranslate {
+		return 0, nil
+	}
+
+	return ai.EstimateTokens(title) + ai.EstimateTokens(translatedTitle), nil
+}
+
 // generateAITranslation generates and saves AI translation for an article
 func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content string) {
 	if !m.isTaskOperationCurrent(task) {
@@ -1581,12 +1794,31 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	}
 
 	// Create AI translator
-	aiTranslator := translation.NewAITranslatorWithDB(config.APIKey, config.Endpoint, config.Model, m.db, true)
+	aiTranslator := translation.NewAITranslatorWithDBAndTimeout(config.APIKey, config.Endpoint, config.Model, m.db, config.Timeout, true)
 	if systemPrompt != "" {
 		aiTranslator.SetSystemPrompt(systemPrompt)
 	}
 	if config.CustomHeaders != "" {
 		aiTranslator.SetCustomHeaders(config.CustomHeaders)
+	}
+
+	titleTokens, err := m.translateAndPersistArticleTitle(task, aiTranslator, targetLang)
+	if err != nil {
+		m.recordTaskFailure(task.UserID, "translation", task, config.Model, config.Endpoint, err)
+		if m.skipArticleStageIfNonRecoverable(task, "translation", err) {
+			if clearErr := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "translation"); clearErr != nil {
+				log.Printf("Failed to clear AI translation timeout failure state for article %d: %v", task.ArticleID, clearErr)
+			}
+			return
+		}
+		if m.skipArticleStageAfterRetryableFailureBudget(task, "translation", content, err) {
+			return
+		}
+		log.Printf("Error generating AI title translation for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
+		return
+	}
+	if titleTokens > 0 {
+		m.addAIUsage(task.UserID, titleTokens)
 	}
 
 	translationInput := prepareAITranslationInput(content)
@@ -1611,7 +1843,7 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 			}
 			return
 		}
-		if m.skipArticleStageAfterRetryableTimeoutBudget(task, "translation", content, err) {
+		if m.skipArticleStageAfterRetryableFailureBudget(task, "translation", content, err) {
 			return
 		}
 		log.Printf("Error generating AI translation for article %d using model %q endpoint %q: %v", task.ArticleID, config.Model, config.Endpoint, err)
@@ -1789,11 +2021,12 @@ func (m *AIEnhancedManager) tryEnqueueTask(task *AIEnhancedTask) bool {
 	m.taskQueueMu.Lock()
 	defer m.taskQueueMu.Unlock()
 
+	m.incrementQueuedTask(task.UserID)
 	select {
 	case m.taskChan <- task:
-		m.incrementQueuedTask(task.UserID)
 		return true
 	default:
+		m.decrementQueuedTask(task.UserID)
 		return false
 	}
 }
@@ -1833,6 +2066,10 @@ func (m *AIEnhancedManager) purgeQueuedTasksForUser(userID int64) int {
 	for _, task := range kept {
 		m.taskChan <- task
 	}
+
+	m.statusMu.Lock()
+	delete(m.queuedTasksByUser, userID)
+	m.statusMu.Unlock()
 
 	return removed
 }
@@ -2260,6 +2497,27 @@ func (m *AIEnhancedManager) decrementActiveWorkerTask(userID int64) {
 	delete(m.activeWorkerTasksByUser, userID)
 }
 
+func (m *AIEnhancedManager) decrementActiveWorkerTaskForVersion(userID, version int64) bool {
+	if userID <= 0 {
+		return false
+	}
+
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+
+	if version != m.userOperationVersion[userID] {
+		return false
+	}
+
+	next := m.activeWorkerTasksByUser[userID] - 1
+	if next > 0 {
+		m.activeWorkerTasksByUser[userID] = next
+		return true
+	}
+	delete(m.activeWorkerTasksByUser, userID)
+	return true
+}
+
 func (m *AIEnhancedManager) incrementActiveAsyncWork(userID int64) {
 	if userID <= 0 {
 		return
@@ -2287,6 +2545,27 @@ func (m *AIEnhancedManager) decrementActiveAsyncWork(userID int64) {
 		return
 	}
 	delete(m.activeAsyncWorkByUser, userID)
+}
+
+func (m *AIEnhancedManager) decrementActiveAsyncWorkForVersion(userID, version int64) bool {
+	if userID <= 0 {
+		return false
+	}
+
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+
+	if version != m.userOperationVersion[userID] {
+		return false
+	}
+
+	next := m.activeAsyncWorkByUser[userID] - 1
+	if next > 0 {
+		m.activeAsyncWorkByUser[userID] = next
+		return true
+	}
+	delete(m.activeAsyncWorkByUser, userID)
+	return true
 }
 
 func (m *AIEnhancedManager) getUserTaskCounts(userID int64) (int, int64, int64) {
@@ -2368,13 +2647,13 @@ func (m *AIEnhancedManager) skipArticleStageIfNonRecoverable(task *AIEnhancedTas
 	return true
 }
 
-func (m *AIEnhancedManager) skipArticleStageAfterRetryableTimeoutBudget(
+func (m *AIEnhancedManager) skipArticleStageAfterRetryableFailureBudget(
 	task *AIEnhancedTask,
 	stage string,
 	content string,
 	err error,
 ) bool {
-	if task == nil || task.ArticleID <= 0 || task.UserID <= 0 || m.db == nil || !ai.IsTimeoutLikeError(err) {
+	if task == nil || task.ArticleID <= 0 || task.UserID <= 0 || m.db == nil || !ai.IsRetryableStageFailure(err) {
 		return false
 	}
 
@@ -2398,7 +2677,7 @@ func (m *AIEnhancedManager) skipArticleStageAfterRetryableTimeoutBudget(
 	}
 	if state.TimeoutCount < articleStageTimeoutRetryLimit && elapsed < articleStageTimeoutMaxAge {
 		log.Printf(
-			"AI %s timeout for article %d recorded %d time(s) over %s; will retry",
+			"AI %s retryable failure for article %d recorded %d time(s) over %s; will retry",
 			stage,
 			task.ArticleID,
 			state.TimeoutCount,
@@ -2408,7 +2687,7 @@ func (m *AIEnhancedManager) skipArticleStageAfterRetryableTimeoutBudget(
 	}
 
 	exhaustedReason := fmt.Sprintf(
-		"retry budget exhausted after %d timeout(s) over %s: %s",
+		"retry budget exhausted after %d retryable failure(s) over %s: %s",
 		state.TimeoutCount,
 		elapsed.Round(time.Second),
 		reason,
@@ -2443,7 +2722,7 @@ func (m *AIEnhancedManager) skipArticleStageAfterRetryableTimeoutBudget(
 	}
 
 	log.Printf(
-		"Skipping future AI %s retries for article %d after %d timeout(s) over %s",
+		"Skipping future AI %s retries for article %d after %d retryable failure(s) over %s",
 		stage,
 		task.ArticleID,
 		state.TimeoutCount,
@@ -2485,6 +2764,14 @@ func (m *AIEnhancedManager) fallbackArticleTranslationToSource(task *AIEnhancedT
 	if err := m.db.SetArticleTranslatedContent(task.ArticleID, fallbackContent, targetLang, "source_fallback"); err != nil {
 		log.Printf("Failed to cache source-content translation fallback for article %d: %v", task.ArticleID, err)
 		return
+	}
+	title, _, err := m.resolveArticleTitle(task)
+	if err != nil {
+		log.Printf("Failed to resolve article title for translation fallback on article %d: %v", task.ArticleID, err)
+	} else if title != "" {
+		if err := m.persistArticleTranslatedTitle(task.ArticleID, title, title, targetLang, ""); err != nil {
+			log.Printf("Failed to persist source-title translation fallback for article %d: %v", task.ArticleID, err)
+		}
 	}
 	task.NeedsTranslation = false
 	log.Printf("Using source content as translation fallback for article %d (%s)", task.ArticleID, reason)
@@ -2553,7 +2840,8 @@ func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProc
 		return
 	}
 	pipelineRunning, _, _, _ := m.getClusterStageState(userID)
-	if status.QueuedTasks > 0 || status.ActiveWorkerTasks > 0 || status.ActiveAsyncWork > 0 || pipelineRunning {
+	hasRuntimeActivity := status.QueuedTasks > 0 || status.ActiveWorkerTasks > 0 || status.ActiveAsyncWork > 0 || pipelineRunning
+	if hasRuntimeActivity && !status.IsStale {
 		return
 	}
 	if !ShouldProcess(m.db, userID) {
@@ -2566,6 +2854,10 @@ func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProc
 	go func() {
 		defer m.finishRecoveryAttempt(userID)
 
+		if hasRuntimeActivity && status.IsStale {
+			m.abandonStaleAIProcessingRuntime(userID, reason, status)
+		}
+
 		log.Printf("Detected idle-but-incomplete AI processing state for user %d, attempting recovery (%s)", userID, reason)
 		queued, err := m.queueExistingArticlesForProcessing(userID)
 		if err != nil {
@@ -2575,6 +2867,44 @@ func (m *AIEnhancedManager) recoverPendingWorkIfIdle(userID int64, status AIProc
 
 		log.Printf("AI processing recovery finished for user %d, queued %d tasks", userID, queued)
 	}()
+}
+
+func (m *AIEnhancedManager) abandonStaleAIProcessingRuntime(userID int64, reason string, status AIProcessingStatus) {
+	if userID <= 0 {
+		return
+	}
+
+	newVersion := m.nextUserOperationVersion(userID)
+	removed := m.purgeQueuedTasksForUser(userID)
+
+	m.statusMu.Lock()
+	delete(m.activeWorkerTasksByUser, userID)
+	delete(m.activeAsyncWorkByUser, userID)
+	m.statusMu.Unlock()
+
+	m.clusterMu.Lock()
+	delete(m.clusterPipelineRunning, userID)
+	delete(m.clusterPipelineQueued, userID)
+	delete(m.clusterPipelineRequested, userID)
+	delete(m.clusterPipelineVersion, userID)
+	delete(m.clusterPipelineQueuedVer, userID)
+	delete(m.clusterFusionRunning, userID)
+	delete(m.clusterEmbeddingRunning, userID)
+	delete(m.clusterBatchContext, userID)
+	m.clusterMu.Unlock()
+
+	log.Printf(
+		"Abandoned stale AI processing runtime for user %d (%s); version=%d purged=%d queued=%d active_worker=%d active_async=%d pipeline_busy=%t stalled_for=%ds",
+		userID,
+		reason,
+		newVersion,
+		removed,
+		status.QueuedTasks,
+		status.ActiveWorkerTasks,
+		status.ActiveAsyncWork,
+		status.IsClusterPipelineBusy,
+		status.StalledForSeconds,
+	)
 }
 
 func (m *AIEnhancedManager) GetProcessingStatus(userID int64) AIProcessingStatus {

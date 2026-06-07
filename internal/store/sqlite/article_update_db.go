@@ -1,5 +1,10 @@
 package sqlite
 
+import (
+	"context"
+	"database/sql"
+)
+
 // UpdateArticleContent updates the content field for an article in the articles table.
 func (db *DB) UpdateArticleContent(id int64, content string) error {
 	db.WaitForReady()
@@ -25,11 +30,16 @@ func (db *DB) UpdateArticleSummary(id int64, summary string) error {
 func (db *DB) UpdateArticleEmbeddings(articleID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
-	_, err := db.Exec(
-		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		articleID, titleEmb, summaryEmb,
-	)
-	return err
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(
+			`INSERT INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+			articleID, titleEmb, summaryEmb,
+		)
+		return err
+	})
 }
 
 func ensureVecColumnBlobs(primary, secondary []byte) ([]byte, []byte) {

@@ -679,6 +679,9 @@ const en: TranslationMessages = {
       aiModel: 'Model Name',
       aiModelDesc: 'AI model to use for translation and summarization',
       aiModelPlaceholder: 'gpt-4o-mini',
+      aiTimeout: 'Request Timeout',
+      aiTimeoutDesc: 'Timeout in seconds. Values below 300 seconds use the 300-second minimum.',
+      timeoutShort: 'Timeout',
       // AI Profile Management
       aiProfiles: 'AI Profiles',
       addProfile: 'Add Profile',

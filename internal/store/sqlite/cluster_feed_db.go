@@ -112,13 +112,13 @@ ce.distance
 			log.Printf("Error scanning cluster in vector query: %v", err)
 			continue
 		}
-		db.populateClusterMeta(&c)
 		results = append(results, ClusterWithScore{
 			Cluster:  c,
 			Distance: distance,
 		})
 	}
 
+	db.populateClusterScoreMeta(results)
 	return results, nil
 }
 
@@ -204,9 +204,9 @@ c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read
 			log.Printf("Error scanning cluster: %v", err)
 			continue
 		}
-		db.populateClusterMeta(&c)
 		clusters = append(clusters, c)
 	}
+	db.populateClustersMeta(clusters)
 	return clusters, nil
 }
 

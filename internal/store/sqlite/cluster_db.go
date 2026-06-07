@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -21,6 +22,65 @@ func (db *DB) CreateCluster(userID int64, status string) (int64, error) {
 		return 0, fmt.Errorf("create cluster: %w", err)
 	}
 	return result.LastInsertId()
+}
+
+// CreateStandaloneClusterForArticle creates a cluster and assigns the article in one write transaction.
+func (db *DB) CreateStandaloneClusterForArticle(userID, articleID int64, articleIsFavorite bool) (int64, error) {
+	db.WaitForReady()
+	now := time.Now()
+	var clusterID int64
+
+	err := db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		result, err := tx.Exec(
+			`INSERT INTO clusters (user_id, status, is_favorite, updated_at) VALUES (?, 'pending_merge', ?, ?)`,
+			userID, articleIsFavorite, now,
+		)
+		if err != nil {
+			return fmt.Errorf("create cluster: %w", err)
+		}
+		clusterID, err = result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("get cluster id: %w", err)
+		}
+		if _, err := tx.Exec(`UPDATE articles SET cluster_id = ? WHERE id = ?`, clusterID, articleID); err != nil {
+			return fmt.Errorf("assign article cluster: %w", err)
+		}
+		if _, err := tx.Exec(
+			`UPDATE clusters SET article_count = (SELECT COUNT(*) FROM articles WHERE cluster_id = ?), updated_at = ? WHERE id = ?`,
+			clusterID, now, clusterID,
+		); err != nil {
+			return fmt.Errorf("update cluster article count: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return clusterID, nil
+}
+
+// JoinArticleCluster assigns an article to an existing cluster and refreshes cluster metadata atomically.
+func (db *DB) JoinArticleCluster(articleID, clusterID int64, articleIsFavorite bool) error {
+	db.WaitForReady()
+	now := time.Now()
+
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`UPDATE articles SET cluster_id = ? WHERE id = ?`, clusterID, articleID); err != nil {
+			return fmt.Errorf("assign article cluster: %w", err)
+		}
+		if articleIsFavorite {
+			if _, err := tx.Exec(`UPDATE clusters SET is_favorite = 1, updated_at = ? WHERE id = ?`, now, clusterID); err != nil {
+				return fmt.Errorf("sync cluster favorite: %w", err)
+			}
+		}
+		if _, err := tx.Exec(
+			`UPDATE clusters SET article_count = (SELECT COUNT(*) FROM articles WHERE cluster_id = ?), status = 'pending_merge', updated_at = ? WHERE id = ?`,
+			clusterID, now, clusterID,
+		); err != nil {
+			return fmt.Errorf("update cluster article count and status: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetClusterByID retrieves a cluster by its ID.
@@ -256,12 +316,18 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
-	_, _ = db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
-	_, err := db.Exec(
-		`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		clusterID, titleEmb, summaryEmb,
-	)
-	return err
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
+			return fmt.Errorf("delete cluster embedding: %w", err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
+			clusterID, titleEmb, summaryEmb,
+		); err != nil {
+			return fmt.Errorf("insert cluster embedding: %w", err)
+		}
+		return nil
+	})
 }
 
 // GetClustersForUser retrieves clusters for a user with filtering and pagination.
@@ -320,9 +386,9 @@ JOIN feeds f ON f.id = a.feed_id`
 			log.Printf("Error scanning cluster: %v", err)
 			continue
 		}
-		db.populateClusterMeta(&c)
 		clusters = append(clusters, c)
 	}
+	db.populateClustersMeta(clusters)
 	return clusters, nil
 }
 
@@ -338,6 +404,11 @@ func chooseClusterDisplayTitle(mergedTitle, translatedTitle, articleTitle string
 		return mergedTitle
 	}
 	return articleTitle
+}
+
+func chooseClusterSingleArticleDisplayTitle(db *DB, userID int64, article models.Article, mergedTitle string) string {
+	resolvedTitle := db.ResolveArticleTitleForCluster(userID, article)
+	return chooseClusterDisplayTitle(mergedTitle, resolvedTitle, article.Title)
 }
 
 func (db *DB) applyClusterMergedContentFallback(c *models.Cluster) error {
@@ -370,10 +441,238 @@ func (db *DB) applyClusterMergedContentFallback(c *models.Cluster) error {
 	return nil
 }
 
+type clusterMetaArticle struct {
+	ArticleID         int64
+	FeedID            int64
+	FeedTitle         string
+	Author            string
+	ArticleTitle      string
+	TranslatedTitle   string
+	ImageURL          string
+	TranslateArticles bool
+}
+
+type clusterMetaAccumulator struct {
+	FeedSet      map[string]bool
+	AuthorSet    map[string]bool
+	ArticleCount int
+	Latest       clusterMetaArticle
+}
+
+func (db *DB) populateClustersMeta(clusters []models.Cluster) {
+	if len(clusters) == 0 {
+		return
+	}
+
+	clusterRefs := make([]*models.Cluster, 0, len(clusters))
+	for i := range clusters {
+		clusterRefs = append(clusterRefs, &clusters[i])
+	}
+	db.populateClusterRefsMeta(clusterRefs)
+}
+
+func (db *DB) populateClusterScoreMeta(results []ClusterWithScore) {
+	if len(results) == 0 {
+		return
+	}
+
+	clusterRefs := make([]*models.Cluster, 0, len(results))
+	for i := range results {
+		clusterRefs = append(clusterRefs, &results[i].Cluster)
+	}
+	db.populateClusterRefsMeta(clusterRefs)
+}
+
+func (db *DB) populateClusterRefsMeta(clusters []*models.Cluster) {
+	if len(clusters) == 0 {
+		return
+	}
+
+	clusterByID := make(map[int64]*models.Cluster, len(clusters))
+	clusterIDs := make([]int64, 0, len(clusters))
+	for _, cluster := range clusters {
+		if cluster == nil || cluster.ID <= 0 {
+			continue
+		}
+		cluster.FeedTitles = nil
+		cluster.Authors = nil
+		cluster.ImageURL = ""
+		cluster.DisplayTitle = ""
+		clusterByID[cluster.ID] = cluster
+		clusterIDs = append(clusterIDs, cluster.ID)
+	}
+	if len(clusterIDs) == 0 {
+		return
+	}
+
+	placeholders := make([]string, len(clusterIDs))
+	args := make([]interface{}, len(clusterIDs))
+	for i, clusterID := range clusterIDs {
+		placeholders[i] = "?"
+		args[i] = clusterID
+	}
+
+	rows, err := db.Query(fmt.Sprintf(`
+		SELECT a.cluster_id, a.id, a.feed_id, COALESCE(f.title, ''), COALESCE(a.author, ''),
+		       COALESCE(a.title, ''), COALESCE(a.translated_title, ''), COALESCE(a.image_url, ''),
+		       COALESCE(f.translate_articles, 0)
+		FROM articles a
+		LEFT JOIN feeds f ON a.feed_id = f.id
+		WHERE a.cluster_id IN (%s)
+		ORDER BY a.cluster_id, a.published_at DESC, a.id DESC
+	`, strings.Join(placeholders, ",")), args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	metaByClusterID := make(map[int64]*clusterMetaAccumulator, len(clusterIDs))
+	for rows.Next() {
+		var clusterID int64
+		var article clusterMetaArticle
+		if err := rows.Scan(
+			&clusterID,
+			&article.ArticleID,
+			&article.FeedID,
+			&article.FeedTitle,
+			&article.Author,
+			&article.ArticleTitle,
+			&article.TranslatedTitle,
+			&article.ImageURL,
+			&article.TranslateArticles,
+		); err != nil {
+			continue
+		}
+
+		cluster := clusterByID[clusterID]
+		if cluster == nil {
+			continue
+		}
+		meta := metaByClusterID[clusterID]
+		if meta == nil {
+			meta = &clusterMetaAccumulator{
+				FeedSet:   make(map[string]bool),
+				AuthorSet: make(map[string]bool),
+			}
+			metaByClusterID[clusterID] = meta
+		}
+
+		meta.ArticleCount++
+		if meta.ArticleCount == 1 {
+			meta.Latest = article
+		}
+		if cluster.ImageURL == "" && article.ImageURL != "" {
+			cluster.ImageURL = article.ImageURL
+		}
+		if article.FeedTitle != "" && !meta.FeedSet[article.FeedTitle] {
+			meta.FeedSet[article.FeedTitle] = true
+			cluster.FeedTitles = append(cluster.FeedTitles, article.FeedTitle)
+		}
+		if article.Author != "" && !meta.AuthorSet[article.Author] {
+			meta.AuthorSet[article.Author] = true
+			cluster.Authors = append(cluster.Authors, article.Author)
+		}
+	}
+
+	cachedSingleTitles := db.resolveCachedSingleClusterTitles(metaByClusterID, clusterByID)
+	for clusterID, cluster := range clusterByID {
+		meta := metaByClusterID[clusterID]
+		if meta == nil || meta.ArticleCount <= 1 {
+			latest := clusterMetaArticle{}
+			if meta != nil {
+				latest = meta.Latest
+			}
+			resolvedTitle := resolveBatchClusterArticleTitle(latest, cachedSingleTitles)
+			cluster.DisplayTitle = chooseClusterDisplayTitle(cluster.MergedTitle, resolvedTitle, latest.ArticleTitle)
+			continue
+		}
+		cluster.DisplayTitle = chooseClusterDisplayTitle(cluster.MergedTitle, "", meta.Latest.ArticleTitle)
+	}
+}
+
+func (db *DB) resolveCachedSingleClusterTitles(metaByClusterID map[int64]*clusterMetaAccumulator, clusterByID map[int64]*models.Cluster) map[int64]string {
+	if len(metaByClusterID) == 0 {
+		return nil
+	}
+
+	var userID int64
+	for _, cluster := range clusterByID {
+		if cluster != nil && cluster.UserID > 0 {
+			userID = cluster.UserID
+			break
+		}
+	}
+	if userID <= 0 {
+		return nil
+	}
+
+	targetLang, _ := db.GetSettingWithFallback(userID, "target_language")
+	targetLang = strings.TrimSpace(targetLang)
+	if targetLang == "" {
+		targetLang = defaultClusterTitleTargetLanguage
+	}
+	provider, _ := db.GetSettingWithFallback(userID, "translation_provider")
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		provider = defaultClusterTitleTranslationProvider
+	}
+
+	type pendingTitle struct {
+		article clusterMetaArticle
+		hash    string
+	}
+	pending := make([]pendingTitle, 0)
+	hashes := make([]string, 0)
+	for _, meta := range metaByClusterID {
+		if meta == nil || meta.ArticleCount > 1 || !meta.Latest.TranslateArticles {
+			continue
+		}
+		if strings.TrimSpace(meta.Latest.TranslatedTitle) != "" || strings.TrimSpace(meta.Latest.ArticleTitle) == "" {
+			continue
+		}
+		hash := hashClusterTitleTranslation(meta.Latest.ArticleTitle)
+		pending = append(pending, pendingTitle{article: meta.Latest, hash: hash})
+		hashes = append(hashes, hash)
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	translations, err := db.GetCachedTranslations(hashes, targetLang, provider)
+	if err != nil || len(translations) == 0 {
+		return nil
+	}
+
+	resolved := make(map[int64]string, len(translations))
+	for _, item := range pending {
+		cachedTitle := strings.TrimSpace(translations[item.hash])
+		if cachedTitle == "" {
+			continue
+		}
+		resolved[item.article.ArticleID] = cachedTitle
+		if item.article.ArticleID > 0 {
+			_ = db.UpdateArticleTranslation(item.article.ArticleID, cachedTitle)
+		}
+	}
+	return resolved
+}
+
+func resolveBatchClusterArticleTitle(article clusterMetaArticle, cachedTitles map[int64]string) string {
+	if title := strings.TrimSpace(article.TranslatedTitle); title != "" {
+		return title
+	}
+	if cachedTitles != nil {
+		if title := strings.TrimSpace(cachedTitles[article.ArticleID]); title != "" {
+			return title
+		}
+	}
+	return strings.TrimSpace(article.ArticleTitle)
+}
+
 // populateClusterMeta populates FeedTitles and Authors for a cluster.
 func (db *DB) populateClusterMeta(c *models.Cluster) {
 	rows, err := db.Query(`
-		SELECT COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, ''), COALESCE(a.image_url, '')
+		SELECT a.id, a.feed_id, COALESCE(f.title, ''), COALESCE(a.author, ''), COALESCE(a.title, ''), COALESCE(a.translated_title, ''), COALESCE(a.image_url, '')
 		FROM articles a
 		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.cluster_id = ?
@@ -387,18 +686,23 @@ func (db *DB) populateClusterMeta(c *models.Cluster) {
 	feedSet := make(map[string]bool)
 	authorSet := make(map[string]bool)
 	articleCount := 0
-	latestTitle := ""
-	latestTranslatedTitle := ""
+	var latestArticle models.Article
 	c.ImageURL = ""
 	for rows.Next() {
+		var articleID, feedID int64
 		var feedTitle, author, articleTitle, translatedTitle, imageURL string
-		if err := rows.Scan(&feedTitle, &author, &articleTitle, &translatedTitle, &imageURL); err != nil {
+		if err := rows.Scan(&articleID, &feedID, &feedTitle, &author, &articleTitle, &translatedTitle, &imageURL); err != nil {
 			continue
 		}
 		articleCount++
 		if articleCount == 1 {
-			latestTitle = articleTitle
-			latestTranslatedTitle = translatedTitle
+			latestArticle = models.Article{
+				ID:              articleID,
+				FeedID:          feedID,
+				UserID:          c.UserID,
+				Title:           articleTitle,
+				TranslatedTitle: translatedTitle,
+			}
 		}
 		if c.ImageURL == "" && imageURL != "" {
 			c.ImageURL = imageURL
@@ -414,10 +718,10 @@ func (db *DB) populateClusterMeta(c *models.Cluster) {
 	}
 
 	if articleCount <= 1 {
-		c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, latestTranslatedTitle, latestTitle)
+		c.DisplayTitle = chooseClusterSingleArticleDisplayTitle(db, c.UserID, latestArticle, c.MergedTitle)
 		return
 	}
-	c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, "", latestTitle)
+	c.DisplayTitle = chooseClusterDisplayTitle(c.MergedTitle, "", latestArticle.Title)
 }
 
 // MarkClusterRead marks a cluster as read/unread.

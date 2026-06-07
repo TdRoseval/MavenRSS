@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultBusyTimeout = 10000
+	defaultBusyTimeout = 30000
 	defaultCacheSize   = -64000
 	defaultMmapSize    = 30000000000
 
@@ -32,14 +32,17 @@ var (
 
 type DB struct {
 	*sql.DB
-	ready          chan struct{}
-	once           sync.Once
-	startupOnce    sync.Once
-	startupResult  StartupCheckResult
-	startupErr     error
-	driverName     string
-	dataSourceName string
-	inMemory       bool
+	writeMu                     sync.Mutex
+	ready                       chan struct{}
+	once                        sync.Once
+	startupOnce                 sync.Once
+	startupResult               StartupCheckResult
+	startupErr                  error
+	driverName                  string
+	dataSourceName              string
+	inMemory                    bool
+	clusterFeedFirstPageCache   map[int64]map[string]ClusterFeedFirstPageCacheEntry
+	clusterFeedFirstPageCacheMu sync.RWMutex
 }
 
 func md5Hex(input string) string {

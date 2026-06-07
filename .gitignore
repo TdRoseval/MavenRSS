@@ -29,6 +29,8 @@ coverage.*
 coverage
 *.coverprofile
 profile.cov
+.gocache/
+.appdata/
 
 # Dependency directories (remove the comment below to include it)
 vendor/
@@ -92,3 +94,4 @@ __pycache__/
 tmp/
 .air.toml
 .trae/*
+.metadata_cache/

@@ -136,6 +136,21 @@ func GenerateEmbeddings(ctx context.Context, input string, configsJSON string, g
 	return nil, fmt.Errorf("all embedding models failed. last error: %v", lastErr)
 }
 
+func MaxEmbeddingTimeoutFromConfigJSON(configsJSON string) time.Duration {
+	var configs []models.EmbeddingModelConfig
+	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
+		return MinimumConfigurableTimeout
+	}
+	maxTimeout := MinimumConfigurableTimeout
+	for _, config := range configs {
+		timeout := EffectiveTimeoutFromSeconds(config.TimeoutSeconds)
+		if timeout > maxTimeout {
+			maxTimeout = timeout
+		}
+	}
+	return maxTimeout
+}
+
 func requestEmbedding(ctx context.Context, config models.EmbeddingModelConfig, input string, proxyURL string) ([]float32, int, error) {
 	reqBody := EmbeddingRequest{
 		Model: config.ModelName,
@@ -166,7 +181,7 @@ func requestEmbedding(ctx context.Context, config models.EmbeddingModelConfig, i
 		req.Header.Set("Authorization", "Bearer "+config.APIKey)
 	}
 
-	client := httputil.GetPooledAIHTTPClient(proxyURL, 30*time.Second)
+	client := httputil.GetPooledAIHTTPClient(proxyURL, EffectiveTimeoutFromSeconds(config.TimeoutSeconds))
 
 	resp, err := client.Do(req)
 	if err != nil {

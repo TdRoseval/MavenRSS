@@ -3,13 +3,12 @@ package cluster
 import (
 	"encoding/json"
 	"log"
-	"math"
 	"net/http"
-	"sort"
 	"time"
 
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/clusterfeed"
 	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 )
@@ -33,6 +32,7 @@ type dailyRecommendationResponse struct {
 type clusterFeedResponse struct {
 	Clusters []models.Cluster `json:"clusters"`
 	HasMore  bool             `json:"has_more"`
+	CacheHit bool             `json:"cache_hit,omitempty"`
 }
 
 func HandleAIProcessingStatus(h *core.Handler, w http.ResponseWriter, r *http.Request) {
@@ -82,6 +82,7 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		FeedID     int64   `json:"feed_id"`
 		Category   string  `json:"category"`
 		Limit      int     `json:"limit"`
+		UseCache   *bool   `json:"use_cache"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		req.ExcludeIDs = nil
@@ -91,168 +92,34 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		log.Printf("Error syncing cluster favorites before realtime cluster feed: %v", err)
 	}
 
-	const maxAgeDays = 3
-	returnLimit := req.Limit
-	if returnLimit <= 0 {
-		returnLimit = 30
+	useCache := true
+	if req.UseCache != nil {
+		useCache = *req.UseCache
 	}
-	targetResultCount := returnLimit + 1
-	recallTopK := calculateRealtimeRecallTopK(len(req.ExcludeIDs), targetResultCount)
-
-	vecBlob, _ := h.DB.GetUserInterestVector(userID)
-	if len(vecBlob) == 0 {
-		favBlobs, _ := h.DB.GetFavoriteClusterSummaryEmbeddings(userID)
-		if len(favBlobs) > 0 {
-			initVec, err := interest.InitFromFavorites(favBlobs)
-			if err == nil && len(initVec) > 0 {
-				if blob, err := interest.SerializeVector(initVec); err == nil {
-					vecBlob = blob
-					_ = h.DB.UpdateUserInterestVector(userID, vecBlob)
-				}
-			}
-		}
-	}
-
-	if len(vecBlob) == 0 {
-		clusters, err := h.DB.GetRecentClustersChronological(
-			userID,
-			req.ExcludeIDs,
-			req.Filter,
-			req.FeedID,
-			req.Category,
-			targetResultCount,
-		)
-		if err != nil {
-			log.Printf("Error fetching chronological clusters: %v", err)
-			http.Error(w, "Failed to get clusters", http.StatusInternalServerError)
-			return
-		}
-		if clusters == nil {
-			clusters = []models.Cluster{}
-		}
-		hasMore := len(clusters) > returnLimit
-		if hasMore {
-			clusters = clusters[:returnLimit]
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: clusters, HasMore: hasMore})
-		return
-	}
-
-	candidates, err := h.DB.GetClustersByVectorSimilarity(
-		userID, vecBlob, req.ExcludeIDs, req.Filter, req.FeedID, req.Category, maxAgeDays, recallTopK,
-	)
-	if err != nil {
-		log.Printf("Error in vector similarity recall: %v", err)
-		clusters, _ := h.DB.GetRecentClustersChronological(
-			userID,
-			req.ExcludeIDs,
-			req.Filter,
-			req.FeedID,
-			req.Category,
-			targetResultCount,
-		)
-		hasMore := len(clusters) > returnLimit
-		if hasMore {
-			clusters = clusters[:returnLimit]
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: clusters, HasMore: hasMore})
-		return
-	}
-
-	candidates = pruneFavoriteRecallCandidates(candidates, req.Filter, nil)
-
-	if len(candidates) == 0 {
-		clusters, _ := h.DB.GetRecentClustersChronological(
-			userID,
-			req.ExcludeIDs,
-			req.Filter,
-			req.FeedID,
-			req.Category,
-			targetResultCount,
-		)
-		hasMore := len(clusters) > returnLimit
-		if hasMore {
-			clusters = clusters[:returnLimit]
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: clusters, HasMore: hasMore})
-		return
-	}
-
-	now := time.Now()
-	for i := range candidates {
-		hoursOld := now.Sub(candidates[i].Cluster.UpdatedAt).Hours()
-		if hoursOld < 0 {
-			hoursOld = 0
-		}
-		similarity := 1.0 - candidates[i].Distance
-		if similarity < 0 {
-			similarity = 0
-		}
-		gravity := 1.0 / math.Pow(hoursOld+2.0, 1.5)
-		candidates[i].Distance = similarity * gravity
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Distance > candidates[j].Distance
+	result, err := clusterfeed.Build(h.DB, userID, clusterfeed.Request{
+		ExcludeIDs: req.ExcludeIDs,
+		Filter:     req.Filter,
+		FeedID:     req.FeedID,
+		Category:   req.Category,
+		Limit:      req.Limit,
+		UseCache:   useCache,
 	})
-
-	result := make([]models.Cluster, 0, targetResultCount)
-	selectedIDs := make(map[int64]struct{}, len(req.ExcludeIDs)+len(candidates))
-	for _, clusterID := range req.ExcludeIDs {
-		selectedIDs[clusterID] = struct{}{}
-	}
-	for _, candidate := range candidates {
-		if len(result) >= targetResultCount {
-			break
-		}
-		if _, exists := selectedIDs[candidate.Cluster.ID]; exists {
-			continue
-		}
-		result = append(result, candidate.Cluster)
-		selectedIDs[candidate.Cluster.ID] = struct{}{}
-	}
-
-	if len(result) < targetResultCount {
-		fallbackExcludeIDs := make([]int64, 0, len(selectedIDs))
-		for clusterID := range selectedIDs {
-			fallbackExcludeIDs = append(fallbackExcludeIDs, clusterID)
-		}
-
-		fallbackClusters, err := h.DB.GetRecentClustersChronological(
-			userID,
-			fallbackExcludeIDs,
-			req.Filter,
-			req.FeedID,
-			req.Category,
-			targetResultCount-len(result),
-		)
-		if err != nil {
-			log.Printf("Error fetching fallback chronological clusters: %v", err)
-		} else {
-			result = append(result, fallbackClusters...)
-		}
-	}
-	hasMore := len(result) > returnLimit
-	if hasMore {
-		result = result[:returnLimit]
+	if err != nil {
+		log.Printf("Error fetching realtime cluster feed: %v", err)
+		http.Error(w, "Failed to get clusters", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(clusterFeedResponse{Clusters: result, HasMore: hasMore})
+	json.NewEncoder(w).Encode(clusterFeedResponse{
+		Clusters: result.Clusters,
+		HasMore:  result.HasMore,
+		CacheHit: result.CacheHit,
+	})
 }
 
 func calculateRealtimeRecallTopK(excludedCount, pageSize int) int {
-	topK := excludedCount + pageSize*8
-	if topK < 200 {
-		topK = 200
-	}
-	if topK > 2000 {
-		topK = 2000
-	}
-	return topK
+	return clusterfeed.CalculateRealtimeRecallTopK(excludedCount, pageSize)
 }
 
 func HandleDailyRecommendationDates(h *core.Handler, w http.ResponseWriter, r *http.Request) {

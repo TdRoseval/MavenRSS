@@ -321,6 +321,9 @@ func TestGetReadyArticlesForAIReclusterClusteringOnlyReturnsReadyUnclusteredArti
 	if err := db.SetArticleTranslatedContent(readyArticleID, "ready translated", "zh", "ai"); err != nil {
 		t.Fatalf("SetArticleTranslatedContent ready error = %v", err)
 	}
+	if err := db.UpdateArticleTranslation(readyArticleID, "ready translated title"); err != nil {
+		t.Fatalf("UpdateArticleTranslation ready error = %v", err)
+	}
 	if err := db.UpdateArticleEmbeddings(
 		readyArticleID,
 		mustSerializeReclusterVector(t, []float32{1, 0}),
@@ -341,6 +344,9 @@ func TestGetReadyArticlesForAIReclusterClusteringOnlyReturnsReadyUnclusteredArti
 	clusteredID := mustInsertReclusterTestArticle(t, db, userID, feedID, "already-clustered", "summary")
 	if err := db.SetArticleTranslatedContent(clusteredID, "clustered translated", "zh", "ai"); err != nil {
 		t.Fatalf("SetArticleTranslatedContent clustered error = %v", err)
+	}
+	if err := db.UpdateArticleTranslation(clusteredID, "clustered translated title"); err != nil {
+		t.Fatalf("UpdateArticleTranslation clustered error = %v", err)
 	}
 	if err := db.UpdateArticleEmbeddings(
 		clusteredID,
@@ -363,6 +369,9 @@ func TestGetReadyArticlesForAIReclusterClusteringOnlyReturnsReadyUnclusteredArti
 	skippedID := mustInsertReclusterTestArticle(t, db, userID, feedID, "skipped-clustering", "summary")
 	if err := db.SetArticleTranslatedContent(skippedID, "skipped translated", "zh", "ai"); err != nil {
 		t.Fatalf("SetArticleTranslatedContent skipped error = %v", err)
+	}
+	if err := db.UpdateArticleTranslation(skippedID, "skipped translated title"); err != nil {
+		t.Fatalf("UpdateArticleTranslation skipped error = %v", err)
 	}
 	if err := db.UpdateArticleEmbeddings(
 		skippedID,

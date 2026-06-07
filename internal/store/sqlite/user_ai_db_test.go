@@ -6,6 +6,7 @@ import (
 
 	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
+	"MavenRSS/internal/store/sqlite"
 )
 
 func TestUpdateUserInterestVectorSyncsVecTable(t *testing.T) {
@@ -59,6 +60,53 @@ func TestUpdateUserInterestVectorSyncsVecTable(t *testing.T) {
 	}
 	if vecTableCount != 0 {
 		t.Fatalf("vec table count = %d, want 0", vecTableCount)
+	}
+}
+
+func TestUpdateUserInterestVectorClearsClusterFeedFirstPageCache(t *testing.T) {
+	db := setupTestDB(t)
+
+	userID, err := db.CreateUser(&models.User{
+		Username:     "interest-cache-user",
+		Email:        "interest-cache@example.com",
+		PasswordHash: "hash",
+		Role:         models.RoleUser,
+		Status:       "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+
+	initialBlob := mustSerializeVector(t, vectorWithLeadingValue(1))
+	if err := db.UpdateUserInterestVector(userID, initialBlob); err != nil {
+		t.Fatalf("UpdateUserInterestVector(initial) error = %v", err)
+	}
+	if err := db.SaveClusterFeedFirstPageCache(userID, "unread", initialBlob, sqlite.ClusterFeedFirstPagePayload{
+		Clusters: []models.Cluster{{ID: 123, UserID: userID, Status: "complete"}},
+		HasMore:  true,
+	}); err != nil {
+		t.Fatalf("SaveClusterFeedFirstPageCache error = %v", err)
+	}
+
+	if payload, ok, err := db.GetClusterFeedFirstPageCache(userID, "unread", initialBlob); err != nil || !ok || len(payload.Clusters) != 1 {
+		t.Fatalf("cache before invalidation payload=%v ok=%v err=%v", payload, ok, err)
+	}
+
+	nextBlob := mustSerializeVector(t, vectorWithLeadingValue(0.5))
+	if err := db.UpdateUserInterestVector(userID, nextBlob); err != nil {
+		t.Fatalf("UpdateUserInterestVector(next) error = %v", err)
+	}
+
+	if payload, ok, err := db.GetClusterFeedFirstPageCache(userID, "unread", initialBlob); err != nil || ok || payload != nil {
+		t.Fatalf("cache after invalidation payload=%v ok=%v err=%v", payload, ok, err)
+	}
+
+	var cacheRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cluster_feed_first_page_cache WHERE user_id = ?`, userID).Scan(&cacheRows); err != nil {
+		t.Fatalf("cache row count error = %v", err)
+	}
+	if cacheRows != 0 {
+		t.Fatalf("cacheRows = %d, want 0", cacheRows)
 	}
 }
 

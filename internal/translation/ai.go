@@ -19,6 +19,7 @@ type AITranslator struct {
 	Model          string
 	SystemPrompt   string
 	CustomHeaders  string
+	Timeout        time.Duration
 	db             DBInterface // Store DB reference for proxy updates
 	client         *ai.Client
 	httpClient     *http.Client // Store HTTP client to preserve proxy settings
@@ -55,6 +56,7 @@ func NewAITranslator(apiKey, endpoint, model string, db ...DBInterface) *AITrans
 		Model:         model,
 		SystemPrompt:  "",
 		CustomHeaders: "",
+		Timeout:       60 * time.Second,
 		db:            getDBFromSlice(db),
 		client:        ai.NewClient(clientConfig),
 	}
@@ -106,6 +108,14 @@ func getProxyFromEnv() string {
 
 // NewAITranslatorWithDB creates a new AI translator with database for proxy support
 func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGlobalProxy ...bool) *AITranslator {
+	return newAITranslatorWithDBTimeout(apiKey, endpoint, model, db, 60*time.Second, useGlobalProxy...)
+}
+
+func NewAITranslatorWithDBAndTimeout(apiKey, endpoint, model string, db DBInterface, timeout time.Duration, useGlobalProxy ...bool) *AITranslator {
+	return newAITranslatorWithDBTimeout(apiKey, endpoint, model, db, ai.EffectiveTimeout(timeout), useGlobalProxy...)
+}
+
+func newAITranslatorWithDBTimeout(apiKey, endpoint, model string, db DBInterface, timeout time.Duration, useGlobalProxy ...bool) *AITranslator {
 	defaults := config.Get()
 	if endpoint == "" {
 		endpoint = defaults.AIEndpoint
@@ -119,16 +129,17 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		useProxy = useGlobalProxy[0]
 	}
 
-	httpClient, err := CreateHTTPClientWithProxyOption(db, 60*time.Second, useProxy)
+	httpClient, err := CreateHTTPClientWithProxyOption(db, timeout, useProxy)
 	if err != nil {
-		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
+		httpClient = httputil.GetPooledAIHTTPClient("", timeout)
 	}
 
 	clientConfig := ai.ClientConfig{
-		APIKey:   apiKey,
-		Endpoint: strings.TrimSuffix(endpoint, "/"),
-		Model:    model,
-		Timeout:  60 * time.Second,
+		APIKey:         apiKey,
+		Endpoint:       strings.TrimSuffix(endpoint, "/"),
+		Model:          model,
+		Timeout:        timeout,
+		TimeoutSeconds: ai.TimeoutSeconds(timeout),
 	}
 
 	return &AITranslator{
@@ -137,6 +148,7 @@ func NewAITranslatorWithDB(apiKey, endpoint, model string, db DBInterface, useGl
 		Model:          model,
 		SystemPrompt:   "",
 		CustomHeaders:  "", // Will be set from settings when used
+		Timeout:        timeout,
 		db:             db,
 		httpClient:     httpClient,
 		client:         ai.NewClientWithHTTPClient(clientConfig, httpClient),
@@ -162,12 +174,13 @@ func (t *AITranslator) SetCustomHeaders(headers string) {
 // Preserves the HTTP client (and its proxy settings) if available
 func (t *AITranslator) recreateClient() {
 	clientConfig := ai.ClientConfig{
-		APIKey:        t.APIKey,
-		Endpoint:      t.Endpoint,
-		Model:         t.Model,
-		SystemPrompt:  t.SystemPrompt,
-		CustomHeaders: t.CustomHeaders,
-		Timeout:       60 * time.Second,
+		APIKey:         t.APIKey,
+		Endpoint:       t.Endpoint,
+		Model:          t.Model,
+		SystemPrompt:   t.SystemPrompt,
+		CustomHeaders:  t.CustomHeaders,
+		Timeout:        t.Timeout,
+		TimeoutSeconds: int(t.Timeout.Seconds()),
 	}
 	if t.httpClient != nil {
 		t.client = ai.NewClientWithHTTPClient(clientConfig, t.httpClient)
@@ -183,19 +196,24 @@ func (t *AITranslator) RefreshProxy() {
 		return
 	}
 
-	httpClient, err := CreateHTTPClientWithProxyOption(t.db, 60*time.Second, t.useGlobalProxy)
+	timeout := t.Timeout
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	httpClient, err := CreateHTTPClientWithProxyOption(t.db, timeout, t.useGlobalProxy)
 	if err != nil {
-		httpClient = httputil.GetPooledAIHTTPClient("", 60*time.Second)
+		httpClient = httputil.GetPooledAIHTTPClient("", timeout)
 	}
 	t.httpClient = httpClient
 
 	clientConfig := ai.ClientConfig{
-		APIKey:        t.APIKey,
-		Endpoint:      t.Endpoint,
-		Model:         t.Model,
-		SystemPrompt:  t.SystemPrompt,
-		CustomHeaders: t.CustomHeaders,
-		Timeout:       60 * time.Second,
+		APIKey:         t.APIKey,
+		Endpoint:       t.Endpoint,
+		Model:          t.Model,
+		SystemPrompt:   t.SystemPrompt,
+		CustomHeaders:  t.CustomHeaders,
+		Timeout:        timeout,
+		TimeoutSeconds: int(timeout.Seconds()),
 	}
 	t.client = ai.NewClientWithHTTPClient(clientConfig, t.httpClient)
 }

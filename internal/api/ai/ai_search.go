@@ -357,7 +357,13 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	messages := []map[string]string{
 		{"role": "user", "content": systemPrompt + "\n\n" + req.Query},
 	}
-	aiResponse, err := client.RequestWithMessages(messages)
+	aiResponse, err := client.RequestWithConfig(ai.RequestConfig{
+		Model:          cfg.Model,
+		Messages:       messages,
+		Temperature:    0.3,
+		MaxTokens:      8192,
+		ResponseFormat: ai.JSONResponseFormat(),
+	})
 	if err != nil {
 		response.JSON(w, AISearchResponse{
 			Success: false,

@@ -52,7 +52,12 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			COALESCE(f.translate_articles, 0),
 			ac.article_id IS NOT NULL,
 			((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL),
-			(atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL),
+			CASE
+				WHEN COALESCE(f.translate_articles, 0) = 0 THEN 1
+				WHEN skip_translation.article_id IS NOT NULL THEN 1
+				WHEN atc.article_id IS NOT NULL AND TRIM(COALESCE(a.translated_title, '')) <> '' THEN 1
+				ELSE 0
+			END,
 			(ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL),
 			(c.id IS NOT NULL OR skip_clustering.article_id IS NOT NULL),
 			(
@@ -84,7 +89,11 @@ func (db *DB) GetArticlesForAIBatchProcessing(userID int64, targetLang string) (
 			a.is_favorite = 1
 			OR (
 				((TRIM(COALESCE(a.summary, '')) = '' OR COALESCE(a.summary, '') = '<no content>') AND skip_summary.article_id IS NULL)
-				OR (COALESCE(f.translate_articles, 0) = 1 AND atc.article_id IS NULL AND skip_translation.article_id IS NULL)
+				OR (
+					COALESCE(f.translate_articles, 0) = 1
+					AND skip_translation.article_id IS NULL
+					AND (atc.article_id IS NULL OR TRIM(COALESCE(a.translated_title, '')) = '')
+				)
 				OR (ae.article_id IS NULL AND skip_embedding.article_id IS NULL)
 				OR (c.id IS NULL AND skip_clustering.article_id IS NULL)
 				OR (c.id IS NOT NULL AND skip_clustering.article_id IS NULL AND (c.status <> 'complete' OR ce.cluster_id IS NULL))
@@ -173,7 +182,12 @@ func (db *DB) getAIProcessingProgress(
 			SELECT
 				((TRIM(COALESCE(a.summary, '')) <> '' AND COALESCE(a.summary, '') <> '<no content>') OR skip_summary.article_id IS NOT NULL) AS has_summary,
 				(COALESCE(f.translate_articles, 0) = 1) AS translate_articles,
-				(atc.article_id IS NOT NULL OR skip_translation.article_id IS NOT NULL) AS has_translation,
+				CASE
+					WHEN COALESCE(f.translate_articles, 0) = 0 THEN 1
+					WHEN skip_translation.article_id IS NOT NULL THEN 1
+					WHEN atc.article_id IS NOT NULL AND TRIM(COALESCE(a.translated_title, '')) <> '' THEN 1
+					ELSE 0
+				END AS has_translation,
 				(ae.article_id IS NOT NULL OR skip_embedding.article_id IS NOT NULL) AS has_embedding,
 				(c.id IS NOT NULL OR skip_clustering.article_id IS NOT NULL) AS has_cluster
 			FROM articles a

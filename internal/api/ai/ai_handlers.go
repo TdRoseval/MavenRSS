@@ -182,7 +182,7 @@ func HandleTestEmbeddingModelConfig(h *core.Handler, w http.ResponseWriter, r *h
 
 	startTime := time.Now()
 
-	httpClient, err := createAIHTTPClientWithProxy(h, userID, req.UseGlobalProxy, 30*time.Second)
+	httpClient, err := createAIHTTPClientWithProxy(h, userID, req.UseGlobalProxy, ai.EffectiveTimeoutFromSeconds(req.TimeoutSeconds))
 	if err != nil {
 		result.ConnectionSuccess = false
 		result.ModelAvailable = false

@@ -667,6 +667,9 @@ const zh: TranslationMessages = {
       aiModel: '模型名称',
       aiModelDesc: '用于翻译和摘要的 AI 模型',
       aiModelPlaceholder: 'gpt-4o-mini',
+      aiTimeout: '请求超时',
+      aiTimeoutDesc: '单位为秒。低于 300 秒时会按 300 秒下限执行。',
+      timeoutShort: '超时',
       // AI 配置管理
       aiProfiles: 'AI 配置',
       addProfile: '添加配置',

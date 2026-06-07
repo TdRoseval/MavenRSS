@@ -296,6 +296,7 @@ func (m *AIEnhancedManager) interruptUserWorkForRenormalization(userID int64) in
 	delete(m.clusterPipelineQueuedVer, userID)
 	delete(m.clusterFusionRunning, userID)
 	delete(m.clusterEmbeddingRunning, userID)
+	delete(m.clusterBatchContext, userID)
 	m.clusterMu.Unlock()
 
 	m.recommendationMu.Lock()
@@ -536,6 +537,7 @@ func (m *AIEnhancedManager) clearUserRuntimeStateForRenormalization(userID int64
 	delete(m.clusterPipelineRequested, userID)
 	delete(m.clusterFusionRunning, userID)
 	delete(m.clusterEmbeddingRunning, userID)
+	delete(m.clusterBatchContext, userID)
 	m.clusterMu.Unlock()
 
 	m.recommendationMu.Lock()
@@ -596,8 +598,11 @@ func (m *AIEnhancedManager) clusterRenormalizationArticle(article sqlite.AIBatch
 	default:
 	}
 
+	batchCtx := m.getOrCreateClusterBatchContext(userID)
 	if err := m.runUserClusterAssignmentSerially(userID, func() error {
-		return dedup.ProcessArticle(m.db, article.Article.ID, userID)
+		return dedup.ProcessArticle(m.db, article.Article.ID, userID, &dedup.ProcessArticleOptions{
+			Batch: batchCtx,
+		})
 	}); err != nil {
 		reason := fmt.Sprintf("serial renormalization clustering failed: %v", err)
 		if len(reason) > 600 {
@@ -692,6 +697,7 @@ func (m *AIEnhancedManager) abandonTimedOutRenormalizationActivity(userID int64,
 	delete(m.clusterPipelineQueuedVer, userID)
 	delete(m.clusterFusionRunning, userID)
 	delete(m.clusterEmbeddingRunning, userID)
+	delete(m.clusterBatchContext, userID)
 	m.clusterMu.Unlock()
 
 	log.Printf(

@@ -1083,22 +1083,25 @@ func (m *AIEnhancedManager) scoreRecommendationCandidate(userID int64, candidate
 }
 
 func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.ClientConfig, prompt string) (string, bool) {
+	timeout := recommendationRequestTimeout(config)
 	client := ai.NewClient(ai.ClientConfig{
-		APIKey:        config.APIKey,
-		Endpoint:      config.Endpoint,
-		Model:         config.Model,
-		CustomHeaders: config.CustomHeaders,
-		ProxyURL:      config.ProxyURL,
-		Timeout:       90 * time.Second,
+		APIKey:         config.APIKey,
+		Endpoint:       config.Endpoint,
+		Model:          config.Model,
+		CustomHeaders:  config.CustomHeaders,
+		ProxyURL:       config.ProxyURL,
+		Timeout:        timeout,
+		TimeoutSeconds: ai.TimeoutSeconds(timeout),
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	result, err := client.RequestWithConfig(ai.RequestConfig{
-		Model:       config.Model,
-		Messages:    []map[string]string{{"role": "user", "content": prompt}},
-		Temperature: 0.2,
-		MaxTokens:   2048,
-		Context:     ctx,
+		Model:          config.Model,
+		Messages:       []map[string]string{{"role": "user", "content": prompt}},
+		Temperature:    0.2,
+		MaxTokens:      2048,
+		ResponseFormat: ai.JSONResponseFormat(),
+		Context:        ctx,
 	})
 	if err != nil {
 		m.recordTaskFailure(userID, "recommendation", nil, config.Model, config.Endpoint, err)
@@ -1111,6 +1114,13 @@ func (m *AIEnhancedManager) requestRecommendationJSON(userID int64, config *ai.C
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 	return content, content != ""
+}
+
+func recommendationRequestTimeout(config *ai.ClientConfig) time.Duration {
+	if config == nil {
+		return ai.MinimumConfigurableTimeout
+	}
+	return ai.EffectiveTimeout(config.Timeout)
 }
 
 func (m *AIEnhancedManager) GetDailyRecommendationTaskStatus(userID int64) DailyRecommendationTaskStatus {

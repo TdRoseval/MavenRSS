@@ -10,6 +10,7 @@ import {
   PhX,
   PhTestTube,
   PhArrowClockwise,
+  PhClock,
 } from '@phosphor-icons/vue';
 import { SettingGroup } from '@/components/settings';
 import type { SettingsData } from '@/types/settings';
@@ -33,6 +34,7 @@ interface EmbeddingModel {
   rpm: number;
   tpm: number;
   use_global_proxy: boolean;
+  timeout_seconds: number;
 }
 
 const { t } = useI18n();
@@ -56,6 +58,7 @@ const form = ref<EmbeddingModel>({
   rpm: 0,
   tpm: 0,
   use_global_proxy: false,
+  timeout_seconds: 300,
 });
 
 function saveModels(newModels: EmbeddingModel[]) {
@@ -75,13 +78,17 @@ function openAdd() {
     rpm: 0,
     tpm: 0,
     use_global_proxy: false,
+    timeout_seconds: 300,
   };
   editIndex.value = -1;
   isEditing.value = true;
 }
 
 function openEdit(index: number) {
-  form.value = { ...models.value[index] };
+  form.value = {
+    ...models.value[index],
+    timeout_seconds: normalizeTimeoutSeconds(models.value[index].timeout_seconds),
+  };
   editIndex.value = index;
   isEditing.value = true;
 }
@@ -137,6 +144,7 @@ function saveForm() {
     ...form.value,
     rpm: Number(form.value.rpm) || 0,
     tpm: Number(form.value.tpm) || 0,
+    timeout_seconds: normalizeTimeoutSeconds(form.value.timeout_seconds),
   };
 
   if (editIndex.value === -1) {
@@ -150,6 +158,11 @@ function saveForm() {
 
 function cancelEdit() {
   isEditing.value = false;
+}
+
+function normalizeTimeoutSeconds(value: number | undefined): number {
+  const seconds = Number(value) || 0;
+  return seconds >= 300 ? seconds : 300;
 }
 </script>
 
@@ -218,6 +231,23 @@ function cancelEdit() {
             </div>
           </div>
 
+          <div>
+            <label class="field-label flex items-center gap-1">
+              <PhClock :size="14" />
+              {{ t('setting.ai.aiTimeout') }}
+            </label>
+            <input
+              v-model.number="form.timeout_seconds"
+              type="number"
+              class="inputbox w-full"
+              min="300"
+              step="30"
+            />
+            <div class="text-xs text-text-tertiary mt-1">
+              {{ t('setting.ai.aiTimeoutDesc') }}
+            </div>
+          </div>
+
           <div class="flex items-center">
             <input
               id="use-global-proxy"
@@ -274,6 +304,12 @@ function cancelEdit() {
                 <div v-if="model.tpm > 0" class="info-badge">
                   <span class="text-text-tertiary">TPM</span>
                   <span class="text-text-secondary">{{ model.tpm }}</span>
+                </div>
+                <div class="info-badge">
+                  <span class="text-text-tertiary">{{ t('setting.ai.timeoutShort') }}</span>
+                  <span class="text-text-secondary"
+                    >{{ normalizeTimeoutSeconds(model.timeout_seconds) }}s</span
+                  >
                 </div>
                 <div v-if="model.use_global_proxy" class="info-badge info-badge-accent">
                   <span class="text-text-tertiary">Proxy</span>

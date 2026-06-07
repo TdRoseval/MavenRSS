@@ -103,6 +103,7 @@ type AIProfile struct {
 	Endpoint       string    `json:"endpoint"`
 	Model          string    `json:"model"`
 	CustomHeaders  string    `json:"custom_headers"`
+	TimeoutSeconds int       `json:"timeout_seconds"`
 	IsDefault      bool      `json:"is_default"`
 	UseGlobalProxy bool      `json:"use_global_proxy"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -116,6 +117,7 @@ type EmbeddingModelConfig struct {
 	RPM            int    `json:"rpm"`
 	TPM            int    `json:"tpm"`
 	UseGlobalProxy bool   `json:"use_global_proxy"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 type DailyRecommendation struct {
@@ -152,6 +154,16 @@ type Cluster struct {
 	FeedTitles                []string  `json:"feed_titles,omitempty"`
 	Authors                   []string  `json:"authors,omitempty"`
 	Articles                  []Article `json:"articles,omitempty"`
+}
+
+type ClusterBatchSnapshot struct {
+	ClusterID            int64  `json:"cluster_id"`
+	ExistingArticleCount int    `json:"existing_article_count"`
+	ExistingTotalChars   int    `json:"existing_total_chars"`
+	MergedTitle          string `json:"merged_title"`
+	MergedSummary        string `json:"merged_summary"`
+	MergedContent        string `json:"merged_content"`
+	CreatedInBatch       bool   `json:"created_in_batch"`
 }
 
 type SystemMessage struct {

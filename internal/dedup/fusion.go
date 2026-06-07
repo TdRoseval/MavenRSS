@@ -29,6 +29,7 @@ type FusionConfig struct {
 	EmbConfigsJSON string                // Embedding model configs JSON
 	GlobalProxyURL string                // Global proxy URL for embedding API
 	TargetLanguage string                // Target output language for fused result
+	Batch          *BatchContext         // Current clustering batch context
 }
 
 const (
@@ -165,7 +166,7 @@ func processClusterFusion(ctx context.Context, db *sqlite.DB, userID int64, clus
 		return
 	}
 
-	result, err := callLLMFusion(articles, db, cfg)
+	result, err := callLLMFusion(cluster, articles, db, cfg)
 	if err != nil {
 		log.Printf("LLM fusion failed for cluster %d: %v", cluster.ID, err)
 		if fallbackErr := copySingleArticle(db, userID, cluster.ID, articles[0]); fallbackErr != nil {
@@ -220,10 +221,7 @@ func processClusterEmbedding(ctx context.Context, db *sqlite.DB, cluster models.
 
 func copySingleArticle(db *sqlite.DB, userID, clusterID int64, a models.Article) error {
 	content, _, _ := db.GetArticleContent(a.ID)
-	title := strings.TrimSpace(a.TranslatedTitle)
-	if title == "" {
-		title = strings.TrimSpace(a.Title)
-	}
+	title := db.ResolveArticleTitleForCluster(userID, a)
 	smry := strings.TrimSpace(a.Summary)
 
 	targetLang, _ := db.GetSettingWithFallback(userID, "target_language")
@@ -248,7 +246,7 @@ func copySingleArticle(db *sqlite.DB, userID, clusterID int64, a models.Article)
 	return db.UpdateClusterMergedContent(clusterID, title, smry, content)
 }
 
-func callLLMFusion(articles []models.Article, db *sqlite.DB, cfg *FusionConfig) (*FusionResult, error) {
+func callLLMFusion(cluster models.Cluster, articles []models.Article, db *sqlite.DB, cfg *FusionConfig) (*FusionResult, error) {
 	s := cfg.Summarizer
 	targetLabel := normalizeFusionLanguageLabel(cfg.TargetLanguage)
 
@@ -256,31 +254,14 @@ func callLLMFusion(articles []models.Article, db *sqlite.DB, cfg *FusionConfig) 
 		s.SetLanguage(cfg.TargetLanguage)
 	}
 	s.SetSystemPrompt(buildFusionSystemPrompt(targetLabel))
+	s.SetResponseFormat(ai.JSONResponseFormat())
 
-	var sb strings.Builder
-	for i, a := range articles {
-		content, _, _ := db.GetArticleContent(a.ID)
-		if content == "" {
-			content = a.Summary
-		}
-
-		title := strings.TrimSpace(a.TranslatedTitle)
-		if title == "" {
-			title = strings.TrimSpace(a.Title)
-		}
-
-		sb.WriteString(fmt.Sprintf(
-			"Article %d\nTitle: %s\nAuthor: %s\nSource: %s\nSummary: %s\nContent: %s\n\n",
-			i+1,
-			title,
-			strings.TrimSpace(a.Author),
-			strings.TrimSpace(a.FeedTitle),
-			strings.TrimSpace(a.Summary),
-			truncate(content, 2000),
-		))
+	input, err := buildFusionInput(cluster, articles, db, cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	result, err := s.Summarize(sb.String(), summary.Long)
+	result, err := s.Summarize(input, summary.Long)
 	if err != nil {
 		return nil, fmt.Errorf("LLM fusion call: %w", err)
 	}
@@ -295,6 +276,87 @@ func callLLMFusion(articles []models.Article, db *sqlite.DB, cfg *FusionConfig) 
 		return nil, fmt.Errorf("parse fusion JSON: %w", err)
 	}
 	return &fr, nil
+}
+
+func buildFusionInput(cluster models.Cluster, articles []models.Article, db *sqlite.DB, cfg *FusionConfig) (string, error) {
+	if db == nil {
+		return "", fmt.Errorf("fusion db is nil")
+	}
+
+	if cfg != nil && cfg.Batch != nil {
+		compact, snapshot, err := cfg.Batch.ShouldUseCompactFusion(cluster.ID, db.GetClusterSnapshot)
+		if err != nil {
+			return "", fmt.Errorf("load compact fusion snapshot for cluster %d: %w", cluster.ID, err)
+		}
+		newArticleIDs := cfg.Batch.NewArticleIDs(cluster.ID)
+		if compact && len(newArticleIDs) > 0 {
+			return buildCompactFusionInput(snapshot, articles, newArticleIDs, db), nil
+		}
+	}
+
+	return buildFullFusionInput(articles, db), nil
+}
+
+func buildFullFusionInput(articles []models.Article, db *sqlite.DB) string {
+	var sb strings.Builder
+	for i, article := range articles {
+		appendArticleFusionSection(&sb, "Article", i+1, article, db)
+	}
+	return sb.String()
+}
+
+func buildCompactFusionInput(snapshot *models.ClusterBatchSnapshot, articles []models.Article, newArticleIDs []int64, db *sqlite.DB) string {
+	var sb strings.Builder
+
+	if snapshot != nil {
+		sb.WriteString("Existing Cluster\n")
+		if title := strings.TrimSpace(snapshot.MergedTitle); title != "" {
+			sb.WriteString(fmt.Sprintf("Title: %s\n", title))
+		}
+		sb.WriteString(fmt.Sprintf("Summary: %s\n", strings.TrimSpace(snapshot.MergedSummary)))
+		sb.WriteString(fmt.Sprintf("Content: %s\n\n", strings.TrimSpace(snapshot.MergedContent)))
+	}
+
+	index := 1
+	for _, articleID := range newArticleIDs {
+		for _, article := range articles {
+			if article.ID != articleID {
+				continue
+			}
+			appendArticleFusionSection(&sb, "New Article", index, article, db)
+			index++
+			break
+		}
+	}
+
+	return sb.String()
+}
+
+func appendArticleFusionSection(sb *strings.Builder, label string, index int, article models.Article, db *sqlite.DB) {
+	if sb == nil {
+		return
+	}
+
+	content, _, _ := db.GetArticleContent(article.ID)
+	if content == "" {
+		content = article.Summary
+	}
+
+	title := strings.TrimSpace(article.TranslatedTitle)
+	if title == "" {
+		title = strings.TrimSpace(article.Title)
+	}
+
+	sb.WriteString(fmt.Sprintf(
+		"%s %d\nTitle: %s\nAuthor: %s\nSource: %s\nSummary: %s\nContent: %s\n\n",
+		label,
+		index,
+		title,
+		strings.TrimSpace(article.Author),
+		strings.TrimSpace(article.FeedTitle),
+		strings.TrimSpace(article.Summary),
+		truncate(content, 2000),
+	))
 }
 
 func genEmbedding(ctx context.Context, text string, cfg *FusionConfig) ([]byte, error) {

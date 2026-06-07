@@ -211,6 +211,7 @@ func runMigrations(db *sql.DB) error {
 		endpoint TEXT NOT NULL,
 		model TEXT NOT NULL,
 		custom_headers TEXT DEFAULT '',
+		timeout_seconds INTEGER DEFAULT 0,
 		is_default BOOLEAN DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -218,6 +219,7 @@ func runMigrations(db *sql.DB) error {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_is_default ON ai_profiles(is_default)`)
 
 	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN use_global_proxy BOOLEAN DEFAULT 1`)
+	_, _ = db.Exec(`ALTER TABLE ai_profiles ADD COLUMN timeout_seconds INTEGER DEFAULT 0`)
 
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_tokens INTEGER DEFAULT 1000000`)
 	_, _ = db.Exec(`ALTER TABLE user_quota ADD COLUMN max_ai_concurrency INTEGER DEFAULT 5`)
@@ -342,6 +344,17 @@ func runMigrations(db *sql.DB) error {
 	)`)
 
 	ensureDailyRecommendationSchema(db)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS cluster_feed_first_page_cache (
+		user_id INTEGER NOT NULL,
+		filter TEXT NOT NULL,
+		vector_hash TEXT NOT NULL,
+		payload_json TEXT NOT NULL,
+		generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY(user_id, filter),
+		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_cluster_feed_first_page_cache_user ON cluster_feed_first_page_cache(user_id)`)
 
 	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN interest_vector BLOB DEFAULT NULL`)
 	_, _ = db.Exec(`ALTER TABLE users ADD COLUMN ai_read_count INTEGER DEFAULT 0`)
