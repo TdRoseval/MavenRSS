@@ -482,6 +482,39 @@ async function refreshRecommendations(): Promise<void> {
 
     <div
       v-if="
+        !isDailyRecommendationMode &&
+        clusterStore.shouldShowProcessingBanner &&
+        !clusterStore.showProcessingDetailsPanel
+      "
+      class="px-3 py-2 border-b border-border bg-accent/5 flex items-center gap-3"
+    >
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-medium text-text-primary truncate">
+            {{ t('article.cluster.processingLabel') }}
+          </span>
+          <span class="text-xs text-text-secondary shrink-0">
+            {{ clusterStore.aiProcessingProgressPercent }}%
+          </span>
+        </div>
+        <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-bg-tertiary">
+          <div
+            class="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+            :style="{ width: `${clusterStore.aiProcessingProgressPercent}%` }"
+          />
+        </div>
+      </div>
+      <button
+        type="button"
+        class="shrink-0 rounded-lg border border-border bg-bg-primary px-2.5 py-1 text-xs font-medium text-text-secondary transition hover:text-text-primary"
+        @click="clusterStore.openProcessingDetails()"
+      >
+        {{ t('article.cluster.processingViewDetails') }}
+      </button>
+    </div>
+
+    <div
+      v-if="
         clusterStore.isInitialLoading ||
         (isDailyRecommendationMode && clusterStore.isDailyRecommendationsLoading)
       "

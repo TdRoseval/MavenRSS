@@ -388,7 +388,7 @@ JOIN feeds f ON f.id = a.feed_id`
 		}
 		clusters = append(clusters, c)
 	}
-	db.populateClustersMeta(clusters)
+	db.PopulateClustersMeta(clusters)
 	return clusters, nil
 }
 
@@ -459,7 +459,11 @@ type clusterMetaAccumulator struct {
 	Latest       clusterMetaArticle
 }
 
-func (db *DB) populateClustersMeta(clusters []models.Cluster) {
+// PopulateClustersMeta fills in feed titles, authors, image URL, and display
+// title for the given clusters using a single batched JOIN query. Exported so
+// the clusterfeed package can populate meta only for the final selected
+// clusters instead of every recalled candidate.
+func (db *DB) PopulateClustersMeta(clusters []models.Cluster) {
 	if len(clusters) == 0 {
 		return
 	}
@@ -467,18 +471,6 @@ func (db *DB) populateClustersMeta(clusters []models.Cluster) {
 	clusterRefs := make([]*models.Cluster, 0, len(clusters))
 	for i := range clusters {
 		clusterRefs = append(clusterRefs, &clusters[i])
-	}
-	db.populateClusterRefsMeta(clusterRefs)
-}
-
-func (db *DB) populateClusterScoreMeta(results []ClusterWithScore) {
-	if len(results) == 0 {
-		return
-	}
-
-	clusterRefs := make([]*models.Cluster, 0, len(results))
-	for i := range results {
-		clusterRefs = append(clusterRefs, &results[i].Cluster)
 	}
 	db.populateClusterRefsMeta(clusterRefs)
 }
@@ -644,6 +636,7 @@ func (db *DB) resolveCachedSingleClusterTitles(metaByClusterID map[int64]*cluste
 	}
 
 	resolved := make(map[int64]string, len(translations))
+	pendingUpdates := make(map[int64]string, len(translations))
 	for _, item := range pending {
 		cachedTitle := strings.TrimSpace(translations[item.hash])
 		if cachedTitle == "" {
@@ -651,7 +644,16 @@ func (db *DB) resolveCachedSingleClusterTitles(metaByClusterID map[int64]*cluste
 		}
 		resolved[item.article.ArticleID] = cachedTitle
 		if item.article.ArticleID > 0 {
-			_ = db.UpdateArticleTranslation(item.article.ArticleID, cachedTitle)
+			pendingUpdates[item.article.ArticleID] = cachedTitle
+		}
+	}
+
+	// Batch-update all cached translation hits in a single write transaction
+	// instead of one UPDATE per article (previously an N+1 pattern that could
+	// trigger ~15 serial writes for a 30-cluster page).
+	if len(pendingUpdates) > 0 {
+		if err := db.BatchUpdateArticleTranslation(pendingUpdates); err != nil {
+			log.Printf("Error batch updating article translations: %v", err)
 		}
 	}
 	return resolved

@@ -89,6 +89,10 @@ func (db *DB) BackfillEmptyClusterMergedContent(userID int64) (int, error) {
 
 // SyncClusterFavoriteStatesFromArticles repairs cluster favorite flags from member
 // articles without clearing clusters the user explicitly favorited.
+//
+// Deprecated: This full-table repair is kept only for periodic maintenance.
+// Per-article favorite changes should call SyncClusterFavoriteByArticleID instead
+// to avoid running a write transaction on every cluster list request.
 func (db *DB) SyncClusterFavoriteStatesFromArticles(userID int64) error {
 	db.WaitForReady()
 	if userID <= 0 {
@@ -111,6 +115,38 @@ func (db *DB) SyncClusterFavoriteStatesFromArticles(userID int64) error {
 		return fmt.Errorf("sync cluster favorite states: %w", err)
 	}
 
+	return nil
+}
+
+// SyncClusterFavoriteByArticleID propagates an article favorite change to its
+// cluster in an event-driven manner. When an article is favorited, the owning
+// cluster is marked favorite. Unfavoriting an article does not clear the
+// cluster flag because other member articles (or explicit user action) may
+// still keep it favorited — the full repair remains available via
+// SyncClusterFavoriteStatesFromArticles for periodic reconciliation.
+//
+// This avoids the per-list-request full-table UPDATE that previously ran on
+// every cluster feed fetch.
+func (db *DB) SyncClusterFavoriteByArticleID(articleID int64, favorite bool) error {
+	db.WaitForReady()
+	if articleID <= 0 {
+		return nil
+	}
+	if !favorite {
+		// Only favoriting propagates upward; unfavorite requires checking
+		// sibling articles which is handled by the periodic full repair.
+		return nil
+	}
+
+	_, err := db.Exec(`
+		UPDATE clusters
+		SET is_favorite = 1
+		WHERE id = (SELECT cluster_id FROM articles WHERE id = ?)
+		  AND cluster_id IS NOT NULL
+	`, articleID)
+	if err != nil {
+		return fmt.Errorf("sync cluster favorite by article %d: %w", articleID, err)
+	}
 	return nil
 }
 

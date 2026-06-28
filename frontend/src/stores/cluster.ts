@@ -46,6 +46,7 @@ export const useClusterStore = defineStore('cluster', () => {
   const aiProcessingStatus = ref<AIProcessingStatus | null>(null);
   const isAIProcessingStatusLoading = ref(false);
   const hasLoadedAIProcessingStatus = ref(false);
+  const showProcessingDetailsPanel = ref(false);
 
   let aiProcessingPollingTimer: ReturnType<typeof setTimeout> | null = null;
   let aiProcessingPollingConsumers = 0;
@@ -75,8 +76,12 @@ export const useClusterStore = defineStore('cluster', () => {
   const shouldBlockClusterView = computed(
     () =>
       aiProcessingStatus.value?.is_enabled === true &&
-      (isAIProcessingLocked.value ||
-        (!hasLoadedAIProcessingStatus.value && isAIProcessingStatusLoading.value))
+      !hasLoadedAIProcessingStatus.value &&
+      isAIProcessingStatusLoading.value
+  );
+  const shouldShowProcessingBanner = computed(
+    () =>
+      aiProcessingStatus.value?.is_enabled === true && isAIProcessingLocked.value
   );
   const aiProcessingProgressPercent = computed(() => {
     const rawValue = aiProcessingStatus.value?.progress_percent ?? 0;
@@ -632,6 +637,14 @@ export const useClusterStore = defineStore('cluster', () => {
     activeFetchContextKey = '';
   }
 
+  function openProcessingDetails() {
+    showProcessingDetailsPanel.value = true;
+  }
+
+  function closeProcessingDetails() {
+    showProcessingDetailsPanel.value = false;
+  }
+
   return {
     clusters,
     dailyRecommendations,
@@ -656,6 +669,8 @@ export const useClusterStore = defineStore('cluster', () => {
     isAIProcessingLocked,
     shouldBlockDailyRecommendationView,
     shouldBlockClusterView,
+    shouldShowProcessingBanner,
+    showProcessingDetailsPanel,
     hasRealtimeInterestStream,
     aiProcessingProgressPercent,
     dailyRecommendationTaskProgressPercent,
@@ -680,6 +695,8 @@ export const useClusterStore = defineStore('cluster', () => {
     startAIProcessingPolling,
     stopAIProcessingPolling,
     setFilteredClusterIds,
+    openProcessingDetails,
+    closeProcessingDetails,
     clearData,
   };
 });

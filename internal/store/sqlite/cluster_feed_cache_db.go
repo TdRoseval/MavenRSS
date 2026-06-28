@@ -14,6 +14,13 @@ import (
 
 const (
 	ClusterFeedFirstPageDefaultLimit = 30
+	// ClusterFeedFirstPageCacheStaleTTL is how long a cached first page remains
+	// servable after the user's interest vector changes. Previously, any click
+	// or favorite toggle updated the interest vector and immediately invalidated
+	// the cache, forcing every refresh to re-run the full vector recall path.
+	// Within this TTL, a stale cache is returned so active users don't pay the
+	// realtime recall cost on every interaction.
+	ClusterFeedFirstPageCacheStaleTTL = 30 * time.Second
 )
 
 var clusterFeedFirstPageRootFilters = map[string]struct{}{
@@ -85,11 +92,20 @@ func (db *DB) GetClusterFeedFirstPageCache(userID int64, filter string, vectorBl
 	if err != nil {
 		return nil, false, fmt.Errorf("get cluster feed first-page cache: %w", err)
 	}
+
 	if storedHash != vectorHash {
-		if clearErr := db.DeleteClusterFeedFirstPageCache(userID, filter); clearErr != nil {
-			return nil, false, clearErr
+		// Stale-while-revalidate: if the cache was generated within the TTL
+		// window, serve it even though the interest vector has drifted. This
+		// keeps the cache effective for active users who click/favorite often
+		// (each action updates the vector and previously invalidated the cache
+		// immediately). Older stale entries are cleared.
+		if time.Since(generatedAt) > ClusterFeedFirstPageCacheStaleTTL {
+			if clearErr := db.DeleteClusterFeedFirstPageCache(userID, filter); clearErr != nil {
+				return nil, false, clearErr
+			}
+			return nil, false, nil
 		}
-		return nil, false, nil
+		// Fall through to serve the stale payload below.
 	}
 
 	var payload ClusterFeedFirstPagePayload
@@ -103,10 +119,13 @@ func (db *DB) GetClusterFeedFirstPageCache(userID int64, filter string, vectorBl
 		payload.Clusters = []models.Cluster{}
 	}
 
+	// Refresh the in-memory cache entry, keeping the stored vector hash so
+	// subsequent reads within the same process stay consistent until the TTL
+	// expires.
 	db.setClusterFeedFirstPageMemoryCache(ClusterFeedFirstPageCacheEntry{
 		UserID:      userID,
 		Filter:      filter,
-		VectorHash:  vectorHash,
+		VectorHash:  storedHash,
 		Payload:     payload,
 		GeneratedAt: generatedAt,
 	})
@@ -191,8 +210,16 @@ func (db *DB) getClusterFeedFirstPageMemoryCache(userID int64, filter, vectorHas
 		return nil, false
 	}
 	entry, ok := userEntries[filter]
-	if !ok || entry.VectorHash != vectorHash {
+	if !ok {
 		return nil, false
+	}
+	if entry.VectorHash != vectorHash {
+		// Stale entry: serve it only while within the stale TTL window so
+		// active users don't repeatedly miss the in-memory cache after small
+		// interest-vector drifts.
+		if time.Since(entry.GeneratedAt) > ClusterFeedFirstPageCacheStaleTTL {
+			return nil, false
+		}
 	}
 	payload := entry.Payload
 	if payload.Clusters == nil {

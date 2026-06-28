@@ -3,6 +3,8 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 )
 
 // UpdateArticleContent updates the content field for an article in the articles table.
@@ -16,6 +18,47 @@ func (db *DB) UpdateArticleContent(id int64, content string) error {
 func (db *DB) UpdateArticleTranslation(id int64, translatedTitle string) error {
 	db.WaitForReady()
 	_, err := db.Exec("UPDATE articles SET translated_title = ? WHERE id = ?", translatedTitle, id)
+	return err
+}
+
+// BatchUpdateArticleTranslation updates translated_title for multiple articles
+// in a single write transaction using a CASE expression. This replaces the
+// previous N+1 pattern in resolveCachedSingleClusterTitles where each cached
+// translation hit triggered a separate UPDATE statement.
+//
+// items maps article ID to its translated title. Empty maps are no-ops.
+func (db *DB) BatchUpdateArticleTranslation(items map[int64]string) error {
+	db.WaitForReady()
+	if len(items) == 0 {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(items))
+	for id := range items {
+		ids = append(ids, id)
+	}
+
+	placeholders := make([]string, len(ids))
+	caseParts := make([]string, 0, len(ids))
+	args := make([]interface{}, 0, len(ids)*2)
+
+	for i, id := range ids {
+		placeholders[i] = "?"
+		caseParts = append(caseParts, "WHEN id = ? THEN ?")
+		args = append(args, id, items[id])
+	}
+
+	// UPDATE articles SET translated_title = CASE WHEN id = ? THEN ? ... END WHERE id IN (?, ?, ...)
+	query := fmt.Sprintf(
+		"UPDATE articles SET translated_title = CASE %s END WHERE id IN (%s)",
+		strings.Join(caseParts, " "),
+		strings.Join(placeholders, ","),
+	)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	_, err := db.Exec(query, args...)
 	return err
 }
 

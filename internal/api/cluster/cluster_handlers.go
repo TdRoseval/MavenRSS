@@ -49,9 +49,11 @@ func HandleClusters(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 	category := r.URL.Query().Get("category")
 
-	if err := h.DB.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
-		log.Printf("Error syncing cluster favorites before listing clusters: %v", err)
-	}
+	// Note: per-article favorite changes now propagate to clusters via
+	// SyncClusterFavoriteByArticleID at the time of the favorite toggle, so
+	// the previous full-table repair on every list request is no longer
+	// needed here. SyncClusterFavoriteStatesFromArticles remains available
+	// for periodic reconciliation during recluster normalization.
 
 	clusters, err := h.DB.GetClustersForUser(userID, filter, feedID, category, limit, offset)
 	if err != nil {

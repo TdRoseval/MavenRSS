@@ -445,11 +445,21 @@ watch(
       </div>
     </template>
 
-    <template v-else-if="!isDailyRecommendationMode && clusterStore.shouldBlockClusterView">
+    <template v-else-if="!isDailyRecommendationMode && (clusterStore.shouldBlockClusterView || clusterStore.showProcessingDetailsPanel)">
       <div class="flex h-full w-full items-center justify-center bg-bg-primary px-6">
         <div class="w-full max-w-xl rounded-2xl border border-border bg-bg-secondary p-6 sm:p-8">
-          <div class="text-sm font-medium uppercase tracking-[0.18em] text-text-tertiary">
-            {{ t('article.cluster.processingLabel') }}
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-medium uppercase tracking-[0.18em] text-text-tertiary">
+              {{ t('article.cluster.processingLabel') }}
+            </div>
+            <button
+              v-if="clusterStore.showProcessingDetailsPanel && !clusterStore.shouldBlockClusterView"
+              type="button"
+              class="rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:text-text-primary"
+              @click="clusterStore.closeProcessingDetails()"
+            >
+              {{ t('article.cluster.processingBackToList') }}
+            </button>
           </div>
           <h3 class="mt-3 text-xl font-semibold text-text-primary">
             {{ t('article.cluster.processingTitle') }}

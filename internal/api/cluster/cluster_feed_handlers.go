@@ -88,9 +88,10 @@ func HandleClustersFeed(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		req.ExcludeIDs = nil
 	}
 
-	if err := h.DB.SyncClusterFavoriteStatesFromArticles(userID); err != nil {
-		log.Printf("Error syncing cluster favorites before realtime cluster feed: %v", err)
-	}
+	// Note: per-article favorite changes now propagate to clusters via
+	// SyncClusterFavoriteByArticleID at the time of the favorite toggle, so
+	// the previous full-table repair on every realtime feed request is no
+	// longer needed here.
 
 	useCache := true
 	if req.UseCache != nil {

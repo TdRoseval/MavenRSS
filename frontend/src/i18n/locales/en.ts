@@ -134,6 +134,8 @@ const en: TranslationMessages = {
       processingTitle: 'Clusters are still being prepared',
       processingDescription:
         'Background AI jobs are still summarizing, clustering, and fusing articles. The cluster list will appear automatically when processing finishes.',
+      processingViewDetails: 'View Details',
+      processingBackToList: 'Back to List',
       processingForceReclusterButton: 'Force Recluster Normalize',
       processingForceReclusterTitle: 'Start cluster renormalization now?',
       processingForceReclusterConfirm:

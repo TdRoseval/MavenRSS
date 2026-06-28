@@ -34,15 +34,26 @@ func (db *DB) ToggleFavorite(id int64) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ?", !isFav, id)
-	return err
+	newFavorite := !isFav
+	_, err = db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ?", newFavorite, id)
+	if err != nil {
+		return err
+	}
+	// Propagate favorite to owning cluster (no-op when unfavoriting).
+	_ = db.SyncClusterFavoriteByArticleID(id, newFavorite)
+	return nil
 }
 
 // SetArticleFavorite sets the favorite status of an article.
 func (db *DB) SetArticleFavorite(id int64, favorite bool) error {
 	db.WaitForReady()
 	_, err := db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ?", favorite, id)
-	return err
+	if err != nil {
+		return err
+	}
+	// Propagate favorite to owning cluster (no-op when unfavoriting).
+	_ = db.SyncClusterFavoriteByArticleID(id, favorite)
+	return nil
 }
 
 // ToggleArticleHidden toggles the is_hidden status of an article.
@@ -145,8 +156,14 @@ func (db *DB) ToggleFavoriteForUser(userID int64, id int64) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ? AND user_id = ?", !isFav, id, userID)
-	return err
+	newFavorite := !isFav
+	_, err = db.Exec("UPDATE articles SET is_favorite = ? WHERE id = ? AND user_id = ?", newFavorite, id, userID)
+	if err != nil {
+		return err
+	}
+	// Propagate favorite to owning cluster (no-op when unfavoriting).
+	_ = db.SyncClusterFavoriteByArticleID(id, newFavorite)
+	return nil
 }
 
 // SetArticleFavoriteForUser sets the favorite status of an article for a specific user.
@@ -161,6 +178,8 @@ func (db *DB) SetArticleFavoriteForUser(userID int64, id int64, favorite bool) e
 	if rowsAffected == 0 {
 		return ErrArticleNotFound
 	}
+	// Propagate favorite to owning cluster (no-op when unfavoriting).
+	_ = db.SyncClusterFavoriteByArticleID(id, favorite)
 	return nil
 }
 

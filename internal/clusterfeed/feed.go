@@ -223,6 +223,12 @@ func buildLive(
 		}
 	}
 
+	// Populate meta (feed titles, authors, display title) only for the final
+	// selected clusters rather than every recalled candidate. Fallback
+	// clusters already have meta populated by GetRecentClustersChronological,
+	// but re-populating is harmless and keeps the batch in one query.
+	db.PopulateClustersMeta(result)
+
 	return trimResponse(result, returnLimit), nil
 }
 
@@ -273,12 +279,12 @@ func resolveInterestVector(db *sqlite.DB, userID int64) ([]byte, error) {
 }
 
 func CalculateRealtimeRecallTopK(excludedCount, pageSize int) int {
-	topK := excludedCount + pageSize*8
-	if topK < 200 {
-		topK = 200
+	topK := excludedCount + pageSize*4
+	if topK < 100 {
+		topK = 100
 	}
-	if topK > 2000 {
-		topK = 2000
+	if topK > 500 {
+		topK = 500
 	}
 	return topK
 }

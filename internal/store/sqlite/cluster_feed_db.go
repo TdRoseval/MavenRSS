@@ -118,7 +118,10 @@ ce.distance
 		})
 	}
 
-	db.populateClusterScoreMeta(results)
+	// Note: meta population (feed titles, authors, display title) is deferred
+	// to the caller so that only the final selected clusters (after pruning,
+	// scoring, and trimming) incur the batch JOIN cost — not every recalled
+	// candidate (which can be up to 500).
 	return results, nil
 }
 
@@ -206,7 +209,7 @@ c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read
 		}
 		clusters = append(clusters, c)
 	}
-	db.populateClustersMeta(clusters)
+	db.PopulateClustersMeta(clusters)
 	return clusters, nil
 }
 
