@@ -26,7 +26,7 @@ export const useArticleStore = defineStore('article', () => {
     total: 0,
     feedCounts: {},
   });
-  const currentFilter = ref<Filter>('all');
+  const currentFilter = ref<Filter>('unread');
   const currentFeedId = ref<number | null>(null);
   const currentCategory = ref<string | null>(null);
   const currentArticleId = ref<number | null>(null);
