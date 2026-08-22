@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"time"
 
+	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 )
 
@@ -270,7 +272,11 @@ func (db *DB) FindSimHashCandidates(userID int64, b1, b2, b3, b4 int16) ([]struc
 	return candidates, nil
 }
 
-// FindSemanticCandidates uses sqlite-vec ANN search to find semantically similar articles.
+// FindSemanticCandidates uses sqlite-vec binary-quantized ANN search to find
+// semantically similar articles. The first-stage scan runs on the bit[1024]
+// column (32x cheaper than float32) and returns Hamming distances; the caller
+// reranks the recalled rows against float32 embeddings. The user_id partition
+// key constrains the scan to the owning user's partition.
 func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK int) ([]struct {
 	ArticleID int64
 	ClusterID int64
@@ -284,8 +290,8 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 		SELECT ae.article_id, a.cluster_id, ae.distance
 		FROM article_embeddings ae
 		JOIN articles a ON ae.article_id = a.id
-		WHERE a.user_id = ? AND a.cluster_id IS NOT NULL
-		AND ae.summary_embedding MATCH ? AND k = ?
+		WHERE ae.user_id = ? AND a.cluster_id IS NOT NULL
+		AND ae.summary_embedding_bin MATCH vec_quantize_binary(?) AND k = ?
 		ORDER BY ae.distance
 	`, userID, summaryEmbBlob, topK)
 	if err != nil {
@@ -312,17 +318,88 @@ func (db *DB) FindSemanticCandidates(userID int64, summaryEmbBlob []byte, topK i
 	return results, nil
 }
 
-// UpdateClusterEmbeddings stores embeddings for a cluster.
+// getClusterCentroidVectors fetches float32 summary centroids for the given
+// cluster IDs via rowid point lookups on the cluster_embeddings vec0 table.
+// Used to rerank binary-quantized (Hamming) recall results with exact L2.
+func (db *DB) getClusterCentroidVectors(clusterIDs []int64) (map[int64][]float32, error) {
+	if len(clusterIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(clusterIDs))
+	args := make([]interface{}, len(clusterIDs))
+	for i, clusterID := range clusterIDs {
+		placeholders[i] = "?"
+		args[i] = clusterID
+	}
+	rows, err := db.Query(fmt.Sprintf(
+		`SELECT cluster_id, summary_embedding FROM cluster_embeddings WHERE cluster_id IN (%s)`,
+		strings.Join(placeholders, ","),
+	), args...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch cluster centroids: %w", err)
+	}
+	defer rows.Close()
+
+	centroids := make(map[int64][]float32, len(clusterIDs))
+	for rows.Next() {
+		var clusterID int64
+		var blob []byte
+		if err := rows.Scan(&clusterID, &blob); err != nil {
+			continue
+		}
+		vec, err := interest.DeserializeVector(blob)
+		if err != nil || len(vec) == 0 {
+			continue
+		}
+		centroids[clusterID] = vec
+	}
+	return centroids, rows.Err()
+}
+
+// floatCentroidDistances returns the exact squared L2 distance between the
+// query vector and each cluster's float32 summary centroid. Clusters whose
+// centroid is unavailable get math.MaxFloat64 (sorted last).
+func (db *DB) floatCentroidDistances(clusterIDs []int64, queryVec []float32) (map[int64]float64, error) {
+	centroids, err := db.getClusterCentroidVectors(clusterIDs)
+	if err != nil {
+		return nil, err
+	}
+	distances := make(map[int64]float64, len(clusterIDs))
+	for _, clusterID := range clusterIDs {
+		centroid := centroids[clusterID]
+		if len(centroid) == 0 {
+			distances[clusterID] = math.MaxFloat64
+			continue
+		}
+		distance, err := interest.SquaredL2Distance(queryVec, centroid)
+		if err != nil {
+			distance = math.MaxFloat64
+		}
+		distances[clusterID] = distance
+	}
+	return distances, nil
+}
+
+// UpdateClusterEmbeddings stores embeddings for a cluster. The user_id
+// partition key is resolved from the clusters table so KNN scans only touch
+// the owning user's partition.
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
+	// vec0 rejects NULL/zero-length vectors; when both embeddings are missing,
+	// keep no row at all (same policy as UpdateArticleEmbeddings).
+	if len(titleEmb) == 0 && len(summaryEmb) == 0 {
+		_, err := db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
+		return err
+	}
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
 	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
 			return fmt.Errorf("delete cluster embedding: %w", err)
 		}
 		if _, err := tx.Exec(
-			`INSERT INTO cluster_embeddings (cluster_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-			clusterID, titleEmb, summaryEmb,
+			`INSERT INTO cluster_embeddings (cluster_id, user_id, title_embedding, summary_embedding, summary_embedding_bin)
+			 VALUES (?, (SELECT user_id FROM clusters WHERE id = ?), ?, ?, vec_quantize_binary(?))`,
+			clusterID, clusterID, titleEmb, summaryEmb, summaryEmb,
 		); err != nil {
 			return fmt.Errorf("insert cluster embedding: %w", err)
 		}

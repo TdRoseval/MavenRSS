@@ -153,8 +153,8 @@ func TestNormalizeArticleEmbeddingsForUserNormalizesRows(t *testing.T) {
 	validArticleID := mustInsertReclusterTestArticle(t, db, userID, feedID, "valid-article", "valid-summary")
 	validBlob := mustSerializeRawVector(t, []float32{2, 0})
 	if _, err := db.Exec(
-		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		validArticleID, validBlob, validBlob,
+		`INSERT OR REPLACE INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin) VALUES (?, ?, ?, ?, vec_quantize_binary(?))`,
+		validArticleID, userID, validBlob, validBlob, validBlob,
 	); err != nil {
 		t.Fatalf("insert valid embedding error = %v", err)
 	}
@@ -164,8 +164,8 @@ func TestNormalizeArticleEmbeddingsForUserNormalizesRows(t *testing.T) {
 	}
 	uncachedBlob := mustSerializeRawVector(t, []float32{0, 3})
 	if _, err := db.Exec(
-		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		uncachedArticleID, uncachedBlob, uncachedBlob,
+		`INSERT OR REPLACE INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin) VALUES (?, ?, ?, ?, vec_quantize_binary(?))`,
+		uncachedArticleID, userID, uncachedBlob, uncachedBlob, uncachedBlob,
 	); err != nil {
 		t.Fatalf("insert uncached embedding error = %v", err)
 	}

@@ -119,14 +119,14 @@ func TestStartClusterRenormalizationResetsStateAndRequeuesArticles(t *testing.T)
 
 	rawBlob := mustSerializeRawEmbeddingBlob(t, 2)
 	if _, err := db.Exec(
-		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		firstArticleID, rawBlob, rawBlob,
+		`INSERT OR REPLACE INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin) VALUES (?, ?, ?, ?, vec_quantize_binary(?))`,
+		firstArticleID, 1, rawBlob, rawBlob, rawBlob,
 	); err != nil {
 		t.Fatalf("insert first embedding error = %v", err)
 	}
 	if _, err := db.Exec(
-		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		secondArticleID, rawBlob, rawBlob,
+		`INSERT OR REPLACE INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin) VALUES (?, ?, ?, ?, vec_quantize_binary(?))`,
+		secondArticleID, 1, rawBlob, rawBlob, rawBlob,
 	); err != nil {
 		t.Fatalf("insert second embedding error = %v", err)
 	}
@@ -258,8 +258,8 @@ func TestStartClusterRenormalizationRepairsEmptyMergedContentAndFavoriteFlags(t 
 
 	rawBlob := mustSerializeRawEmbeddingBlob(t, 3)
 	if _, err := db.Exec(
-		`INSERT OR REPLACE INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-		articleID, rawBlob, rawBlob,
+		`INSERT OR REPLACE INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin) VALUES (?, ?, ?, ?, vec_quantize_binary(?))`,
+		articleID, 1, rawBlob, rawBlob, rawBlob,
 	); err != nil {
 		t.Fatalf("insert embedding error = %v", err)
 	}

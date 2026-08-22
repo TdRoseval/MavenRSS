@@ -136,9 +136,9 @@ func (db *DB) NormalizeArticleEmbeddingsForUser(userID int64) (int, int, error) 
 					return fmt.Errorf("delete existing article embedding %d before reinserting normalized data: %w", row.articleID, err)
 				}
 				if _, err := tx.Exec(
-					`INSERT INTO article_embeddings (article_id, title_embedding, summary_embedding)
-					 VALUES (?, ?, ?)`,
-					row.articleID, titleBlob, sumBlob,
+					`INSERT INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin)
+				 VALUES (?, ?, ?, ?, vec_quantize_binary(?))`,
+					row.articleID, userID, titleBlob, sumBlob, sumBlob,
 				); err != nil {
 					return fmt.Errorf("update normalized article embedding %d: %w", row.articleID, err)
 				}

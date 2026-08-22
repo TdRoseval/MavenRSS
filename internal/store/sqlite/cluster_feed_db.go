@@ -3,8 +3,10 @@ package sqlite
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
+	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 )
 
@@ -34,8 +36,9 @@ func (db *DB) GetClustersByVectorSimilarity(
 		topK = 100
 	}
 
-	args := make([]interface{}, 0, len(excludeIDs)+8)
-	args = append(args, userID, maxAgeDays)
+	args := make([]interface{}, 0, len(excludeIDs)+9)
+	// First ? binds ce.user_id (partition key pushdown), then c.user_id.
+	args = append(args, userID, userID, maxAgeDays)
 
 	joinClause := ""
 	if feedID > 0 || category != "" {
@@ -45,6 +48,7 @@ func (db *DB) GetClustersByVectorSimilarity(
 	}
 
 	conditions := []string{
+		"ce.user_id = ?",
 		"c.user_id = ?",
 		"c.is_hidden = 0",
 		"c.status = 'complete'",
@@ -79,7 +83,14 @@ func (db *DB) GetClustersByVectorSimilarity(
 		excludeClause = fmt.Sprintf(" AND c.id NOT IN (%s)", strings.Join(placeholders, ","))
 	}
 
-	args = append(args, interestVecBlob, topK)
+	// Stage 1: binary-quantized (Hamming) recall on the bit column with an
+	// amplified k to compensate for quantization loss; stage 2 below reranks
+	// with exact float32 L2 distances.
+	recallK := topK * 2
+	if recallK > 1000 {
+		recallK = 1000
+	}
+	args = append(args, interestVecBlob, recallK)
 
 	query := fmt.Sprintf(`
 		SELECT c.id, c.user_id, c.status, c.merged_title, c.merged_summary,
@@ -89,7 +100,7 @@ ce.distance
 		FROM cluster_embeddings ce
 		JOIN clusters c ON ce.cluster_id = c.id%s
 		WHERE %s%s
-		  AND ce.summary_embedding MATCH ? AND k = ?
+		  AND ce.summary_embedding_bin MATCH vec_quantize_binary(?) AND k = ?
 		ORDER BY ce.distance
 	`, joinClause, strings.Join(conditions, " AND "), excludeClause)
 
@@ -118,10 +129,47 @@ ce.distance
 		})
 	}
 
+	results, err = db.rerankClustersByFloatDistance(results, interestVecBlob, topK)
+	if err != nil {
+		return nil, err
+	}
+
 	// Note: meta population (feed titles, authors, display title) is deferred
 	// to the caller so that only the final selected clusters (after pruning,
 	// scoring, and trimming) incur the batch JOIN cost — not every recalled
 	// candidate (which can be up to 500).
+	return results, nil
+}
+
+// rerankClustersByFloatDistance replaces Hamming recall distances with exact
+// float32 squared-L2 distances to the user's interest vector, re-sorts
+// ascending, and trims to topK. Restores the pre-quantization ordering
+// semantics of the vector similarity feed.
+func (db *DB) rerankClustersByFloatDistance(results []ClusterWithScore, interestVecBlob []byte, topK int) ([]ClusterWithScore, error) {
+	if len(results) <= 1 {
+		return results, nil
+	}
+	queryVec, err := interest.DeserializeVector(interestVecBlob)
+	if err != nil || len(queryVec) == 0 {
+		return nil, fmt.Errorf("deserialize interest vector for rerank: %w", err)
+	}
+	clusterIDs := make([]int64, 0, len(results))
+	for _, result := range results {
+		clusterIDs = append(clusterIDs, result.Cluster.ID)
+	}
+	distances, err := db.floatCentroidDistances(clusterIDs, queryVec)
+	if err != nil {
+		return nil, err
+	}
+	for i := range results {
+		results[i].Distance = distances[results[i].Cluster.ID]
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].Distance < results[j].Distance
+	})
+	if len(results) > topK {
+		results = results[:topK]
+	}
 	return results, nil
 }
 

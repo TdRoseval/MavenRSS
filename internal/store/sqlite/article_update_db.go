@@ -70,26 +70,35 @@ func (db *DB) UpdateArticleSummary(id int64, summary string) error {
 }
 
 // UpdateArticleEmbeddings upserts normalized title and summary embeddings into the vec0 virtual table.
+// The user_id partition key is resolved from the articles table so KNN scans
+// only touch the owning user's partition.
 func (db *DB) UpdateArticleEmbeddings(articleID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
+	// vec0 rejects NULL/zero-length vectors. When both embeddings are missing,
+	// keep no row at all — it would otherwise contribute an 8KB zero vector to
+	// every KNN scan and pollute "has embedding" checks.
+	if len(titleEmb) == 0 && len(summaryEmb) == 0 {
+		_, err := db.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID)
+		return err
+	}
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
 	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(
-			`INSERT INTO article_embeddings (article_id, title_embedding, summary_embedding) VALUES (?, ?, ?)`,
-			articleID, titleEmb, summaryEmb,
+			`INSERT INTO article_embeddings (article_id, user_id, title_embedding, summary_embedding, summary_embedding_bin)
+			 VALUES (?, (SELECT user_id FROM articles WHERE id = ?), ?, ?, vec_quantize_binary(?))`,
+			articleID, articleID, titleEmb, summaryEmb, summaryEmb,
 		)
 		return err
 	})
 }
 
 func ensureVecColumnBlobs(primary, secondary []byte) ([]byte, []byte) {
+	// vec0 rejects NULL vectors, so a missing column reuses the other column's
+	// blob (both callers already handle the "both missing" case by not writing).
 	switch {
-	case len(primary) == 0 && len(secondary) == 0:
-		zero := make([]byte, 1024*4)
-		return zero, zero
 	case len(primary) == 0:
 		return secondary, secondary
 	case len(secondary) == 0:

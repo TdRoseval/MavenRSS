@@ -13,6 +13,9 @@ const (
 	fusionCompactExistingCharThreshold    = 100000
 	clusterRecallExistingArticleLimit     = 200
 	clusterRecallExistingCharLimit        = 200000
+	// maxMemberVectorCacheClusters bounds the centroid cache memory; when
+	// exceeded the cache resets (desktop-scale batches rarely revisit more).
+	maxMemberVectorCacheClusters = 1024
 )
 
 type ClusterSnapshotLoader func(clusterID int64) (*models.ClusterBatchSnapshot, error)
@@ -24,15 +27,76 @@ type trackedClusterSnapshot struct {
 
 // BatchContext tracks pre-batch cluster baselines so the current batch's
 // incoming articles do not affect cluster-size guards or compact fusion input.
+// It also caches per-cluster member summary vectors so the semantic pipeline
+// can gate and centroid-rank candidates without reloading embeddings from the
+// database for every article. Article-to-cluster assignments change only
+// through this pipeline (serialized per user), so the cache stays exact when
+// maintained via SetMemberVectors/AppendMemberVector.
 type BatchContext struct {
-	mu       sync.Mutex
-	clusters map[int64]*trackedClusterSnapshot
+	mu            sync.Mutex
+	clusters      map[int64]*trackedClusterSnapshot
+	memberVectors map[int64][][]float32
 }
 
 func NewBatchContext() *BatchContext {
 	return &BatchContext{
-		clusters: make(map[int64]*trackedClusterSnapshot),
+		clusters:      make(map[int64]*trackedClusterSnapshot),
+		memberVectors: make(map[int64][][]float32),
 	}
+}
+
+// MemberVectors returns the cached member vectors for a cluster and whether
+// an entry exists (a nil slice with ok=true means "cluster has no embedded
+// members", which is also a valid cached answer).
+func (b *BatchContext) MemberVectors(clusterID int64) ([][]float32, bool) {
+	if b == nil || clusterID <= 0 {
+		return nil, false
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	vecs, ok := b.memberVectors[clusterID]
+	return vecs, ok
+}
+
+// SetMemberVectors caches the member vectors of a cluster, detaching the
+// stored slice from the caller's copy. Zero-length vectors are dropped.
+func (b *BatchContext) SetMemberVectors(clusterID int64, vecs [][]float32) {
+	if b == nil || clusterID <= 0 {
+		return
+	}
+
+	stored := make([][]float32, 0, len(vecs))
+	for _, vec := range vecs {
+		if len(vec) > 0 {
+			stored = append(stored, vec)
+		}
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.memberVectors == nil {
+		b.memberVectors = make(map[int64][][]float32)
+	}
+	if len(b.memberVectors) >= maxMemberVectorCacheClusters {
+		b.memberVectors = make(map[int64][][]float32)
+	}
+	b.memberVectors[clusterID] = stored
+}
+
+// AppendMemberVector records a newly joined article's vector so subsequent
+// centroid rankings in the same batch see the updated membership exactly.
+func (b *BatchContext) AppendMemberVector(clusterID int64, vec []float32) {
+	if b == nil || clusterID <= 0 || len(vec) == 0 {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.memberVectors == nil {
+		b.memberVectors = make(map[int64][][]float32)
+	}
+	b.memberVectors[clusterID] = append(b.memberVectors[clusterID], vec)
 }
 
 func (b *BatchContext) EnsureClusterSnapshot(clusterID int64, loader ClusterSnapshotLoader) (*models.ClusterBatchSnapshot, error) {

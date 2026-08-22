@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
+	"MavenRSS/internal/interest"
 	"MavenRSS/internal/models"
 )
 
@@ -263,7 +265,7 @@ func (db *DB) GetDailyRecommendationCandidatesByVector(
 		limit = 100
 	}
 
-	args := []interface{}{userID, dayStart, dayEnd}
+	args := []interface{}{userID, userID, dayStart, dayEnd}
 	excludeClause := ""
 	if len(excludeIDs) > 0 {
 		placeholders := make([]string, len(excludeIDs))
@@ -273,7 +275,13 @@ func (db *DB) GetDailyRecommendationCandidatesByVector(
 		}
 		excludeClause = fmt.Sprintf(" AND c.id NOT IN (%s)", strings.Join(placeholders, ","))
 	}
-	args = append(args, interestVecBlob, limit)
+	// Stage 1: binary-quantized (Hamming) recall with amplified k; stage 2
+	// below reranks with exact float32 L2 distances.
+	recallK := limit * 2
+	if recallK > 1000 {
+		recallK = 1000
+	}
+	args = append(args, interestVecBlob, recallK)
 
 	query := fmt.Sprintf(`
 		SELECT c.id, c.user_id, c.status, c.merged_title, c.merged_summary, c.merged_content,
@@ -284,12 +292,13 @@ func (db *DB) GetDailyRecommendationCandidatesByVector(
 		FROM cluster_embeddings ce
 		JOIN clusters c ON ce.cluster_id = c.id
 		JOIN articles a ON a.cluster_id = c.id
-		WHERE c.user_id = ?
+		WHERE ce.user_id = ?
+		  AND c.user_id = ?
 		  AND c.status = 'complete'
 		  AND c.is_hidden = 0
 		  AND a.published_at >= ?
 		  AND a.published_at < ?%s
-		  AND ce.summary_embedding MATCH ? AND k = ?
+		  AND ce.summary_embedding_bin MATCH vec_quantize_binary(?) AND k = ?
 		GROUP BY c.id, c.user_id, c.status, c.merged_title, c.merged_summary, c.merged_content,
 			c.recommendation_archive_date, c.recommendation_score, c.is_ai_recommended, c.recommendation_profile_id,
 			c.article_count, c.created_at, c.updated_at, c.is_read, c.is_favorite, c.is_read_later, c.is_hidden,
@@ -303,7 +312,43 @@ func (db *DB) GetDailyRecommendationCandidatesByVector(
 	}
 	defer rows.Close()
 
-	return scanDailyRecommendationCandidates(db, rows, true)
+	candidates, err := scanDailyRecommendationCandidates(db, rows, true)
+	if err != nil {
+		return nil, err
+	}
+	return rerankDailyCandidatesByFloatDistance(db, candidates, interestVecBlob, limit)
+}
+
+// rerankDailyCandidatesByFloatDistance replaces Hamming recall distances with
+// exact float32 squared-L2 distances to the user's interest vector, re-sorts
+// ascending, and trims to limit. Restores the pre-quantization ordering
+// semantics of the daily recommendation recall.
+func rerankDailyCandidatesByFloatDistance(db *DB, candidates []DailyRecommendationCandidate, interestVecBlob []byte, limit int) ([]DailyRecommendationCandidate, error) {
+	if len(candidates) <= 1 {
+		return candidates, nil
+	}
+	queryVec, err := interest.DeserializeVector(interestVecBlob)
+	if err != nil || len(queryVec) == 0 {
+		return nil, fmt.Errorf("deserialize interest vector for recommendation rerank: %w", err)
+	}
+	clusterIDs := make([]int64, 0, len(candidates))
+	for _, candidate := range candidates {
+		clusterIDs = append(clusterIDs, candidate.Cluster.ID)
+	}
+	distances, err := db.floatCentroidDistances(clusterIDs, queryVec)
+	if err != nil {
+		return nil, err
+	}
+	for i := range candidates {
+		candidates[i].Distance = distances[candidates[i].Cluster.ID]
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].Distance < candidates[j].Distance
+	})
+	if len(candidates) > limit {
+		candidates = candidates[:limit]
+	}
+	return candidates, nil
 }
 
 func (db *DB) GetDailyRecommendationCandidatesChronological(

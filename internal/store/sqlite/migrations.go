@@ -297,8 +297,10 @@ func runMigrations(db *sql.DB) error {
 
 	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
 		article_id INTEGER PRIMARY KEY,
+		user_id INTEGER partition key,
 		title_embedding float[1024],
-		summary_embedding float[1024]
+		summary_embedding float[1024],
+		summary_embedding_bin bit[1024]
 	)`)
 
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS clusters (
@@ -339,8 +341,10 @@ func runMigrations(db *sql.DB) error {
 
 	_, _ = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS cluster_embeddings USING vec0(
 		cluster_id INTEGER PRIMARY KEY,
+		user_id INTEGER partition key,
 		title_embedding float[1024],
-		summary_embedding float[1024]
+		summary_embedding float[1024],
+		summary_embedding_bin bit[1024]
 	)`)
 
 	ensureDailyRecommendationSchema(db)
@@ -364,6 +368,12 @@ func runMigrations(db *sql.DB) error {
 		user_id INTEGER PRIMARY KEY,
 		interest_embedding float[1024]
 	)`)
+
+	// Rebuild embedding vec0 tables to the target schema (partition key +
+	// binary-quantized recall column). Idempotent; skips up-to-date tables.
+	if err := migrateVecTablesToLatest(db); err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -385,8 +385,10 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session
 func initVecSchema(db *sql.DB) error {
 	_, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS article_embeddings USING vec0(
 		article_id INTEGER PRIMARY KEY,
+		user_id INTEGER partition key,
 		title_embedding float[1024],
-		summary_embedding float[1024]
+		summary_embedding float[1024],
+		summary_embedding_bin bit[1024]
 	)`)
 	if err != nil {
 		return fmt.Errorf("create article_embeddings vec0 table: %w", err)
@@ -394,8 +396,10 @@ func initVecSchema(db *sql.DB) error {
 
 	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS cluster_embeddings USING vec0(
 		cluster_id INTEGER PRIMARY KEY,
+		user_id INTEGER partition key,
 		title_embedding float[1024],
-		summary_embedding float[1024]
+		summary_embedding float[1024],
+		summary_embedding_bin bit[1024]
 	)`)
 	if err != nil {
 		return fmt.Errorf("create cluster_embeddings vec0 table: %w", err)
