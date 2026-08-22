@@ -113,3 +113,37 @@ func TestInitInsertsDefaults(t *testing.T) {
 		t.Fatalf("default setting %s = %q, want %q", key, got, want)
 	}
 }
+
+func TestSettingsRevisionIncrementsOnWrite(t *testing.T) {
+	db := setupTestDB(t)
+
+	before := dbpkg.SettingsRevision()
+	if err := db.SetSetting("rev_global_key", "1"); err != nil {
+		t.Fatalf("SetSetting() error = %v", err)
+	}
+	mid := dbpkg.SettingsRevision()
+	if mid <= before {
+		t.Fatalf("SettingsRevision() = %d after SetSetting, want > %d", mid, before)
+	}
+
+	if err := db.SetSettingForUser(1, "rev_user_key", "2"); err != nil {
+		t.Fatalf("SetSettingForUser() error = %v", err)
+	}
+	after := dbpkg.SettingsRevision()
+	if after <= mid {
+		t.Fatalf("SettingsRevision() = %d after SetSettingForUser, want > %d", after, mid)
+	}
+}
+
+func TestDBConnectionPoolSize(t *testing.T) {
+	db, err := dbpkg.NewDB(":memory:")
+	if err != nil {
+		t.Fatalf("NewDB() error = %v", err)
+	}
+	defer db.Close()
+
+	stats := db.Stats()
+	if stats.MaxOpenConnections != 8 {
+		t.Fatalf("MaxOpenConnections = %d, want 8", stats.MaxOpenConnections)
+	}
+}

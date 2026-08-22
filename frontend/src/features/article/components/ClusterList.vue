@@ -274,11 +274,20 @@ function selectCluster(cluster: Cluster): void {
 
 const SCROLL_THRESHOLD = 400;
 
+let scrollRAF: number | null = null;
+
 function handleScroll(e: Event): void {
   const target = e.target as HTMLElement;
 
-  scrollTop.value = target.scrollTop;
-  containerHeight.value = target.clientHeight;
+  // Coalesce virtual-scroll state into one update per animation frame instead
+  // of writing reactive refs on every scroll event.
+  if (scrollRAF == null) {
+    scrollRAF = requestAnimationFrame(() => {
+      scrollRAF = null;
+      scrollTop.value = target.scrollTop;
+      containerHeight.value = target.clientHeight;
+    });
+  }
 }
 
 function handleContextmenu(e: MouseEvent, cluster: Cluster) {

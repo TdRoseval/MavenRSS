@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// vacuumInterval throttles how often a full VACUUM may run. VACUUM rebuilds the
+// whole database and blocks every other query, so it should be infrequent.
+const vacuumInterval = 6 * time.Hour
+
 // CleanupManager manages automatic cleanup with retry mechanism
 type CleanupManager struct {
 	fetcher *Fetcher
@@ -22,6 +26,9 @@ type CleanupManager struct {
 	retryInterval time.Duration // 10 minutes
 	stopChan      chan struct{}
 	wg            sync.WaitGroup
+
+	// VACUUM throttling
+	lastVacuumAt time.Time
 }
 
 // NewCleanupManager creates a new cleanup manager
@@ -355,17 +362,36 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 	finalSizeMB, _ := cm.fetcher.db.GetStorageUsageMB(userID)
 	log.Printf("Final storage usage before VACUUM for user %d: %.2f MB (target was %.2f MB)", userID, finalSizeMB, targetSizeMB)
 
-	// Run VACUUM to reclaim space if we removed anything
-	if totalRemoved > 0 {
-		log.Println("Running VACUUM to reclaim disk space...")
-		_, _ = cm.fetcher.db.Exec("VACUUM")
+	// Run VACUUM to reclaim space if we removed anything. VACUUM rebuilds the
+	// whole database file and stalls every other query while it runs, so:
+	//   - rate-limit it to once per vacuumInterval,
+	//   - run it off the cleanup critical path in a goroutine.
+	if totalRemoved > 0 && cm.shouldVacuum() {
+		log.Println("Running VACUUM asynchronously to reclaim disk space...")
+		go func() {
+			_, _ = cm.fetcher.db.Exec("VACUUM")
 
-		// Log final size after VACUUM
-		finalSizeAfterVACUUM, _ := cm.fetcher.db.GetStorageUsageMB(userID)
-		log.Printf("Final storage usage after VACUUM for user %d: %.2f MB", userID, finalSizeAfterVACUUM)
+			// Log final size after VACUUM
+			finalSizeAfterVACUUM, _ := cm.fetcher.db.GetStorageUsageMB(userID)
+			log.Printf("Final storage usage after VACUUM for user %d: %.2f MB", userID, finalSizeAfterVACUUM)
+		}()
 	}
 
 	return totalRemoved
+}
+
+// shouldVacuum returns true only if enough time has passed since the last
+// VACUUM, preventing a burst of feed updates from repeatedly triggering a
+// full-database rebuild (which blocks all reads/writes).
+func (cm *CleanupManager) shouldVacuum() bool {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if time.Since(cm.lastVacuumAt) < vacuumInterval {
+		return false
+	}
+	cm.lastVacuumAt = time.Now()
+	return true
 }
 
 // retryLoop checks every 10 minutes if pending cleanup can be executed

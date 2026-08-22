@@ -25,8 +25,12 @@ func ComputeSimHash64(text string) int64 {
 	// Weighted vector: each bit position accumulates +1 or -1
 	var v [64]int
 
+	// Reuse a single hasher: fnv.New64a allocates per call, and creating one per
+	// bigram (thousands per article) produces avoidable GC pressure. Reset puts
+	// it back to the identical initial state, so results are byte-for-byte equal.
+	h := fnv.New64a()
 	for _, token := range tokens {
-		h := fnv.New64a()
+		h.Reset()
 		h.Write([]byte(token))
 		hash := h.Sum64()
 

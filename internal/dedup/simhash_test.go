@@ -83,3 +83,13 @@ func TestIsValidForSimHash(t *testing.T) {
 		t.Error("expected true for long enough text")
 	}
 }
+
+func TestComputeSimHash64Deterministic(t *testing.T) {
+	text := "这是用于验证 SimHash 在复用 hasher 后仍保持确定性的测试文本，包含 mixed English content 与数字 12345。"
+
+	h1 := ComputeSimHash64(text)
+	h2 := ComputeSimHash64(text)
+	if h1 != h2 {
+		t.Fatalf("same input produced different hashes: %d vs %d", h1, h2)
+	}
+}

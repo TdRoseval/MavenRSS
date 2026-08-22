@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -276,6 +277,14 @@ func (h *cachedStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 }
 
 func main() {
+	// Raise the GC target to reduce GC CPU overhead. With SQLite-MMAP backed caches
+	// the RSS workflow is allocation-heavy; a higher GOGC trades some heap headroom
+	// for fewer, less frequent GC cycles. Default 100, set 200 unless the deployment
+	// already provides GOGC explicitly.
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(200)
+	}
+
 	// Parse flags
 	flag.BoolFunc("server", "Run in headless server mode", func(s string) error {
 		v, err := strconv.ParseBool(s)

@@ -53,34 +53,47 @@ const isCopying = ref(false);
 const loadingTime = ref(0);
 const loadingStartTime = ref<number | null>(null);
 
-// Track loading time for better UX
+// Track loading time for better UX. The timer only runs while a summary is
+// actually loading, instead of ticking every 100ms for the component's lifetime.
+let intervalId: number | null = null;
+
+function stopLoadingTimer(): void {
+  if (intervalId != null) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+}
+
+function startLoadingTimer(): void {
+  if (intervalId != null) return;
+  intervalId = window.setInterval(() => {
+    if (loadingStartTime.value) {
+      loadingTime.value = Math.floor((Date.now() - loadingStartTime.value) / 1000);
+    }
+  }, 100);
+}
+
 watch(
   () => props.isLoadingSummary,
   (isLoading: boolean) => {
-    if (isLoading && !loadingStartTime.value) {
-      loadingStartTime.value = Date.now();
-      loadingTime.value = 0;
-    } else if (!isLoading && loadingStartTime.value) {
+    if (isLoading) {
+      if (!loadingStartTime.value) {
+        loadingStartTime.value = Date.now();
+        loadingTime.value = 0;
+      }
+      startLoadingTimer();
+    } else {
       loadingStartTime.value = null;
       loadingTime.value = 0;
+      stopLoadingTimer();
     }
-  }
+  },
+  { immediate: true }
 );
-
-let intervalId: number | null = null;
-
-// Update loading time display
-intervalId = window.setInterval(() => {
-  if (props.isLoadingSummary && loadingStartTime.value) {
-    loadingTime.value = Math.floor((Date.now() - loadingStartTime.value) / 1000);
-  }
-}, 100);
 
 // Cleanup interval on unmount
 onUnmounted(() => {
-  if (intervalId) {
-    clearInterval(intervalId);
-  }
+  stopLoadingTimer();
 });
 
 // Check if should show manual trigger button

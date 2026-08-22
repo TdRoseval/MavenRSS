@@ -61,6 +61,7 @@ func (db *DB) GetSettingForUser(userID int64, key string) (string, error) {
 // SetSetting stores a setting value.
 func (db *DB) SetSetting(key, value string) error {
 	db.WaitForReady()
+	bumpSettingsRevision()
 	_, err := db.Exec("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, value)
 	return err
 }
@@ -68,6 +69,7 @@ func (db *DB) SetSetting(key, value string) error {
 // SetSettingForUser stores a setting value for a specific user.
 func (db *DB) SetSettingForUser(userID int64, key, value string) error {
 	db.WaitForReady()
+	bumpSettingsRevision()
 	_, err := db.Exec("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)", userID, key, value)
 	return err
 }

@@ -85,11 +85,16 @@ func (db *DB) GetChatSessionForUser(userID, sessionID int64) (*ChatSession, erro
 // GetChatSessionsByArticle retrieves all chat sessions for an article, ordered by updated_at desc
 func (db *DB) GetChatSessionsByArticle(userID, articleID int64) ([]ChatSession, error) {
 	rows, err := db.Query(`
-		SELECT id, article_id, title, created_at, updated_at,
-		       (SELECT COUNT(*) FROM chat_messages WHERE session_id = chat_sessions.id) as message_count
-		FROM chat_sessions
-		WHERE user_id = ? AND article_id = ?
-		ORDER BY updated_at DESC
+		SELECT cs.id, cs.article_id, cs.title, cs.created_at, cs.updated_at,
+		       COALESCE(m.message_count, 0) as message_count
+		FROM chat_sessions cs
+		LEFT JOIN (
+			SELECT session_id, COUNT(*) as message_count
+			FROM chat_messages
+			GROUP BY session_id
+		) m ON m.session_id = cs.id
+		WHERE cs.user_id = ? AND cs.article_id = ?
+		ORDER BY cs.updated_at DESC
 	`, userID, articleID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chat sessions: %w", err)

@@ -28,7 +28,21 @@ var (
 	memoryDriverOnce sync.Once
 	vectorDriverOnce sync.Once
 	memoryDBCounter  uint64
+
+	// settingsRevision increments on every settings write so that callers can
+	// cheaply invalidate settings-keyed caches without cross-package callbacks.
+	settingsRevision atomic.Int64
 )
+
+// SettingsRevision returns the current settings revision counter. Any write to
+// the settings or user_settings tables increments it.
+func SettingsRevision() int64 {
+	return settingsRevision.Load()
+}
+
+func bumpSettingsRevision() {
+	settingsRevision.Add(1)
+}
 
 type DB struct {
 	*sql.DB
@@ -67,8 +81,8 @@ func NewDB(dataSourceName string) (*DB, error) {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(5)
-	db.SetMaxIdleConns(2)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(4)
 	db.SetConnMaxLifetime(1 * time.Hour)
 	db.SetConnMaxIdleTime(30 * time.Minute)
 

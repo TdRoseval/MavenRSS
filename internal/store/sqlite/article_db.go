@@ -540,3 +540,52 @@ func (db *DB) GetArticleIDByRawUniqueID(userID int64, uniqueID string) (int64, e
 	}
 	return id, nil
 }
+
+// GetArticleIDsByRawUniqueIDs batch-resolves article IDs for many raw unique_id
+// values in one query, avoiding the N+1 pattern in content caching.
+func (db *DB) GetArticleIDsByRawUniqueIDs(userID int64, uniqueIDs []string) (map[string]int64, error) {
+	db.WaitForReady()
+	result := make(map[string]int64, len(uniqueIDs))
+	if len(uniqueIDs) == 0 {
+		return result, nil
+	}
+
+	// Chunk to stay safely under SQLite's bound-variable limit.
+	const chunkSize = 500
+	for start := 0; start < len(uniqueIDs); start += chunkSize {
+		end := start + chunkSize
+		if end > len(uniqueIDs) {
+			end = len(uniqueIDs)
+		}
+		chunk := uniqueIDs[start:end]
+
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		args := make([]interface{}, 0, len(chunk)+1)
+		args = append(args, userID)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+
+		rows, err := db.Query(
+			"SELECT unique_id, id FROM articles WHERE user_id = ? AND unique_id IN ("+placeholders+")",
+			args...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var uid string
+			var id int64
+			if err := rows.Scan(&uid, &id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[uid] = id
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}

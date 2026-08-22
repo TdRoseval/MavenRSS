@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"MavenRSS/internal/ai"
@@ -84,6 +85,12 @@ const (
 
 	recommendationDirectChronologicalMaxCandidates = 10
 	recommendationStageOneMinCandidates            = 40
+
+	// recommendationScoringConcurrency bounds parallel stage-2 scoring requests.
+	// Each candidate issues two LLM calls (score + review); running a handful in
+	// parallel keeps the daily recommendation latency closer to O(N/并发) without
+	// changing the per-candidate scoring logic or precision.
+	recommendationScoringConcurrency = 4
 )
 
 func (m *AIEnhancedManager) startDailyRecommendationScheduler() {
@@ -1003,20 +1010,50 @@ func (m *AIEnhancedManager) runRecommendationStageOneRound(userID int64, group [
 }
 
 func (m *AIEnhancedManager) runRecommendationStageTwo(userID int64, candidates []rankedRecommendationCandidate, config *ai.ClientConfig, profileID int64) ([]rankedRecommendationCandidate, bool) {
-	results := make([]rankedRecommendationCandidate, 0, len(candidates))
 	total := maxInt(len(candidates), 1)
+	results := make([]rankedRecommendationCandidate, len(candidates))
+
+	// Score candidates concurrently. Each candidate is scored independently, so
+	// parallelizing preserves the exact per-candidate precision; only the order of
+	// completion changes. A single failure fails the whole stage, matching the
+	// previous sequential short-circuit semantics.
+	sem := make(chan struct{}, recommendationScoringConcurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	failed := false
+	completed := 0
+
 	for idx, candidate := range candidates {
-		scored, ok := m.scoreRecommendationCandidate(userID, candidate, config, profileID)
-		if !ok {
-			return nil, false
-		}
-		results = append(results, scored)
-		progress := 70 + (20 * float64(idx+1) / float64(total))
-		m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
-			status.Stage = recommendationStageScoring
-			status.ProgressPercent = progress
-			status.SelectedCount = len(candidates)
-		})
+		wg.Add(1)
+		go func(idx int, candidate rankedRecommendationCandidate) {
+			defer wg.Done()
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			scored, ok := m.scoreRecommendationCandidate(userID, candidate, config, profileID)
+
+			mu.Lock()
+			if !ok {
+				failed = true
+			} else {
+				results[idx] = scored
+			}
+			completed++
+			progress := 70 + (20 * float64(completed) / float64(total))
+			mu.Unlock()
+
+			m.updateRecommendationTaskStatus(userID, func(status *DailyRecommendationTaskStatus) {
+				status.Stage = recommendationStageScoring
+				status.ProgressPercent = progress
+				status.SelectedCount = len(candidates)
+			})
+		}(idx, candidate)
+	}
+	wg.Wait()
+
+	if failed {
+		return nil, false
 	}
 	return results, true
 }

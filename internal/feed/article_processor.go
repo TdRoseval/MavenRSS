@@ -13,6 +13,16 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+// Compiled once at package init: these regexps run per-article during feed
+// parsing, so recompiling them inside the hot path would waste CPU/allocations.
+var (
+	imgSrcRegex             = regexp.MustCompile(`<img[^>]+src="([^">]+)"`)
+	youtubeWatchRegex       = regexp.MustCompile(`[?&]v=([^&]+)`)
+	youtubeShortLinkRegex   = regexp.MustCompile(`youtu\.be/([^?&]+)`)
+	youtubeShortsRegex      = regexp.MustCompile(`shorts/([^?&]+)`)
+	htmlTagStripRegex       = regexp.MustCompile(`<[^>]+>`)
+)
+
 // ExtractContent extracts content from an RSS item with the correct priority order.
 // Priority: media:description > item.Content (content:encoded) > item.Description
 // This ensures full article content is preferred over summaries.
@@ -148,7 +158,7 @@ func extractImageURL(item *gofeed.Item, feedURL string) string {
 		content = item.Description
 	}
 
-	re := regexp.MustCompile(`<img[^>]+src="([^">]+)"`)
+	re := imgSrcRegex
 	matches := re.FindStringSubmatch(content)
 	if len(matches) > 1 {
 		return resolveRelativeURL(matches[1], feedURL)
@@ -207,7 +217,7 @@ func ExtractFirstImageURLFromHTML(htmlContent string) string {
 		return ""
 	}
 
-	re := regexp.MustCompile(`<img[^>]+src="([^">]+)"`)
+	re := imgSrcRegex
 	matches := re.FindStringSubmatch(htmlContent)
 	if len(matches) > 1 {
 		return matches[1]
@@ -225,7 +235,7 @@ func ExtractAllImageURLsFromHTML(htmlContent string) []string {
 	}
 
 	var urls []string
-	re := regexp.MustCompile(`<img[^>]+src="([^">]+)"`)
+	re := imgSrcRegex
 	matches := re.FindAllStringSubmatch(htmlContent, -1)
 
 	for _, match := range matches {
@@ -287,7 +297,7 @@ func extractVideoURL(item *gofeed.Item) string {
 func extractYouTubeVideoID(url string) string {
 	// Handle youtube.com/watch?v=VIDEO_ID
 	if strings.Contains(url, "youtube.com/watch") {
-		re := regexp.MustCompile(`[?&]v=([^&]+)`)
+		re := youtubeWatchRegex
 		matches := re.FindStringSubmatch(url)
 		if len(matches) > 1 {
 			return matches[1]
@@ -296,7 +306,7 @@ func extractYouTubeVideoID(url string) string {
 
 	// Handle youtu.be/VIDEO_ID
 	if strings.Contains(url, "youtu.be/") {
-		re := regexp.MustCompile(`youtu\.be/([^?&]+)`)
+		re := youtubeShortLinkRegex
 		matches := re.FindStringSubmatch(url)
 		if len(matches) > 1 {
 			return matches[1]
@@ -305,7 +315,7 @@ func extractYouTubeVideoID(url string) string {
 
 	// Handle youtube.com/shorts/VIDEO_ID
 	if strings.Contains(url, "youtube.com/shorts/") {
-		re := regexp.MustCompile(`shorts/([^?&]+)`)
+		re := youtubeShortsRegex
 		matches := re.FindStringSubmatch(url)
 		if len(matches) > 1 {
 			return matches[1]
@@ -322,8 +332,7 @@ func generateTitleFromContent(content string) string {
 	}
 
 	// Remove HTML tags
-	htmlTagRegex := regexp.MustCompile(`<[^>]+>`)
-	plainText := htmlTagRegex.ReplaceAllString(content, "")
+	plainText := htmlTagStripRegex.ReplaceAllString(content, "")
 
 	// Trim whitespace
 	plainText = strings.TrimSpace(plainText)

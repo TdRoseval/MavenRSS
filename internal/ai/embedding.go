@@ -38,7 +38,43 @@ type EmbeddingResponse struct {
 var (
 	modelUsageMu    sync.Mutex
 	modelUsageState = make(map[string]*usageState)
+
+	// embeddingConfigsCache memoizes the parse of embedding config JSON. The
+	// config string is stable between settings changes, so re-unmarshaling it on
+	// every embedding request (which happens per article) is pure waste.
+	embeddingConfigsCache sync.Map // configsJSON -> embeddingConfigsResult
 )
+
+type embeddingConfigsResult struct {
+	configs    []models.EmbeddingModelConfig
+	maxTimeout time.Duration
+}
+
+func parseEmbeddingConfigs(configsJSON string) ([]models.EmbeddingModelConfig, time.Duration, error) {
+	if v, ok := embeddingConfigsCache.Load(configsJSON); ok {
+		r := v.(embeddingConfigsResult)
+		return r.configs, r.maxTimeout, nil
+	}
+
+	var configs []models.EmbeddingModelConfig
+	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
+		return nil, MinimumConfigurableTimeout, err
+	}
+
+	maxTimeout := MinimumConfigurableTimeout
+	for _, config := range configs {
+		timeout := EffectiveTimeoutFromSeconds(config.TimeoutSeconds)
+		if timeout > maxTimeout {
+			maxTimeout = timeout
+		}
+	}
+
+	embeddingConfigsCache.Store(configsJSON, embeddingConfigsResult{
+		configs:    configs,
+		maxTimeout: maxTimeout,
+	})
+	return configs, maxTimeout, nil
+}
 
 type usageState struct {
 	requests    int
@@ -99,7 +135,9 @@ func GenerateEmbeddings(ctx context.Context, input string, configsJSON string, g
 	}
 
 	var configs []models.EmbeddingModelConfig
-	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
+	var err error
+	configs, _, err = parseEmbeddingConfigs(configsJSON)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse embedding configurations: %w", err)
 	}
 
@@ -137,16 +175,9 @@ func GenerateEmbeddings(ctx context.Context, input string, configsJSON string, g
 }
 
 func MaxEmbeddingTimeoutFromConfigJSON(configsJSON string) time.Duration {
-	var configs []models.EmbeddingModelConfig
-	if err := json.Unmarshal([]byte(configsJSON), &configs); err != nil {
+	_, maxTimeout, err := parseEmbeddingConfigs(configsJSON)
+	if err != nil {
 		return MinimumConfigurableTimeout
-	}
-	maxTimeout := MinimumConfigurableTimeout
-	for _, config := range configs {
-		timeout := EffectiveTimeoutFromSeconds(config.TimeoutSeconds)
-		if timeout > maxTimeout {
-			maxTimeout = timeout
-		}
 	}
 	return maxTimeout
 }

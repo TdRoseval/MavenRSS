@@ -92,6 +92,7 @@ type AIEnhancedManager struct {
 	clusterEmbeddingRunning    map[int64]bool
 	clusterBatchContext        map[int64]*dedup.BatchContext
 	recommendationMu           sync.Mutex
+	aiUsageMu                  sync.Mutex
 	recommendationRunning      map[int64]bool
 	recommendationRunningVer   map[int64]int64
 	recommendationStatusByUser map[int64]DailyRecommendationTaskStatus
@@ -126,6 +127,9 @@ const (
 	articleTranslationConcurrency         = 6
 	articleEmbeddingConcurrency           = 6
 	articlePipelineWindow                 = 18
+	clusterPipelineBarrierMinInterval     = 1 * time.Second
+	clusterPipelineBarrierMaxInterval     = 5 * time.Second
+	clusterEmbeddingPollInterval          = 1 * time.Second
 )
 
 type AIProcessingStatus struct {
@@ -903,8 +907,10 @@ func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, e
 		return true, nil
 	}
 
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
+	// Poll with exponential backoff: checking barrier state runs two heavyweight
+	// SQL aggregations, so avoid hammering the DB every 250ms while data barely
+	// changes between pipeline stages.
+	pollInterval := clusterPipelineBarrierMinInterval
 	startedAt := time.Now()
 
 	for {
@@ -930,7 +936,14 @@ func (m *AIEnhancedManager) waitForClusterPipelineBarrier(userID int64) (bool, e
 		select {
 		case <-m.stopChan:
 			return false, fmt.Errorf("ai enhanced manager stopped")
-		case <-ticker.C:
+		case <-time.After(pollInterval):
+		}
+
+		if pollInterval < clusterPipelineBarrierMaxInterval {
+			pollInterval *= 2
+			if pollInterval > clusterPipelineBarrierMaxInterval {
+				pollInterval = clusterPipelineBarrierMaxInterval
+			}
 		}
 	}
 }
@@ -1303,7 +1316,10 @@ func (m *AIEnhancedManager) runClusterEmbeddingPipeline(ctx context.Context, use
 		return m.runEmbedding(ctx, nil, userID, cfg)
 	}
 
-	ticker := time.NewTicker(200 * time.Millisecond)
+	// Only poll the cluster progress table at a reduced cadence; embedding work is
+	// the bottleneck here and completes on its own, so a 1s tick is plenty and
+	// avoids a full-cluster-table scan every 200ms.
+	ticker := time.NewTicker(clusterEmbeddingPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -1999,8 +2015,13 @@ func hasConfiguredAPIKey(config *ai.ClientConfig) bool {
 	return config != nil && config.APIKey != ""
 }
 
-// addAIUsage adds tokens to the AI usage counter for a specific user
+// addAIUsage adds tokens to the AI usage counter for a specific user.
+// The read-modify-write is serialized so concurrent stage-2 recommendation
+// scoring doesn't drop usage updates.
 func (m *AIEnhancedManager) addAIUsage(userID int64, tokens int64) {
+	m.aiUsageMu.Lock()
+	defer m.aiUsageMu.Unlock()
+
 	usageStr, _ := m.db.GetSettingWithFallback(userID, "ai_usage_tokens")
 	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
 	newUsage := currentUsage + tokens
@@ -2248,8 +2269,47 @@ func (m *AIEnhancedManager) Stop() {
 	log.Println("AI enhanced mode manager stopped")
 }
 
+type shouldProcessCacheEntry struct {
+	value    bool
+	revision int64
+	expires  time.Time
+}
+
+// shouldProcessCache short-circuits repeated ShouldProcess calls for the same
+// user between settings changes. Each call performs ~10-20 individual settings /
+// profile reads, so caching collapses the per-user background scan (recovery,
+// diagnostics, daily recommendation, progress polling) into a single read burst
+// per 30s. The revision guard invalidates on any settings write and the TTL is a
+// safety net for writes made outside SetSetting/SetSettingForUser.
+var shouldProcessCache sync.Map
+
+const shouldProcessCacheTTL = 30 * time.Second
+
 // ShouldProcess checks if AI enhanced mode should process an article for a user
 func ShouldProcess(db *sqlite.DB, userID int64) bool {
+	if db == nil {
+		return false
+	}
+
+	rev := sqlite.SettingsRevision()
+	now := time.Now()
+	if v, ok := shouldProcessCache.Load(userID); ok {
+		entry := v.(shouldProcessCacheEntry)
+		if entry.revision == rev && now.Before(entry.expires) {
+			return entry.value
+		}
+	}
+
+	value := shouldProcessInner(db, userID)
+	shouldProcessCache.Store(userID, shouldProcessCacheEntry{
+		value:    value,
+		revision: rev,
+		expires:  now.Add(shouldProcessCacheTTL),
+	})
+	return value
+}
+
+func shouldProcessInner(db *sqlite.DB, userID int64) bool {
 	// Check if AI enhanced mode is enabled
 	enhancedModeStr, _ := db.GetSettingWithFallback(userID, "ai_enhanced_mode")
 	if enhancedModeStr != "true" {

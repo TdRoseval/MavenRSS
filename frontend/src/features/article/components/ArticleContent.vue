@@ -567,18 +567,19 @@ async function translateContentParagraphs(content: string) {
   const allElements = Array.from(proseContainer.querySelectorAll(textTags.join(',')));
 
   // Sort by depth (number of ancestors) to process outermost elements first
-  allElements.sort((a, b) => {
-    const getDepth = (el: Element): number => {
-      let depth = 0;
-      let parent = el.parentElement;
-      while (parent && parent !== proseContainer) {
-        depth++;
-        parent = parent.parentElement;
-      }
-      return depth;
-    };
-    return getDepth(a) - getDepth(b);
-  });
+  // Precompute depth once instead of re-walking ancestors on every sort
+  // comparison, avoiding O(n·depth) work across the sort.
+  const elementDepth = new Map<Element, number>();
+  for (const el of allElements) {
+    let depth = 0;
+    let parent = el.parentElement;
+    while (parent && parent !== proseContainer) {
+      depth++;
+      parent = parent.parentElement;
+    }
+    elementDepth.set(el, depth);
+  }
+  allElements.sort((a, b) => (elementDepth.get(a) ?? 0) - (elementDepth.get(b) ?? 0));
 
   // Helper function to check if an element can contain nested translatable content
   const canContainNestedTranslatableElements = (el: HTMLElement): boolean => {
@@ -1192,18 +1193,19 @@ async function forceTranslateContentParagraphs(content: string, firstRequest: bo
   const allElements = Array.from(proseContainer.querySelectorAll(textTags.join(',')));
 
   // Sort by depth (shallowest first)
-  allElements.sort((a, b) => {
-    const getDepth = (el: Element): number => {
-      let depth = 0;
-      let parent = el.parentElement;
-      while (parent && parent !== proseContainer) {
-        depth++;
-        parent = parent.parentElement;
-      }
-      return depth;
-    };
-    return getDepth(a) - getDepth(b);
-  });
+  // Precompute depth once instead of re-walking ancestors on every sort
+  // comparison, avoiding O(n·depth) work across the sort.
+  const elementDepth = new Map<Element, number>();
+  for (const el of allElements) {
+    let depth = 0;
+    let parent = el.parentElement;
+    while (parent && parent !== proseContainer) {
+      depth++;
+      parent = parent.parentElement;
+    }
+    elementDepth.set(el, depth);
+  }
+  allElements.sort((a, b) => (elementDepth.get(a) ?? 0) - (elementDepth.get(b) ?? 0));
 
   // Helper function to check if an element can contain nested translatable content
   const canContainNestedTranslatableElements = (el: HTMLElement): boolean => {

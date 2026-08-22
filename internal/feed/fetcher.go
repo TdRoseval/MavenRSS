@@ -832,29 +832,46 @@ func (f *Fetcher) FetchFeedsByIDs(ctx context.Context, feedIDs []int64) {
 // cacheArticleContents caches article contents from RSS feeds
 // This is called after articles are saved to the database
 func (f *Fetcher) cacheArticleContents(articlesWithContent []*ArticleWithContent) {
+	// Batch-resolve article IDs by raw unique_id to avoid one query per article.
+	byUser := map[int64][]string{}
+	for _, awc := range articlesWithContent {
+		if awc.Content != "" && awc.Article.URL != "" && awc.Article.UniqueID != "" {
+			byUser[awc.Article.UserID] = append(byUser[awc.Article.UserID], awc.Article.UniqueID)
+		}
+	}
+
+	idByUniqueID := map[string]int64{}
+	for userID, ids := range byUser {
+		m, err := f.db.GetArticleIDsByRawUniqueIDs(userID, ids)
+		if err != nil {
+			log.Printf("Error batch-resolving article IDs for user %d: %v", userID, err)
+			continue
+		}
+		for uid, id := range m {
+			idByUniqueID[uid] = id
+		}
+	}
+
 	for _, awc := range articlesWithContent {
 		// Only cache if content is not empty and URL is present
 		if awc.Content == "" || awc.Article.URL == "" {
 			continue
 		}
 
-		// Get article ID by raw unique_id (article was just saved, so it should exist)
-		// We use the pre-calculated UniqueID field from the article to avoid recalculating
 		var articleID int64
-		var err error
 		if awc.Article.UniqueID != "" {
-			// If we already have the unique_id, use it directly (faster and more reliable)
-			articleID, err = f.db.GetArticleIDByRawUniqueID(awc.Article.UserID, awc.Article.UniqueID)
+			// Look up the pre-resolved ID; a missing key maps to 0 (not found).
+			articleID = idByUniqueID[awc.Article.UniqueID]
 		} else {
-			// Fallback to recalculating if unique_id is not available
+			// Fallback to recalculating if unique_id is not available.
+			var err error
 			articleID, err = f.db.GetArticleIDByUniqueID(awc.Article.UserID, awc.Article.Title, awc.Article.FeedID, awc.Article.PublishedAt, awc.Article.HasValidPublishedTime)
+			if err != nil {
+				utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)
+				continue
+			}
 		}
 
-		if err != nil {
-			// Article might not exist yet (race condition) or other error
-			utils.DebugLog("Could not find article ID for %s: %v", awc.Article.Title, err)
-			continue
-		}
 		if articleID <= 0 {
 			// The article may have been ignored as a duplicate or removed by cleanup.
 			utils.DebugLog("Skipping content cache for %s because no persisted article ID was found", awc.Article.Title)

@@ -103,3 +103,55 @@ func newChatDBTestDB(t *testing.T) *DB {
 
 	return db
 }
+
+func TestGetChatSessionsByArticleMessageCount(t *testing.T) {
+	db := newChatDBTestDB(t)
+
+	if _, err := db.AddFeed(&models.Feed{
+		Title:    "chat count feed",
+		URL:      "https://example.com/feed-msgcount.xml",
+		Category: "test",
+	}); err != nil {
+		t.Fatalf("AddFeed error: %v", err)
+	}
+	feeds, err := db.GetFeeds()
+	if err != nil || len(feeds) == 0 {
+		t.Fatalf("GetFeeds error = %v, len = %d", err, len(feeds))
+	}
+
+	article := &models.Article{
+		FeedID:      feeds[0].ID,
+		Title:       "message count article",
+		URL:         "https://example.com/article-msgcount",
+		PublishedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := db.SaveArticle(article); err != nil {
+		t.Fatalf("SaveArticle error: %v", err)
+	}
+
+	articles, err := db.GetArticlesForUser(1, "", feeds[0].ID, "", false, 10, 0)
+	if err != nil || len(articles) == 0 {
+		t.Fatalf("GetArticlesForUser error = %v, len = %d", err, len(articles))
+	}
+
+	sessionID, err := db.CreateChatSession(1, articles[0].ID, "count session")
+	if err != nil {
+		t.Fatalf("CreateChatSession error: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := db.CreateChatMessage(sessionID, "user", "hello", ""); err != nil {
+			t.Fatalf("CreateChatMessage error: %v", err)
+		}
+	}
+
+	sessions, err := db.GetChatSessionsByArticle(1, articles[0].ID)
+	if err != nil {
+		t.Fatalf("GetChatSessionsByArticle error: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	if sessions[0].MessageCount != 3 {
+		t.Fatalf("message count = %d, want 3", sessions[0].MessageCount)
+	}
+}

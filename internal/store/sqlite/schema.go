@@ -348,6 +348,7 @@ CREATE INDEX IF NOT EXISTS idx_articles_simhash_b2 ON articles(user_id, simhash_
 CREATE INDEX IF NOT EXISTS idx_articles_simhash_b3 ON articles(user_id, simhash_b3);
 CREATE INDEX IF NOT EXISTS idx_articles_simhash_b4 ON articles(user_id, simhash_b4);
 CREATE INDEX IF NOT EXISTS idx_clusters_user_id ON clusters(user_id);
+CREATE INDEX IF NOT EXISTS idx_clusters_user_updated ON clusters(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_clusters_status ON clusters(status);
 CREATE INDEX IF NOT EXISTS idx_clusters_updated_at ON clusters(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_clusters_user_status ON clusters(user_id, status);

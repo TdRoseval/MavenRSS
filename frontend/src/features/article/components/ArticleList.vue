@@ -510,15 +510,23 @@ function selectArticle(article: Article): void {
 
 // Scrolling handler with throttling to improve performance
 let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+let scrollRAF: number | null = null;
 const SCROLL_THROTTLE_DELAY = 200; // 200ms throttle
 const SCROLL_THRESHOLD = 400; // Increased from 200 to 400 for better UX
 
 function handleScroll(e: Event): void {
   const target = e.target as HTMLElement;
 
-  // Update scroll position for virtual scrolling
-  scrollTop.value = target.scrollTop;
-  containerHeight.value = target.clientHeight;
+  // Coalesce virtual-scroll state into a single update per animation frame.
+  // Writing scrollTop/containerHeight on every scroll event triggers multiple
+  // reactive recomputes per frame; rAF caps it to once per frame.
+  if (scrollRAF == null) {
+    scrollRAF = requestAnimationFrame(() => {
+      scrollRAF = null;
+      scrollTop.value = target.scrollTop;
+      containerHeight.value = target.clientHeight;
+    });
+  }
 
   // Throttle load more logic
   if (scrollThrottleTimer) return;
