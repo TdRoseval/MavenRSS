@@ -179,12 +179,19 @@ async function forceReclusterNormalizeFromProcessingPanel() {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);
-  loadClusterData().catch((error) => {
-    console.error('Failed to load initial cluster data:', error);
-  });
-  clusterStore.startAIProcessingPolling().catch((error) => {
-    console.error('Failed to initialize AI processing status:', error);
-  });
+  // Resolve the AI processing status before the first cluster fetch so users
+  // with an interest vector go straight to the personalized realtime stream
+  // (POST /clusters/feed) instead of first loading the chronological list.
+  clusterStore
+    .startAIProcessingPolling()
+    .catch((error) => {
+      console.error('Failed to initialize AI processing status:', error);
+    })
+    .finally(() => {
+      loadClusterData().catch((error) => {
+        console.error('Failed to load initial cluster data:', error);
+      });
+    });
 });
 
 onBeforeUnmount(() => {

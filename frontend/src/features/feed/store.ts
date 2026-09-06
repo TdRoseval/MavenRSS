@@ -36,10 +36,11 @@ export const useFeedStore = defineStore('feed', () => {
       // Fetch tags after fetching feeds
       await fetchTags();
 
-      // Update article store counts
+      // Update article store counts in the background so the feed list is not
+      // blocked on the heavy cluster aggregation queries.
       const articleStore = useArticleStore();
-      await articleStore.fetchUnreadCounts();
-      await articleStore.fetchFilterCounts();
+      void articleStore.fetchUnreadCounts();
+      void articleStore.fetchFilterCounts();
     } catch (e) {
       console.error('[Feed Store] Fetch feeds error:', e);
       feeds.value = [];

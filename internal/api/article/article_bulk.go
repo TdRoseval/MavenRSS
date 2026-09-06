@@ -97,54 +97,18 @@ func HandleGetFilterCounts(h *core.Handler, w http.ResponseWriter, r *http.Reque
 	var imageUnreadCounts map[int64]int64
 
 	if useClusterCounts {
-		countsInt, err := h.DB.GetUnreadClusterCountsForAllFeeds(userID)
+		clusterCounts, err := h.DB.GetAllClusterFilterCountsForAllFeeds(userID)
 		if err != nil {
 			response.Error(w, err, http.StatusInternalServerError)
 			return
 		}
-		unreadCounts = convertIntMapToInt64(countsInt)
-
-		countsInt, err = h.DB.GetFavoriteClusterCountsForAllFeeds(userID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		favoriteCounts = convertIntMapToInt64(countsInt)
-
-		countsInt, err = h.DB.GetFavoriteUnreadClusterCountsForAllFeeds(userID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		favoriteUnreadCounts = convertIntMapToInt64(countsInt)
-
-		countsInt, err = h.DB.GetReadLaterClusterCountsForAllFeeds(userID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		readLaterCounts = convertIntMapToInt64(countsInt)
-
-		countsInt, err = h.DB.GetReadLaterUnreadClusterCountsForAllFeeds(userID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		readLaterUnreadCounts = convertIntMapToInt64(countsInt)
-
-		countsInt, err = h.DB.GetImageClusterCountsForAllFeeds(userID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		imageCounts = convertIntMapToInt64(countsInt)
-
-		countsInt, err = h.DB.GetImageUnreadClusterCountsForAllFeeds(userID)
-		if err != nil {
-			response.Error(w, err, http.StatusInternalServerError)
-			return
-		}
-		imageUnreadCounts = convertIntMapToInt64(countsInt)
+		unreadCounts = convertIntMapToInt64(clusterCounts.Unread)
+		favoriteCounts = convertIntMapToInt64(clusterCounts.Favorites)
+		favoriteUnreadCounts = convertIntMapToInt64(clusterCounts.FavoritesUnread)
+		readLaterCounts = convertIntMapToInt64(clusterCounts.ReadLater)
+		readLaterUnreadCounts = convertIntMapToInt64(clusterCounts.ReadLaterUnread)
+		imageCounts = convertIntMapToInt64(clusterCounts.Images)
+		imageUnreadCounts = convertIntMapToInt64(clusterCounts.ImagesUnread)
 	} else {
 		countsInt, err := h.DB.GetUnreadCountsForAllFeeds(userID)
 		if err != nil {
