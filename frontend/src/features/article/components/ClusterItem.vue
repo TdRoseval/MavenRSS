@@ -170,6 +170,7 @@ async function markAsRead() {
 <template>
   <div
     :ref="(el) => emit('observeElement', el as Element | null)"
+    :data-cluster-id="cluster.id"
     class="article-card"
     :class="[
       cluster.is_read ? 'read' : '',

@@ -9,9 +9,12 @@ import {
   PhEnvelope,
   PhEnvelopeOpen,
   PhTranslate,
+  PhCaretLeft,
+  PhCaretRight,
 } from '@phosphor-icons/vue';
-import type { Cluster } from '@/types/models';
+import type { Cluster, DailyRecommendationItem } from '@/types/models';
 import { useClusterStore } from '@/stores/cluster';
+import { useArticleStore } from '@/features/article/store';
 import { formatDate as formatDateUtil } from '@/shared/lib/date';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -40,6 +43,7 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const clusterStore = useClusterStore();
+const articleStore = useArticleStore();
 const { settings, fetchSettings } = useSettings();
 const { renderMathFormulas, highlightCodeBlocks } = useArticleRendering();
 
@@ -451,6 +455,69 @@ async function toggleReadLater(): Promise<void> {
   }
 }
 
+// Effective cluster list matching ClusterList's displayedClusters order
+const navigationClusters = computed<Cluster[]>(() => {
+  const source =
+    articleStore.currentFilter === 'dailyRecommendations'
+      ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
+      : clusterStore.clusters;
+
+  if (!articleStore.showOnlyUnread) {
+    return source;
+  }
+
+  // Keep the currently open cluster in the list so navigation stays stable
+  return source.filter(
+    (item: Cluster) => !item.is_read || item.id === clusterStore.currentClusterId
+  );
+});
+
+const currentClusterIndex = computed(() => {
+  if (!clusterStore.currentClusterId) return -1;
+  return navigationClusters.value.findIndex((item) => item.id === clusterStore.currentClusterId);
+});
+
+const hasPreviousCluster = computed(
+  () => currentClusterIndex.value > 0 && navigationClusters.value.length > 0
+);
+
+const hasNextCluster = computed(
+  () =>
+    currentClusterIndex.value >= 0 && currentClusterIndex.value < navigationClusters.value.length - 1
+);
+
+function scrollClusterIntoView(clusterId: number) {
+  setTimeout(() => {
+    const clusterEl = document.querySelector(`[data-cluster-id="${clusterId}"]`);
+    if (clusterEl) {
+      clusterEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 50);
+}
+
+function navigateToCluster(target: Cluster) {
+  clusterStore.currentClusterId = target.id;
+  clusterStore.reportClusterClick(target.id);
+
+  if (!target.is_read) {
+    clusterStore.markClusterRead(target.id, true).catch((e: unknown) => {
+      console.error('Error marking cluster as read:', e);
+    });
+  }
+
+  scrollClusterIntoView(target.id);
+}
+
+function goToPreviousCluster() {
+  if (!hasPreviousCluster.value) return;
+  navigateToCluster(navigationClusters.value[currentClusterIndex.value - 1]);
+}
+
+function goToNextCluster() {
+  if (!hasNextCluster.value) return;
+  navigateToCluster(navigationClusters.value[currentClusterIndex.value + 1]);
+}
+
 watch(
   () => clusterStore.currentClusterId,
   (newId) => {
@@ -621,7 +688,12 @@ function handleClose() {
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto w-full custom-scrollbar">
+      <div
+        :class="[
+          'flex-1 overflow-y-auto w-full custom-scrollbar',
+          isMobile && (hasPreviousCluster || hasNextCluster) ? 'pb-16' : '',
+        ]"
+      >
         <div
           class="max-w-[800px] w-[95%] sm:w-[90%] md:w-[85%] mx-auto py-6 sm:py-8 lg:py-12 px-4 sm:px-0"
         >
@@ -739,6 +811,58 @@ function handleClose() {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Navigation buttons - placed outside flex container for fixed positioning -->
+    <div
+      v-if="hasPreviousCluster || hasNextCluster"
+      :class="[
+        'flex items-center bg-bg-primary px-3 py-1.5',
+        isMobile
+          ? 'fixed bottom-0 left-0 right-0 border-t border-border z-20 justify-end gap-2'
+          : [
+              'absolute bottom-0 left-0 right-0',
+              hasPreviousCluster && hasNextCluster
+                ? 'justify-between'
+                : hasPreviousCluster
+                  ? 'justify-start'
+                  : 'justify-end',
+            ],
+      ]"
+    >
+      <button
+        v-if="hasPreviousCluster"
+        :title="t('article.navigation.previousCluster') || 'Previous cluster'"
+        :class="[
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+          isMobile
+            ? 'text-text-secondary hover:bg-bg-tertiary'
+            : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50',
+        ]"
+        @click="goToPreviousCluster"
+      >
+        <PhCaretLeft :size="16" />
+        <span v-if="!isMobile" class="text-xs">{{
+          t('article.navigation.previousCluster') || 'Previous'
+        }}</span>
+      </button>
+
+      <button
+        v-if="hasNextCluster"
+        :title="t('article.navigation.nextCluster') || 'Next cluster'"
+        :class="[
+          'flex items-center gap-1.5 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+          isMobile
+            ? 'text-text-secondary hover:bg-bg-tertiary'
+            : 'text-text-secondary/70 hover:text-text-primary hover:bg-bg-secondary/50',
+        ]"
+        @click="goToNextCluster"
+      >
+        <span v-if="!isMobile" class="text-xs">{{
+          t('article.navigation.nextCluster') || 'Next'
+        }}</span>
+        <PhCaretRight :size="16" />
+      </button>
     </div>
   </main>
 </template>

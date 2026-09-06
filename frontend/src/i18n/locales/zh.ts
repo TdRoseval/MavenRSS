@@ -190,6 +190,8 @@ const zh: TranslationMessages = {
       goToUnread: '转到未读',
       nextArticle: '下一篇文章',
       previousArticle: '上一篇文章',
+      nextCluster: '下一个文章簇',
+      previousCluster: '上一个文章簇',
       backToList: '返回列表',
     },
     parts: {

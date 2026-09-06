@@ -197,6 +197,8 @@ const en: TranslationMessages = {
       goToUnread: 'Go to Unread',
       nextArticle: 'Next Article',
       previousArticle: 'Previous Article',
+      nextCluster: 'Next Cluster',
+      previousCluster: 'Previous Cluster',
       backToList: 'Back to List',
     },
     parts: {
