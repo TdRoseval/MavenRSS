@@ -19,8 +19,20 @@ export function useArticleFilter() {
     get: () => articleStore.isFilterLoading,
     set: (value) => articleStore.setIsFilterLoading(value),
   });
-  const filterPage = ref(1);
-  const filterHasMore = ref(true);
+  // Pagination state lives in the store so all composable instances
+  // (ArticleList, ArticleDetail auto-load-more, etc.) share the same page cursor
+  const filterPage = computed({
+    get: () => articleStore.filterPage,
+    set: (value) => {
+      articleStore.filterPage = value;
+    },
+  });
+  const filterHasMore = computed({
+    get: () => articleStore.filterHasMore,
+    set: (value) => {
+      articleStore.filterHasMore = value;
+    },
+  });
   const filterTotal = ref(0);
 
   // Reset filter state

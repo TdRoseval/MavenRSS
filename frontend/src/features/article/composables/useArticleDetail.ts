@@ -7,6 +7,7 @@ import { authFetch, authFetchJson, authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
 import { useAuthStore } from '@/stores/auth';
+import { useArticleFilter } from './useArticleFilter';
 
 type ViewMode = 'original' | 'rendered' | 'external';
 type RenderAction = 'showContent' | 'showOriginal' | null;
@@ -97,6 +98,23 @@ export function useArticleDetail() {
       }
     }, 50);
   }
+
+  const { loadMoreFilteredArticles } = useArticleFilter();
+
+  // Auto-load the next page when the current article becomes the last one in the
+  // list, so the next/previous navigation bar can continue past the current page
+  watch([currentArticleIndex, () => getEffectiveArticlesList().length], ([index, length]) => {
+    if (index < 0 || length === 0 || index !== length - 1) return;
+
+    // AI search results are a fixed set with no pagination
+    if (articleStore.aiSearchResults.length > 0) return;
+
+    if (articleStore.activeFilters.length > 0) {
+      loadMoreFilteredArticles();
+    } else {
+      articleStore.loadMore();
+    }
+  });
 
   // Mark article as read if it's not already read
   async function markAsReadIfNeeded(article: Article) {

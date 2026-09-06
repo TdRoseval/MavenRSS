@@ -39,6 +39,8 @@ export const useArticleStore = defineStore('article', () => {
   const activeFilters = ref<FilterCondition[]>([]);
   const filteredArticlesFromServer = ref<Article[]>([]);
   const isFilterLoading = ref(false);
+  const filterPage = ref(1);
+  const filterHasMore = ref(true);
   const aiEnhancedMode = ref(false);
   const clusterReloadToken = ref(0);
 
@@ -351,6 +353,8 @@ export const useArticleStore = defineStore('article', () => {
     activeFilters,
     filteredArticlesFromServer,
     isFilterLoading,
+    filterPage,
+    filterHasMore,
     aiEnhancedMode,
     clusterReloadToken,
     articleViewModePreferences,

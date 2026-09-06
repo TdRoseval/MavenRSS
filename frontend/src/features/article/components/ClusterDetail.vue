@@ -518,6 +518,17 @@ function goToNextCluster() {
   navigateToCluster(navigationClusters.value[currentClusterIndex.value + 1]);
 }
 
+// Auto-load the next page when the current cluster becomes the last one in the
+// list, so the next/previous navigation bar can continue past the current page
+watch([currentClusterIndex, () => navigationClusters.value.length], ([index, length]) => {
+  if (index < 0 || length === 0 || index !== length - 1) return;
+
+  // Daily recommendations are a fixed set with no pagination
+  if (articleStore.currentFilter === 'dailyRecommendations') return;
+
+  clusterStore.loadMore();
+});
+
 watch(
   () => clusterStore.currentClusterId,
   (newId) => {
