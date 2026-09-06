@@ -361,12 +361,12 @@ func (m *AIEnhancedManager) ensureArticleContentFallbackFromTitle(task *AIEnhanc
 	}
 
 	fallbackContent := "<p>" + html.EscapeString(title) + "</p>"
-	if err := m.db.SetArticleContent(task.ArticleID, fallbackContent); err != nil {
+	if err := m.db.SetArticleContentBackground(task.ArticleID, fallbackContent); err != nil {
 		return "", fmt.Errorf("cache title fallback content: %w", err)
 	}
 
 	if task.NeedsSummary {
-		if err := m.db.UpdateArticleSummary(task.ArticleID, title); err != nil {
+		if err := m.db.UpdateArticleSummaryBackground(task.ArticleID, title); err != nil {
 			log.Printf("Failed to cache title fallback summary for article %d: %v", task.ArticleID, err)
 		} else {
 			task.NeedsSummary = false
@@ -1393,7 +1393,7 @@ func (m *AIEnhancedManager) initializeInterestVectorFromFavoriteClustersIfMissin
 		return fmt.Errorf("serialize interest vector: %w", err)
 	}
 
-	if err := m.db.UpdateUserInterestVector(userID, serialized); err != nil {
+	if err := m.db.UpdateUserInterestVectorBackground(userID, serialized); err != nil {
 		return fmt.Errorf("persist interest vector: %w", err)
 	}
 
@@ -1651,7 +1651,7 @@ func (m *AIEnhancedManager) generateAISummary(task *AIEnhancedTask, content stri
 	}
 
 	// Cache the summary in the database
-	if err := m.db.UpdateArticleSummary(task.ArticleID, result.Summary); err != nil {
+	if err := m.db.UpdateArticleSummaryBackground(task.ArticleID, result.Summary); err != nil {
 		log.Printf("Failed to cache summary for article %d: %v", task.ArticleID, err)
 	} else {
 		log.Printf("Successfully cached AI summary for article %d", task.ArticleID)
@@ -1678,7 +1678,7 @@ func (m *AIEnhancedManager) fallbackArticleSummaryToTitle(task *AIEnhancedTask, 
 		return
 	}
 
-	if err := m.db.UpdateArticleSummary(task.ArticleID, title); err != nil {
+	if err := m.db.UpdateArticleSummaryBackground(task.ArticleID, title); err != nil {
 		log.Printf("Failed to fallback summary to title for article %d: %v", task.ArticleID, err)
 		return
 	}
@@ -1727,12 +1727,12 @@ func (m *AIEnhancedManager) persistArticleTranslatedTitle(articleID int64, sourc
 		return nil
 	}
 
-	if err := m.db.UpdateArticleTranslation(articleID, translatedTitle); err != nil {
+	if err := m.db.UpdateArticleTranslationBackground(articleID, translatedTitle); err != nil {
 		return fmt.Errorf("persist translated title: %w", err)
 	}
 
 	if provider != "" && sourceTitle != "" && targetLang != "" {
-		if err := m.db.SetCachedTranslation(
+		if err := m.db.SetCachedTranslationBackground(
 			hashAIEnhancedTranslationText(sourceTitle),
 			sourceTitle,
 			targetLang,
@@ -1840,7 +1840,7 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	translationInput := prepareAITranslationInput(content)
 	if translationInput == "" {
 		log.Printf("No translatable text extracted for article %d, caching original content", task.ArticleID)
-		if err := m.db.SetArticleTranslatedContent(task.ArticleID, content, targetLang, "ai"); err != nil {
+		if err := m.db.SetArticleTranslatedContentBackground(task.ArticleID, content, targetLang, "ai"); err != nil {
 			log.Printf("Failed to cache original content as translation for article %d: %v", task.ArticleID, err)
 		}
 		if err := m.db.DeleteAIArticleStageTimeoutFailure(task.ArticleID, "translation"); err != nil {
@@ -1885,7 +1885,7 @@ func (m *AIEnhancedManager) generateAITranslation(task *AIEnhancedTask, content 
 	}
 
 	// Cache the translation in the database
-	if err := m.db.SetArticleTranslatedContent(task.ArticleID, translatedContent, targetLang, "ai"); err != nil {
+	if err := m.db.SetArticleTranslatedContentBackground(task.ArticleID, translatedContent, targetLang, "ai"); err != nil {
 		log.Printf("Failed to cache translation for article %d: %v", task.ArticleID, err)
 	} else {
 		log.Printf("Successfully cached AI translation for article %d", task.ArticleID)
@@ -2026,9 +2026,9 @@ func (m *AIEnhancedManager) addAIUsage(userID int64, tokens int64) {
 	currentUsage, _ := strconv.ParseInt(usageStr, 10, 64)
 	newUsage := currentUsage + tokens
 	if userID > 0 {
-		m.db.SetSettingForUser(userID, "ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+		m.db.SetSettingForUserBackground(userID, "ai_usage_tokens", strconv.FormatInt(newUsage, 10))
 	} else {
-		m.db.SetSetting("ai_usage_tokens", strconv.FormatInt(newUsage, 10))
+		m.db.SetSettingBackground("ai_usage_tokens", strconv.FormatInt(newUsage, 10))
 	}
 }
 
@@ -2169,7 +2169,7 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 		needsClusterRun := article.HasCluster && article.ClusterNeedsPostProcess
 
 		if article.ClusterNeedsEmbeddingRepair && article.Article.ClusterID > 0 {
-			if err := m.db.UpdateClusterStatus(article.Article.ClusterID, "pending_embed"); err != nil {
+			if err := m.db.UpdateClusterStatusBackground(article.Article.ClusterID, "pending_embed"); err != nil {
 				log.Printf("Failed to mark cluster %d for embedding repair: %v", article.Article.ClusterID, err)
 			} else {
 				needsClusterRun = true
@@ -2180,7 +2180,7 @@ func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (in
 			if needsClusterRun {
 				clusterRunNeeded = true
 			} else if article.Article.IsFavorite && article.HasCluster && article.Article.ClusterID > 0 {
-				if err := m.db.SetClusterFavorite(article.Article.ClusterID, true); err != nil {
+				if err := m.db.SetClusterFavoriteBackground(article.Article.ClusterID, true); err != nil {
 					log.Printf(
 						"Failed to resync favorite cluster %d from completed favorite article %d: %v",
 						article.Article.ClusterID,
@@ -2821,7 +2821,7 @@ func (m *AIEnhancedManager) fallbackArticleTranslationToSource(task *AIEnhancedT
 		return
 	}
 
-	if err := m.db.SetArticleTranslatedContent(task.ArticleID, fallbackContent, targetLang, "source_fallback"); err != nil {
+	if err := m.db.SetArticleTranslatedContentBackground(task.ArticleID, fallbackContent, targetLang, "source_fallback"); err != nil {
 		log.Printf("Failed to cache source-content translation fallback for article %d: %v", task.ArticleID, err)
 		return
 	}
@@ -3119,9 +3119,9 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 	}
 
 	if status.PendingArticles == 0 && status.PendingMergeClusters == 0 && status.PendingEmbedClusters == 0 {
-		_ = m.db.SetSettingForUser(userID, aiProcessingSnapshotSettingKey, "")
-		_ = m.db.SetSettingForUser(userID, aiProcessingLastProgressAtSettingKey, "")
-		_ = m.db.SetSettingForUser(userID, aiProcessingFreezeSuspendedSettingKey, "false")
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingSnapshotSettingKey, "")
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, "")
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "false")
 		return
 	}
 
@@ -3132,10 +3132,10 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 
 	if lastSnapshot == "" || lastSnapshot != snapshot {
 		now := time.Now()
-		_ = m.db.SetSettingForUser(userID, aiProcessingSnapshotSettingKey, snapshot)
-		_ = m.db.SetSettingForUser(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingSnapshotSettingKey, snapshot)
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
 		if freezeSuspended != "true" {
-			_ = m.db.SetSettingForUser(userID, aiProcessingFreezeSuspendedSettingKey, "false")
+			_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "false")
 		}
 		status.LastProgressAt = now.Format(time.RFC3339)
 		return
@@ -3143,7 +3143,7 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 
 	if lastProgressAtStr == "" {
 		now := time.Now()
-		_ = m.db.SetSettingForUser(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
 		status.LastProgressAt = now.Format(time.RFC3339)
 		return
 	}
@@ -3151,7 +3151,7 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 	lastProgressAt, err := time.Parse(time.RFC3339Nano, lastProgressAtStr)
 	if err != nil {
 		now := time.Now()
-		_ = m.db.SetSettingForUser(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
+		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
 		status.LastProgressAt = now.Format(time.RFC3339)
 		return
 	}
@@ -3165,7 +3165,7 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 
 	if freezeSuspended == "true" || stalledFor >= aiProcessingStaleTimeout {
 		if freezeSuspended != "true" && stalledFor >= aiProcessingStaleTimeout {
-			_ = m.db.SetSettingForUser(userID, aiProcessingFreezeSuspendedSettingKey, "true")
+			_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "true")
 			log.Printf("AI processing freeze suspended for user %d after %s without progress", userID, stalledFor.Round(time.Second))
 		}
 		status.IsStale = true

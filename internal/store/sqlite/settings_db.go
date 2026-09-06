@@ -66,11 +66,29 @@ func (db *DB) SetSetting(key, value string) error {
 	return err
 }
 
+// SetSettingBackground is SetSetting at background write priority; it yields
+// to waiting interactive writes.
+func (db *DB) SetSettingBackground(key, value string) error {
+	db.WaitForReady()
+	bumpSettingsRevision()
+	_, err := db.execWithPriority(writePriorityBackground, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, value)
+	return err
+}
+
 // SetSettingForUser stores a setting value for a specific user.
 func (db *DB) SetSettingForUser(userID int64, key, value string) error {
 	db.WaitForReady()
 	bumpSettingsRevision()
 	_, err := db.Exec("INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)", userID, key, value)
+	return err
+}
+
+// SetSettingForUserBackground is SetSettingForUser at background write
+// priority; it yields to waiting interactive writes.
+func (db *DB) SetSettingForUserBackground(userID int64, key, value string) error {
+	db.WaitForReady()
+	bumpSettingsRevision()
+	_, err := db.execWithPriority(writePriorityBackground, "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)", userID, key, value)
 	return err
 }
 

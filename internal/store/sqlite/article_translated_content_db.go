@@ -43,6 +43,20 @@ func (db *DB) SetArticleTranslatedContent(articleID int64, content, targetLang, 
 	return err
 }
 
+// SetArticleTranslatedContentBackground is SetArticleTranslatedContent at
+// background write priority; it yields to waiting interactive writes.
+func (db *DB) SetArticleTranslatedContentBackground(articleID int64, content, targetLang, provider string) error {
+	db.WaitForReady()
+	_, err := db.execWithPriority(
+		writePriorityBackground,
+		`INSERT OR REPLACE INTO article_translated_contents 
+			(article_id, content, target_lang, provider, created_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		articleID, content, targetLang, provider,
+	)
+	return err
+}
+
 // DeleteArticleTranslatedContent removes cached translated content for an article
 func (db *DB) DeleteArticleTranslatedContent(articleID int64) error {
 	db.WaitForReady()

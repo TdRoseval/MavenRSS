@@ -46,7 +46,7 @@ func bumpSettingsRevision() {
 
 type DB struct {
 	*sql.DB
-	writeMu                     sync.Mutex
+	writeSched                  *writeScheduler
 	ready                       chan struct{}
 	once                        sync.Once
 	startupOnce                 sync.Once
@@ -88,6 +88,7 @@ func NewDB(dataSourceName string) (*DB, error) {
 
 	return &DB{
 		DB:             db,
+		writeSched:     newWriteScheduler(),
 		ready:          make(chan struct{}),
 		driverName:     driverName,
 		dataSourceName: normalizedDSN,

@@ -176,7 +176,7 @@ func processClusterFusion(ctx context.Context, db *sqlite.DB, userID int64, clus
 		}
 		log.Printf("Cluster %d fallback completed with first article, advancing to pending_embed", cluster.ID)
 	} else {
-		if err := db.UpdateClusterMergedContent(cluster.ID, result.MergedTitle, result.MergedSummary, result.MergedContent); err != nil {
+		if err := db.UpdateClusterMergedContentBackground(cluster.ID, result.MergedTitle, result.MergedSummary, result.MergedContent); err != nil {
 			log.Printf("Failed to store fusion result for cluster %d: %v", cluster.ID, err)
 			_ = db.UpdateClusterStatus(cluster.ID, "pending_merge")
 			return
@@ -243,7 +243,7 @@ func copySingleArticle(db *sqlite.DB, userID, clusterID int64, a models.Article)
 	if content == "" {
 		content = smry
 	}
-	return db.UpdateClusterMergedContent(clusterID, title, smry, content)
+	return db.UpdateClusterMergedContentBackground(clusterID, title, smry, content)
 }
 
 func callLLMFusion(cluster models.Cluster, articles []models.Article, db *sqlite.DB, cfg *FusionConfig) (*FusionResult, error) {

@@ -21,6 +21,14 @@ func (db *DB) UpdateArticleTranslation(id int64, translatedTitle string) error {
 	return err
 }
 
+// UpdateArticleTranslationBackground is UpdateArticleTranslation at background
+// write priority; it yields to waiting interactive writes.
+func (db *DB) UpdateArticleTranslationBackground(id int64, translatedTitle string) error {
+	db.WaitForReady()
+	_, err := db.execWithPriority(writePriorityBackground, "UPDATE articles SET translated_title = ? WHERE id = ?", translatedTitle, id)
+	return err
+}
+
 // BatchUpdateArticleTranslation updates translated_title for multiple articles
 // in a single write transaction using a CASE expression. This replaces the
 // previous N+1 pattern in resolveCachedSingleClusterTitles where each cached
@@ -69,20 +77,29 @@ func (db *DB) UpdateArticleSummary(id int64, summary string) error {
 	return err
 }
 
+// UpdateArticleSummaryBackground is UpdateArticleSummary at background write
+// priority; it yields to waiting interactive writes.
+func (db *DB) UpdateArticleSummaryBackground(id int64, summary string) error {
+	db.WaitForReady()
+	_, err := db.execWithPriority(writePriorityBackground, "UPDATE articles SET summary = ? WHERE id = ?", summary, id)
+	return err
+}
+
 // UpdateArticleEmbeddings upserts normalized title and summary embeddings into the vec0 virtual table.
 // The user_id partition key is resolved from the articles table so KNN scans
-// only touch the owning user's partition.
+// only touch the owning user's partition. Embeddings are only produced by the
+// background AI pipeline, so this write runs at background priority.
 func (db *DB) UpdateArticleEmbeddings(articleID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
 	// vec0 rejects NULL/zero-length vectors. When both embeddings are missing,
 	// keep no row at all — it would otherwise contribute an 8KB zero vector to
 	// every KNN scan and pollute "has embedding" checks.
 	if len(titleEmb) == 0 && len(summaryEmb) == 0 {
-		_, err := db.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID)
+		_, err := db.ExecBackground(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID)
 		return err
 	}
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
-	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+	return db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
 			return err
 		}

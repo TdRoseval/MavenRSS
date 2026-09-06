@@ -13,7 +13,7 @@ const renormalizationEmbeddingBatchSize = 200
 func (db *DB) ResetAIClustersForRenormalization(userID int64) error {
 	db.WaitForReady()
 
-	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+	return db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM daily_recommendations WHERE user_id = ?`, userID); err != nil {
 			return fmt.Errorf("delete daily recommendations: %w", err)
 		}
@@ -101,7 +101,7 @@ func (db *DB) NormalizeArticleEmbeddingsForUser(userID int64) (int, int, error) 
 		batchNormalizedCount := 0
 		batchClearedCount := 0
 
-		if err := db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if err := db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 			attemptNormalizedCount := 0
 			attemptClearedCount := 0
 			for _, row := range allRows[start:end] {

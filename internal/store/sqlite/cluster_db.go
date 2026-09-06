@@ -27,12 +27,14 @@ func (db *DB) CreateCluster(userID int64, status string) (int64, error) {
 }
 
 // CreateStandaloneClusterForArticle creates a cluster and assigns the article in one write transaction.
+// It is only invoked by the background clustering pipeline, so it runs at
+// background write priority.
 func (db *DB) CreateStandaloneClusterForArticle(userID, articleID int64, articleIsFavorite bool) (int64, error) {
 	db.WaitForReady()
 	now := time.Now()
 	var clusterID int64
 
-	err := db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+	err := db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 		result, err := tx.Exec(
 			`INSERT INTO clusters (user_id, status, is_favorite, updated_at) VALUES (?, 'pending_merge', ?, ?)`,
 			userID, articleIsFavorite, now,
@@ -62,11 +64,13 @@ func (db *DB) CreateStandaloneClusterForArticle(userID, articleID int64, article
 }
 
 // JoinArticleCluster assigns an article to an existing cluster and refreshes cluster metadata atomically.
+// It is only invoked by the background clustering pipeline, so it runs at
+// background write priority.
 func (db *DB) JoinArticleCluster(articleID, clusterID int64, articleIsFavorite bool) error {
 	db.WaitForReady()
 	now := time.Now()
 
-	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+	return db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE articles SET cluster_id = ? WHERE id = ?`, clusterID, articleID); err != nil {
 			return fmt.Errorf("assign article cluster: %w", err)
 		}
@@ -122,10 +126,34 @@ func (db *DB) UpdateClusterStatus(clusterID int64, status string) error {
 	return err
 }
 
+// UpdateClusterStatusBackground is UpdateClusterStatus at background write
+// priority; it yields to waiting interactive writes.
+func (db *DB) UpdateClusterStatusBackground(clusterID int64, status string) error {
+	db.WaitForReady()
+	_, err := db.execWithPriority(
+		writePriorityBackground,
+		`UPDATE clusters SET status = ?, updated_at = ? WHERE id = ?`,
+		status, time.Now(), clusterID,
+	)
+	return err
+}
+
 // UpdateClusterMergedContent writes the AI-fused content to a cluster.
 func (db *DB) UpdateClusterMergedContent(clusterID int64, title, summary, content string) error {
 	db.WaitForReady()
 	_, err := db.Exec(
+		`UPDATE clusters SET merged_title = ?, merged_summary = ?, merged_content = ?, updated_at = ? WHERE id = ?`,
+		title, summary, content, time.Now(), clusterID,
+	)
+	return err
+}
+
+// UpdateClusterMergedContentBackground is UpdateClusterMergedContent at
+// background write priority; it yields to waiting interactive writes.
+func (db *DB) UpdateClusterMergedContentBackground(clusterID int64, title, summary, content string) error {
+	db.WaitForReady()
+	_, err := db.execWithPriority(
+		writePriorityBackground,
 		`UPDATE clusters SET merged_title = ?, merged_summary = ?, merged_content = ?, updated_at = ? WHERE id = ?`,
 		title, summary, content, time.Now(), clusterID,
 	)
@@ -382,17 +410,18 @@ func (db *DB) floatCentroidDistances(clusterIDs []int64, queryVec []float32) (ma
 
 // UpdateClusterEmbeddings stores embeddings for a cluster. The user_id
 // partition key is resolved from the clusters table so KNN scans only touch
-// the owning user's partition.
+// the owning user's partition. Cluster embeddings are only produced by the
+// background AI pipeline, so this write runs at background priority.
 func (db *DB) UpdateClusterEmbeddings(clusterID int64, titleEmb, summaryEmb []byte) error {
 	db.WaitForReady()
 	// vec0 rejects NULL/zero-length vectors; when both embeddings are missing,
 	// keep no row at all (same policy as UpdateArticleEmbeddings).
 	if len(titleEmb) == 0 && len(summaryEmb) == 0 {
-		_, err := db.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
+		_, err := db.ExecBackground(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID)
 		return err
 	}
 	titleEmb, summaryEmb = ensureVecColumnBlobs(titleEmb, summaryEmb)
-	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+	return db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
 			return fmt.Errorf("delete cluster embedding: %w", err)
 		}
@@ -861,6 +890,14 @@ func (db *DB) ToggleClusterFavorite(clusterID int64) error {
 func (db *DB) SetClusterFavorite(clusterID int64, favorite bool) error {
 	db.WaitForReady()
 	_, err := db.Exec(`UPDATE clusters SET is_favorite = ?, updated_at = ? WHERE id = ?`, favorite, time.Now(), clusterID)
+	return err
+}
+
+// SetClusterFavoriteBackground is SetClusterFavorite at background write
+// priority; it yields to waiting interactive writes.
+func (db *DB) SetClusterFavoriteBackground(clusterID int64, favorite bool) error {
+	db.WaitForReady()
+	_, err := db.execWithPriority(writePriorityBackground, `UPDATE clusters SET is_favorite = ?, updated_at = ? WHERE id = ?`, favorite, time.Now(), clusterID)
 	return err
 }
 

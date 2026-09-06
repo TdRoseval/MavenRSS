@@ -17,13 +17,17 @@ type AIArticleStageTimeoutFailure struct {
 	LastFailedAt  time.Time
 }
 
+// RecordAIArticleStageTimeoutFailure records a timeout failure. The state is
+// only written by the background AI pipeline, so it runs at background write
+// priority.
 func (db *DB) RecordAIArticleStageTimeoutFailure(
 	userID, articleID int64,
 	stage, reason string,
 ) (AIArticleStageTimeoutFailure, error) {
 	db.WaitForReady()
 
-	if _, err := db.Exec(
+	if _, err := db.execWithPriority(
+		writePriorityBackground,
 		`INSERT INTO ai_article_stage_timeout_failures (
 			user_id, article_id, stage, timeout_count, last_reason, first_failed_at, last_failed_at
 		)
@@ -48,9 +52,13 @@ func (db *DB) RecordAIArticleStageTimeoutFailure(
 	return state, nil
 }
 
+// DeleteAIArticleStageTimeoutFailure removes a timeout failure record. The
+// marker is only written by the background AI pipeline, so it runs at
+// background write priority.
 func (db *DB) DeleteAIArticleStageTimeoutFailure(articleID int64, stage string) error {
 	db.WaitForReady()
-	_, err := db.Exec(
+	_, err := db.execWithPriority(
+		writePriorityBackground,
 		`DELETE FROM ai_article_stage_timeout_failures WHERE article_id = ? AND stage = ?`,
 		articleID, stage,
 	)

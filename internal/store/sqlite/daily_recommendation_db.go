@@ -405,7 +405,7 @@ func (db *DB) GetDailyRecommendationCandidatesChronological(
 
 func (db *DB) SaveDailyRecommendations(userID int64, recommendationDate string, recommendations []models.DailyRecommendation) error {
 	db.WaitForReady()
-	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+	return db.WithBackgroundWriteTx(context.Background(), func(tx *sql.Tx) error {
 		rows, err := tx.Query(
 			`SELECT cluster_id FROM daily_recommendations WHERE user_id = ? AND recommendation_date = ?`,
 			userID, recommendationDate,

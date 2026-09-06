@@ -99,6 +99,19 @@ func (db *DB) SetCachedTranslation(sourceTextHash, sourceText, targetLang, trans
 	return err
 }
 
+// SetCachedTranslationBackground is SetCachedTranslation at background write
+// priority; it yields to waiting interactive writes.
+func (db *DB) SetCachedTranslationBackground(sourceTextHash, sourceText, targetLang, translatedText, provider string) error {
+	_, err := db.execWithPriority(
+		writePriorityBackground,
+		`INSERT OR REPLACE INTO translation_cache
+			(source_text_hash, source_text, target_lang, translated_text, provider, created_at)
+			VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		sourceTextHash, sourceText, targetLang, translatedText, provider,
+	)
+	return err
+}
+
 // CleanupTranslationCache removes cached translations older than maxAgeDays
 // If userID > 0, no-op since translation_cache is global (no user_id field)
 func (db *DB) CleanupTranslationCache(maxAgeDays int, userID int64) (int64, error) {

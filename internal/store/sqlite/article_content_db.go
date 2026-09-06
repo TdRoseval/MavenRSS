@@ -45,6 +45,20 @@ func (db *DB) SetArticleContent(articleID int64, content string) error {
 	return err
 }
 
+// SetArticleContentBackground is SetArticleContent at background write
+// priority; it yields to waiting interactive writes.
+func (db *DB) SetArticleContentBackground(articleID int64, content string) error {
+	db.WaitForReady()
+	content = textutil.NormalizeArticleContent(content)
+	_, err := db.execWithPriority(
+		writePriorityBackground,
+		`INSERT OR REPLACE INTO article_contents (article_id, content, fetched_at)
+		 VALUES (?, ?, CURRENT_TIMESTAMP)`,
+		articleID, content,
+	)
+	return err
+}
+
 // DeleteArticleContent removes cached content for an article
 func (db *DB) DeleteArticleContent(articleID int64) error {
 	db.WaitForReady()

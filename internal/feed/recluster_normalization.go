@@ -516,9 +516,9 @@ func (m *AIEnhancedManager) clearUserRuntimeStateForRenormalization(userID int64
 		return
 	}
 
-	_ = m.db.SetSettingForUser(userID, aiProcessingSnapshotSettingKey, "")
-	_ = m.db.SetSettingForUser(userID, aiProcessingLastProgressAtSettingKey, "")
-	_ = m.db.SetSettingForUser(userID, aiProcessingFreezeSuspendedSettingKey, "false")
+	_ = m.db.SetSettingForUserBackground(userID, aiProcessingSnapshotSettingKey, "")
+	_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, "")
+	_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "false")
 
 	m.statusMu.Lock()
 	delete(m.embeddingHealthByUser, userID)
@@ -669,7 +669,7 @@ func (m *AIEnhancedManager) fallbackArticleSummaryByID(articleID int64) error {
 		return nil
 	}
 
-	if err := m.db.UpdateArticleSummary(articleID, title); err != nil {
+	if err := m.db.UpdateArticleSummaryBackground(articleID, title); err != nil {
 		return fmt.Errorf("persist title summary fallback: %w", err)
 	}
 	return nil
@@ -720,7 +720,7 @@ func (m *AIEnhancedManager) forceCompleteTimedOutClusters(userID int64, reason s
 		return completed, fmt.Errorf("load timed-out pending_merge clusters: %w", err)
 	}
 	for _, cluster := range pendingMerge {
-		if err := m.db.UpdateClusterStatus(cluster.ID, "complete"); err != nil {
+		if err := m.db.UpdateClusterStatusBackground(cluster.ID, "complete"); err != nil {
 			return completed, fmt.Errorf("complete timed-out merge cluster %d: %w", cluster.ID, err)
 		}
 		completed++
@@ -731,7 +731,7 @@ func (m *AIEnhancedManager) forceCompleteTimedOutClusters(userID int64, reason s
 		return completed, fmt.Errorf("load timed-out pending_embed clusters: %w", err)
 	}
 	for _, cluster := range pendingEmbed {
-		if err := m.db.UpdateClusterStatus(cluster.ID, "complete"); err != nil {
+		if err := m.db.UpdateClusterStatusBackground(cluster.ID, "complete"); err != nil {
 			return completed, fmt.Errorf("complete timed-out embedding cluster %d: %w", cluster.ID, err)
 		}
 		completed++

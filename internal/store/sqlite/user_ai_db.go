@@ -1,5 +1,10 @@
 package sqlite
 
+import (
+	"context"
+	"database/sql"
+)
+
 // GetUserAIReadStats retrieves the AI reading statistics for a user.
 func (db *DB) GetUserAIReadStats(userID int64) (readCount, totalReadTime int64, err error) {
 	db.WaitForReady()
@@ -37,38 +42,44 @@ func (db *DB) GetUserInterestVector(userID int64) ([]byte, error) {
 // UpdateUserInterestVector persists the interest vector blob to the users table
 // and keeps the user_interest_embeddings vec table in sync.
 func (db *DB) UpdateUserInterestVector(userID int64, vectorBlob []byte) error {
+	return db.updateUserInterestVector(writePriorityInteractive, userID, vectorBlob)
+}
+
+// UpdateUserInterestVectorBackground is UpdateUserInterestVector at background
+// write priority; it yields to waiting interactive writes.
+func (db *DB) UpdateUserInterestVectorBackground(userID int64, vectorBlob []byte) error {
+	return db.updateUserInterestVector(writePriorityBackground, userID, vectorBlob)
+}
+
+func (db *DB) updateUserInterestVector(priority writePriority, userID int64, vectorBlob []byte) error {
 	db.WaitForReady()
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.Exec(
-		`UPDATE users SET interest_vector = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-		vectorBlob, userID,
-	); err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(`DELETE FROM user_interest_embeddings WHERE user_id = ?`, userID); err != nil {
-		return err
-	}
-
-	if len(vectorBlob) > 0 {
+	err := db.withWriteTxPriority(context.Background(), priority, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(
-			`INSERT INTO user_interest_embeddings (user_id, interest_embedding) VALUES (?, ?)`,
-			userID, vectorBlob,
+			`UPDATE users SET interest_vector = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			vectorBlob, userID,
 		); err != nil {
 			return err
 		}
-	}
 
-	if _, err := tx.Exec(`DELETE FROM cluster_feed_first_page_cache WHERE user_id = ?`, userID); err != nil {
-		return err
-	}
+		if _, err := tx.Exec(`DELETE FROM user_interest_embeddings WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
 
-	if err := tx.Commit(); err != nil {
+		if len(vectorBlob) > 0 {
+			if _, err := tx.Exec(
+				`INSERT INTO user_interest_embeddings (user_id, interest_embedding) VALUES (?, ?)`,
+				userID, vectorBlob,
+			); err != nil {
+				return err
+			}
+		}
+
+		if _, err := tx.Exec(`DELETE FROM cluster_feed_first_page_cache WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	db.clearClusterFeedFirstPageMemoryCache(userID)
