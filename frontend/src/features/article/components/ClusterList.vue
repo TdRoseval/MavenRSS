@@ -2,15 +2,24 @@
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
-import { PhCheckCircle, PhArrowClockwise, PhList } from '@phosphor-icons/vue';
+import {
+  PhCheckCircle,
+  PhArrowClockwise,
+  PhList,
+  PhCircle,
+  PhClock,
+  PhLightning,
+} from '@phosphor-icons/vue';
 import ClusterItem from './ClusterItem.vue';
 import { useSettings } from '@/composables/core/useSettings';
 import type { Cluster, DailyRecommendationItem } from '@/types/models';
 import { useClusterStore } from '@/stores/cluster';
 import { useArticleStore } from '@/features/article/store';
+import { useFeedStore } from '@/features/feed/store';
 
 const clusterStore = useClusterStore();
 const articleStore = useArticleStore();
+const feedStore = useFeedStore();
 const authStore = useAuthStore();
 const { t } = useI18n();
 const { settings } = useSettings();
@@ -408,6 +417,35 @@ async function refreshRecommendations(): Promise<void> {
     isRefreshingRecommendations.value = false;
   }
 }
+
+const showRefreshTooltip = ref(false);
+
+function onRefreshTooltipShow(): void {
+  showRefreshTooltip.value = true;
+}
+
+function onRefreshTooltipHide(): void {
+  showRefreshTooltip.value = false;
+}
+
+async function handleRefreshFeeds(): Promise<void> {
+  if (feedStore.refreshProgress.isRunning) {
+    await feedStore.stopRefresh();
+    return;
+  }
+  await feedStore.refreshFeeds();
+}
+
+watch(
+  () => feedStore.refreshProgress.isRunning,
+  async (isRunning, wasRunning) => {
+    if (!isRunning && wasRunning) {
+      if (!isDailyRecommendationMode.value) {
+        await clusterStore.fetchClusters(1);
+      }
+    }
+  }
+);
 </script>
 
 <template>
@@ -434,6 +472,7 @@ async function refreshRecommendations(): Promise<void> {
           }}
         </h3>
         <div class="flex items-center gap-1 sm:gap-2">
+          <!-- Daily recommendation mode refresh button -->
           <button
             v-if="isDailyRecommendationMode"
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors disabled:opacity-50"
@@ -447,6 +486,140 @@ async function refreshRecommendations(): Promise<void> {
           >
             <PhArrowClockwise :size="18" class="sm:w-5 sm:h-5" />
           </button>
+
+          <!-- Standard feed refresh button with Task Pool Tooltip when in Cluster mode -->
+          <div
+            v-else
+            class="relative"
+            @mouseenter="onRefreshTooltipShow"
+            @mouseleave="onRefreshTooltipHide"
+          >
+            <button
+              class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
+              :title="
+                feedStore.refreshProgress.isRunning
+                  ? t('article.action.stopRefresh')
+                  : t('article.action.refresh')
+              "
+              @click="handleRefreshFeeds"
+            >
+              <PhArrowClockwise
+                :size="18"
+                class="sm:w-5 sm:h-5"
+                :class="feedStore.refreshProgress.isRunning ? 'animate-spin' : ''"
+              />
+            </button>
+            <div
+              v-if="
+                feedStore.refreshProgress.isRunning &&
+                (feedStore.refreshProgress.queue_task_count || 0) +
+                  (feedStore.refreshProgress.pool_task_count || 0) >
+                  0
+              "
+              class="absolute -top-1 -right-1 bg-accent text-white text-[9px] sm:text-[10px] font-bold rounded-full min-w-[14px] sm:min-w-[16px] h-3.5 sm:h-4 px-0.5 sm:px-1 flex items-center justify-center pointer-events-none"
+            >
+              {{
+                (feedStore.refreshProgress.queue_task_count || 0) +
+                (feedStore.refreshProgress.pool_task_count || 0)
+              }}
+            </div>
+
+            <!-- Task Pool Tooltip -->
+            <Transition
+              enter-active-class="transition ease-out duration-200"
+              enter-from-class="opacity-0 scale-95"
+              enter-to-class="opacity-100 scale-100"
+              leave-active-class="transition ease-in duration-150"
+              leave-from-class="opacity-100 scale-100"
+              leave-to-class="opacity-0 scale-95"
+            >
+              <div
+                v-if="
+                  showRefreshTooltip &&
+                  ((feedStore.refreshProgress.pool_task_count || 0) > 0 ||
+                    (feedStore.refreshProgress.queue_task_count || 0) > 0 ||
+                    (feedStore.refreshProgress.article_click_count || 0) > 0)
+                "
+                class="absolute right-0 top-full mt-2 z-50 w-72 bg-bg-secondary rounded-lg shadow-xl overflow-hidden border border-border/60"
+              >
+                <div class="px-3 py-2">
+                  <div class="text-xs font-semibold text-text-primary mb-2 flex items-center gap-2">
+                    <PhArrowClockwise :size="12" class="animate-spin-slow" />
+                    {{ t('article.action.refreshing') }}
+                  </div>
+
+                  <!-- Pool Tasks -->
+                  <div v-if="(feedStore.refreshProgress.pool_task_count || 0) > 0" class="mb-2">
+                    <div
+                      class="text-[10px] text-text-secondary mb-1.5 font-medium flex items-center gap-1"
+                    >
+                      <PhCircle :size="10" class="text-accent" />
+                      {{ t('article.progress.activeTasks') }} ({{
+                        feedStore.refreshProgress.pool_task_count || 0
+                      }})
+                    </div>
+                    <div class="space-y-0.5 max-h-36 overflow-y-auto">
+                      <div
+                        v-for="(task, index) in feedStore.refreshProgress.pool_tasks || []"
+                        :key="'pool-' + index"
+                        class="text-xs text-text-primary bg-accent/10 px-2.5 py-1.5 rounded truncate"
+                        :title="task.feed_title"
+                      >
+                        <div class="flex items-center gap-2">
+                          <PhCircle :size="10" class="text-accent animate-pulse flex-shrink-0" />
+                          <span class="truncate flex-1">{{ task.feed_title }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Queue Tasks -->
+                  <div v-if="(feedStore.refreshProgress.queue_task_count || 0) > 0">
+                    <div
+                      class="text-[10px] text-text-secondary mb-1.5 font-medium flex items-center gap-1"
+                    >
+                      <PhClock :size="10" />
+                      {{ t('sidebar.activity.queuedTasks') }} ({{
+                        feedStore.refreshProgress.queue_task_count || 0
+                      }})
+                    </div>
+                    <div class="space-y-0.5 max-h-28 overflow-y-auto">
+                      <div
+                        v-for="(task, index) in feedStore.refreshProgress.queue_tasks || []"
+                        :key="'queue-' + index"
+                        class="text-xs text-text-secondary bg-bg-tertiary/50 px-2.5 py-1.5 rounded truncate"
+                        :title="task.feed_title"
+                      >
+                        <div class="flex items-center gap-2">
+                          <PhClock :size="10" class="flex-shrink-0" />
+                          <span class="truncate flex-1">{{ task.feed_title }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Article Click Tasks -->
+                  <div
+                    v-if="(feedStore.refreshProgress.article_click_count || 0) > 0"
+                    class="mt-2 pt-2 border-t border-border/50"
+                  >
+                    <div
+                      class="text-[10px] text-text-secondary mb-1.5 font-medium flex items-center gap-1"
+                    >
+                      <PhLightning :size="10" class="text-accent" />
+                      {{ t('sidebar.activity.immediateTasks') }} ({{
+                        feedStore.refreshProgress.article_click_count || 0
+                      }})
+                    </div>
+                    <div class="text-xs text-accent bg-accent/10 px-2.5 py-1.5 rounded truncate">
+                      {{ t('sidebar.activity.fetchingContent') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </div>
+
           <button
             class="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary p-1 sm:p-1.5 rounded transition-colors"
             :title="

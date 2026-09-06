@@ -4,6 +4,7 @@ import type { Feed, Tag, RefreshProgress } from '@/types/models';
 import { apiClient, stopRefreshFeeds } from '@/shared/lib/apiClient';
 import { useSettings } from '@/composables/core/useSettings';
 import { useArticleStore } from '@/features/article/store';
+import { useClusterStore } from '@/stores/cluster';
 
 export const useFeedStore = defineStore('feed', () => {
   const { settings: settingsRef } = useSettings();
@@ -73,6 +74,10 @@ export const useFeedStore = defineStore('feed', () => {
         }
       }
 
+      // Proactively notify clusterStore to check AI processing status immediately
+      const clusterStore = useClusterStore();
+      void clusterStore.pollImmediately();
+
       // Wait a moment to check if refresh is actually running
       await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -89,6 +94,11 @@ export const useFeedStore = defineStore('feed', () => {
         const articleStore = useArticleStore();
         articleStore.fetchArticles();
         articleStore.fetchUnreadCounts();
+
+        void clusterStore.pollImmediately();
+        if (articleStore.shouldUseClusterList()) {
+          void clusterStore.fetchClusters(1);
+        }
         return;
       }
 
@@ -127,6 +137,8 @@ export const useFeedStore = defineStore('feed', () => {
     // Track previous pool/queue counts to detect task completion
     let previousPoolCount = 0;
     let previousQueueCount = 0;
+    let lastUnreadFetchTime = 0;
+    const UNREAD_THROTTLE_MS = 2000;
 
     pollProgressInterval = setInterval(async () => {
       try {
@@ -145,17 +157,24 @@ export const useFeedStore = defineStore('feed', () => {
           await fetchTaskDetails();
         }
 
-        // Detect task completion and update unread counts immediately
+        // Detect task completion and update unread counts immediately (throttled to avoid SQLite contention)
         const currentPoolCount = data.pool_task_count ?? 0;
         const currentQueueCount = data.queue_task_count ?? 0;
         const totalTasks = currentPoolCount + currentQueueCount;
         const previousTotal = previousPoolCount + previousQueueCount;
 
-        // If task count decreased, tasks completed - update unread counts
+        // If task count decreased, tasks completed - update unread counts and check cluster pipeline
         if (totalTasks < previousTotal && previousTotal > 0) {
-          const articleStore = useArticleStore();
-          articleStore.fetchUnreadCounts();
-          fetchFeeds(); // Also update feeds to refresh error marks
+          const now = Date.now();
+          if (now - lastUnreadFetchTime >= UNREAD_THROTTLE_MS) {
+            lastUnreadFetchTime = now;
+            const articleStore = useArticleStore();
+            articleStore.fetchUnreadCounts();
+            fetchFeeds(); // Also update feeds to refresh error marks
+          }
+
+          const clusterStore = useClusterStore();
+          void clusterStore.pollImmediately();
         }
 
         // Update previous counts
@@ -169,6 +188,12 @@ export const useFeedStore = defineStore('feed', () => {
           const articleStore = useArticleStore();
           articleStore.fetchArticles();
           articleStore.fetchUnreadCounts();
+
+          const clusterStore = useClusterStore();
+          void clusterStore.pollImmediately();
+          if (articleStore.shouldUseClusterList()) {
+            void clusterStore.fetchClusters(1);
+          }
 
           // Check for app updates after initial refresh completes
           // Note: checkForAppUpdates is in AppStore (or main.ts), we might need to move it or call it via event

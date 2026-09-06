@@ -606,6 +606,18 @@ export const useClusterStore = defineStore('cluster', () => {
     }
   }
 
+  async function pollImmediately() {
+    aiProcessingIdlePollCount = 0;
+    try {
+      await fetchProcessingStatuses();
+    } catch (e) {
+      console.error('Failed to immediately poll processing status:', e);
+    }
+    if (aiProcessingPollingConsumers > 0) {
+      scheduleNextAIProcessingPoll(getNextAIProcessingPollDelay());
+    }
+  }
+
   function setFilteredClusterIds(ids: number[] | null) {
     filteredClusterIds.value = ids;
 
@@ -694,6 +706,7 @@ export const useClusterStore = defineStore('cluster', () => {
     forceStartClusterRenormalization,
     startAIProcessingPolling,
     stopAIProcessingPolling,
+    pollImmediately,
     setFilteredClusterIds,
     openProcessingDetails,
     closeProcessingDetails,
