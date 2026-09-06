@@ -552,15 +552,28 @@ watch(
   }
 );
 
+function handleForceTranslateEvent() {
+  if (
+    cluster.value &&
+    translationEnabled.value &&
+    targetLanguage.value &&
+    !isForceTranslating.value
+  ) {
+    forceTranslateCluster();
+  }
+}
+
 onMounted(() => {
   fetchSettings().catch((error) => {
     console.error('Failed to load translation settings for cluster detail:', error);
   });
+  window.addEventListener('force-translate-cluster', handleForceTranslateEvent);
 });
 
 onBeforeUnmount(() => {
   forceTranslateRunId.value += 1;
   isForceTranslating.value = false;
+  window.removeEventListener('force-translate-cluster', handleForceTranslateEvent);
 });
 
 function handleClose() {
@@ -624,7 +637,7 @@ function handleClose() {
           </div>
         </div>
 
-        <div class="flex items-center gap-0.5 sm:gap-1 pl-2">
+        <div class="flex items-center gap-0.5 sm:gap-1 pl-2" data-cluster-toolbar>
           <button
             v-if="translationEnabled"
             class="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors disabled:opacity-50"

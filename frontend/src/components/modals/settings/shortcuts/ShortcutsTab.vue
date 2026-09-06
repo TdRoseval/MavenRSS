@@ -22,6 +22,7 @@ import {
   PhHeart,
   PhArrowCounterClockwise,
   PhFunnel,
+  PhTranslate,
 } from '@phosphor-icons/vue';
 import ShortcutItem from './ShortcutItem.vue';
 import type { SettingsData } from '@/types/settings';
@@ -64,6 +65,7 @@ interface Shortcuts {
   toggleReadStatus: string;
   toggleFavoriteStatus: string;
   toggleReadLaterStatus: string;
+  forceTranslate: string;
   openInBrowser: string;
   toggleContentView: string;
   refreshFeeds: string;
@@ -93,6 +95,7 @@ const defaultShortcuts: Shortcuts = {
   toggleReadStatus: 'r',
   toggleFavoriteStatus: 's',
   toggleReadLaterStatus: 'l',
+  forceTranslate: 't',
   openInBrowser: 'o',
   toggleContentView: 'v',
   refreshFeeds: 'Shift+r',
@@ -150,6 +153,11 @@ const shortcutGroups = computed<Array<{ label: string; items: ShortcutItemData[]
         key: 'toggleReadLaterStatus',
         label: t('shortcut.toggle.readLaterStatus'),
         icon: PhClockCountdown,
+      },
+      {
+        key: 'forceTranslate',
+        label: t('article.action.forceReTranslate'),
+        icon: PhTranslate,
       },
       {
         key: 'openInBrowser',

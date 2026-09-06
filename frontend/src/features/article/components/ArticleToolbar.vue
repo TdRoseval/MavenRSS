@@ -68,7 +68,7 @@ defineEmits<{
     >
       <PhX :size="20" class="sm:w-5 sm:h-5" />
     </button>
-    <div class="flex gap-1 sm:gap-2 ml-auto">
+    <div class="flex gap-1 sm:gap-2 ml-auto" data-article-toolbar>
       <button
         v-if="showContent && settings.translation_enabled"
         class="action-btn"

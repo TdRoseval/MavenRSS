@@ -124,12 +124,20 @@ function handleKeydown(e: KeyboardEvent) {
   // See useKeyboardShortcuts.ts which properly checks for editable elements
 }
 
+function handleForceTranslateEvent() {
+  if (article.value && showContent.value && !isForceTranslating.value) {
+    forceTranslateArticle();
+  }
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('force-translate-article', handleForceTranslateEvent);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('force-translate-article', handleForceTranslateEvent);
 });
 </script>
 

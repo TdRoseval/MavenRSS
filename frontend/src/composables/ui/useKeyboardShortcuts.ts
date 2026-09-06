@@ -3,7 +3,8 @@ import { openInBrowser } from '@/shared/lib/browser';
 import { authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';
 import { useFeedStore } from '@/features/feed/store';
-import type { Article } from '@/types/models';
+import { useClusterStore } from '@/stores/cluster';
+import type { Article, Cluster, DailyRecommendationItem } from '@/types/models';
 
 export interface KeyboardShortcuts {
   nextArticle: string;
@@ -15,6 +16,7 @@ export interface KeyboardShortcuts {
   toggleReadStatus: string;
   toggleFavoriteStatus: string;
   toggleReadLaterStatus: string;
+  forceTranslate: string;
   openInBrowser: string;
   toggleContentView: string;
   refreshFeeds: string;
@@ -38,6 +40,7 @@ export interface KeyboardShortcutCallbacks {
 export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   const articleStore = useArticleStore();
   const feedStore = useFeedStore();
+  const clusterStore = useClusterStore();
 
   const shortcutsEnabled = ref(true);
   const shortcuts = ref<KeyboardShortcuts>({
@@ -50,6 +53,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     toggleReadStatus: 'r',
     toggleFavoriteStatus: 's',
     toggleReadLaterStatus: 'l',
+    forceTranslate: 't',
     openInBrowser: 'o',
     toggleContentView: 'v',
     refreshFeeds: 'Shift+r',
@@ -78,6 +82,82 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     key += actualKey;
     return key;
+  }
+
+  function isClusterMode(): boolean {
+    return articleStore.shouldUseClusterList() || articleStore.currentFilter === 'dailyRecommendations';
+  }
+
+  // Effective cluster list matching ClusterList's displayedClusters order
+  function getEffectiveClusters(): Cluster[] {
+    const source =
+      articleStore.currentFilter === 'dailyRecommendations'
+        ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
+        : clusterStore.clusters;
+
+    if (!articleStore.showOnlyUnread) {
+      return source;
+    }
+
+    return source.filter(
+      (item: Cluster) => !item.is_read || item.id === clusterStore.currentClusterId
+    );
+  }
+
+  function navigateCluster(direction: number): void {
+    const clusters = getEffectiveClusters();
+    if (clusters.length === 0) return;
+
+    const currentIndex = clusterStore.currentClusterId
+      ? clusters.findIndex((c: Cluster) => c.id === clusterStore.currentClusterId)
+      : -1;
+
+    let newIndex: number;
+    if (currentIndex === -1) {
+      newIndex = direction > 0 ? 0 : clusters.length - 1;
+    } else {
+      newIndex = currentIndex + direction;
+      if (newIndex < 0) newIndex = 0;
+      if (newIndex >= clusters.length) newIndex = clusters.length - 1;
+    }
+
+    selectClusterByIndex(newIndex);
+  }
+
+  function selectClusterByIndex(index: number): void {
+    const cluster = getEffectiveClusters()[index];
+    if (!cluster) return;
+
+    clusterStore.currentClusterId = cluster.id;
+    clusterStore.reportClusterClick(cluster.id);
+
+    if (!cluster.is_read) {
+      clusterStore.markClusterRead(cluster.id, true).catch((e: unknown) => {
+        console.error('Error marking cluster as read:', e);
+      });
+    }
+
+    setTimeout(() => {
+      const clusterEl = document.querySelector(`[data-cluster-id="${cluster.id}"]`);
+      if (clusterEl) {
+        clusterEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 50);
+  }
+
+  function toggleCurrentClusterFavorite(): void {
+    const cluster = getEffectiveClusters().find(
+      (c: Cluster) => c.id === clusterStore.currentClusterId
+    );
+    if (!cluster) return;
+
+    cluster.is_favorite = !cluster.is_favorite;
+    clusterStore
+      .toggleClusterFavorite({ ...cluster, is_favorite: !cluster.is_favorite })
+      .catch((e: unknown) => {
+        console.error('Error toggling cluster favorite:', e);
+        cluster.is_favorite = !cluster.is_favorite;
+      });
   }
 
   function navigateArticle(direction: number): void {
@@ -189,6 +269,20 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     }
   }
 
+  // Force re-translate the currently open article or cluster
+  function forceTranslateCurrent(): void {
+    if (isClusterMode()) {
+      if (clusterStore.currentClusterId) {
+        window.dispatchEvent(new CustomEvent('force-translate-cluster'));
+      }
+      return;
+    }
+
+    if (articleStore.currentArticleId) {
+      window.dispatchEvent(new CustomEvent('force-translate-article'));
+    }
+  }
+
   // Check if an article detail panel is open and scrollable
   function isArticleDetailOpen(): boolean {
     // Check if there's a current article selected
@@ -209,6 +303,71 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   function isWebpageViewMode(): boolean {
     const iframe = document.querySelector('iframe[src*="/api/webpage/proxy"]');
     return iframe !== null;
+  }
+
+  // Find the currently open detail panel (article or cluster)
+  function getActiveDetailMain(): HTMLElement | null {
+    if (isClusterMode()) {
+      if (!clusterStore.currentClusterId) return null;
+      return document.querySelector<HTMLElement>('main[class*="min-w-0"]');
+    }
+
+    if (!articleStore.currentArticleId) return null;
+    return document.querySelector<HTMLElement>('main[class*="flex-1 bg-bg-primary"]');
+  }
+
+  // Tab key: cycle focus through visible interactive elements inside the open
+  // article/cluster detail, top to bottom. Native Enter then "clicks" the
+  // focused element.
+  function handleDetailTabCycle(e: KeyboardEvent): void {
+    if (isWebpageViewMode()) return;
+
+    const main = getActiveDetailMain();
+    if (!main) return;
+
+    const target = e.target as HTMLElement;
+    const tagName = target.tagName.toLowerCase();
+    // Let users tab out of form fields naturally
+    if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
+    if (target.isContentEditable) return;
+
+    e.preventDefault();
+
+    const toolbarSelector = '[data-article-toolbar], [data-cluster-toolbar]';
+    const isVisible = (el: HTMLElement): boolean => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+
+    const toolbarButtons = Array.from(
+      main.querySelectorAll<HTMLElement>(`${toolbarSelector} button:not([disabled])`)
+    ).filter(isVisible);
+
+    const contentElements = Array.from(
+      main.querySelectorAll<HTMLElement>('.prose-content a[href], .prose-content img')
+    ).filter(isVisible);
+
+    const items = [...toolbarButtons, ...contentElements];
+    if (items.length === 0) return;
+
+    // Images are not natively focusable
+    items.forEach((el) => {
+      if (el.tagName === 'IMG' && !el.hasAttribute('tabindex')) {
+        el.setAttribute('tabindex', '-1');
+      }
+    });
+
+    const active = document.activeElement as HTMLElement | null;
+    const currentIndex = active ? items.indexOf(active) : -1;
+
+    let nextIndex: number;
+    if (e.shiftKey) {
+      nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+    } else {
+      nextIndex = currentIndex === -1 || currentIndex >= items.length - 1 ? 0 : currentIndex + 1;
+    }
+
+    items[nextIndex].focus({ preventScroll: false });
   }
 
   // Scroll the article detail panel
@@ -319,6 +478,13 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
       }
     }
 
+    // Tab key: cycle focus through visible interactive elements in the open
+    // article/cluster detail panel (top to bottom)
+    if (key === 'Tab' || key === 'Shift+Tab') {
+      handleDetailTabCycle(e);
+      return;
+    }
+
     // Check for escape key to close modals first (always allow, even when shortcuts disabled)
     if (key === shortcuts.value.closeArticle) {
       // Check if the find in page search input is focused
@@ -358,19 +524,27 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     // Execute the action
     switch (action) {
       case 'nextArticle':
-        navigateArticle(1);
+      case 'nextArticleArrow':
+        if (isClusterMode()) {
+          navigateCluster(1);
+        } else {
+          navigateArticle(1);
+        }
         break;
       case 'previousArticle':
-        navigateArticle(-1);
-        break;
-      case 'nextArticleArrow':
-        navigateArticle(1);
-        break;
       case 'previousArticleArrow':
-        navigateArticle(-1);
+        if (isClusterMode()) {
+          navigateCluster(-1);
+        } else {
+          navigateArticle(-1);
+        }
         break;
       case 'openArticle':
-        if (articleStore.articles.length > 0 && !articleStore.currentArticleId) {
+        if (isClusterMode()) {
+          if (getEffectiveClusters().length > 0 && !clusterStore.currentClusterId) {
+            selectClusterByIndex(0);
+          }
+        } else if (articleStore.articles.length > 0 && !articleStore.currentArticleId) {
           selectArticleByIndex(0);
         }
         break;
@@ -378,7 +552,14 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
         toggleCurrentArticleRead();
         break;
       case 'toggleFavoriteStatus':
-        toggleCurrentArticleFavorite();
+        if (isClusterMode()) {
+          toggleCurrentClusterFavorite();
+        } else {
+          toggleCurrentArticleFavorite();
+        }
+        break;
+      case 'forceTranslate':
+        forceTranslateCurrent();
         break;
       case 'toggleReadLaterStatus':
         toggleCurrentArticleReadLater();
