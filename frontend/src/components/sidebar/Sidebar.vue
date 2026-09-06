@@ -304,14 +304,12 @@ function toggleActivityBar() {
   }
 }
 
-/* Mobile devices */
+/* Mobile devices - keep the drawer in flow so the fixed wrapper hugs the visible content */
 @media (max-width: 767px) {
-  .feed-drawer-wrapper:not(.pinned) {
-    left: 44px;
-  }
-
+  .feed-drawer-wrapper:not(.pinned),
   .feed-drawer-wrapper:not(.pinned).activity-bar-collapsed {
-    left: 16px;
+    position: relative;
+    left: 0;
   }
 }
 
@@ -376,10 +374,12 @@ function toggleActivityBar() {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 100% !important;
-  max-width: 280px;
+  /* Hug the actual content width (activity bar + feed drawer) instead of a fixed 280px,
+     so no transparent strip appears beyond the drawer */
+  width: fit-content !important;
+  max-width: 100vw;
   z-index: 60 !important;
-  background-color: var(--color-bg-primary);
+  background-color: var(--bg-primary);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
 }
 
