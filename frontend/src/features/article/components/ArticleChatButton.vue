@@ -13,7 +13,7 @@ const { t } = useI18n();
 
 <template>
   <button
-    class="fixed bottom-12 right-6 w-14 h-14 bg-accent hover:bg-accent-hover text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-40"
+    class="fixed bottom-16 right-6 md:bottom-12 w-14 h-14 bg-accent hover:bg-accent-hover text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-40"
     :title="t('article.chat.aiChat')"
     @click="onClick"
   >

@@ -85,13 +85,16 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   }
 
   function isClusterMode(): boolean {
-    return articleStore.shouldUseClusterList() || articleStore.currentFilter === 'dailyRecommendations';
+    return (
+      articleStore.shouldUseClusterList() || articleStore.currentFilter === 'dailyRecommendations'
+    );
   }
 
   // Effective cluster list matching ClusterList's displayedClusters order
   function getEffectiveClusters(): Cluster[] {
-    const source =
-      articleStore.currentFilter === 'dailyRecommendations'
+    const source = clusterStore.isAISearchActive
+      ? clusterStore.aiSearchResults
+      : articleStore.currentFilter === 'dailyRecommendations'
         ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
         : clusterStore.clusters;
 

@@ -57,6 +57,8 @@ export interface Cluster {
   feed_titles?: string[];
   authors?: string[];
   articles?: Article[];
+  search_score?: number;
+  latest_published_at?: string;
 }
 
 export interface DailyRecommendationItem {

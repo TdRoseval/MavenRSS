@@ -18,6 +18,7 @@ import (
 // AISearchRequest represents the request for AI-powered search
 type AISearchRequest struct {
 	Query          string `json:"query"`
+	ResultType     string `json:"result_type,omitempty"`
 	Filter         string `json:"filter,omitempty"`
 	FeedID         *int64 `json:"feed_id,omitempty"`
 	Category       string `json:"category,omitempty"`
@@ -29,9 +30,70 @@ type AISearchRequest struct {
 type AISearchResponse struct {
 	Success     bool             `json:"success"`
 	Articles    []map[string]any `json:"articles,omitempty"`
+	Clusters    []map[string]any `json:"clusters,omitempty"`
 	SearchTerms string           `json:"search_terms,omitempty"`
 	Error       string           `json:"error,omitempty"`
 	TotalCount  int              `json:"total_count"`
+}
+
+// buildSearchPredicates returns the article match predicate and per-article
+// relevance expression. The aliases are parameterized so article search and
+// cluster search use exactly the same matching weights.
+func buildSearchPredicates(terms *SearchTerms, articleAlias, contentAlias string) (string, string) {
+	if terms == nil {
+		return "", ""
+	}
+
+	var requiredConditions []string
+	for _, term := range terms.Required {
+		escapedTerm := strings.ReplaceAll(term, "'", "''")
+		requiredConditions = append(requiredConditions, fmt.Sprintf(
+			"(%s.title LIKE '%%%s%%' OR %s.content LIKE '%%%s%%' OR %s.summary LIKE '%%%s%%')",
+			articleAlias, escapedTerm, contentAlias, escapedTerm, articleAlias, escapedTerm,
+		))
+	}
+	for _, pattern := range terms.Patterns {
+		escapedPattern := strings.ReplaceAll(pattern, "'", "''")
+		requiredConditions = append(requiredConditions, fmt.Sprintf(
+			"(%s.title LIKE '%%%s%%' OR %s.content LIKE '%%%s%%' OR %s.summary LIKE '%%%s%%')",
+			articleAlias, escapedPattern, contentAlias, escapedPattern, articleAlias, escapedPattern,
+		))
+	}
+
+	var scoreTerms []string
+	for _, term := range terms.Required {
+		escapedTerm := strings.ReplaceAll(term, "'", "''")
+		scoreTerms = append(scoreTerms, fmt.Sprintf(
+			"(CASE WHEN %s.title LIKE '%%%s%%' THEN 5 ELSE 0 END + "+
+				"CASE WHEN %s.content LIKE '%%%s%%' THEN 2 ELSE 0 END + "+
+				"CASE WHEN %s.summary LIKE '%%%s%%' THEN 3 ELSE 0 END)",
+			articleAlias, escapedTerm, contentAlias, escapedTerm, articleAlias, escapedTerm,
+		))
+	}
+	for _, pattern := range terms.Patterns {
+		escapedPattern := strings.ReplaceAll(pattern, "'", "''")
+		scoreTerms = append(scoreTerms, fmt.Sprintf(
+			"(CASE WHEN %s.title LIKE '%%%s%%' THEN 8 ELSE 0 END + "+
+				"CASE WHEN %s.content LIKE '%%%s%%' THEN 4 ELSE 0 END + "+
+				"CASE WHEN %s.summary LIKE '%%%s%%' THEN 5 ELSE 0 END)",
+			articleAlias, escapedPattern, contentAlias, escapedPattern, articleAlias, escapedPattern,
+		))
+	}
+	for _, term := range terms.Optional {
+		escapedTerm := strings.ReplaceAll(term, "'", "''")
+		scoreTerms = append(scoreTerms, fmt.Sprintf(
+			"(CASE WHEN %s.title LIKE '%%%s%%' THEN 2 ELSE 0 END + "+
+				"CASE WHEN %s.content LIKE '%%%s%%' THEN 1 ELSE 0 END + "+
+				"CASE WHEN %s.summary LIKE '%%%s%%' THEN 1 ELSE 0 END)",
+			articleAlias, escapedTerm, contentAlias, escapedTerm, articleAlias, escapedTerm,
+		))
+	}
+
+	relevanceScore := "0"
+	if len(scoreTerms) > 0 {
+		relevanceScore = strings.Join(scoreTerms, " + ")
+	}
+	return strings.Join(requiredConditions, " OR "), relevanceScore
 }
 
 // extractSearchTerms extracts the search terms from AI response
@@ -115,73 +177,7 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 		return ""
 	}
 
-	// Build required conditions (must match at least one)
-	var requiredConditions []string
-	for _, term := range terms.Required {
-		escapedTerm := strings.ReplaceAll(term, "'", "''")
-		condition := fmt.Sprintf(
-			"(a.title LIKE '%%%s%%' OR c.content LIKE '%%%s%%' OR a.summary LIKE '%%%s%%')",
-			escapedTerm, escapedTerm, escapedTerm,
-		)
-		requiredConditions = append(requiredConditions, condition)
-	}
-
-	// Build pattern conditions
-	for _, pattern := range terms.Patterns {
-		escapedPattern := strings.ReplaceAll(pattern, "'", "''")
-		condition := fmt.Sprintf(
-			"(a.title LIKE '%%%s%%' OR c.content LIKE '%%%s%%' OR a.summary LIKE '%%%s%%')",
-			escapedPattern, escapedPattern, escapedPattern,
-		)
-		requiredConditions = append(requiredConditions, condition)
-	}
-
-	// Build relevance score with weighted scoring
-	var scoreTerms []string
-
-	// Required terms get higher base weight
-	for _, term := range terms.Required {
-		escapedTerm := strings.ReplaceAll(term, "'", "''")
-		scoreTerm := fmt.Sprintf(
-			"(CASE WHEN a.title LIKE '%%%s%%' THEN 5 ELSE 0 END + "+
-				"CASE WHEN c.content LIKE '%%%s%%' THEN 2 ELSE 0 END + "+
-				"CASE WHEN a.summary LIKE '%%%s%%' THEN 3 ELSE 0 END)",
-			escapedTerm, escapedTerm, escapedTerm,
-		)
-		scoreTerms = append(scoreTerms, scoreTerm)
-	}
-
-	// Patterns get highest weight (exact phrase match)
-	for _, pattern := range terms.Patterns {
-		escapedPattern := strings.ReplaceAll(pattern, "'", "''")
-		scoreTerm := fmt.Sprintf(
-			"(CASE WHEN a.title LIKE '%%%s%%' THEN 8 ELSE 0 END + "+
-				"CASE WHEN c.content LIKE '%%%s%%' THEN 4 ELSE 0 END + "+
-				"CASE WHEN a.summary LIKE '%%%s%%' THEN 5 ELSE 0 END)",
-			escapedPattern, escapedPattern, escapedPattern,
-		)
-		scoreTerms = append(scoreTerms, scoreTerm)
-	}
-
-	// Optional terms get lower weight
-	for _, term := range terms.Optional {
-		escapedTerm := strings.ReplaceAll(term, "'", "''")
-		scoreTerm := fmt.Sprintf(
-			"(CASE WHEN a.title LIKE '%%%s%%' THEN 2 ELSE 0 END + "+
-				"CASE WHEN c.content LIKE '%%%s%%' THEN 1 ELSE 0 END + "+
-				"CASE WHEN a.summary LIKE '%%%s%%' THEN 1 ELSE 0 END)",
-			escapedTerm, escapedTerm, escapedTerm,
-		)
-		scoreTerms = append(scoreTerms, scoreTerm)
-	}
-
-	relevanceScore := "0"
-	if len(scoreTerms) > 0 {
-		relevanceScore = strings.Join(scoreTerms, " + ")
-	}
-
-	// Build full query with LEFT JOIN to article_contents for content search
-	whereClause := strings.Join(requiredConditions, " OR ")
+	whereClause, relevanceScore := buildSearchPredicates(terms, "a", "c")
 
 	// Add filter conditions
 	var additionalConditions []string
@@ -255,6 +251,57 @@ func buildSearchSQL(terms *SearchTerms, limit int, filter string, feedID *int64,
 	`, relevanceScore, fullWhereClause, orderClause, limit)
 
 	return query
+}
+
+// buildClusterSearchSQL searches articles first, then aggregates every
+// matching article's score into its owning cluster. Interest vectors are not
+// involved in this query: AI search is a content search over the user's full
+// article corpus. Equal aggregate scores are ordered by the newest article in
+// the cluster.
+func buildClusterSearchSQL(terms *SearchTerms, limit int, userID int64, showHidden bool) string {
+	if terms == nil || (len(terms.Required) == 0 && len(terms.Patterns) == 0) {
+		return ""
+	}
+
+	whereClause, relevanceScore := buildSearchPredicates(terms, "a", "c")
+	var conditions []string
+	if !showHidden {
+		conditions = append(conditions, "a.is_hidden = 0")
+	}
+	if userID > 0 {
+		conditions = append(conditions, fmt.Sprintf("a.user_id = %d", userID))
+		conditions = append(conditions, fmt.Sprintf("f.user_id = %d", userID))
+	}
+	conditions = append(conditions, "a.cluster_id IS NOT NULL")
+
+	return fmt.Sprintf(`
+		WITH matched_clusters AS (
+			SELECT a.cluster_id, SUM(%s) AS relevance_score
+			FROM articles a
+			JOIN feeds f ON a.feed_id = f.id
+			LEFT JOIN article_contents c ON a.id = c.article_id
+			WHERE %s AND (%s)
+			GROUP BY a.cluster_id
+		)
+		SELECT c.id, c.user_id, c.status, c.merged_title, c.merged_summary,
+		       c.recommendation_archive_date, c.recommendation_score,
+		       c.is_ai_recommended, c.recommendation_profile_id, c.article_count,
+		       c.created_at, c.updated_at, c.is_read, c.is_favorite,
+		       c.is_read_later, c.is_hidden,
+		       m.relevance_score AS relevance_score,
+		       MAX(all_articles.published_at) AS latest_published_at
+		FROM matched_clusters m
+		JOIN clusters c ON c.id = m.cluster_id
+		JOIN articles all_articles ON all_articles.cluster_id = c.id
+		WHERE c.user_id = %d AND c.is_hidden = 0
+		GROUP BY c.id, c.user_id, c.status, c.merged_title, c.merged_summary,
+		         c.recommendation_archive_date, c.recommendation_score,
+		         c.is_ai_recommended, c.recommendation_profile_id, c.article_count,
+		         c.created_at, c.updated_at, c.is_read, c.is_favorite,
+		         c.is_read_later, c.is_hidden
+		ORDER BY m.relevance_score DESC, MAX(all_articles.published_at) DESC, c.id DESC
+		LIMIT %d
+	`, relevanceScore, strings.Join(conditions, " AND "), whereClause, userID, limit)
 }
 
 // HandleAISearch handles POST /api/ai/search for AI-powered article search
@@ -396,6 +443,60 @@ func HandleAISearch(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	showHidden := showHiddenStr == "true"
 
 	// Build and execute search query
+	if req.ResultType == "clusters" {
+		// Cluster search always searches the user's complete article corpus. The
+		// current article-list filters are intentionally not applied here; they
+		// only control the normal article search mode.
+		searchSQL := buildClusterSearchSQL(searchTerms, 100, userID, showHidden)
+		log.Printf("[AI Search] Cluster SQL query:\n%s", searchSQL)
+
+		clusters, err := h.DB.SearchClustersWithSQL(searchSQL)
+		if err != nil {
+			log.Printf("[AI Search] Cluster query error: %v", err)
+			response.JSON(w, AISearchResponse{
+				Success:     false,
+				Error:       fmt.Sprintf("cluster search failed: %v", err),
+				SearchTerms: strings.Join(allTerms, ", "),
+			})
+			return
+		}
+
+		clusterMaps := make([]map[string]any, len(clusters))
+		for i, result := range clusters {
+			cluster := result.Cluster
+			clusterMaps[i] = map[string]any{
+				"id":                   cluster.ID,
+				"user_id":              cluster.UserID,
+				"status":               cluster.Status,
+				"merged_title":         cluster.MergedTitle,
+				"display_title":        cluster.DisplayTitle,
+				"merged_summary":       cluster.MergedSummary,
+				"image_url":            cluster.ImageURL,
+				"article_count":        cluster.ArticleCount,
+				"created_at":           cluster.CreatedAt,
+				"updated_at":           cluster.UpdatedAt,
+				"is_read":              cluster.IsRead,
+				"is_favorite":          cluster.IsFavorite,
+				"is_read_later":        cluster.IsReadLater,
+				"is_hidden":            cluster.IsHidden,
+				"recommendation_score": cluster.RecommendationScore,
+				"is_ai_recommended":    cluster.IsAIRecommended,
+				"feed_titles":          cluster.FeedTitles,
+				"authors":              cluster.Authors,
+				"search_score":         result.RelevanceScore,
+				"latest_published_at":  result.LatestPublishedAt,
+			}
+		}
+
+		response.JSON(w, AISearchResponse{
+			Success:     true,
+			Clusters:    clusterMaps,
+			SearchTerms: strings.Join(allTerms, ", "),
+			TotalCount:  len(clusterMaps),
+		})
+		return
+	}
+
 	searchSQL := buildSearchSQL(searchTerms, 100, req.Filter, req.FeedID, req.Category, userID, req.ShowOnlyUnread, showHidden, req.SortBy)
 	log.Printf("[AI Search] SQL query:\n%s", searchSQL)
 

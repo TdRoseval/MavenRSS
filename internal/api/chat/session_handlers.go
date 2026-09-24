@@ -9,12 +9,14 @@ import (
 
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/utils/textutil"
 )
 
 // CreateSessionRequest represents the request to create a new chat session
 type CreateSessionRequest struct {
 	ArticleID int64  `json:"article_id"`
+	ClusterID int64  `json:"cluster_id"`
 	Title     string `json:"title"`
 }
 
@@ -42,20 +44,30 @@ func HandleListSessions(h *core.Handler, w http.ResponseWriter, r *http.Request)
 
 	userID, _ := core.GetUserIDFromRequest(r)
 
-	// Get article_id from query parameter
+	// Get either article_id or cluster_id from query parameters.
 	articleIDStr := r.URL.Query().Get("article_id")
-	if articleIDStr == "" {
-		response.Error(w, fmt.Errorf("missing article_id parameter"), http.StatusBadRequest)
-		return
+	clusterIDStr := r.URL.Query().Get("cluster_id")
+	var sessions []sqlite.ChatSession
+	var err error
+	if clusterIDStr != "" {
+		clusterID, parseErr := strconv.ParseInt(clusterIDStr, 10, 64)
+		if parseErr != nil || clusterID <= 0 {
+			response.Error(w, fmt.Errorf("invalid cluster_id"), http.StatusBadRequest)
+			return
+		}
+		sessions, err = h.DB.GetChatSessionsByCluster(userID, clusterID)
+	} else {
+		if articleIDStr == "" {
+			response.Error(w, fmt.Errorf("missing article_id or cluster_id parameter"), http.StatusBadRequest)
+			return
+		}
+		articleID, parseErr := strconv.ParseInt(articleIDStr, 10, 64)
+		if parseErr != nil || articleID <= 0 {
+			response.Error(w, fmt.Errorf("invalid article_id"), http.StatusBadRequest)
+			return
+		}
+		sessions, err = h.DB.GetChatSessionsByArticle(userID, articleID)
 	}
-
-	articleID, err := strconv.ParseInt(articleIDStr, 10, 64)
-	if err != nil {
-		response.Error(w, fmt.Errorf("invalid article_id"), http.StatusBadRequest)
-		return
-	}
-
-	sessions, err := h.DB.GetChatSessionsByArticle(userID, articleID)
 	if err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -89,8 +101,8 @@ func HandleCreateSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.ArticleID == 0 {
-		response.Error(w, fmt.Errorf("missing article_id"), http.StatusBadRequest)
+	if req.ArticleID == 0 && req.ClusterID == 0 {
+		response.Error(w, fmt.Errorf("missing article_id or cluster_id"), http.StatusBadRequest)
 		return
 	}
 
@@ -100,8 +112,18 @@ func HandleCreateSession(h *core.Handler, w http.ResponseWriter, r *http.Request
 		title = "New Chat"
 	}
 
-	sessionID, err := h.DB.CreateChatSession(userID, req.ArticleID, title)
+	var sessionID int64
+	var err error
+	if req.ClusterID > 0 {
+		sessionID, err = h.DB.CreateClusterChatSession(userID, req.ClusterID, title)
+	} else {
+		sessionID, err = h.DB.CreateChatSession(userID, req.ArticleID, title)
+	}
 	if err != nil {
+		if err == sql.ErrNoRows {
+			response.Error(w, fmt.Errorf("cluster or article not found"), http.StatusNotFound)
+			return
+		}
 		response.Error(w, err, http.StatusInternalServerError)
 		return
 	}

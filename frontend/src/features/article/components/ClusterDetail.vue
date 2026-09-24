@@ -26,6 +26,8 @@ import {
   restorePreservedElements,
 } from '@/features/article/composables/useContentTranslation';
 import { useArticleRendering } from '../composables/useArticleRendering';
+import ArticleChatButton from './ArticleChatButton.vue';
+import ArticleChatPanel from './ArticleChatPanel.vue';
 
 useReadingTimeTracker();
 
@@ -55,6 +57,7 @@ const translatedClusterTitle = ref('');
 const translatedClusterSummary = ref('');
 const hasBodyTranslations = ref(false);
 const forceTranslateRunId = ref(0);
+const isChatPanelOpen = ref(false);
 
 const formatDateWithI18n = (dateStr: string): string => {
   return formatDateUtil(dateStr, locale.value, t);
@@ -457,8 +460,9 @@ async function toggleReadLater(): Promise<void> {
 
 // Effective cluster list matching ClusterList's displayedClusters order
 const navigationClusters = computed<Cluster[]>(() => {
-  const source =
-    articleStore.currentFilter === 'dailyRecommendations'
+  const source = clusterStore.isAISearchActive
+    ? clusterStore.aiSearchResults
+    : articleStore.currentFilter === 'dailyRecommendations'
       ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
       : clusterStore.clusters;
 
@@ -534,6 +538,7 @@ watch(
   (newId) => {
     forceTranslateRunId.value += 1;
     isForceTranslating.value = false;
+    isChatPanelOpen.value = false;
 
     if (newId) {
       loadClusterDetail(newId);
@@ -837,6 +842,17 @@ function handleClose() {
         </div>
       </div>
     </div>
+
+    <ArticleChatButton
+      v-if="cluster && settings.ai_chat_enabled && !isChatPanelOpen"
+      @click="isChatPanelOpen = true"
+    />
+    <ArticleChatPanel
+      v-if="cluster && isChatPanelOpen"
+      :cluster="cluster"
+      :settings="{ ai_chat_enabled: settings.ai_chat_enabled }"
+      @close="isChatPanelOpen = false"
+    />
 
     <!-- Navigation buttons - placed outside flex container for fixed positioning -->
     <div

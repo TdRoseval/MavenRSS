@@ -1,7 +1,10 @@
 package chat
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,6 +27,7 @@ type ChatMessage struct {
 type ChatRequest struct {
 	SessionID      int64         `json:"session_id,omitempty"`
 	ArticleID      int64         `json:"article_id,omitempty"`
+	ClusterID      int64         `json:"cluster_id,omitempty"`
 	Messages       []ChatMessage `json:"messages"`
 	ArticleTitle   string        `json:"article_title,omitempty"`
 	ArticleURL     string        `json:"article_url,omitempty"`
@@ -34,6 +38,73 @@ type ChatRequest struct {
 type ChatResponse struct {
 	Response string `json:"response"`
 	HTML     string `json:"html,omitempty"`
+}
+
+const maxChatContextChars = 100000
+
+// resolveClusterChatRequest lazily assembles a cluster's article context only
+// when a chat request is made. The context is kept in memory for this request
+// and is never written to the chat tables.
+func resolveClusterChatRequest(h *core.Handler, userID int64, req *ChatRequest) error {
+	if req.ClusterID <= 0 {
+		return nil
+	}
+
+	clusterContext, err := h.DB.GetClusterChatContextForUser(userID, req.ClusterID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.ErrNoRows
+		}
+		return fmt.Errorf("failed to load cluster context: %w", err)
+	}
+
+	req.ArticleID = clusterContext.AnchorArticleID
+	req.ArticleTitle = clusterContext.Title
+	req.ArticleURL = ""
+	req.ArticleContent = clusterContext.Content
+	// Cluster context must accompany every turn because it is intentionally not
+	// persisted in the session or database.
+	req.IsFirstMessage = true
+	return nil
+}
+
+func trimChatContext(content string) string {
+	runes := []rune(content)
+	if len(runes) <= maxChatContextChars {
+		return content
+	}
+	return strings.TrimSpace(string(runes[:maxChatContextChars])) + "\n[Context truncated]"
+}
+
+// compressChatContext asks the configured chat model to compact an oversized
+// context. If the provider cannot perform the compression, a bounded fallback
+// keeps the request safe instead of allowing an unbounded prompt.
+func compressChatContext(ctx context.Context, client *ai.Client, model, content string) string {
+	if len([]rune(content)) <= maxChatContextChars {
+		return content
+	}
+
+	result, err := client.RequestWithConfig(ai.RequestConfig{
+		Model: model,
+		Messages: []map[string]string{
+			{
+				"role":    "system",
+				"content": "Compress the supplied article context for a later chat. Preserve every article's key facts, titles, relationships, dates, URLs, and important technical details. Return only a concise context summary, no preamble. Keep the result below 100000 characters.",
+			},
+			{"role": "user", "content": content},
+		},
+		Temperature: 0.1,
+		MaxTokens:   8192,
+		Context:     ctx,
+	})
+	if err != nil || strings.TrimSpace(result.Content) == "" {
+		if err != nil {
+			log.Printf("AI chat context compression failed: %v", err)
+		}
+		return trimChatContext(content)
+	}
+
+	return trimChatContext(ai.RemoveThinkingTags(strings.TrimSpace(result.Content)))
 }
 
 // isAILimitReached checks if the AI usage limit is reached for a specific user
@@ -120,6 +191,15 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := resolveClusterChatRequest(h, userID, &req); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, sql.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		response.Error(w, err, status)
+		return
+	}
+
 	// Get or create session
 	sessionID := req.SessionID
 	var err error
@@ -142,6 +222,10 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		}
 		if session == nil {
 			response.Error(w, fmt.Errorf("session not found"), http.StatusNotFound)
+			return
+		}
+		if req.ClusterID > 0 && session.ArticleID != req.ArticleID {
+			response.Error(w, fmt.Errorf("chat session does not belong to this cluster"), http.StatusBadRequest)
 			return
 		}
 	}
@@ -179,16 +263,6 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	optimizedMessages := optimizeChatContext(req.Messages, req.ArticleTitle, req.ArticleURL, req.ArticleContent, req.IsFirstMessage)
-
-	messagesMap := make([]map[string]string, len(optimizedMessages))
-	for i, msg := range optimizedMessages {
-		messagesMap[i] = map[string]string{
-			"role":    msg.Role,
-			"content": msg.Content,
-		}
-	}
-
 	httpClient, err := createAIHTTPClientWithProxy(h, useGlobalProxy, userID, 60*time.Second)
 	if err != nil {
 		log.Printf("Failed to create HTTP client with proxy: %v", err)
@@ -204,6 +278,18 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		Timeout:       60 * time.Second,
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
+	if req.IsFirstMessage {
+		req.ArticleContent = compressChatContext(r.Context(), client, cfg.Model, req.ArticleContent)
+	}
+	optimizedMessages := optimizeChatContext(req.Messages, req.ArticleTitle, req.ArticleURL, req.ArticleContent, req.IsFirstMessage)
+
+	messagesMap := make([]map[string]string, len(optimizedMessages))
+	for i, msg := range optimizedMessages {
+		messagesMap[i] = map[string]string{
+			"role":    msg.Role,
+			"content": msg.Content,
+		}
+	}
 
 	result, err := client.RequestWithMessages(messagesMap)
 	if err != nil {
@@ -246,22 +332,23 @@ func HandleAIChat(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func optimizeChatContext(messages []ChatMessage, articleTitle, articleURL, articleContent string, isFirstMessage bool) []ChatMessage {
-	if isFirstMessage && articleContent != "" {
+func optimizeChatContext(messages []ChatMessage, articleTitle, articleURL, articleContent string, includeContext bool) []ChatMessage {
+	const maxHistoryLength = 10
+	history := messages
+	if len(history) > maxHistoryLength {
+		history = history[len(history)-maxHistoryLength:]
+	}
+
+	if includeContext && articleContent != "" {
 		systemMsg := ChatMessage{
 			Role: "system",
-			Content: fmt.Sprintf("You are discussing an article titled: %s\nURL: %s\n\nArticle content:\n%s\n\nPlease help the user understand and discuss this article.",
+			Content: fmt.Sprintf("You are discussing an article or article collection titled: %s\nURL: %s\n\nArticle context:\n%s\n\nPlease help the user understand and discuss this material.",
 				articleTitle, articleURL, articleContent),
 		}
-		return append([]ChatMessage{systemMsg}, messages...)
+		return append([]ChatMessage{systemMsg}, history...)
 	}
 
-	const maxHistoryLength = 10
-	if len(messages) <= maxHistoryLength {
-		return messages
-	}
-
-	return messages[len(messages)-maxHistoryLength:]
+	return history
 }
 
 func estimateChatTokens(messages []ChatMessage, response string) int {
@@ -318,6 +405,15 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if err := resolveClusterChatRequest(h, userID, &req); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, sql.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		response.Error(w, err, status)
+		return
+	}
+
 	// Get or create session
 	sessionID := req.SessionID
 	var err error
@@ -340,6 +436,10 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		}
 		if session == nil {
 			response.Error(w, fmt.Errorf("session not found"), http.StatusNotFound)
+			return
+		}
+		if req.ClusterID > 0 && session.ArticleID != req.ArticleID {
+			response.Error(w, fmt.Errorf("chat session does not belong to this cluster"), http.StatusBadRequest)
 			return
 		}
 	}
@@ -383,16 +483,6 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	optimizedMessages := optimizeChatContext(req.Messages, req.ArticleTitle, req.ArticleURL, req.ArticleContent, req.IsFirstMessage)
-
-	messagesMap := make([]map[string]string, len(optimizedMessages))
-	for i, msg := range optimizedMessages {
-		messagesMap[i] = map[string]string{
-			"role":    msg.Role,
-			"content": msg.Content,
-		}
-	}
-
 	httpClient, err := createAIHTTPClientWithProxy(h, useGlobalProxy, userID, 300*time.Second)
 	if err != nil {
 		log.Printf("Failed to create HTTP client with proxy: %v", err)
@@ -408,6 +498,18 @@ func HandleAIChatStream(h *core.Handler, w http.ResponseWriter, r *http.Request)
 		Timeout:       300 * time.Second,
 	}
 	client := ai.NewClientWithHTTPClient(clientConfig, httpClient)
+	if req.IsFirstMessage {
+		req.ArticleContent = compressChatContext(r.Context(), client, cfg.Model, req.ArticleContent)
+	}
+	optimizedMessages := optimizeChatContext(req.Messages, req.ArticleTitle, req.ArticleURL, req.ArticleContent, req.IsFirstMessage)
+
+	messagesMap := make([]map[string]string, len(optimizedMessages))
+	for i, msg := range optimizedMessages {
+		messagesMap[i] = map[string]string{
+			"role":    msg.Role,
+			"content": msg.Content,
+		}
+	}
 
 	config := ai.RequestConfig{
 		Model:       clientConfig.Model,

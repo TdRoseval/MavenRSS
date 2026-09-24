@@ -9,6 +9,16 @@ import (
 	"MavenRSS/internal/models"
 )
 
+// AISearchCluster is a cluster returned by article-level AI search. The score
+// is the sum of all matching article scores in the cluster; it is intentionally
+// kept separate from recommendation_score because search must not influence or
+// persist recommendation state.
+type AISearchCluster struct {
+	Cluster           models.Cluster
+	RelevanceScore    float64
+	LatestPublishedAt time.Time
+}
+
 // GetImageGalleryArticles retrieves articles from image mode feeds with pagination.
 // If feedID is provided, it gets articles only from that feed (assuming it's an image mode feed).
 // If category is provided, it gets articles from all image mode feeds in that category.
@@ -202,4 +212,68 @@ func (db *DB) SearchArticlesWithSQL(query string) ([]models.Article, error) {
 	}
 
 	return articles, nil
+}
+
+// SearchClustersWithSQL executes a cluster aggregation query produced by the
+// AI search handler. The query must return the cluster columns followed by the
+// aggregate relevance score and latest article timestamp.
+func (db *DB) SearchClustersWithSQL(query string) ([]AISearchCluster, error) {
+	db.WaitForReady()
+
+	if query == "" {
+		return nil, fmt.Errorf("empty query")
+	}
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("cluster query execution failed: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]AISearchCluster, 0)
+	for rows.Next() {
+		var result AISearchCluster
+		var latestPublishedAt sql.NullTime
+		if err := rows.Scan(
+			&result.Cluster.ID,
+			&result.Cluster.UserID,
+			&result.Cluster.Status,
+			&result.Cluster.MergedTitle,
+			&result.Cluster.MergedSummary,
+			&result.Cluster.RecommendationArchiveDate,
+			&result.Cluster.RecommendationScore,
+			&result.Cluster.IsAIRecommended,
+			&result.Cluster.RecommendationProfileID,
+			&result.Cluster.ArticleCount,
+			&result.Cluster.CreatedAt,
+			&result.Cluster.UpdatedAt,
+			&result.Cluster.IsRead,
+			&result.Cluster.IsFavorite,
+			&result.Cluster.IsReadLater,
+			&result.Cluster.IsHidden,
+			&result.RelevanceScore,
+			&latestPublishedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan cluster search result: %w", err)
+		}
+		if latestPublishedAt.Valid {
+			result.LatestPublishedAt = latestPublishedAt.Time
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cluster search row iteration failed: %w", err)
+	}
+
+	clusters := make([]models.Cluster, len(results))
+	for i := range results {
+		clusters[i] = results[i].Cluster
+	}
+	db.PopulateClustersMeta(clusters)
+	for i := range results {
+		results[i].Cluster = clusters[i]
+	}
+
+	return results, nil
 }

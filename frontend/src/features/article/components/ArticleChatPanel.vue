@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-v-html */
-import { ref, nextTick, computed, onMounted } from 'vue';
+import { ref, nextTick, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   PhChatCircleText,
@@ -12,7 +12,7 @@ import {
   PhTrash,
   PhPencil,
 } from '@phosphor-icons/vue';
-import type { Article } from '@/types/models';
+import type { Article, Cluster } from '@/types/models';
 import { authGet, authPost, authPut, authDelete, authFetch } from '@/shared/lib/authFetch';
 
 interface ChatMessage {
@@ -34,8 +34,9 @@ interface ChatSession {
 }
 
 interface Props {
-  article: Article;
-  articleContent: string;
+  article?: Article;
+  cluster?: Cluster;
+  articleContent?: string;
   settings: { ai_chat_enabled: boolean };
 }
 
@@ -58,6 +59,11 @@ const sessions = ref<ChatSession[]>([]);
 const showSessions = ref(false);
 const editingSessionId = ref<number | null>(null);
 const editingSessionTitle = ref('');
+const targetId = computed(() => props.cluster?.id ?? props.article?.id ?? 0);
+const isClusterChat = computed(() => !!props.cluster);
+const targetKey = computed(
+  () => `${isClusterChat.value ? 'cluster' : 'article'}:${targetId.value}`
+);
 
 // Resize functionality
 const isResizing = ref(false);
@@ -77,9 +83,12 @@ onMounted(async () => {
 });
 
 async function loadSessions() {
+  if (!targetId.value) return;
+
   try {
+    const targetParam = isClusterChat.value ? 'cluster_id' : 'article_id';
     sessions.value = await authGet<ChatSession[]>(
-      `/api/ai/chat/sessions?article_id=${props.article.id}`
+      `/api/ai/chat/sessions?${targetParam}=${targetId.value}`
     );
   } catch (e) {
     console.error('Failed to load sessions:', e);
@@ -105,9 +114,11 @@ async function selectSession(sessionId: number) {
 }
 
 async function createNewSession() {
+  if (!targetId.value) return;
+
   try {
     const newSession = await authPost<ChatSession>('/api/ai/chat/session/create', {
-      article_id: props.article.id,
+      ...(isClusterChat.value ? { cluster_id: targetId.value } : { article_id: targetId.value }),
       title: t('article.chat.newChat'),
     });
     sessions.value.unshift(newSession);
@@ -119,6 +130,19 @@ async function createNewSession() {
     console.error('Failed to create session:', e);
   }
 }
+
+watch(targetKey, async (newKey, oldKey) => {
+  if (!oldKey || newKey === oldKey) return;
+
+  messages.value = [];
+  sessions.value = [];
+  currentSessionId.value = null;
+  isFirstMessage.value = true;
+  await loadSessions();
+  if (sessions.value.length > 0) {
+    await selectSession(sessions.value[0].id);
+  }
+});
 
 async function deleteSession(sessionId: number, e: Event) {
   e.stopPropagation();
@@ -217,7 +241,7 @@ function stopResize() {
 
 async function sendMessage() {
   const message = inputMessage.value.trim();
-  if (!message || isLoading.value) return;
+  if (!message || isLoading.value || !targetId.value) return;
 
   messages.value.push({
     id: 0,
@@ -242,16 +266,22 @@ async function sendMessage() {
   scrollToBottom();
 
   try {
-    const articleContent = props.articleContent ? props.articleContent.slice(0, 50000) : '';
+    const articleContent = props.articleContent || '';
     const requestBody: any = {
       session_id: currentSessionId.value,
-      article_id: props.article.id,
       messages: messages.value.slice(0, -1).slice(-10),
       is_first_message: isFirstMessage.value,
-      article_title: props.article.title,
-      article_url: props.article.url,
-      article_content: articleContent,
+      article_title:
+        props.cluster?.display_title || props.cluster?.merged_title || props.article?.title || '',
+      article_url: props.article?.url || '',
+      article_content: isClusterChat.value ? '' : articleContent,
     };
+
+    if (isClusterChat.value) {
+      requestBody.cluster_id = targetId.value;
+    } else {
+      requestBody.article_id = targetId.value;
+    }
 
     const response = await authFetch('/api/ai-chat/stream', {
       method: 'POST',
@@ -383,7 +413,7 @@ const currentSessionTitle = computed(() => {
       <div
         v-if="isOpen"
         ref="panelElement"
-        class="chat-panel fixed bottom-4 right-2 md:bottom-14 md:right-6 w-[calc(100%-1rem)] h-[70vh] md:w-[500px] md:h-[600px] bg-bg-primary border border-border rounded-xl shadow-2xl flex flex-col z-50"
+        class="chat-panel fixed bottom-14 right-2 md:right-6 w-[calc(100%-1rem)] h-[70vh] md:w-[500px] md:h-[600px] bg-bg-primary border border-border rounded-xl shadow-2xl flex flex-col z-50"
         :class="{ 'select-none': isResizing }"
       >
         <!-- Header -->

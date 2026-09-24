@@ -2,15 +2,24 @@
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { PhMagnifyingGlass, PhX, PhSparkle, PhSpinner, PhClock, PhStar } from '@phosphor-icons/vue';
-import type { Article } from '@/types/models';
+import type { Article, Cluster } from '@/types/models';
 import { authPost } from '@/shared/lib/authFetch';
 import { useArticleStore } from '@/features/article/store';
 
 const { t } = useI18n();
 const articleStore = useArticleStore();
 
+interface Props {
+  resultType?: 'articles' | 'clusters';
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  resultType: 'articles',
+});
+
 const emit = defineEmits<{
   search: [articles: Article[]];
+  clusterSearch: [clusters: Cluster[]];
   clear: [];
 }>();
 
@@ -23,7 +32,9 @@ const sortBy = ref<'relevance' | 'time'>('relevance');
 
 // Computed
 const canSearch = computed(() => searchQuery.value.trim().length > 0 && !isSearching.value);
-const canToggleSort = computed(() => hasResults.value && !isSearching.value);
+const canToggleSort = computed(
+  () => props.resultType === 'articles' && hasResults.value && !isSearching.value
+);
 
 // Methods
 async function performAISearch() {
@@ -36,21 +47,25 @@ async function performAISearch() {
     // Build request body with search query and current filters
     const requestBody: any = {
       query: searchQuery.value.trim(),
-      sort_by: sortBy.value,
+      result_type: props.resultType,
     };
 
-    // Add current filter parameters if they exist
-    if (articleStore.currentFilter) {
-      requestBody.filter = articleStore.currentFilter;
-    }
-    if (articleStore.currentFeedId) {
-      requestBody.feed_id = articleStore.currentFeedId;
-    }
-    if (articleStore.currentCategory !== null) {
-      requestBody.category = articleStore.currentCategory;
-    }
-    if (articleStore.showOnlyUnread) {
-      requestBody.show_only_unread = true;
+    // Cluster search intentionally searches the user's complete article corpus;
+    // feed filters and interest-vector ranking must not narrow or reorder it.
+    if (props.resultType === 'articles') {
+      requestBody.sort_by = sortBy.value;
+      if (articleStore.currentFilter) {
+        requestBody.filter = articleStore.currentFilter;
+      }
+      if (articleStore.currentFeedId) {
+        requestBody.feed_id = articleStore.currentFeedId;
+      }
+      if (articleStore.currentCategory !== null) {
+        requestBody.category = articleStore.currentCategory;
+      }
+      if (articleStore.showOnlyUnread) {
+        requestBody.show_only_unread = true;
+      }
     }
 
     const data = await authPost<any>('/api/ai/search', requestBody);
@@ -58,6 +73,39 @@ async function performAISearch() {
     if (!data.success) {
       errorMessage.value = data.error || t('aiSearch.searchFailed');
       window.showToast(errorMessage.value, 'error');
+      return;
+    }
+
+    if (props.resultType === 'clusters') {
+      const clusters: Cluster[] = (data.clusters || []).map((item: Record<string, unknown>) => ({
+        id: item.id as number,
+        user_id: item.user_id as number,
+        status: item.status as string,
+        merged_title: item.merged_title as string,
+        display_title: item.display_title as string,
+        merged_summary: item.merged_summary as string,
+        merged_content: '',
+        image_url: item.image_url as string,
+        article_count: item.article_count as number,
+        created_at: item.created_at as string,
+        updated_at: item.updated_at as string,
+        is_read: item.is_read as boolean,
+        is_favorite: item.is_favorite as boolean,
+        is_read_later: item.is_read_later as boolean,
+        is_hidden: item.is_hidden as boolean,
+        feed_titles: item.feed_titles as string[],
+        authors: item.authors as string[],
+        search_score: item.search_score as number,
+        latest_published_at: item.latest_published_at as string,
+      }));
+
+      hasResults.value = true;
+      emit('clusterSearch', clusters);
+      if (clusters.length === 0) {
+        window.showToast(t('aiSearch.noResults'), 'info');
+      } else {
+        window.showToast(t('aiSearch.foundResults', { count: clusters.length }), 'success');
+      }
       return;
     }
 
@@ -168,6 +216,7 @@ function handleKeyDown(event: KeyboardEvent) {
 
       <!-- Sort Toggle Button -->
       <button
+        v-if="resultType === 'articles'"
         class="sort-toggle-button flex items-center gap-1 px-2 py-2 text-sm transition-colors flex-shrink-0"
         :class="[
           canToggleSort

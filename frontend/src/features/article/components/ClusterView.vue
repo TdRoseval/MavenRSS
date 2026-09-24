@@ -197,6 +197,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
   clusterStore.stopAIProcessingPolling();
+  clusterStore.clearAISearchResults();
 });
 
 watch(
@@ -242,6 +243,15 @@ watch(
 watch(
   () => [articleStore.currentFilter, articleStore.currentFeedId, articleStore.currentCategory],
   () => {
+    // Cluster AI search deliberately ignores the ordinary article-list
+    // filters, so changing those filters must not discard its results. Daily
+    // recommendations are a separate view and should clear the search.
+    if (clusterStore.isAISearchActive && !isDailyRecommendationMode.value) {
+      clusterStore.currentClusterId = null;
+      mobileView.value = 'list';
+      return;
+    }
+
     clusterStore.clearData();
     clusterStore.currentClusterId = null;
     mobileView.value = 'list';

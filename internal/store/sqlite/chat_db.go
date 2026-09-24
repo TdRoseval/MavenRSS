@@ -3,8 +3,127 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// ClusterChatContext is built only when a user opens a chat for a cluster.
+// It is deliberately not persisted: article contents remain the source of
+// truth and the context is assembled on demand for each chat request.
+type ClusterChatContext struct {
+	ClusterID       int64
+	UserID          int64
+	AnchorArticleID int64
+	Title           string
+	Summary         string
+	Content         string
+}
+
+// GetClusterChatContextForUser assembles all article context for a cluster.
+// Cached article content is used when available, with the article summary as
+// a fallback. The query is user-scoped so a cluster ID cannot expose another
+// user's articles through the chat endpoint.
+func (db *DB) GetClusterChatContextForUser(userID, clusterID int64) (*ClusterChatContext, error) {
+	rows, err := db.Query(`
+		SELECT c.id, c.user_id, COALESCE(c.merged_title, ''), COALESCE(c.merged_summary, ''),
+		       a.id, COALESCE(a.title, ''), COALESCE(a.url, ''), COALESCE(a.published_at, ''),
+		       COALESCE(f.title, ''), COALESCE(a.author, ''),
+		       COALESCE(ac.content, ''), COALESCE(a.summary, '')
+		FROM clusters c
+		JOIN articles a ON a.cluster_id = c.id AND a.user_id = c.user_id
+		LEFT JOIN feeds f ON f.id = a.feed_id AND f.user_id = a.user_id
+		LEFT JOIN article_contents ac ON ac.article_id = a.id
+		WHERE c.id = ? AND c.user_id = ?
+		ORDER BY a.published_at DESC, a.id DESC
+	`, clusterID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query cluster chat context: %w", err)
+	}
+	defer rows.Close()
+
+	var context ClusterChatContext
+	var builder strings.Builder
+	articleNumber := 0
+	for rows.Next() {
+		var (
+			clusterIDValue, clusterUserID, articleID                              int64
+			clusterTitle, clusterSummary, articleTitle, articleURL                string
+			articlePublishedAt, feedTitle, author, articleContent, articleSummary string
+		)
+		if err := rows.Scan(
+			&clusterIDValue,
+			&clusterUserID,
+			&clusterTitle,
+			&clusterSummary,
+			&articleID,
+			&articleTitle,
+			&articleURL,
+			&articlePublishedAt,
+			&feedTitle,
+			&author,
+			&articleContent,
+			&articleSummary,
+		); err != nil {
+			return nil, fmt.Errorf("scan cluster chat context: %w", err)
+		}
+
+		if articleNumber == 0 {
+			context.ClusterID = clusterIDValue
+			context.UserID = clusterUserID
+			context.AnchorArticleID = articleID
+			context.Title = clusterTitle
+			context.Summary = clusterSummary
+			builder.WriteString("Article cluster context\n")
+			if clusterTitle != "" {
+				builder.WriteString("Cluster title: ")
+				builder.WriteString(clusterTitle)
+				builder.WriteByte('\n')
+			}
+			if clusterSummary != "" {
+				builder.WriteString("Cluster summary: ")
+				builder.WriteString(clusterSummary)
+				builder.WriteString("\n\n")
+			}
+		}
+
+		articleNumber++
+		builder.WriteString("Article ")
+		builder.WriteString(fmt.Sprintf("%d", articleNumber))
+		builder.WriteString("\nTitle: ")
+		builder.WriteString(articleTitle)
+		builder.WriteString("\nURL: ")
+		builder.WriteString(articleURL)
+		if articlePublishedAt != "" {
+			builder.WriteString("\nPublished at: ")
+			builder.WriteString(articlePublishedAt)
+		}
+		if feedTitle != "" {
+			builder.WriteString("\nSource: ")
+			builder.WriteString(feedTitle)
+		}
+		if author != "" {
+			builder.WriteString("\nAuthor: ")
+			builder.WriteString(author)
+		}
+		builder.WriteString("\nContent:\n")
+		if strings.TrimSpace(articleContent) != "" {
+			builder.WriteString(articleContent)
+		} else {
+			builder.WriteString(articleSummary)
+		}
+		builder.WriteString("\n\n")
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate cluster chat context: %w", err)
+	}
+	if articleNumber == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	context.Content = strings.TrimSpace(builder.String())
+	return &context, nil
+}
 
 // ChatSession represents a chat session for an article
 type ChatSession struct {
@@ -36,6 +155,29 @@ func (db *DB) CreateChatSession(userID, articleID int64, title string) (int64, e
 		return 0, fmt.Errorf("failed to create chat session: %w", err)
 	}
 	return result.LastInsertId()
+}
+
+// CreateClusterChatSession anchors a cluster chat session to its newest
+// article so it can reuse the existing chat message/session tables. The
+// cluster ID is resolved on every chat request, so the full context is never
+// stored in the session.
+func (db *DB) CreateClusterChatSession(userID, clusterID int64, title string) (int64, error) {
+	var articleID int64
+	err := db.QueryRow(`
+		SELECT a.id
+		FROM clusters c
+		JOIN articles a ON a.cluster_id = c.id AND a.user_id = c.user_id
+		WHERE c.id = ? AND c.user_id = ?
+		ORDER BY a.published_at DESC, a.id DESC
+		LIMIT 1
+	`, clusterID, userID).Scan(&articleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, sql.ErrNoRows
+		}
+		return 0, fmt.Errorf("failed to resolve cluster anchor article: %w", err)
+	}
+	return db.CreateChatSession(userID, articleID, title)
 }
 
 // GetChatSession retrieves a chat session by ID
@@ -114,6 +256,48 @@ func (db *DB) GetChatSessionsByArticle(userID, articleID int64) ([]ChatSession, 
 		sessions = append(sessions, session)
 	}
 
+	return sessions, nil
+}
+
+// GetChatSessionsByCluster returns sessions anchored to any article in the
+// requested cluster. This preserves existing session storage while exposing a
+// cluster-scoped conversation list to the UI.
+func (db *DB) GetChatSessionsByCluster(userID, clusterID int64) ([]ChatSession, error) {
+	rows, err := db.Query(`
+		SELECT cs.id, cs.article_id, cs.title, cs.created_at, cs.updated_at,
+		       COALESCE(m.message_count, 0) as message_count
+		FROM chat_sessions cs
+		LEFT JOIN (
+			SELECT session_id, COUNT(*) as message_count
+			FROM chat_messages
+			GROUP BY session_id
+		) m ON m.session_id = cs.id
+		WHERE cs.user_id = ?
+		  AND EXISTS (
+			SELECT 1 FROM articles a
+			WHERE a.id = cs.article_id AND a.cluster_id = ? AND a.user_id = ?
+		  )
+		ORDER BY cs.updated_at DESC
+	`, userID, clusterID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster chat sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]ChatSession, 0)
+	for rows.Next() {
+		var session ChatSession
+		if err := rows.Scan(
+			&session.ID, &session.ArticleID, &session.Title,
+			&session.CreatedAt, &session.UpdatedAt, &session.MessageCount,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan cluster chat session: %w", err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate cluster chat sessions: %w", err)
+	}
 	return sessions, nil
 }
 

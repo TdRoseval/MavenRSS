@@ -154,6 +154,8 @@ type Cluster struct {
 	FeedTitles                []string  `json:"feed_titles,omitempty"`
 	Authors                   []string  `json:"authors,omitempty"`
 	Articles                  []Article `json:"articles,omitempty"`
+	SearchScore               float64   `json:"search_score,omitempty"`
+	LatestPublishedAt         time.Time `json:"latest_published_at,omitempty"`
 }
 
 type ClusterBatchSnapshot struct {

@@ -11,6 +11,7 @@ import {
   PhLightning,
 } from '@phosphor-icons/vue';
 import ClusterItem from './ClusterItem.vue';
+import AISearchBar from './AISearchBar.vue';
 import { useSettings } from '@/composables/core/useSettings';
 import type { Cluster, DailyRecommendationItem } from '@/types/models';
 import { useClusterStore } from '@/stores/cluster';
@@ -54,13 +55,17 @@ const sidebarToggleLabel = computed(() =>
 );
 
 const temporarilyKeptClusterIds = ref<Set<number>>(new Set());
+const isAISearchEnabled = computed(() => settings.value.ai_search_enabled);
+const isAISearchActive = computed(() => clusterStore.isAISearchActive);
 
 const displayedClusters = computed<Cluster[]>(() => {
-  const source = isDailyRecommendationMode.value
-    ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
-    : clusterStore.clusters;
+  const source = isAISearchActive.value
+    ? clusterStore.aiSearchResults
+    : isDailyRecommendationMode.value
+      ? clusterStore.dailyRecommendations.map((item: DailyRecommendationItem) => item.cluster)
+      : clusterStore.clusters;
 
-  if (!articleStore.showOnlyUnread) {
+  if (isAISearchActive.value || !articleStore.showOnlyUnread) {
     return source;
   }
 
@@ -131,6 +136,7 @@ function setupLoadMoreObserver(): void {
   disconnectLoadMoreObserver();
 
   if (
+    isAISearchActive.value ||
     isDailyRecommendationMode.value ||
     !clusterStore.hasMore ||
     !listRef.value ||
@@ -170,6 +176,7 @@ async function resetListPosition(): Promise<void> {
 
 async function maybeLoadMoreIfNeeded(): Promise<void> {
   if (
+    isAISearchActive.value ||
     isDailyRecommendationMode.value ||
     !listRef.value ||
     clusterStore.isLoading ||
@@ -240,7 +247,13 @@ watch(
 );
 
 watch(
-  () => [listRef.value, loadMoreSentinelRef.value, isDailyRecommendationMode.value, clusterStore.hasMore],
+  () => [
+    listRef.value,
+    loadMoreSentinelRef.value,
+    isDailyRecommendationMode.value,
+    isAISearchActive.value,
+    clusterStore.hasMore,
+  ],
   async () => {
     await nextTick();
     setupLoadMoreObserver();
@@ -281,6 +294,17 @@ function selectCluster(cluster: Cluster): void {
   }
 }
 
+function handleAISearchResults(clusters: Cluster[]): void {
+  clusterStore.setAISearchResults(clusters);
+  void resetListPosition();
+}
+
+function handleAISearchClear(): void {
+  clusterStore.clearAISearchResults();
+  void resetListPosition();
+  void clusterStore.fetchClusters(1);
+}
+
 const SCROLL_THRESHOLD = 400;
 
 let scrollRAF: number | null = null;
@@ -291,7 +315,7 @@ function handleScroll(e: Event): void {
   // Coalesce virtual-scroll state into one update per animation frame instead
   // of writing reactive refs on every scroll event.
   if (scrollRAF == null) {
-    scrollRAF = requestAnimationFrame(() => {
+    scrollRAF = window.requestAnimationFrame(() => {
       scrollRAF = null;
       scrollTop.value = target.scrollTop;
       containerHeight.value = target.clientHeight;
@@ -642,6 +666,13 @@ watch(
         </div>
       </div>
 
+      <AISearchBar
+        v-if="isAISearchEnabled && !isDailyRecommendationMode"
+        result-type="clusters"
+        @cluster-search="handleAISearchResults"
+        @clear="handleAISearchClear"
+      />
+
       <div v-if="isDailyRecommendationMode" class="flex flex-col sm:flex-row gap-2 sm:items-center">
         <select
           v-model="selectedRecommendationDate"
@@ -771,16 +802,20 @@ watch(
       </div>
       <h3 class="text-lg font-medium text-text-primary mb-2">
         {{
-          isDailyRecommendationMode
-            ? t('article.cluster.dailyRecommendationEmptyTitle')
-            : t('article.cluster.emptyTitle')
+          isAISearchActive
+            ? t('aiSearch.noResults')
+            : isDailyRecommendationMode
+              ? t('article.cluster.dailyRecommendationEmptyTitle')
+              : t('article.cluster.emptyTitle')
         }}
       </h3>
       <p class="text-sm max-w-[250px]">
         {{
-          isDailyRecommendationMode
-            ? t('article.cluster.dailyRecommendationEmptyDescription')
-            : t('article.cluster.emptyDescription')
+          isAISearchActive
+            ? t('aiSearch.noResults')
+            : isDailyRecommendationMode
+              ? t('article.cluster.dailyRecommendationEmptyDescription')
+              : t('article.cluster.emptyDescription')
         }}
       </p>
     </div>

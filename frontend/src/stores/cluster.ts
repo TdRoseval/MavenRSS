@@ -28,6 +28,8 @@ export const useClusterStore = defineStore('cluster', () => {
   const DEFAULT_PAGE_SIZE = 20;
   const REALTIME_BATCH_SIZE = 30;
   const clusters = ref<Cluster[]>([]);
+  const aiSearchResults = ref<Cluster[]>([]);
+  const isAISearchActive = ref(false);
   const dailyRecommendations = ref<DailyRecommendationItem[]>([]);
   const dailyRecommendationDates = ref<string[]>([]);
   const selectedRecommendationDate = ref('');
@@ -106,6 +108,18 @@ export const useClusterStore = defineStore('cluster', () => {
     return response.clusters || [];
   }
 
+  function setAISearchResults(results: Cluster[]): void {
+    aiSearchResults.value = results;
+    isAISearchActive.value = true;
+    currentClusterId.value = null;
+    hasMore.value = false;
+  }
+
+  function clearAISearchResults(): void {
+    aiSearchResults.value = [];
+    isAISearchActive.value = false;
+  }
+
   function buildFetchContextKey(): string {
     const articleStore = useArticleStore();
 
@@ -115,7 +129,7 @@ export const useClusterStore = defineStore('cluster', () => {
       category: articleStore.currentCategory ?? null,
       activeFilters: activeFilters.value.map((filter) => ({
         field: filter.field,
-        type: filter.type,
+        type: filter.field,
         operator: filter.operator,
         value: filter.value,
         logic: filter.logic || 'and',
@@ -227,8 +241,8 @@ export const useClusterStore = defineStore('cluster', () => {
       if (activeFilters.value.length > 0) {
         const filterParams = new URLSearchParams();
         activeFilters.value.forEach((filter, index) => {
-          filterParams.append(`f${index}_type`, filter.type);
-          filterParams.append(`f${index}_op`, filter.operator);
+          filterParams.append(`f${index}_type`, filter.field);
+          filterParams.append(`f${index}_op`, filter.operator ?? '');
           filterParams.append(`f${index}_value`, filter.value);
           filterParams.append(`f${index}_logic`, filter.logic || 'and');
         });
@@ -412,6 +426,11 @@ export const useClusterStore = defineStore('cluster', () => {
     )?.cluster;
     if (recommendationCluster) {
       Object.assign(recommendationCluster, updates);
+    }
+
+    const searchCluster = aiSearchResults.value.find((item) => item.id === clusterId);
+    if (searchCluster) {
+      Object.assign(searchCluster, updates);
     }
   }
 
@@ -637,6 +656,8 @@ export const useClusterStore = defineStore('cluster', () => {
 
   function clearData() {
     clusters.value = [];
+    aiSearchResults.value = [];
+    isAISearchActive.value = false;
     dailyRecommendations.value = [];
     dailyRecommendationDates.value = [];
     selectedRecommendationDate.value = '';
@@ -659,6 +680,8 @@ export const useClusterStore = defineStore('cluster', () => {
 
   return {
     clusters,
+    aiSearchResults,
+    isAISearchActive,
     dailyRecommendations,
     dailyRecommendationDates,
     selectedRecommendationDate,
@@ -698,6 +721,8 @@ export const useClusterStore = defineStore('cluster', () => {
     toggleClusterReadLater,
     reportClusterClick,
     updateClusterState,
+    setAISearchResults,
+    clearAISearchResults,
     markAllAsRead,
     refreshCurrentCluster,
     setActiveFilters,
