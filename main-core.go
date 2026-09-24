@@ -30,6 +30,7 @@ import (
 	"MavenRSS/internal/routes"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
 
@@ -55,10 +56,8 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 
-var debugLogging = os.Getenv("MRRSS_DEBUG") != ""
-
 func debugLog(format string, args ...interface{}) {
-	if debugLogging {
+	if utils.DebugLoggingEnabled() {
 		log.Printf(format, args...)
 	}
 }
@@ -308,13 +307,14 @@ func main() {
 		logPath = "debug.log"
 	}
 
-	// In server mode, log to both stdout and file
-	f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	// In server mode, log to both stdout and a bounded file. Access logging is
+	// separately controlled by MRRSS_ACCESS_LOG; debug logging must not imply
+	// that every HTTP poll is persisted indefinitely.
+	f, err := utils.NewRotatingFileFromEnv(logPath, false)
 	if err != nil {
 		log.SetOutput(os.Stdout) // Fallback
 	} else {
-		// Note: we don't close f here as it needs to stay open for logging
-		// It will be closed by OS on process exit
+		defer f.Close()
 		log.SetOutput(io.MultiWriter(os.Stdout, f))
 	}
 

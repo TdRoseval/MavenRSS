@@ -105,14 +105,14 @@ func (f *Fetcher) AddRSSHubSubscriptionWithUserID(route string, category string,
 	useProxy := proxyEnabled == "true"
 
 	feed := &models.Feed{
-		Title:            title,
-		URL:              url,
-		Link:             client.BuildURL(route), // Store the actual RSSHub URL as link
-		Description:      fmt.Sprintf("RSSHub route: %s", route),
-		Category:         category,
-		ProxyEnabled:     useProxy,
-		ProxyURL:         proxyURL,
-		UserID:           userID,
+		Title:             title,
+		URL:               url,
+		Link:              client.BuildURL(route), // Store the actual RSSHub URL as link
+		Description:       fmt.Sprintf("RSSHub route: %s", route),
+		Category:          category,
+		ProxyEnabled:      useProxy,
+		ProxyURL:          proxyURL,
+		UserID:            userID,
 		TranslateArticles: translateArticles,
 	}
 
@@ -1372,12 +1372,15 @@ func (f *Fetcher) parseFeedWithJavaScript(ctx context.Context, feedURL string, p
 		}
 	}
 
-	// Log first 5000 characters of the content for debugging
-	if len(pageContent) > 5000 {
-		utils.DebugLog("parseFeedWithJavaScript: First 500 chars of page content: %s...", pageContent[:5000])
-	} else {
-		utils.DebugLog("parseFeedWithJavaScript: Full page content: %s", pageContent)
+	// Never persist a full browser-rendered page in debug.log. A failed feed
+	// can return a very large HTML document, and this path is called for every
+	// refresh. Keep a small diagnostic preview while always recording its size.
+	const maxDebugContentPreview = 1024
+	preview := pageContent
+	if len(preview) > maxDebugContentPreview {
+		preview = preview[:maxDebugContentPreview]
 	}
+	utils.DebugLog("parseFeedWithJavaScript: page content length: %d, preview: %s", len(pageContent), preview)
 
 	// Try to parse the resulting content as RSS/Atom XML
 	utils.DebugLog("parseFeedWithJavaScript: Attempting to parse content as RSS/Atom")
@@ -1390,11 +1393,11 @@ func (f *Fetcher) parseFeedWithJavaScript(ctx context.Context, feedURL string, p
 		hasRSS := strings.Contains(pageContent, "<rss") || strings.Contains(pageContent, "<feed")
 		hasXML := strings.Contains(pageContent, "<?xml")
 		utils.DebugLog("parseFeedWithJavaScript: Content analysis - hasRSS: %v, hasXML: %v", hasRSS, hasXML)
-		if len(pageContent) > 200 {
-			utils.DebugLog("parseFeedWithJavaScript: First 200 chars of failed content: %s", pageContent[:200])
-		} else {
-			utils.DebugLog("parseFeedWithJavaScript: Full failed content: %s", pageContent)
+		failedPreview := pageContent
+		if len(failedPreview) > 200 {
+			failedPreview = failedPreview[:200]
 		}
+		utils.DebugLog("parseFeedWithJavaScript: failed content preview: %s", failedPreview)
 		return nil, fmt.Errorf("failed to parse content after JavaScript execution: %w", err)
 	}
 

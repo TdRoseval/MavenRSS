@@ -795,6 +795,36 @@ func TestGetProcessingStatusDoesNotEnableFreezeFromRawToggleAlone(t *testing.T) 
 	}
 }
 
+func TestGetProcessingStatusDoesNotWriteRepeatedIdleState(t *testing.T) {
+	db := newAIEnhancedModeTestDB(t)
+	mustEnableAIEnhancedProcessing(t, db, 1)
+	manager := &AIEnhancedManager{
+		db:                        db,
+		taskChan:                  make(chan *AIEnhancedTask, 10),
+		queuedTasksByUser:         make(map[int64]int),
+		activeWorkerTasksByUser:   make(map[int64]int64),
+		activeAsyncWorkByUser:     make(map[int64]int64),
+		recoveryInProgress:        make(map[int64]bool),
+		lastRecoveryAttemptByUser: make(map[int64]time.Time),
+		clusterPipelineRunning:    make(map[int64]bool),
+		clusterPipelineQueued:     make(map[int64]bool),
+		recommendationRunning:     make(map[int64]bool),
+		pendingRecommendationDate: make(map[int64]string),
+		pendingRecommendationWait: make(map[int64]bool),
+	}
+
+	beforePoll := sqlite.SettingsRevision()
+	manager.GetProcessingStatus(1)
+	afterFirstPoll := sqlite.SettingsRevision()
+	if afterFirstPoll != beforePoll {
+		t.Fatalf("SettingsRevision() changed during an initially idle poll: got %d, want %d", afterFirstPoll, beforePoll)
+	}
+	manager.GetProcessingStatus(1)
+	if got := sqlite.SettingsRevision(); got != afterFirstPoll {
+		t.Fatalf("SettingsRevision() changed during repeated idle poll: got %d, want %d", got, afterFirstPoll)
+	}
+}
+
 func TestBatchProcessExistingArticlesSchedulesClusterPipelineWithoutRequeueingCompleteArticle(t *testing.T) {
 	db := newAIEnhancedModeTestDB(t)
 

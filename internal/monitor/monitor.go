@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"MavenRSS/internal/utils"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
 	"MavenRSS/internal/version"
@@ -62,7 +63,7 @@ func NewMonitorClient(apiURL, appID string) *MonitorClient {
 	}
 
 	// Check if monitoring should be enabled (disabled in dev mode)
-	devMode := os.Getenv("MRRSS_DEBUG") != ""
+	devMode := utils.DebugLoggingEnabled()
 	enabled := !devMode
 
 	return &MonitorClient{

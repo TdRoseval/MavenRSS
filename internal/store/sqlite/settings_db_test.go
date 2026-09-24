@@ -135,6 +135,38 @@ func TestSettingsRevisionIncrementsOnWrite(t *testing.T) {
 	}
 }
 
+func TestSetUserSettingsForUserBackgroundIfChangedAvoidsNoopWrites(t *testing.T) {
+	db := setupTestDB(t)
+
+	values := map[string]string{
+		"_test_snapshot": "1|2|3",
+		"_test_status":   "false",
+	}
+	before := dbpkg.SettingsRevision()
+	changed, err := db.SetUserSettingsForUserBackgroundIfChanged(1, values)
+	if err != nil {
+		t.Fatalf("initial conditional settings write error = %v", err)
+	}
+	if changed != len(values) {
+		t.Fatalf("initial changed count = %d, want %d", changed, len(values))
+	}
+	afterInitial := dbpkg.SettingsRevision()
+	if afterInitial <= before {
+		t.Fatalf("SettingsRevision() = %d after initial write, want > %d", afterInitial, before)
+	}
+
+	changed, err = db.SetUserSettingsForUserBackgroundIfChanged(1, values)
+	if err != nil {
+		t.Fatalf("noop conditional settings write error = %v", err)
+	}
+	if changed != 0 {
+		t.Fatalf("noop changed count = %d, want 0", changed)
+	}
+	if got := dbpkg.SettingsRevision(); got != afterInitial {
+		t.Fatalf("SettingsRevision() changed on noop write: got %d, want %d", got, afterInitial)
+	}
+}
+
 func TestDBConnectionPoolSize(t *testing.T) {
 	db, err := dbpkg.NewDB(":memory:")
 	if err != nil {

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"MavenRSS/internal/utils"
 )
 
 // DebugTimer is a simple timer for performance debugging
@@ -74,7 +76,7 @@ func (dt *DebugTimer) LogWithTime(format string, args ...interface{}) {
 
 // debugEnabled controls whether feed fetching debug logging is enabled
 // Set to true to enable detailed performance logging
-var debugEnabled = true
+var debugEnabled = utils.DebugLoggingEnabled()
 
 // shouldEnableDebugLogging checks if debug logging should be enabled for this feed
 func shouldEnableDebugLogging(feedURL string) bool {

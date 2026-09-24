@@ -57,6 +57,8 @@ type DB struct {
 	inMemory                    bool
 	clusterFeedFirstPageCache   map[int64]map[string]ClusterFeedFirstPageCacheEntry
 	clusterFeedFirstPageCacheMu sync.RWMutex
+	maintenanceMu               sync.Mutex
+	lastVacuumAt                time.Time
 }
 
 func md5Hex(input string) string {

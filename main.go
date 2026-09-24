@@ -10,7 +10,6 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -28,14 +27,13 @@ import (
 	"MavenRSS/internal/routes"
 	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/translation"
+	"MavenRSS/internal/utils"
 	"MavenRSS/internal/utils/fileutil"
 	"MavenRSS/internal/utils/httputil"
 )
 
-var debugLogging = os.Getenv("MRRSS_DEBUG") != ""
-
 func debugLog(format string, args ...interface{}) {
-	if debugLogging {
+	if utils.DebugLoggingEnabled() {
 		log.Printf(format, args...)
 	}
 }
@@ -105,8 +103,10 @@ func main() {
 		logPath = "debug.log"
 	}
 
-	// Clear previous log by opening in truncate mode
-	f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	// Keep desktop logs bounded as well. Truncating on startup preserves the
+	// historical desktop behavior while the size limit protects a long-running
+	// process from producing an unbounded file.
+	f, err := utils.NewRotatingFileFromEnv(logPath, true)
 	if err != nil {
 		log.Printf("Failed to open log file: %v", err)
 		// Fallback to stdout

@@ -5,9 +5,10 @@ package routes
 import (
 	"net/http"
 
-	"MavenRSS/internal/auth"
 	"MavenRSS/internal/api/core"
+	"MavenRSS/internal/auth"
 	"MavenRSS/internal/middleware"
+	"MavenRSS/internal/utils"
 )
 
 // Config contains options for route registration.
@@ -53,7 +54,10 @@ func DefaultConfig() Config {
 // ServerConfig returns a configuration suitable for server mode.
 func ServerConfig(jwtManager *auth.JWTManager) Config {
 	return Config{
-		EnableLogging:         true,
+		// Access logging is opt-in. The server is commonly deployed with a
+		// frontend that polls status endpoints frequently, so persisting every
+		// request by default can grow logs rapidly.
+		EnableLogging:         utils.AccessLoggingEnabled(),
 		EnableRecovery:        true,
 		EnableCORS:            true,
 		EnableCompression:     true,

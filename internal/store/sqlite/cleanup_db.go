@@ -74,7 +74,9 @@ func (db *DB) CleanupOldArticles(userID int64) (int64, error) {
 	_, _ = db.CleanupOldArticleContents(maxAgeDays, userID)
 
 	// Run VACUUM to reclaim space
-	_, _ = db.Exec("VACUUM")
+	if err := db.Vacuum(); err != nil {
+		log.Printf("Cleanup VACUUM failed: %v", err)
+	}
 
 	return totalDeleted, nil
 }
@@ -158,7 +160,9 @@ func (db *DB) CleanupArticleCachePreservingFavorites(userID int64) (ManualArticl
 		stats.DeletedArticles += clusterArticleCount
 	}
 
-	_, _ = db.Exec("VACUUM")
+	if err := db.Vacuum(); err != nil {
+		log.Printf("Cleanup VACUUM failed: %v", err)
+	}
 	return stats, nil
 }
 
@@ -562,7 +566,9 @@ func (db *DB) CleanupUnimportantArticles(userID int64) (int64, error) {
 	_, _ = db.CleanupOldArticleContents(7, userID)
 
 	// Run VACUUM to reclaim space
-	_, _ = db.Exec("VACUUM")
+	if err := db.Vacuum(); err != nil {
+		log.Printf("Cleanup VACUUM failed: %v", err)
+	}
 
 	return count, nil
 }
@@ -865,8 +871,12 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 	}
 
 	if totalDeleted > 0 {
-		_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
-		_, _ = db.Exec("VACUUM")
+		if _, err := db.CheckpointWAL("TRUNCATE"); err != nil {
+			log.Printf("Size-based cleanup WAL checkpoint failed: %v", err)
+		}
+		if err := db.Vacuum(); err != nil {
+			log.Printf("Size-based cleanup VACUUM failed: %v", err)
+		}
 		finalUsedMB, _ := db.GetStorageUsageMB(userID)
 		finalAllocatedMB, _ := db.GetDatabaseSizeMB()
 		log.Printf("Size-based cleanup completed: removed %d articles, final used size: %.2f MB, allocated size after VACUUM: %.2f MB", totalDeleted, finalUsedMB, finalAllocatedMB)
@@ -1069,7 +1079,9 @@ func (db *DB) CleanupOldArticlesLayered() (int64, error) {
 
 	// Run VACUUM to reclaim space if we deleted anything
 	if totalDeleted > 0 {
-		_, _ = db.Exec("VACUUM")
+		if err := db.Vacuum(); err != nil {
+			log.Printf("Cleanup VACUUM failed: %v", err)
+		}
 	}
 
 	return totalDeleted, nil

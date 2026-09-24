@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"sort"
 
 	"MavenRSS/internal/crypto"
 	"fmt"
@@ -90,6 +91,55 @@ func (db *DB) SetSettingForUserBackground(userID int64, key, value string) error
 	bumpSettingsRevision()
 	_, err := db.execWithPriority(writePriorityBackground, "INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)", userID, key, value)
 	return err
+}
+
+// SetUserSettingsForUserBackgroundIfChanged stores a group of user settings in
+// one short background-priority transaction. Existing rows are updated only
+// when their value changes, so read-only status polling does not create SQLite
+// writes or churn the user_settings row identity.
+//
+// The returned count is the number of rows inserted or changed.
+func (db *DB) SetUserSettingsForUserBackgroundIfChanged(userID int64, values map[string]string) (int, error) {
+	db.WaitForReady()
+	if userID <= 0 || len(values) == 0 {
+		return 0, nil
+	}
+
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	changed := 0
+	err := db.WithBackgroundWriteTx(nil, func(tx *sql.Tx) error {
+		for _, key := range keys {
+			result, err := tx.Exec(`
+				INSERT INTO user_settings (user_id, key, value)
+				VALUES (?, ?, ?)
+				ON CONFLICT(user_id, key) DO UPDATE SET
+					value = excluded.value,
+					updated_at = CURRENT_TIMESTAMP
+				WHERE user_settings.value IS NOT excluded.value`,
+				userID, key, values[key])
+			if err != nil {
+				return err
+			}
+			rowsChanged, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			changed += int(rowsChanged)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	if changed > 0 {
+		bumpSettingsRevision()
+	}
+	return changed, nil
 }
 
 // GetEncryptedSetting retrieves and decrypts a sensitive setting value.
@@ -229,13 +279,13 @@ func (db *DB) SetEncryptedSettingForUser(userID int64, key, value string) error 
 // CopyUserSettings copies all user settings from one user to another.
 func (db *DB) CopyUserSettings(fromUserID, toUserID int64, tx *sql.Tx) error {
 	db.WaitForReady()
-	
+
 	// First delete any existing settings for the target user
 	_, err := tx.Exec(`DELETE FROM user_settings WHERE user_id = ?`, toUserID)
 	if err != nil {
 		return err
 	}
-	
+
 	// Query all settings from the source user, without selecting "key" by name
 	// Use SELECT * and scan by position
 	rows, err := tx.Query(`SELECT * FROM user_settings WHERE user_id = ?`, fromUserID)
@@ -243,12 +293,12 @@ func (db *DB) CopyUserSettings(fromUserID, toUserID int64, tx *sql.Tx) error {
 		return err
 	}
 	defer rows.Close()
-	
+
 	columns, err := rows.Columns()
 	if err != nil {
 		return err
 	}
-	
+
 	for rows.Next() {
 		// Create a slice to hold all values
 		values := make([]interface{}, len(columns))
@@ -256,17 +306,17 @@ func (db *DB) CopyUserSettings(fromUserID, toUserID int64, tx *sql.Tx) error {
 		for i := range values {
 			valuePtrs[i] = &values[i]
 		}
-		
+
 		err = rows.Scan(valuePtrs...)
 		if err != nil {
 			return err
 		}
-		
+
 		// Extract the values we need by position
 		// Column order: id, user_id, key, value, created_at, updated_at
 		settingKey := ""
 		settingValue := ""
-		
+
 		// Try to convert the values
 		for i, v := range values {
 			switch i {
@@ -284,7 +334,7 @@ func (db *DB) CopyUserSettings(fromUserID, toUserID int64, tx *sql.Tx) error {
 				}
 			}
 		}
-		
+
 		// If we have a key and value, insert it directly using the transaction
 		if settingKey != "" {
 			// Use INSERT OR REPLACE directly on the transaction
@@ -295,6 +345,6 @@ func (db *DB) CopyUserSettings(fromUserID, toUserID int64, tx *sql.Tx) error {
 			}
 		}
 	}
-	
+
 	return rows.Err()
 }

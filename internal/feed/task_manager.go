@@ -2,6 +2,7 @@ package feed
 
 import (
 	"MavenRSS/internal/models"
+	"MavenRSS/internal/utils"
 	"context"
 	"fmt"
 	"log"
@@ -60,7 +61,7 @@ type TaskManager struct {
 	statsMutex    sync.RWMutex
 
 	// Task logging
-	logFile    *os.File
+	logFile    *utils.RotatingFile
 	logMutex   sync.Mutex
 	logEnabled bool
 }
@@ -1016,8 +1017,8 @@ func (tm *TaskManager) GetProgressWithStatsForUser(userID int64) ProgressWithSta
 			IsRunning: userIsRunning,
 			Errors:    filteredErrors,
 		},
-		PoolTaskCount:     poolTaskCount,
-		QueueTaskCount:    queueTaskCount,
+		PoolTaskCount:  poolTaskCount,
+		QueueTaskCount: queueTaskCount,
 		// Immediate article-content backfills are not part of the per-user feed refresh UI.
 		ArticleClickCount: 0,
 	}
@@ -1166,7 +1167,7 @@ func (tm *TaskManager) initTaskLog() {
 
 	// Open log file with truncate flag to clear previous logs
 	logPath := filepath.Join(logDir, "tasks.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	logFile, err := utils.NewRotatingFileFromEnv(logPath, true)
 	if err != nil {
 		log.Printf("Failed to open task log file: %v", err)
 		return
@@ -1201,7 +1202,7 @@ func (tm *TaskManager) logOperation(operation string, feedName string) {
 	tm.logMutex.Lock()
 	defer tm.logMutex.Unlock()
 
-	if _, err := tm.logFile.WriteString(logEntry); err != nil {
+	if _, err := tm.logFile.Write([]byte(logEntry)); err != nil {
 		log.Printf("Failed to write to task log: %v", err)
 	}
 }

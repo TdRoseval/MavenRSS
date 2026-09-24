@@ -3118,32 +3118,45 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 		return
 	}
 
-	if status.PendingArticles == 0 && status.PendingMergeClusters == 0 && status.PendingEmbedClusters == 0 {
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingSnapshotSettingKey, "")
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, "")
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "false")
-		return
-	}
-
-	snapshot := m.buildProcessingSnapshot(*status)
 	freezeSuspended, _ := m.db.GetSettingForUser(userID, aiProcessingFreezeSuspendedSettingKey)
 	lastSnapshot, _ := m.db.GetSettingForUser(userID, aiProcessingSnapshotSettingKey)
 	lastProgressAtStr, _ := m.db.GetSettingForUser(userID, aiProcessingLastProgressAtSettingKey)
 
+	if status.PendingArticles == 0 && status.PendingMergeClusters == 0 && status.PendingEmbedClusters == 0 {
+		// Status is polled frequently while idle. Only clear stale values once;
+		// repeated reads must remain read-only and must not append to SQLite WAL.
+		if lastSnapshot == "" && lastProgressAtStr == "" && freezeSuspended != "true" {
+			return
+		}
+		_, _ = m.db.SetUserSettingsForUserBackgroundIfChanged(userID, map[string]string{
+			aiProcessingSnapshotSettingKey:        "",
+			aiProcessingLastProgressAtSettingKey:  "",
+			aiProcessingFreezeSuspendedSettingKey: "false",
+		})
+		return
+	}
+
+	snapshot := m.buildProcessingSnapshot(*status)
+
 	if lastSnapshot == "" || lastSnapshot != snapshot {
 		now := time.Now()
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingSnapshotSettingKey, snapshot)
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
-		if freezeSuspended != "true" {
-			_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "false")
+		values := map[string]string{
+			aiProcessingSnapshotSettingKey:       snapshot,
+			aiProcessingLastProgressAtSettingKey: now.Format(time.RFC3339Nano),
 		}
+		if freezeSuspended != "true" {
+			values[aiProcessingFreezeSuspendedSettingKey] = "false"
+		}
+		_, _ = m.db.SetUserSettingsForUserBackgroundIfChanged(userID, values)
 		status.LastProgressAt = now.Format(time.RFC3339)
 		return
 	}
 
 	if lastProgressAtStr == "" {
 		now := time.Now()
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
+		_, _ = m.db.SetUserSettingsForUserBackgroundIfChanged(userID, map[string]string{
+			aiProcessingLastProgressAtSettingKey: now.Format(time.RFC3339Nano),
+		})
 		status.LastProgressAt = now.Format(time.RFC3339)
 		return
 	}
@@ -3151,7 +3164,9 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 	lastProgressAt, err := time.Parse(time.RFC3339Nano, lastProgressAtStr)
 	if err != nil {
 		now := time.Now()
-		_ = m.db.SetSettingForUserBackground(userID, aiProcessingLastProgressAtSettingKey, now.Format(time.RFC3339Nano))
+		_, _ = m.db.SetUserSettingsForUserBackgroundIfChanged(userID, map[string]string{
+			aiProcessingLastProgressAtSettingKey: now.Format(time.RFC3339Nano),
+		})
 		status.LastProgressAt = now.Format(time.RFC3339)
 		return
 	}
@@ -3165,7 +3180,9 @@ func (m *AIEnhancedManager) updateFreezeSuspensionState(userID int64, status *AI
 
 	if freezeSuspended == "true" || stalledFor >= aiProcessingStaleTimeout {
 		if freezeSuspended != "true" && stalledFor >= aiProcessingStaleTimeout {
-			_ = m.db.SetSettingForUserBackground(userID, aiProcessingFreezeSuspendedSettingKey, "true")
+			_, _ = m.db.SetUserSettingsForUserBackgroundIfChanged(userID, map[string]string{
+				aiProcessingFreezeSuspendedSettingKey: "true",
+			})
 			log.Printf("AI processing freeze suspended for user %d after %s without progress", userID, stalledFor.Round(time.Second))
 		}
 		status.IsStale = true
