@@ -143,6 +143,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main
+    data-article-detail
     :class="[
       'flex-1 bg-bg-primary flex flex-col h-full absolute w-full md:static md:w-auto z-30 transition-transform duration-300',
       article ? 'translate-x-0 md:translate-x-0' : 'translate-x-full',

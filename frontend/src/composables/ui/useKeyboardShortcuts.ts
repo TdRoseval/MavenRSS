@@ -283,22 +283,6 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     }
   }
 
-  // Check if an article detail panel is open and scrollable
-  function isArticleDetailOpen(): boolean {
-    // Check if there's a current article selected
-    if (!articleStore.currentArticleId) return false;
-
-    // Check if the article detail panel is visible
-    const articleDetail = document.querySelector('main[class*="flex-1 bg-bg-primary"]');
-    if (!articleDetail) return false;
-
-    // Check if the article detail has scrollable content
-    const scrollableContent = articleDetail.querySelector('.overflow-y-auto');
-    if (!scrollableContent) return false;
-
-    return true;
-  }
-
   // Check if currently viewing original webpage (iframe mode)
   function isWebpageViewMode(): boolean {
     const iframe = document.querySelector('iframe[src*="/api/webpage/proxy"]');
@@ -309,11 +293,22 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
   function getActiveDetailMain(): HTMLElement | null {
     if (isClusterMode()) {
       if (!clusterStore.currentClusterId) return null;
-      return document.querySelector<HTMLElement>('main[class*="min-w-0"]');
+      return document.querySelector<HTMLElement>('main[data-cluster-detail]');
     }
 
     if (!articleStore.currentArticleId) return null;
-    return document.querySelector<HTMLElement>('main[class*="flex-1 bg-bg-primary"]');
+    return document.querySelector<HTMLElement>('main[data-article-detail]');
+  }
+
+  // Both regular article details and AI cluster details expose one scrollable
+  // content container. Keep the lookup in one place so keyboard scrolling does
+  // not depend on the detail view's internal layout classes.
+  function getActiveDetailContent(): HTMLElement | null {
+    return getActiveDetailMain()?.querySelector<HTMLElement>('.overflow-y-auto') ?? null;
+  }
+
+  function isDetailOpen(): boolean {
+    return getActiveDetailContent() !== null;
   }
 
   // Tab key: cycle focus through visible interactive elements inside the open
@@ -370,12 +365,9 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
     items[nextIndex].focus({ preventScroll: false });
   }
 
-  // Scroll the article detail panel
-  function scrollArticleDetail(direction: 'up' | 'down' | 'pageDown' | 'pageUp'): void {
-    const articleDetail = document.querySelector('main[class*="flex-1 bg-bg-primary"]');
-    if (!articleDetail) return;
-
-    const scrollableContent = articleDetail.querySelector('.overflow-y-auto') as HTMLElement;
+  // Scroll the active article or AI cluster detail panel.
+  function scrollActiveDetail(direction: 'up' | 'down' | 'pageDown' | 'pageUp'): void {
+    const scrollableContent = getActiveDetailContent();
     if (!scrollableContent) return;
 
     const scrollAmount =
@@ -437,15 +429,15 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
 
     const key = buildKeyCombo(e);
 
-    // Handle article detail scrolling when article is open
+    // Handle detail scrolling when an article or cluster is open
     // Only in RSS content view mode, not in webpage (iframe) view mode
-    if (isArticleDetailOpen() && !isWebpageViewMode()) {
+    if (isDetailOpen() && !isWebpageViewMode()) {
       // Space key - scroll page down
       if (key === 'Space') {
         // Prevent default only if not in input field
         if (!isInput && !isEditable) {
           e.preventDefault();
-          scrollArticleDetail('pageDown');
+          scrollActiveDetail('pageDown');
           return;
         }
       }
@@ -454,7 +446,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
       if (key === 'ArrowDown') {
         if (!isInput && !isEditable) {
           e.preventDefault();
-          scrollArticleDetail('down');
+          scrollActiveDetail('down');
           return;
         }
       }
@@ -463,7 +455,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
       if (key === 'ArrowUp') {
         if (!isInput && !isEditable) {
           e.preventDefault();
-          scrollArticleDetail('up');
+          scrollActiveDetail('up');
           return;
         }
       }
@@ -472,7 +464,7 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
       if (key === 'Shift+Space') {
         if (!isInput && !isEditable) {
           e.preventDefault();
-          scrollArticleDetail('pageUp');
+          scrollActiveDetail('pageUp');
           return;
         }
       }

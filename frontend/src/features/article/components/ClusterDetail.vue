@@ -586,6 +586,7 @@ function handleClose() {
 
 <template>
   <main
+    data-cluster-detail
     :class="[
       'flex-1 min-w-0 bg-bg-primary flex flex-col h-full absolute w-full md:static md:w-auto z-30 transition-transform duration-300',
       clusterStore.currentClusterId ? 'translate-x-0 md:translate-x-0' : 'translate-x-full',
