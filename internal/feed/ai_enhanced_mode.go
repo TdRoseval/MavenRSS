@@ -2036,6 +2036,9 @@ func (m *AIEnhancedManager) tryEnqueueTask(task *AIEnhancedTask) bool {
 	if task == nil || task.UserID <= 0 {
 		return false
 	}
+	if m.db != nil && !ShouldProcess(m.db, task.UserID) {
+		return false
+	}
 
 	m.stampTaskOperationVersion(task)
 
@@ -2112,6 +2115,10 @@ func (m *AIEnhancedManager) BatchProcessExistingArticles(userID int64) {
 
 func (m *AIEnhancedManager) queueExistingArticlesForProcessing(userID int64) (int, error) {
 	log.Printf("Starting batch AI processing for user %d...", userID)
+	if !ShouldProcess(m.db, userID) {
+		log.Printf("Skipping batch AI processing for user %d because AI Enhanced Mode is disabled", userID)
+		return 0, nil
+	}
 	if m.isRenormalizationRunning(userID) {
 		log.Printf("Skipping batch AI processing for user %d because cluster renormalization is running", userID)
 		return 0, nil

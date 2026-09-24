@@ -309,6 +309,9 @@ func HandleClearTranslations(h *core.Handler, w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+	h.InterruptAIWorkForUser(userID)
+
 	if err := h.DB.ClearAllTranslations(); err != nil {
 		log.Printf("Error clearing translations: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)

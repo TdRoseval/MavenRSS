@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"MavenRSS/internal/feed"
 	"MavenRSS/internal/api/core"
 	"MavenRSS/internal/api/response"
+	"MavenRSS/internal/feed"
 )
 
 // HandleGetArticleContent fetches the article content from RSS feed dynamically.
@@ -319,6 +319,9 @@ func HandleClearArticleTranslatedContents(h *core.Handler, w http.ResponseWriter
 		response.Error(w, nil, http.StatusMethodNotAllowed)
 		return
 	}
+
+	userID, _ := core.GetUserIDFromRequest(r)
+	h.InterruptAIWorkForUser(userID)
 
 	if err := h.DB.ClearAllArticleTranslatedContents(); err != nil {
 		log.Printf("Error clearing translated contents: %v", err)

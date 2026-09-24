@@ -18,12 +18,12 @@ import (
 
 	"MavenRSS/internal/ai"
 	"MavenRSS/internal/cache"
-	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/discovery"
 	"MavenRSS/internal/feed"
 	"MavenRSS/internal/models"
 	svc "MavenRSS/internal/service"
 	"MavenRSS/internal/statistics"
+	"MavenRSS/internal/store/sqlite"
 	"MavenRSS/internal/translation"
 	"MavenRSS/internal/utils/httputil"
 	"MavenRSS/internal/utils/textutil"
@@ -111,6 +111,25 @@ func (h *Handler) CallAppMethod(method string, args ...interface{}) error {
 // This is called after app initialization in main.go.
 func (h *Handler) SetApp(app interface{}) {
 	h.App = app
+}
+
+// InterruptAIWorkForUser invalidates queued and in-flight AI enhanced work
+// for a user before a destructive operation changes that user's articles.
+//
+// AI pipelines are intentionally asynchronous. Callers that clear cached
+// article data, delete articles, or delete a feed must first invalidate the
+// pipeline so a stale completion cannot race the destructive write.
+func (h *Handler) InterruptAIWorkForUser(userID int64) int {
+	if h == nil || h.Fetcher == nil || userID <= 0 {
+		return 0
+	}
+
+	manager := h.Fetcher.GetAIEnhancedManager()
+	if manager == nil {
+		return 0
+	}
+
+	return manager.InterruptUserWork(userID)
 }
 
 // Statistics returns the statistics service

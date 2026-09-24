@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"strconv"
@@ -318,59 +319,53 @@ func (db *DB) listDeletableClusterIDsForManualCleanup(userID int64) ([]int64, er
 func (db *DB) deleteUnclusteredNonFavoriteArticlesForManualCleanup(userID int64) (int64, error) {
 	db.WaitForReady()
 
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
+	var result sql.Result
+	err := db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		if userID > 0 {
+			if _, err := tx.Exec(`
+				DELETE FROM article_embeddings
+				WHERE article_id IN (
+					SELECT id
+					FROM articles
+					WHERE user_id = ?
+					  AND cluster_id IS NULL
+					  AND is_favorite = 0
+				)
+			`, userID); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.Exec(`
+				DELETE FROM article_embeddings
+				WHERE article_id IN (
+					SELECT id
+					FROM articles
+					WHERE cluster_id IS NULL
+					  AND is_favorite = 0
+				)
+			`); err != nil {
+				return err
+			}
+		}
 
-	if userID > 0 {
-		if _, err := tx.Exec(`
-			DELETE FROM article_embeddings
-			WHERE article_id IN (
-				SELECT id
-				FROM articles
+		var err error
+		if userID > 0 {
+			result, err = tx.Exec(`
+				DELETE FROM articles
 				WHERE user_id = ?
 				  AND cluster_id IS NULL
 				  AND is_favorite = 0
-			)
-		`, userID); err != nil {
-			return 0, err
-		}
-	} else {
-		if _, err := tx.Exec(`
-			DELETE FROM article_embeddings
-			WHERE article_id IN (
-				SELECT id
-				FROM articles
+			`, userID)
+		} else {
+			result, err = tx.Exec(`
+				DELETE FROM articles
 				WHERE cluster_id IS NULL
 				  AND is_favorite = 0
-			)
-		`); err != nil {
-			return 0, err
+			`)
 		}
-	}
-
-	var result sql.Result
-	if userID > 0 {
-		result, err = tx.Exec(`
-			DELETE FROM articles
-			WHERE user_id = ?
-			  AND cluster_id IS NULL
-			  AND is_favorite = 0
-		`, userID)
-	} else {
-		result, err = tx.Exec(`
-			DELETE FROM articles
-			WHERE cluster_id IS NULL
-			  AND is_favorite = 0
-		`)
-	}
+		return err
+	})
 	if err != nil {
-		return 0, err
-	}
-
-	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 
@@ -1190,86 +1185,79 @@ func (db *DB) CleanupExpiredClusters(userID int64, maxAgeDays int) (int64, error
 func (db *DB) DeleteClusterAndArticles(clusterID int64) error {
 	db.WaitForReady()
 
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		// Get all article IDs in this cluster
+		articleRows, err := tx.Query(`SELECT id FROM articles WHERE cluster_id = ?`, clusterID)
 		if err != nil {
-			_ = tx.Rollback()
+			return err
 		}
-	}()
-
-	// Get all article IDs in this cluster
-	articleRows, err := tx.Query(`SELECT id FROM articles WHERE cluster_id = ?`, clusterID)
-	if err != nil {
-		return err
-	}
-	var articleIDs []int64
-	for articleRows.Next() {
-		var articleID int64
-		if err := articleRows.Scan(&articleID); err != nil {
+		var articleIDs []int64
+		for articleRows.Next() {
+			var articleID int64
+			if err := articleRows.Scan(&articleID); err != nil {
+				_ = articleRows.Close()
+				return err
+			}
+			articleIDs = append(articleIDs, articleID)
+		}
+		if err := articleRows.Err(); err != nil {
 			_ = articleRows.Close()
 			return err
 		}
-		articleIDs = append(articleIDs, articleID)
-	}
-	_ = articleRows.Close()
-
-	// Delete article embeddings for these articles
-	for _, articleID := range articleIDs {
-		if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
+		if err := articleRows.Close(); err != nil {
 			return err
 		}
-	}
 
-	// Delete article contents for these articles
-	for _, articleID := range articleIDs {
-		if _, err := tx.Exec(`DELETE FROM article_contents WHERE article_id = ?`, articleID); err != nil {
+		// Delete article embeddings for these articles
+		for _, articleID := range articleIDs {
+			if _, err := tx.Exec(`DELETE FROM article_embeddings WHERE article_id = ?`, articleID); err != nil {
+				return err
+			}
+		}
+
+		// Delete article contents for these articles
+		for _, articleID := range articleIDs {
+			if _, err := tx.Exec(`DELETE FROM article_contents WHERE article_id = ?`, articleID); err != nil {
+				return err
+			}
+		}
+
+		// Delete translated contents for these articles
+		for _, articleID := range articleIDs {
+			if _, err := tx.Exec(`DELETE FROM article_translated_contents WHERE article_id = ?`, articleID); err != nil {
+				return err
+			}
+		}
+
+		// Delete chat sessions and messages for these articles
+		for _, articleID := range articleIDs {
+			if _, err := tx.Exec(`DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE article_id = ?)`, articleID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DELETE FROM chat_sessions WHERE article_id = ?`, articleID); err != nil {
+				return err
+			}
+		}
+
+		// Delete the articles themselves
+		if _, err := tx.Exec(`DELETE FROM articles WHERE cluster_id = ?`, clusterID); err != nil {
 			return err
 		}
-	}
 
-	// Delete translated contents for these articles
-	for _, articleID := range articleIDs {
-		if _, err := tx.Exec(`DELETE FROM article_translated_contents WHERE article_id = ?`, articleID); err != nil {
+		// Delete cluster embeddings
+		if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
 			return err
 		}
-	}
 
-	// Delete chat sessions and messages for these articles
-	for _, articleID := range articleIDs {
-		// First delete chat messages
-		if _, err := tx.Exec(`DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE article_id = ?)`, articleID); err != nil {
+		// Delete from daily_recommendations if present
+		if _, err := tx.Exec(`DELETE FROM daily_recommendations WHERE cluster_id = ?`, clusterID); err != nil {
 			return err
 		}
-		// Then delete chat sessions
-		if _, err := tx.Exec(`DELETE FROM chat_sessions WHERE article_id = ?`, articleID); err != nil {
-			return err
-		}
-	}
 
-	// Delete the articles themselves
-	if _, err := tx.Exec(`DELETE FROM articles WHERE cluster_id = ?`, clusterID); err != nil {
+		// Finally delete the cluster
+		_, err = tx.Exec(`DELETE FROM clusters WHERE id = ?`, clusterID)
 		return err
-	}
-
-	// Delete cluster embeddings
-	if _, err := tx.Exec(`DELETE FROM cluster_embeddings WHERE cluster_id = ?`, clusterID); err != nil {
-		return err
-	}
-
-	// Delete from daily_recommendations if present
-	if _, err := tx.Exec(`DELETE FROM daily_recommendations WHERE cluster_id = ?`, clusterID); err != nil {
-		return err
-	}
-
-	// Finally delete the cluster
-	if _, err := tx.Exec(`DELETE FROM clusters WHERE id = ?`, clusterID); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+	})
 }
 
 // CleanupExpiredReadClusters removes read clusters older than maxAgeDays that are not favorited or read later.

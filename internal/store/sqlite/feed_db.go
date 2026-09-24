@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -254,13 +255,17 @@ func (db *DB) AddFeedForUser(userID int64, feed *models.Feed) (int64, error) {
 // DeleteFeed deletes a feed and all its articles.
 func (db *DB) DeleteFeed(id int64) error {
 	db.WaitForReady()
-	// First delete associated articles
-	_, err := db.Exec("DELETE FROM articles WHERE feed_id = ?", id)
-	if err != nil {
+
+	return db.WithWriteTx(context.Background(), func(tx *sql.Tx) error {
+		// The article-side cache tables use ON DELETE CASCADE. Keep the
+		// article and feed deletion in one scheduled transaction so a feed
+		// cannot be left half-deleted while AI background writes are active.
+		if _, err := tx.Exec("DELETE FROM articles WHERE feed_id = ?", id); err != nil {
+			return err
+		}
+		_, err := tx.Exec("DELETE FROM feeds WHERE id = ?", id)
 		return err
-	}
-	_, err = db.Exec("DELETE FROM feeds WHERE id = ?", id)
-	return err
+	})
 }
 
 // GetFeeds returns all feeds ordered by category and position.

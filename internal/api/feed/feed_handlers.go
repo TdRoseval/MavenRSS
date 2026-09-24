@@ -69,16 +69,16 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		URL              string `json:"url"`
-		Category         string `json:"category"`
-		Title            string `json:"title"`
-		ScriptPath       string `json:"script_path"`
-		HideFromTimeline bool   `json:"hide_from_timeline"`
-		ProxyURL         string `json:"proxy_url"`
-		ProxyEnabled     bool   `json:"proxy_enabled"`
-		RefreshInterval  int    `json:"refresh_interval"`
-		IsImageMode      bool   `json:"is_image_mode"`
-		TranslateArticles bool  `json:"translate_articles"`
+		URL               string `json:"url"`
+		Category          string `json:"category"`
+		Title             string `json:"title"`
+		ScriptPath        string `json:"script_path"`
+		HideFromTimeline  bool   `json:"hide_from_timeline"`
+		ProxyURL          string `json:"proxy_url"`
+		ProxyEnabled      bool   `json:"proxy_enabled"`
+		RefreshInterval   int    `json:"refresh_interval"`
+		IsImageMode       bool   `json:"is_image_mode"`
+		TranslateArticles bool   `json:"translate_articles"`
 		// XPath fields
 		Type                string `json:"type"`
 		XPathItem           string `json:"xpath_item"`
@@ -130,12 +130,12 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var feedID int64
-	
+
 	// Get user proxy settings as fallback
 	var userProxyURL string
 	proxyEnabled := req.ProxyEnabled
 	finalProxyURL := req.ProxyURL
-	
+
 	// Only apply user proxy settings if the feed is set to use proxy
 	if proxyEnabled {
 		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
@@ -146,7 +146,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
 			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-			
+
 			// Use request proxy URL if provided, otherwise use user proxy settings
 			if finalProxyURL == "" && userProxyURL != "" {
 				finalProxyURL = userProxyURL
@@ -156,7 +156,7 @@ func HandleAddFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		// User explicitly set to NO proxy - make sure we don't use any proxy
 		finalProxyURL = ""
 	}
-	
+
 	// First, create a basic feed with user_id
 	feed := &models.Feed{
 		Title:               req.Title,
@@ -250,6 +250,10 @@ func HandleDeleteFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate AI completions before removing the feed's articles. A stale
+	// completion must not race the delete and recreate article-side cache rows.
+	h.InterruptAIWorkForUser(userID)
+
 	if err := h.DB.DeleteFeed(id); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return
@@ -277,17 +281,17 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ID               int64  `json:"id"`
-		Title            string `json:"title"`
-		URL              string `json:"url"`
-		Category         string `json:"category"`
-		ScriptPath       string `json:"script_path"`
-		HideFromTimeline bool   `json:"hide_from_timeline"`
-		ProxyURL         string `json:"proxy_url"`
-		ProxyEnabled     bool   `json:"proxy_enabled"`
-		RefreshInterval  int    `json:"refresh_interval"`
-		IsImageMode      bool   `json:"is_image_mode"`
-		TranslateArticles bool  `json:"translate_articles"`
+		ID                int64  `json:"id"`
+		Title             string `json:"title"`
+		URL               string `json:"url"`
+		Category          string `json:"category"`
+		ScriptPath        string `json:"script_path"`
+		HideFromTimeline  bool   `json:"hide_from_timeline"`
+		ProxyURL          string `json:"proxy_url"`
+		ProxyEnabled      bool   `json:"proxy_enabled"`
+		RefreshInterval   int    `json:"refresh_interval"`
+		IsImageMode       bool   `json:"is_image_mode"`
+		TranslateArticles bool   `json:"translate_articles"`
 		// XPath fields
 		Type                string `json:"type"`
 		XPathItem           string `json:"xpath_item"`
@@ -440,7 +444,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 	var userProxyURL string
 	proxyEnabled := req.ProxyEnabled
 	finalProxyURL := req.ProxyURL
-	
+
 	// Only apply user proxy settings if the feed is set to use proxy
 	if proxyEnabled {
 		proxyEnabledStr, _ := h.DB.GetSettingWithFallback(userID, "proxy_enabled")
@@ -451,7 +455,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			proxyUsername, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_username")
 			proxyPassword, _ := h.DB.GetEncryptedSettingWithFallback(userID, "proxy_password")
 			userProxyURL = httputil.BuildProxyURL(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword)
-			
+
 			// Use request proxy URL if provided, otherwise use user proxy settings
 			if finalProxyURL == "" && userProxyURL != "" {
 				finalProxyURL = userProxyURL
@@ -461,7 +465,7 @@ func HandleUpdateFeed(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 		// User explicitly set to NO proxy - make sure we don't use any proxy
 		finalProxyURL = ""
 	}
-	
+
 	if err := h.DB.UpdateFeed(req.ID, finalTitle, req.URL, req.Category, req.ScriptPath, req.HideFromTimeline, finalProxyURL, proxyEnabled, req.RefreshInterval, req.IsImageMode, req.Type, req.XPathItem, req.XPathItemTitle, req.XPathItemContent, req.XPathItemUri, req.XPathItemAuthor, req.XPathItemTimestamp, req.XPathItemTimeFormat, req.XPathItemThumbnail, req.XPathItemCategories, req.XPathItemUid, req.ArticleViewMode, req.AutoExpandContent, req.EmailAddress, req.EmailIMAPServer, req.EmailIMAPPort, req.EmailUsername, req.EmailPassword, req.EmailFolder, req.TranslateArticles); err != nil {
 		response.Error(w, err, http.StatusInternalServerError)
 		return

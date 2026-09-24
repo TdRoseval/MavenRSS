@@ -273,6 +273,9 @@ func HandleClearSummaries(h *core.Handler, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	userID, _ := core.GetUserIDFromRequest(r)
+	h.InterruptAIWorkForUser(userID)
+
 	if err := h.DB.ClearAllSummaries(); err != nil {
 		log.Printf("Error clearing summaries: %v", err)
 		response.Error(w, err, http.StatusInternalServerError)

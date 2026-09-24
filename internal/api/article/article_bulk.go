@@ -220,6 +220,7 @@ func HandleCleanupOldArticles(h *core.Handler, w http.ResponseWriter, r *http.Re
 	}
 
 	userID, _ := core.GetUserIDFromRequest(r)
+	h.InterruptAIWorkForUser(userID)
 
 	count, err := h.DB.CleanupOldArticles(userID)
 	if err != nil {
@@ -241,6 +242,7 @@ func HandleCleanupUnimportantArticles(h *core.Handler, w http.ResponseWriter, r 
 	}
 
 	userID, _ := core.GetUserIDFromRequest(r)
+	h.InterruptAIWorkForUser(userID)
 
 	count, err := h.DB.CleanupUnimportantArticles(userID)
 	if err != nil {
@@ -262,12 +264,7 @@ func HandleCleanupArticleContents(h *core.Handler, w http.ResponseWriter, r *htt
 	}
 
 	userID, _ := core.GetUserIDFromRequest(r)
-
-	if h.Fetcher != nil {
-		if manager := h.Fetcher.GetAIEnhancedManager(); manager != nil {
-			manager.InterruptUserWork(userID)
-		}
-	}
+	h.InterruptAIWorkForUser(userID)
 
 	stats, err := h.DB.CleanupArticleCachePreservingFavorites(userID)
 	if err != nil {
@@ -298,6 +295,7 @@ func HandleDeleteAllArticles(h *core.Handler, w http.ResponseWriter, r *http.Req
 	}
 
 	userID, _ := core.GetUserIDFromRequest(r)
+	h.InterruptAIWorkForUser(userID)
 
 	count, err := h.DB.DeleteAllArticles(userID)
 	if err != nil {

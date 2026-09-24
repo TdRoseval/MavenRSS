@@ -69,6 +69,12 @@ func getCurrentSettingValue(h *core.Handler, userID int64, key string) (string, 
 
 func hasFrozenAISettingChanges(h *core.Handler, userID int64, settings map[string]string) bool {
 	for key, nextValue := range settings {
+		// Disabling AI Enhanced Mode is the escape hatch from a frozen
+		// pipeline. It must remain possible so users can stop a stuck or
+		// resource-heavy pipeline and then clear its cached data.
+		if key == "ai_enhanced_mode" && strings.EqualFold(strings.TrimSpace(nextValue), "false") {
+			continue
+		}
 		if !isFrozenAISetting(key) {
 			continue
 		}
@@ -280,6 +286,21 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		disableAIEnhanced := false
+		// Stop the user's asynchronous AI writers before persisting the
+		// disabling transition. This makes disabling AI an immediate and
+		// reliable way to release article/cluster writes for cleanup.
+		if ok {
+			if requestedEnhanced, requested := req["ai_enhanced_mode"]; requested &&
+				strings.EqualFold(strings.TrimSpace(requestedEnhanced), "false") {
+				currentEnhanced, _ := h.DB.GetSettingWithFallback(userID, "ai_enhanced_mode")
+				if strings.EqualFold(strings.TrimSpace(currentEnhanced), "true") {
+					disableAIEnhanced = true
+					h.InterruptAIWorkForUser(userID)
+				}
+			}
+		}
+
 		// Check if we're disabling FreshRSS
 		if newEnabled, okFresh := req["freshrss_enabled"]; okFresh {
 			var oldEnabled string
@@ -352,6 +373,12 @@ func HandleSettings(h *core.Handler, w http.ResponseWriter, r *http.Request) {
 				response.Error(w, err, http.StatusInternalServerError)
 				return
 			}
+		}
+		if disableAIEnhanced {
+			// A task can have crossed the interruption boundary while the
+			// setting write was waiting for SQLite. Invalidate once more after
+			// the persisted value is false so no task from that race survives.
+			h.InterruptAIWorkForUser(userID)
 		}
 
 		// Check if proxy settings changed and refresh connection pool

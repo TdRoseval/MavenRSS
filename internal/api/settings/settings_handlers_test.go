@@ -113,6 +113,30 @@ func TestHandleSettings_POSTRejectsFrozenAISettings(t *testing.T) {
 	if err := db.SetSettingForUser(1, "ai_enhanced_mode", "true"); err != nil {
 		t.Fatalf("SetSettingForUser(ai_enhanced_mode) error: %v", err)
 	}
+	if _, err := db.CreateAIProfile(&models.AIProfile{
+		UserID:    1,
+		Name:      "frozen-test-profile",
+		APIKey:    "test-key",
+		Endpoint:  "https://example.com/v1",
+		Model:     "test-model",
+		IsDefault: true,
+	}); err != nil {
+		t.Fatalf("CreateAIProfile error: %v", err)
+	}
+	for key, value := range map[string]string{
+		"ai_embedding_models":       `[{"modelname":"embed-v1","baseurl":"https://example.com/embed"}]`,
+		"summary_enabled":           "true",
+		"summary_provider":          "ai",
+		"translation_enabled":       "true",
+		"ai_search_enabled":         "true",
+		"ai_chat_enabled":           "true",
+		"ai_fusion_enabled":         "true",
+		"ai_recommendation_enabled": "true",
+	} {
+		if err := db.SetSettingForUser(1, key, value); err != nil {
+			t.Fatalf("SetSettingForUser(%s) error: %v", key, err)
+		}
+	}
 
 	feedID, err := db.AddFeedForUser(1, &models.Feed{
 		Title:           "Test Feed",
@@ -172,5 +196,27 @@ func TestHandleSettings_POSTRejectsFrozenAISettings(t *testing.T) {
 	}
 	if data.Error.Message == "" {
 		t.Fatal("expected conflict error message, got empty string")
+	}
+
+	// Disabling AI Enhanced Mode must remain available as the escape hatch
+	// from the frozen state so the user can stop background writes and clean
+	// up article data.
+	disableBody, _ := json.Marshal(map[string]string{"ai_enhanced_mode": "false"})
+	disableReq := httptest.NewRequest(http.MethodPost, "/api/settings", bytes.NewReader(disableBody))
+	disableReq.Header.Set("Content-Type", "application/json")
+	disableReq = disableReq.WithContext(
+		context.WithValue(
+			disableReq.Context(),
+			middleware.UserContextKey,
+			&auth.Claims{UserID: 1, Username: "tester", Role: "user"},
+		),
+	)
+	disableW := httptest.NewRecorder()
+	HandleSettings(h, disableW, disableReq)
+	if disableW.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected disabling AI Enhanced Mode to succeed, got %d", disableW.Result().StatusCode)
+	}
+	if value, _ := db.GetSettingForUser(1, "ai_enhanced_mode"); value != "false" {
+		t.Fatalf("expected ai_enhanced_mode=false after disabling, got %q", value)
 	}
 }
