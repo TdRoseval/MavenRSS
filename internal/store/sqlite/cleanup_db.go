@@ -865,10 +865,17 @@ func (db *DB) CleanupBySize(userID int64) (int64, error) {
 		log.Printf("Deleted %d unread clustered articles, current used size: %.2f MB", deletedArticles, currentSizeMB)
 	}
 
+	// Truncate the WAL even when nothing was deleted. Cleanup only runs once the
+	// refresh queue has drained, which is exactly the window where SQLite can
+	// fold the log back into the database and reset it. Gating this behind
+	// totalDeleted > 0 meant a write-heavy instance whose size stayed under the
+	// limit never checkpointed at all: the -wal file grew to multiple gigabytes
+	// and every subsequent write had to walk it.
+	if _, err := db.CheckpointWAL("TRUNCATE"); err != nil {
+		log.Printf("Size-based cleanup WAL checkpoint failed: %v", err)
+	}
+
 	if totalDeleted > 0 {
-		if _, err := db.CheckpointWAL("TRUNCATE"); err != nil {
-			log.Printf("Size-based cleanup WAL checkpoint failed: %v", err)
-		}
 		if err := db.Vacuum(); err != nil {
 			log.Printf("Size-based cleanup VACUUM failed: %v", err)
 		}

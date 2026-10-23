@@ -133,6 +133,72 @@ func TestArticleContentCache(t *testing.T) {
 		}
 	})
 
+	t.Run("SetArticleContent rewrites in place without churning ids", func(t *testing.T) {
+		articleID := int64(44)
+		_, err = db.Exec(`INSERT INTO articles (id, user_id, title, url, published_at) VALUES (?, 1, 'Churn', 'url44', CURRENT_TIMESTAMP)`, articleID)
+		if err != nil {
+			t.Fatalf("Failed to insert dummy article %d: %v", articleID, err)
+		}
+
+		content := "<p>Churn check content</p>"
+		if err := db.SetArticleContent(articleID, content); err != nil {
+			t.Fatalf("Failed to set content: %v", err)
+		}
+
+		readRow := func() (int64, string, int64) {
+			t.Helper()
+			var rowID int64
+			var fetchedAt string
+			if err := db.QueryRow(`SELECT id, fetched_at FROM article_contents WHERE article_id = ?`, articleID).Scan(&rowID, &fetchedAt); err != nil {
+				t.Fatalf("Failed to read cached row: %v", err)
+			}
+			var seq int64
+			if err := db.QueryRow(`SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'article_contents'), 0)`).Scan(&seq); err != nil {
+				t.Fatalf("Failed to read sqlite_sequence: %v", err)
+			}
+			return rowID, fetchedAt, seq
+		}
+
+		firstID, firstFetchedAt, firstSeq := readRow()
+
+		// Re-caching identical content must be a no-op: the previous
+		// "INSERT OR REPLACE" implementation deleted and reinserted the row,
+		// allocating a new AUTOINCREMENT id on every feed refresh.
+		if err := db.SetArticleContent(articleID, content); err != nil {
+			t.Fatalf("Failed to re-set identical content: %v", err)
+		}
+		sameID, sameFetchedAt, sameSeq := readRow()
+		if sameID != firstID {
+			t.Errorf("Row id changed on identical rewrite: got %d, want %d", sameID, firstID)
+		}
+		if sameFetchedAt != firstFetchedAt {
+			t.Errorf("fetched_at changed on identical rewrite: got %q, want %q", sameFetchedAt, firstFetchedAt)
+		}
+		if sameSeq != firstSeq {
+			t.Errorf("AUTOINCREMENT sequence grew on identical rewrite: got %d, want %d", sameSeq, firstSeq)
+		}
+
+		// A genuine content change must update the existing row, not replace it.
+		updated := "<p>Churn check content v2</p>"
+		if err := db.SetArticleContent(articleID, updated); err != nil {
+			t.Fatalf("Failed to update content: %v", err)
+		}
+		updatedID, _, updatedSeq := readRow()
+		if updatedID != firstID {
+			t.Errorf("Row id changed on content update: got %d, want %d", updatedID, firstID)
+		}
+		if updatedSeq != firstSeq {
+			t.Errorf("AUTOINCREMENT sequence grew on content update: got %d, want %d", updatedSeq, firstSeq)
+		}
+		got, found, err := db.GetArticleContent(articleID)
+		if err != nil || !found {
+			t.Fatalf("Failed to read updated content: found=%v err=%v", found, err)
+		}
+		if got != "<p>Churn check content v2</p>" {
+			t.Errorf("Unexpected stored content: %q", got)
+		}
+	})
+
 	t.Run("Delete ArticleContent", func(t *testing.T) {
 		articleID := int64(3)
 		// Insert dummy article first

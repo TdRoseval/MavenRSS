@@ -1336,6 +1336,15 @@ func (m *AIEnhancedManager) runClusterEmbeddingPipeline(ctx context.Context, use
 			if err := m.runEmbedding(ctx, m.db, userID, cfg); err != nil {
 				return err
 			}
+			// Pace the retry. runEmbedding can return without making progress
+			// (a cluster whose embedding permanently fails, for example), and
+			// looping straight back into the poll would then spin a core at
+			// 100% forever instead of retrying once per tick.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+			}
 			continue
 		}
 

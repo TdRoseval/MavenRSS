@@ -6,6 +6,71 @@ import (
 	"MavenRSS/internal/utils/textutil"
 )
 
+// articleContents are re-delivered by feed polls with an identical body, so the
+// common case is a no-op. The previous implementation used "INSERT OR REPLACE"
+// for every poll: SQLite implements that as DELETE + INSERT, which allocates a
+// fresh AUTOINCREMENT id each time, frees and reallocates pages and pushes
+// sqlite_sequence into the hundreds of millions for a table holding a few
+// hundred thousand rows.
+//
+// Writes now go through an explicit read-then-write decision:
+//   - identical content and a recent row: no statement is executed at all;
+//   - existing row: UPDATE in place, keeping its id;
+//   - missing row: INSERT (ON CONFLICT still covers a concurrent insert).
+const (
+	articleContentInsertSQL = `
+		INSERT INTO article_contents (article_id, content, fetched_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(article_id) DO UPDATE SET
+			content = excluded.content,
+			fetched_at = CURRENT_TIMESTAMP`
+
+	articleContentUpdateSQL = `
+		UPDATE article_contents
+		SET content = ?, fetched_at = CURRENT_TIMESTAMP
+		WHERE article_id = ?`
+)
+
+// articleContentState describes the cached row for an article relative to the
+// content that is about to be stored.
+type articleContentState struct {
+	exists bool
+	same   bool
+	fresh  bool // fetched_at is less than a day old
+}
+
+func (db *DB) getArticleContentState(articleID int64, content string) articleContentState {
+	var stored string
+	var fresh bool
+	err := db.QueryRow(`
+		SELECT content, fetched_at >= datetime('now', '-1 day')
+		FROM article_contents
+		WHERE article_id = ?`, articleID).Scan(&stored, &fresh)
+	if err != nil {
+		// sql.ErrNoRows (nothing cached yet) or an unparsable legacy
+		// timestamp: treat as "needs a write", which is always correct.
+		return articleContentState{}
+	}
+	return articleContentState{exists: true, same: stored == content, fresh: fresh}
+}
+
+// storeArticleContent writes content through exec, skipping the statement when
+// the cached copy is already identical and recent. fetched_at therefore means
+// "last time this content was confirmed", refreshed at most once a day for
+// unchanged articles instead of on every poll.
+func (db *DB) storeArticleContent(exec func(query string, args ...any) (sql.Result, error), articleID int64, content string) error {
+	state := db.getArticleContentState(articleID, content)
+	if state.exists {
+		if state.same && state.fresh {
+			return nil
+		}
+		_, err := exec(articleContentUpdateSQL, content, articleID)
+		return err
+	}
+	_, err := exec(articleContentInsertSQL, articleID, content)
+	return err
+}
+
 // ArticleContent represents a cached article content entry
 type ArticleContent struct {
 	ID        int64
@@ -37,12 +102,7 @@ func (db *DB) GetArticleContent(articleID int64) (string, bool, error) {
 func (db *DB) SetArticleContent(articleID int64, content string) error {
 	db.WaitForReady()
 	content = textutil.NormalizeArticleContent(content)
-	_, err := db.Exec(
-		`INSERT OR REPLACE INTO article_contents (article_id, content, fetched_at)
-		 VALUES (?, ?, CURRENT_TIMESTAMP)`,
-		articleID, content,
-	)
-	return err
+	return db.storeArticleContent(db.Exec, articleID, content)
 }
 
 // SetArticleContentBackground is SetArticleContent at background write
@@ -50,13 +110,10 @@ func (db *DB) SetArticleContent(articleID int64, content string) error {
 func (db *DB) SetArticleContentBackground(articleID int64, content string) error {
 	db.WaitForReady()
 	content = textutil.NormalizeArticleContent(content)
-	_, err := db.execWithPriority(
-		writePriorityBackground,
-		`INSERT OR REPLACE INTO article_contents (article_id, content, fetched_at)
-		 VALUES (?, ?, CURRENT_TIMESTAMP)`,
-		articleID, content,
-	)
-	return err
+	exec := func(query string, args ...any) (sql.Result, error) {
+		return db.execWithPriority(writePriorityBackground, query, args...)
+	}
+	return db.storeArticleContent(exec, articleID, content)
 }
 
 // DeleteArticleContent removes cached content for an article

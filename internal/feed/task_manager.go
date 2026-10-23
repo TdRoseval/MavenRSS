@@ -43,9 +43,14 @@ type TaskManager struct {
 	pool      map[int64]*RefreshTask
 	poolMutex sync.RWMutex
 
-	// Pool configuration
+	// Pool configuration. All three fields are guarded by poolMutex.
+	// poolCapacity is enforced against the sum of running tasks and slots that
+	// a processQueue call has reserved while it loads its feed: len(pool) alone
+	// is not a reliable count because entries can be removed by StopForUser
+	// while their task is still running.
 	poolCapacity int
-	poolSem      chan struct{} // Semaphore for pool capacity
+	pendingSlots int
+	activeSlots  int
 
 	// State tracking
 	isRunning  bool
@@ -84,7 +89,6 @@ func NewTaskManager(fetcher *Fetcher, poolCapacity int) *TaskManager {
 		queue:        make([]int64, 0),
 		pool:         make(map[int64]*RefreshTask),
 		poolCapacity: poolCapacity,
-		poolSem:      make(chan struct{}, poolCapacity),
 		stopChan:     make(chan struct{}),
 	}
 
@@ -94,7 +98,14 @@ func NewTaskManager(fetcher *Fetcher, poolCapacity int) *TaskManager {
 	return tm
 }
 
-// SetPoolCapacity updates the pool capacity and adjusts the semaphore channel
+// SetPoolCapacity updates the pool capacity.
+//
+// The limit used to be mirrored into a buffered channel built once in
+// NewTaskManager, so changing it here only updated the counter used by
+// processQueue: lowering it was ignored by the semaphore and raising it made
+// processQueue block on a send that could no longer succeed. Capacity is now
+// checked against pool + pendingSlots under poolMutex, which is the same lock
+// that reserves the slot, so the new value takes effect immediately.
 func (tm *TaskManager) SetPoolCapacity(capacity int) {
 	if capacity < 1 {
 		capacity = 5
@@ -105,6 +116,16 @@ func (tm *TaskManager) SetPoolCapacity(capacity int) {
 	tm.poolMutex.Unlock()
 
 	log.Printf("Task manager pool capacity updated to %d", capacity)
+}
+
+// releasePendingSlot returns a pool slot that was reserved for a feed which
+// could not be loaded, so a failed lookup does not permanently shrink the pool.
+func (tm *TaskManager) releasePendingSlot() {
+	tm.poolMutex.Lock()
+	if tm.pendingSlots > 0 {
+		tm.pendingSlots--
+	}
+	tm.poolMutex.Unlock()
 }
 
 // Start starts the task manager
@@ -620,11 +641,14 @@ func (tm *TaskManager) processQueue(ctx context.Context) {
 		tm.queueMutex.Lock()
 		tm.poolMutex.Lock()
 
-		// Get next task from queue
+		// Get next task from queue. The slot is reserved while poolMutex is
+		// held so concurrent processQueue calls (one is spawned per completed
+		// task) cannot overshoot the capacity between the check and the insert.
 		var feedID int64
-		if len(tm.queue) > 0 && len(tm.pool) < tm.poolCapacity {
+		if len(tm.queue) > 0 && tm.pendingSlots+tm.activeSlots < tm.poolCapacity {
 			feedID = tm.queue[0]
 			tm.queue = tm.queue[1:]
+			tm.pendingSlots++
 		}
 
 		tm.poolMutex.Unlock()
@@ -639,10 +663,12 @@ func (tm *TaskManager) processQueue(ctx context.Context) {
 		// Get feed from database
 		feed, err := tm.fetcher.db.GetFeedByID(feedID)
 		if err != nil {
+			tm.releasePendingSlot()
 			log.Printf("Error getting feed %d: %v", feedID, err)
 			continue
 		}
 		if feed == nil {
+			tm.releasePendingSlot()
 			log.Printf("Feed %d not found in database", feedID)
 			continue
 		}
@@ -654,13 +680,11 @@ func (tm *TaskManager) processQueue(ctx context.Context) {
 			CreatedAt: time.Now(),
 		}
 
-		// Acquire semaphore FIRST (this will block if pool is at capacity)
-		// This prevents tasks from being added to pool without a worker
-		tm.poolSem <- struct{}{}
-
-		// Add to pool AFTER acquiring semaphore
+		// Turn the reservation into a pool entry.
 		tm.poolMutex.Lock()
 		tm.pool[feedID] = task
+		tm.pendingSlots--
+		tm.activeSlots++
 		tm.poolMutex.Unlock()
 
 		// Log move to pool
@@ -678,13 +702,14 @@ func (tm *TaskManager) processQueue(ctx context.Context) {
 // processTask processes a single task with timeout and retry logic
 func (tm *TaskManager) processTask(ctx context.Context, task *RefreshTask) {
 	defer func() {
-		// Release semaphore
-		<-tm.poolSem
 		tm.wg.Done()
 
-		// Remove from pool
+		// Remove from pool and hand the slot back.
 		tm.poolMutex.Lock()
 		delete(tm.pool, task.Feed.ID)
+		if tm.activeSlots > 0 {
+			tm.activeSlots--
+		}
 		tm.poolMutex.Unlock()
 
 		// Update stats

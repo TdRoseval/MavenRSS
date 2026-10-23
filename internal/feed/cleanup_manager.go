@@ -10,6 +10,12 @@ import (
 // whole database and blocks every other query, so it should be infrequent.
 const vacuumInterval = 6 * time.Hour
 
+// walCheckpointInterval throttles how often the cleanup manager asks SQLite to
+// fold the write-ahead log back into the database. A TRUNCATE checkpoint is
+// cheap when the log is small, but it needs a moment of exclusive access, so it
+// should not run on every cleanup pass.
+const walCheckpointInterval = 5 * time.Minute
+
 // CleanupManager manages automatic cleanup with retry mechanism
 type CleanupManager struct {
 	fetcher *Fetcher
@@ -29,6 +35,11 @@ type CleanupManager struct {
 
 	// VACUUM throttling
 	lastVacuumAt time.Time
+
+	// WAL checkpoint throttling. Kept behind its own mutex because cm.mu is
+	// held by Stop while it waits for the retry loop to exit.
+	checkpointMu     sync.Mutex
+	lastCheckpointAt time.Time
 }
 
 // NewCleanupManager creates a new cleanup manager
@@ -362,6 +373,11 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 	finalSizeMB, _ := cm.fetcher.db.GetStorageUsageMB(userID)
 	log.Printf("Final storage usage before VACUUM for user %d: %.2f MB (target was %.2f MB)", userID, finalSizeMB, targetSizeMB)
 
+	// Reclaim the WAL even if nothing was removed: cleanup only runs while the
+	// refresh queue is idle, which is the one window where a TRUNCATE
+	// checkpoint can succeed.
+	cm.checkpointWAL()
+
 	// Run VACUUM to reclaim space if we removed anything. VACUUM rebuilds the
 	// whole database file and stalls every other query while it runs, so:
 	//   - rate-limit it to once per vacuumInterval,
@@ -378,6 +394,24 @@ func (cm *CleanupManager) layeredCleanup(userID int64, targetSizeMB float64) int
 	}
 
 	return totalRemoved
+}
+
+// checkpointWAL truncates the write-ahead log, at most once per
+// walCheckpointInterval. Without this the only checkpoints in the system were
+// the ones run by size-based cleanup, which never fired on instances whose
+// estimated usage stayed under the limit; their -wal file grew without bound.
+func (cm *CleanupManager) checkpointWAL() {
+	cm.checkpointMu.Lock()
+	if !cm.lastCheckpointAt.IsZero() && time.Since(cm.lastCheckpointAt) < walCheckpointInterval {
+		cm.checkpointMu.Unlock()
+		return
+	}
+	cm.lastCheckpointAt = time.Now()
+	cm.checkpointMu.Unlock()
+
+	if _, err := cm.fetcher.db.CheckpointWAL("TRUNCATE"); err != nil {
+		log.Printf("Cleanup manager WAL checkpoint failed: %v", err)
+	}
 }
 
 // shouldVacuum returns true only if enough time has passed since the last
@@ -406,6 +440,13 @@ func (cm *CleanupManager) retryLoop() {
 		case <-cm.stopChan:
 			return
 		case <-ticker.C:
+			// Keep the WAL bounded even when there is nothing to clean up.
+			// Skip it while feeds are being refreshed so the checkpoint does
+			// not compete with active writers.
+			if cm.canCleanup() {
+				cm.checkpointWAL()
+			}
+
 			cm.pendingCleanupMu.Lock()
 			hasPending := len(cm.pendingCleanupByUser) > 0
 			cm.pendingCleanupMu.Unlock()
